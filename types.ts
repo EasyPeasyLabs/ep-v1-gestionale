@@ -1,4 +1,3 @@
-
 export enum RegimeFiscale {
     FORFETTARIO = "Regime forfettario",
     ASSOCIAZIONE_CULTURALE = "Associazione culturale",
@@ -11,6 +10,8 @@ export type AppContextType = {
     regimeFiscale: RegimeFiscale;
     setRegimeFiscale: (regime: RegimeFiscale) => void;
 };
+
+// --- ANAGRAFICHE ---
 
 // Clienti types
 export enum ClienteClasse {
@@ -103,6 +104,7 @@ export enum FornitoreTipo {
 
 export interface Sede {
     id: string;
+    fornitoreId: string;
     nome: string;
     indirizzo: Indirizzo;
     capienzaMassima: number;
@@ -118,4 +120,196 @@ export interface Fornitore {
     rating: number;
     dati: DatiDitta;
     sedi: Sede[];
+}
+
+// --- OPERATIVO ---
+
+// Laboratori types
+export enum TimeSlotStato {
+    PROGRAMMATO = "Programmato",
+    CONFERMATO = "Confermato",
+    ANTICIPATO = "Anticipato",
+    POSTICIPATO = "Posticipato",
+    ANNULLATO = "Annullato",
+}
+
+export interface TimeSlot {
+    id: string;
+    laboratorioId: string;
+    stato: TimeSlotStato;
+    data: string; // Data effettiva dello slot
+    ordine: number; // Es. 1 di 4
+    iscritti: number;
+    partecipanti?: number;
+}
+
+export interface Laboratorio {
+    id: string;
+    codice: string; // Es. SPA.LUN.10:00
+    sedeId: string;
+    dataInizio: string; // YYYY-MM-DD
+    dataFine: string; // YYYY-MM-DD
+    prezzoListino: number;
+    costoAttivita: number;
+    costoLogistica: number;
+    timeSlots: TimeSlot[];
+}
+
+// Attività types
+export enum AttivitaStato {
+    PIANIFICATA = "Pianificata",
+    APPROVATA = "Approvata",
+    SOSPESA = "Sospesa",
+    OBSOLETA = "Obsoleta",
+}
+
+export enum AttivitaTipo {
+    LETTURA = "Lettura",
+    MUSICA = "Musica",
+    GIOCO = "Gioco",
+    ROUTINE = "Routine",
+    ASCOLTO_RIPETIZIONE = "Ascolto e Ripetizione",
+}
+
+export interface Attivita {
+    id: string;
+    stato: AttivitaStato;
+    tipo: AttivitaTipo;
+    titolo: string;
+    materiali: string[]; // Lista di ID Materiale
+    rating: number; // 1 to 5
+}
+
+
+// Materiali types
+export enum MaterialeUbicazione {
+    HOME = "Magazzino EasyPeasy",
+    TERZI = "Magazzino Fornitore",
+}
+
+export interface Materiale {
+    id: string;
+    nome: string;
+    descrizione: string;
+    unitaMisura: string;
+    quantita: number;
+    prezzoAbituale: number;
+    ubicazione: MaterialeUbicazione;
+}
+
+// --- FINANCE ---
+export enum TipoMovimento {
+    ENTRATA = "Entrata",
+    USCITA = "Uscita",
+}
+
+export enum CentroDiCosto {
+    LAVORO = "Lavoro",
+    PERSONALE = "Personale",
+}
+
+export enum ImputazioneLavoro {
+    LABORATORI = "Laboratori",
+    CLIENTI = "Clienti",
+    FORNITORI = "Fornitori",
+    LOGISTICA = "Logistica",
+    FORMAZIONE = "Formazione",
+    PUBBLICITA = "Pubblicità",
+}
+
+export enum ImputazionePersonale {
+    TEMPO_LIBERO = "Tempo Libero",
+    VIAGGI = "Viaggi",
+    ALTRE_SPESE = "Altre Spese Personali",
+}
+
+export type Imputazione = ImputazioneLavoro | ImputazionePersonale;
+
+export interface MovimentoFinance {
+    id: string;
+    tipo: TipoMovimento;
+    centroDiCosto: CentroDiCosto;
+    imputazione: Imputazione;
+    descrizione: string;
+    importo: number;
+    data: string; // YYYY-MM-DD
+}
+
+// --- DOCUMENTI ---
+export enum DocumentoTipo {
+    CONTRATTO = "Contratto",
+    FATTURA = "Fattura",
+    RICEVUTA = "Ricevuta",
+    PRIVACY = "Informativa Privacy",
+    PREVENTIVO = "Preventivo",
+    ALTRO = "Altro",
+}
+
+export enum DocumentoStato {
+    BOZZA = "Bozza",
+    INVIATO = "Inviato",
+    FIRMATO = "Firmato",
+    PAGATO = "Pagato",
+    ARCHIVIATO = "Archiviato",
+}
+
+export type Associato = {
+    id: string;
+    tipo: 'cliente' | 'fornitore';
+    nome: string;
+}
+
+export interface Documento {
+    id: string;
+    nome: string;
+    tipo: DocumentoTipo;
+    stato: DocumentoStato;
+    dataCreazione: string; // YYYY-MM-DD
+    associatoA?: Associato;
+    contenuto: string; // Placeholder for file content/path
+}
+
+// --- COMMERCIALE ---
+export enum PropostaStato {
+    BOZZA = "Bozza",
+    INVIATA = "Inviata",
+    ACCETTATA = "Accettata",
+    RIFIUTATA = "Rifiutata",
+    SCADUTA = "Scaduta",
+}
+
+export interface PropostaServizio {
+    id: string;
+    descrizione: string;
+    quantita: number;
+    prezzoUnitario: number;
+}
+
+export interface PropostaCommerciale {
+    id: string;
+    codice: string;
+    clienteId: string;
+    dataEmissione: string; // YYYY-MM-DD
+    dataScadenza: string; // YYYY-MM-DD
+    stato: PropostaStato;
+    servizi: PropostaServizio[];
+    totale: number;
+}
+
+// --- CRM ---
+export enum InterazioneTipo {
+    TELEFONATA = "Telefonata",
+    EMAIL = "Email",
+    INCONTRO = "Incontro",
+    NOTA = "Nota",
+}
+
+export interface InterazioneCRM {
+    id: string;
+    clienteId: string;
+    data: string; // ISO string for datetime
+    tipo: InterazioneTipo;
+    oggetto: string;
+    descrizione: string;
+    followUp?: string; // YYYY-MM-DD
 }

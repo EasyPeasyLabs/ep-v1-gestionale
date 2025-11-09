@@ -1,10 +1,18 @@
-
 import React, { useState, createContext, useMemo } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/micro-apps/Dashboard';
 import { Clienti } from './components/micro-apps/Clienti';
 import { Fornitori } from './components/micro-apps/Fornitori';
 import { Sedi } from './components/micro-apps/Sedi';
+import { Laboratori } from './components/micro-apps/Laboratori.tsx';
+import { Attivita } from './components/micro-apps/Attivita';
+import { Materiali } from './components/micro-apps/Materiali';
+import { Finance } from './components/micro-apps/Finance';
+import { Documenti } from './components/micro-apps/Documenti';
+import { Commerciale } from './components/micro-apps/Commerciale';
+import { Rating } from './components/micro-apps/Rating';
+import { CRM } from './components/micro-apps/CRM';
+import { Brain } from './components/micro-apps/Brain';
 import { Configuration } from './components/micro-apps/Configuration';
 import { RegimeFiscale } from './types';
 import type { AppContextType } from './types';
@@ -48,9 +56,26 @@ const App: React.FC = () => {
                 return <Fornitori />;
             case 'Sedi':
                 return <Sedi />;
-             case 'Configurazione':
+            case 'Laboratori':
+                return <Laboratori />;
+            case 'Attivita':
+                return <Attivita />;
+            case 'Materiali':
+                return <Materiali />;
+            case 'Finance':
+                return <Finance />;
+            case 'Documenti':
+                return <Documenti />;
+            case 'Commerciale':
+                return <Commerciale />;
+            case 'Rating':
+                return <Rating />;
+            case 'CRM':
+                return <CRM />;
+            case 'Brain':
+                return <Brain />;
+            case 'Configurazione':
                 return <Configuration />;
-            // Add cases for other micro-apps here
             default:
                 return <div className="p-8"><h1 className="text-2xl font-bold">Benvenuto in {activeApp}</h1><p>Micro-app in costruzione.</p></div>;
         }
