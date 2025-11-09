@@ -52,22 +52,22 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
         const { name, value } = e.target;
         setFormData(prev => {
             if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
-
-            const currentDati = prev.dati as DatiFamiglia;
-            const currentGenitore = currentDati[genitoreKey] || EMPTY_GENITORE;
+    
+            // Create a deep copy to be safe from reference issues
+            const newState = JSON.parse(JSON.stringify(prev)) as ClienteFamiglia;
             
-            const updatedGenitore = {
-                ...currentGenitore,
-                [name]: value
-            };
+            // Ensure genitore2 object exists if we are editing it
+            if (genitoreKey === 'genitore2' && !newState.dati.genitore2) {
+                newState.dati.genitore2 = { ...EMPTY_GENITORE };
+            }
+    
+            // Update the specific field on the correct parent
+            const genitoreToUpdate = newState.dati[genitoreKey];
+            if (genitoreToUpdate) {
+                (genitoreToUpdate as any)[name] = value;
+            }
             
-            return {
-                ...prev,
-                dati: {
-                    ...currentDati,
-                    [genitoreKey]: updatedGenitore
-                }
-            };
+            return newState;
         });
     };
     
@@ -75,27 +75,24 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
         const { name, value } = e.target;
         setFormData(prev => {
             if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
-
-            const currentDati = prev.dati as DatiFamiglia;
-            const currentGenitore = currentDati[genitoreKey] || EMPTY_GENITORE;
+    
+            const newState = JSON.parse(JSON.stringify(prev)) as ClienteFamiglia;
+    
+            // Ensure genitore2 object exists if we are editing it
+            if (genitoreKey === 'genitore2' && !newState.dati.genitore2) {
+                newState.dati.genitore2 = { ...EMPTY_GENITORE };
+            }
             
-            const updatedIndirizzo = {
-                ...(currentGenitore.indirizzo || EMPTY_INDIRIZZO),
-                [name]: value
-            };
-            
-            const updatedGenitore = {
-                ...currentGenitore,
-                indirizzo: updatedIndirizzo
-            };
-
-            return {
-                ...prev,
-                dati: {
-                    ...currentDati,
-                    [genitoreKey]: updatedGenitore
+            const genitoreToUpdate = newState.dati[genitoreKey];
+            if(genitoreToUpdate) {
+                // Ensure indirizzo object exists
+                if (!genitoreToUpdate.indirizzo) {
+                    genitoreToUpdate.indirizzo = { ...EMPTY_INDIRIZZO };
                 }
-            };
+                (genitoreToUpdate.indirizzo as any)[name] = value;
+            }
+    
+            return newState;
         });
     };
     
@@ -299,6 +296,17 @@ export const Clienti: React.FC = () => {
             ))}
         </div>
     );
+    
+    const formatLastModified = (isoDate?: string) => {
+        if (!isoDate) return '-';
+        return new Date(isoDate).toLocaleString('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
 
     return (
         <div className="p-4 md:p-8">
@@ -312,6 +320,7 @@ export const Clienti: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                         <tr>
                             <th scope="col" className="px-6 py-3">Nome / Rag. Sociale</th>
+                            <th scope="col" className="px-6 py-3">Ultima Modifica</th>
                             <th scope="col" className="px-6 py-3">Tipo</th>
                             <th scope="col" className="px-6 py-3">Stato</th>
                             <th scope="col" className="px-6 py-3">Rating</th>
@@ -324,6 +333,7 @@ export const Clienti: React.FC = () => {
                                 <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                                     {getClienteDisplayName(cliente)}
                                 </th>
+                                <td className="px-6 py-4 text-xs text-gray-500">{formatLastModified(cliente.lastModified)}</td>
                                 <td className="px-6 py-4">{cliente.tipo}</td>
                                 <td className="px-6 py-4">
                                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">{cliente.stato}</span>

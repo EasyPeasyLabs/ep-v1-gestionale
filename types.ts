@@ -81,6 +81,7 @@ export interface ClienteBase {
     tipo: ClienteTipo;
     stato: ClienteStato;
     rating: number;
+    lastModified?: string; // Data e ora dell'ultima modifica
 }
 
 export interface ClienteEnteAzienda extends ClienteBase {
