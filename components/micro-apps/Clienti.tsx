@@ -8,7 +8,7 @@ import { Tabs } from '../ui/Tabs';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '../icons/Icons';
 import { CLIENTE_CLASSE_OPTIONS, CLIENTE_TIPO_OPTIONS, CLIENTE_STATO_OPTIONS, EMPTY_INDIRIZZO, EMPTY_GENITORE, EMPTY_DITTA } from '../../constants';
 // FIX: Added ClienteFamiglia to imports
-import { Cliente, ClienteTipo, DatiFamiglia, ClienteEnteAzienda, DatiDitta, BambiniEnte, Genitore, Figlio, ClienteFamiglia } from '../../types';
+import { Cliente, ClienteTipo, DatiFamiglia, ClienteEnteAzienda, DatiDitta, BambiniEnte, Genitore, Figlio, ClienteFamiglia, Indirizzo } from '../../types';
 
 const getInitialFormData = (): Cliente => ({
     id: '',
@@ -48,18 +48,24 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
         });
     };
 
-    // FIX: Use type guard in setFormData to ensure correct type for discriminated union
-    const handleGenitoreChange = (e: React.ChangeEvent<HTMLInputElement>, genitore: 'genitore1' | 'genitore2') => {
+    const handleGenitoreChange = (e: React.ChangeEvent<HTMLInputElement>, genitoreKey: 'genitore1' | 'genitore2') => {
         const { name, value } = e.target;
         setFormData(prev => {
             if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
-            return {
-                ...prev,
-                dati: {
-                    ...prev.dati,
-                    [genitore]: { ...prev.dati[genitore], [name]: value }
-                }
-            };
+            const currentGenitore = prev.dati[genitoreKey] || { ...EMPTY_GENITORE };
+            const updatedGenitore = { ...currentGenitore, [name]: value };
+            return { ...prev, dati: { ...prev.dati, [genitoreKey]: updatedGenitore } };
+        });
+    };
+    
+    const handleIndirizzoChange = (e: React.ChangeEvent<HTMLInputElement>, genitoreKey: 'genitore1' | 'genitore2') => {
+        const { name, value } = e.target;
+        setFormData(prev => {
+            if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
+            const currentGenitore = prev.dati[genitoreKey] || { ...EMPTY_GENITORE };
+            const updatedIndirizzo = { ...(currentGenitore.indirizzo || EMPTY_INDIRIZZO), [name]: value };
+            const updatedGenitore = { ...currentGenitore, indirizzo: updatedIndirizzo };
+            return { ...prev, dati: { ...prev.dati, [genitoreKey]: updatedGenitore } };
         });
     };
     
@@ -113,13 +119,25 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
     const FamigliaForm: React.FC = () => {
         const dati = formData.dati as DatiFamiglia;
         
-        const GenitoreTab: React.FC<{ genitore: Genitore, genitoreKey: 'genitore1' | 'genitore2'}> = ({ genitore, genitoreKey }) => (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 <Input id={`${genitoreKey}-cognome`} name="cognome" label="Cognome" value={genitore.cognome} onChange={e => handleGenitoreChange(e, genitoreKey)} required={genitoreKey === 'genitore1'}/>
-                 <Input id={`${genitoreKey}-nome`} name="nome" label="Nome" value={genitore.nome} onChange={e => handleGenitoreChange(e, genitoreKey)} required={genitoreKey === 'genitore1'}/>
-                 <Input id={`${genitoreKey}-cf`} name="codiceFiscale" label="Codice Fiscale" value={genitore.codiceFiscale} onChange={e => handleGenitoreChange(e, genitoreKey)} required={genitoreKey === 'genitore1'}/>
-                 <Input id={`${genitoreKey}-email`} name="email" label="Email" type="email" value={genitore.email} onChange={e => handleGenitoreChange(e, genitoreKey)} />
-                 <Input id={`${genitoreKey}-telefono`} name="telefono" label="Telefono" value={genitore.telefono} onChange={e => handleGenitoreChange(e, genitoreKey)} />
+        const GenitoreTab: React.FC<{ genitore: Partial<Genitore>, genitoreKey: 'genitore1' | 'genitore2'}> = ({ genitore, genitoreKey }) => (
+            <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <Input id={`${genitoreKey}-cognome`} name="cognome" label="Cognome" value={genitore.cognome || ''} onChange={e => handleGenitoreChange(e, genitoreKey)} required={genitoreKey === 'genitore1'}/>
+                     <Input id={`${genitoreKey}-nome`} name="nome" label="Nome" value={genitore.nome || ''} onChange={e => handleGenitoreChange(e, genitoreKey)} required={genitoreKey === 'genitore1'}/>
+                     <Input id={`${genitoreKey}-cf`} name="codiceFiscale" label="Codice Fiscale" value={genitore.codiceFiscale || ''} onChange={e => handleGenitoreChange(e, genitoreKey)} required={genitoreKey === 'genitore1'}/>
+                     <Input id={`${genitoreKey}-email`} name="email" label="Email" type="email" value={genitore.email || ''} onChange={e => handleGenitoreChange(e, genitoreKey)} />
+                     <Input id={`${genitoreKey}-telefono`} name="telefono" label="Telefono" value={genitore.telefono || ''} onChange={e => handleGenitoreChange(e, genitoreKey)} />
+                </div>
+                <div className="pt-4">
+                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">Indirizzo</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                        <Input id={`${genitoreKey}-via`} name="via" label="Via / Piazza" value={genitore.indirizzo?.via || ''} onChange={e => handleIndirizzoChange(e, genitoreKey)} />
+                        <Input id={`${genitoreKey}-civico`} name="civico" label="N. Civico" value={genitore.indirizzo?.civico || ''} onChange={e => handleIndirizzoChange(e, genitoreKey)} />
+                        <Input id={`${genitoreKey}-cap`} name="cap" label="CAP" value={genitore.indirizzo?.cap || ''} onChange={e => handleIndirizzoChange(e, genitoreKey)} />
+                        <Input id={`${genitoreKey}-citta`} name="citta" label="Città" value={genitore.indirizzo?.citta || ''} onChange={e => handleIndirizzoChange(e, genitoreKey)} />
+                        <Input id={`${genitoreKey}-provincia`} name="provincia" label="Provincia" value={genitore.indirizzo?.provincia || ''} onChange={e => handleIndirizzoChange(e, genitoreKey)} />
+                    </div>
+                </div>
             </div>
         );
         
@@ -127,7 +145,7 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
             <div>
                  <Tabs tabs={[
                     { label: 'Genitore 1 (Obbligatorio)', content: <GenitoreTab genitore={dati.genitore1} genitoreKey="genitore1" /> },
-                    { label: 'Genitore 2', content: <GenitoreTab genitore={dati.genitore2 as Genitore} genitoreKey="genitore2" /> }
+                    { label: 'Genitore 2', content: <GenitoreTab genitore={dati.genitore2 || {}} genitoreKey="genitore2" /> }
                  ]}/>
 
                 <div className="mt-6">
@@ -211,11 +229,22 @@ export const Clienti: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSaveCliente = (cliente: Cliente) => {
-        if (cliente.id) {
-            updateCliente(cliente);
+    const handleSaveCliente = (clienteData: Cliente) => {
+        // Rimuovi genitore2 se è vuoto per non salvarlo in Firebase
+        const clienteToSave = { ...clienteData };
+        if (clienteToSave.tipo === ClienteTipo.FAMIGLIA) {
+            const g2 = clienteToSave.dati.genitore2;
+            if (g2 && !g2.cognome && !g2.nome && !g2.codiceFiscale) {
+                delete clienteToSave.dati.genitore2;
+            }
+        }
+
+        if (clienteToSave.id) {
+            updateCliente(clienteToSave);
         } else {
-            addCliente(cliente);
+            // Rimuovo l'id vuoto prima di creare un nuovo documento
+            const { id, ...newCliente } = clienteToSave;
+            addCliente(newCliente as Omit<Cliente, 'id'>);
         }
         handleCloseModal();
     };
