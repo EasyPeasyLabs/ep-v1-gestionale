@@ -15,6 +15,7 @@ export const Tabs: React.FC<TabsProps> = ({ tabs }) => {
                     {tabs.map((tab, index) => (
                         <button
                             key={tab.label}
+                            type="button"
                             onClick={() => setActiveTab(index)}
                             className={`${
                                 activeTab === index
