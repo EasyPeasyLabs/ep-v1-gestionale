@@ -5,7 +5,8 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
-import { InterazioneCRM, ClienteTipo } from '../../types';
+// FIX: Added `Cliente` to imports for type safety.
+import { InterazioneCRM, Cliente, ClienteTipo } from '../../types';
 import { EMPTY_INTERAZIONE, INTERAZIONE_TIPO_OPTIONS } from '../../constants';
 
 const InterazioneForm: React.FC<{
@@ -51,7 +52,17 @@ export const CRM: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInterazione, setEditingInterazione] = useState<InterazioneCRM | Omit<InterazioneCRM, 'id'> | null>(null);
 
-    const getClienteNome = (cliente: any) => cliente.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${cliente.dati.genitore1.cognome}` : cliente.dati.ragioneSociale;
+    // FIX: Used specific `Cliente` type instead of `any` for better type safety.
+    const getClienteNome = (cliente: Cliente) => cliente.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${cliente.dati.genitore1.cognome}` : cliente.dati.ragioneSociale;
+
+    // FIX: Added a helper function to correctly retrieve the email address based on the client type,
+    // resolving the error on the discriminated union.
+    const getClienteEmail = (cliente: Cliente) => {
+        if (cliente.tipo === ClienteTipo.FAMIGLIA) {
+            return cliente.dati.genitore1.email;
+        }
+        return cliente.dati.email;
+    }
 
     const filteredInterazioni = useMemo(() => {
         if (!selectedClienteId) return [];
@@ -98,7 +109,8 @@ export const CRM: React.FC = () => {
                             <li key={c.id}>
                                 <button onClick={() => setSelectedClienteId(c.id)} className={`w-full text-left p-4 ${selectedClienteId === c.id ? 'bg-blue-50 dark:bg-blue-900/50' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
                                     <p className={`font-semibold ${selectedClienteId === c.id ? 'text-blue-600' : 'text-gray-900 dark:text-white'}`}>{getClienteNome(c)}</p>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">{c.dati.email}</p>
+                                    {/* FIX: Used the new helper function to safely get the client email. */}
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">{getClienteEmail(c)}</p>
                                 </button>
                             </li>
                         ))}
