@@ -1,5 +1,16 @@
 import { useState, useCallback, useEffect } from 'react';
 import { db } from '../firebaseConfig';
+import { 
+    collection, 
+    onSnapshot, 
+    addDoc, 
+    updateDoc, 
+    deleteDoc, 
+    doc, 
+    query, 
+    orderBy,
+    getDoc
+} from "firebase/firestore";
 import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM } from '../types';
 
 export function useMockData() {
@@ -15,12 +26,11 @@ export function useMockData() {
 
     useEffect(() => {
         const createSubscription = (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderField?: string) => {
-            // FIX: Use v8 syntax for queries
-            const collRef = db.collection(collectionName);
-            const q = orderField ? collRef.orderBy(orderField, 'desc') : collRef;
+            const collRef = collection(db, collectionName);
+            const q = orderField ? query(collRef, orderBy(orderField, 'desc')) : query(collRef);
             
-            const unsubscribe = q.onSnapshot((snapshot) => {
-                const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const unsubscribe = onSnapshot(q, (snapshot) => {
+                const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
                 setter(data);
             });
             return unsubscribe;
@@ -51,20 +61,17 @@ export function useMockData() {
 
     // Generic CRUD helpers
     const addDocument = useCallback(async (collectionName: string, data: object) => {
-        // FIX: Use v8 syntax for adding documents
-        await db.collection(collectionName).add(data);
+        await addDoc(collection(db, collectionName), data);
     }, []);
 
     const updateDocument = useCallback(async (collectionName: string, id: string, data: object) => {
-        // FIX: Use v8 syntax for updating documents
-        const docRef = db.collection(collectionName).doc(id);
-        await docRef.update(data);
+        const docRef = doc(db, collectionName, id);
+        await updateDoc(docRef, data);
     }, []);
 
     const deleteDocument = useCallback(async (collectionName: string, id: string) => {
         try {
-            // FIX: Use v8 syntax for deleting documents
-            await db.collection(collectionName).doc(id).delete();
+            await deleteDoc(doc(db, collectionName, id));
         } catch (error) {
             console.error("Errore durante l'eliminazione del documento: ", error);
             alert(`Impossibile eliminare l'elemento. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla le regole di sicurezza di Firestore o la console per maggiori dettagli.`);
@@ -97,32 +104,29 @@ export function useMockData() {
     // Sedi CRUD
     const addSede = useCallback(async (fornitoreId: string, sede: Omit<Sede, 'id'|'fornitoreId'>) => {
         const newSede: Sede = { ...sede, id: `sede_${Date.now()}`, fornitoreId };
-        // FIX: Use v8 syntax to get and update document
-        const fornitoreRef = db.collection('fornitori').doc(fornitoreId);
-        const fornitoreSnap = await fornitoreRef.get();
-        if (fornitoreSnap.exists) {
+        const fornitoreRef = doc(db, 'fornitori', fornitoreId);
+        const fornitoreSnap = await getDoc(fornitoreRef);
+        if (fornitoreSnap.exists()) {
             const fornitoreData = fornitoreSnap.data() as Fornitore;
-            await fornitoreRef.update({ sedi: [...(fornitoreData.sedi || []), newSede] });
+            await updateDoc(fornitoreRef, { sedi: [...(fornitoreData.sedi || []), newSede] });
         }
     }, []);
     const updateSede = useCallback(async (fornitoreId: string, updatedSede: Sede) => {
-        // FIX: Use v8 syntax to get and update document
-        const fornitoreRef = db.collection('fornitori').doc(fornitoreId);
-        const fornitoreSnap = await fornitoreRef.get();
-        if (fornitoreSnap.exists) {
+        const fornitoreRef = doc(db, 'fornitori', fornitoreId);
+        const fornitoreSnap = await getDoc(fornitoreRef);
+        if (fornitoreSnap.exists()) {
             const fornitoreData = fornitoreSnap.data() as Fornitore;
             const updatedSedi = fornitoreData.sedi.map(s => s.id === updatedSede.id ? updatedSede : s);
-            await fornitoreRef.update({ sedi: updatedSedi });
+            await updateDoc(fornitoreRef, { sedi: updatedSedi });
         }
     }, []);
     const deleteSede = useCallback(async (fornitoreId: string, sedeId: string) => {
-       // FIX: Use v8 syntax to get and update document
-       const fornitoreRef = db.collection('fornitori').doc(fornitoreId);
-        const fornitoreSnap = await fornitoreRef.get();
-        if (fornitoreSnap.exists) {
+       const fornitoreRef = doc(db, 'fornitori', fornitoreId);
+        const fornitoreSnap = await getDoc(fornitoreRef);
+        if (fornitoreSnap.exists()) {
             const fornitoreData = fornitoreSnap.data() as Fornitore;
             const updatedSedi = fornitoreData.sedi.filter(s => s.id !== sedeId);
-            await fornitoreRef.update({ sedi: updatedSedi });
+            await updateDoc(fornitoreRef, { sedi: updatedSedi });
         }
     }, []);
 
