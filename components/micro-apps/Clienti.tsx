@@ -52,9 +52,22 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
         const { name, value } = e.target;
         setFormData(prev => {
             if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
-            const currentGenitore = prev.dati[genitoreKey] || { ...EMPTY_GENITORE };
-            const updatedGenitore = { ...currentGenitore, [name]: value };
-            return { ...prev, dati: { ...prev.dati, [genitoreKey]: updatedGenitore } };
+
+            const currentDati = prev.dati as DatiFamiglia;
+            const currentGenitore = currentDati[genitoreKey] || EMPTY_GENITORE;
+            
+            const updatedGenitore = {
+                ...currentGenitore,
+                [name]: value
+            };
+            
+            return {
+                ...prev,
+                dati: {
+                    ...currentDati,
+                    [genitoreKey]: updatedGenitore
+                }
+            };
         });
     };
     
@@ -62,10 +75,27 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
         const { name, value } = e.target;
         setFormData(prev => {
             if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
-            const currentGenitore = prev.dati[genitoreKey] || { ...EMPTY_GENITORE };
-            const updatedIndirizzo = { ...(currentGenitore.indirizzo || EMPTY_INDIRIZZO), [name]: value };
-            const updatedGenitore = { ...currentGenitore, indirizzo: updatedIndirizzo };
-            return { ...prev, dati: { ...prev.dati, [genitoreKey]: updatedGenitore } };
+
+            const currentDati = prev.dati as DatiFamiglia;
+            const currentGenitore = currentDati[genitoreKey] || EMPTY_GENITORE;
+            
+            const updatedIndirizzo = {
+                ...(currentGenitore.indirizzo || EMPTY_INDIRIZZO),
+                [name]: value
+            };
+            
+            const updatedGenitore = {
+                ...currentGenitore,
+                indirizzo: updatedIndirizzo
+            };
+
+            return {
+                ...prev,
+                dati: {
+                    ...currentDati,
+                    [genitoreKey]: updatedGenitore
+                }
+            };
         });
     };
     
