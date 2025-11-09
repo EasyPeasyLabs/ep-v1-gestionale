@@ -121,6 +121,7 @@ export interface Fornitore {
     rating: number;
     dati: DatiDitta;
     sedi: Sede[];
+    lastModified?: string;
 }
 
 // --- OPERATIVO ---

@@ -37,7 +37,7 @@ export function useMockData() {
         };
 
         const unsubClienti = createSubscription('clienti', setClienti, 'lastModified');
-        const unsubFornitori = createSubscription('fornitori', setFornitori);
+        const unsubFornitori = createSubscription('fornitori', setFornitori, 'lastModified');
         const unsubLaboratori = createSubscription('laboratori', setLaboratori);
         const unsubAttivita = createSubscription('attivita', setAttivita);
         const unsubMateriali = createSubscription('materiali', setMateriali);
@@ -94,10 +94,15 @@ export function useMockData() {
     const deleteCliente = useCallback((clienteId: string) => deleteDocument('clienti', clienteId), [deleteDocument]);
     
     // Fornitori CRUD
-    const addFornitore = useCallback((fornitore: Omit<Fornitore, 'id' | 'sedi'>) => addDocument('fornitori', {...fornitore, sedi: []}), [addDocument]);
+    const addFornitore = useCallback((fornitore: Omit<Fornitore, 'id' | 'sedi'>) => {
+        const fornitoreWithTimestamp = { ...fornitore, sedi: [], lastModified: new Date().toISOString() };
+        addDocument('fornitori', fornitoreWithTimestamp);
+    }, [addDocument]);
+
     const updateFornitore = useCallback((updatedFornitore: Fornitore) => {
-         const { id, ...data } = updatedFornitore;
-         updateDocument('fornitori', id, data);
+        const { id, ...data } = updatedFornitore;
+        const dataWithTimestamp = { ...data, lastModified: new Date().toISOString() };
+        updateDocument('fornitori', id, dataWithTimestamp);
     }, [updateDocument]);
     const deleteFornitore = useCallback((fornitoreId: string) => deleteDocument('fornitori', fornitoreId), [deleteDocument]);
 

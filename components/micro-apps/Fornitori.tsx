@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -123,6 +122,17 @@ export const Fornitori: React.FC = () => {
         </div>
     );
 
+    const formatLastModified = (isoDate?: string) => {
+        if (!isoDate) return '-';
+        return new Date(isoDate).toLocaleString('it-IT', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
     return (
         <div className="p-4 md:p-8">
             <div className="flex justify-between items-center mb-6">
@@ -135,6 +145,7 @@ export const Fornitori: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                         <tr>
                             <th scope="col" className="px-6 py-3">Rag. Sociale</th>
+                            <th scope="col" className="px-6 py-3">Ultima Modifica</th>
                             <th scope="col" className="px-6 py-3">Tipo</th>
                             <th scope="col" className="px-6 py-3">Stato</th>
                             <th scope="col" className="px-6 py-3">Sedi</th>
@@ -148,6 +159,7 @@ export const Fornitori: React.FC = () => {
                                 <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                                     {fornitore.dati.ragioneSociale}
                                 </th>
+                                <td className="px-6 py-4 text-xs text-gray-500">{formatLastModified(fornitore.lastModified)}</td>
                                 <td className="px-6 py-4">{fornitore.tipo}</td>
                                 <td className="px-6 py-4">
                                     <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300">{fornitore.stato}</span>
