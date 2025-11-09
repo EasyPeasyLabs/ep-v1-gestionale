@@ -1,7 +1,7 @@
+
 import { useState, useCallback } from 'react';
-// FIX: Correctly import enums as values and interfaces/types as types.
 import { ClienteClasse, ClienteTipo, ClienteStato, FornitoreTipo } from '../types';
-import type { Cliente, Fornitore } from '../types';
+import type { Cliente, Fornitore, Sede } from '../types';
 
 const initialClienti: Cliente[] = [
     {
@@ -45,6 +45,7 @@ export function useMockData() {
     const [clienti, setClienti] = useState<Cliente[]>(initialClienti);
     const [fornitori, setFornitori] = useState<Fornitore[]>(initialFornitori);
 
+    // Clienti CRUD
     const addCliente = useCallback((cliente: Omit<Cliente, 'id'>) => {
         setClienti(prev => [...prev, { ...cliente, id: `new_${Date.now()}` } as Cliente]);
     }, []);
@@ -57,8 +58,10 @@ export function useMockData() {
         setClienti(prev => prev.filter(c => c.id !== clienteId));
     }, []);
     
-    const addFornitore = useCallback((fornitore: Omit<Fornitore, 'id'>) => {
-        setFornitori(prev => [...prev, { ...fornitore, id: `new_${Date.now()}` } as Fornitore]);
+    // Fornitori CRUD
+    const addFornitore = useCallback((fornitore: Omit<Fornitore, 'id' | 'sedi'>) => {
+        const newFornitore = { ...fornitore, id: `new_for_${Date.now()}`, sedi: [] } as Fornitore;
+        setFornitori(prev => [...prev, newFornitore]);
     }, []);
     
     const updateFornitore = useCallback((updatedFornitore: Fornitore) => {
@@ -69,9 +72,39 @@ export function useMockData() {
         setFornitori(prev => prev.filter(f => f.id !== fornitoreId));
     }, []);
 
+    // Sedi CRUD
+    const addSede = useCallback((fornitoreId: string, sede: Omit<Sede, 'id'>) => {
+        const newSede = { ...sede, id: `new_sede_${Date.now()}`};
+        setFornitori(prev => prev.map(f => {
+            if (f.id === fornitoreId) {
+                return { ...f, sedi: [...f.sedi, newSede] };
+            }
+            return f;
+        }));
+    }, []);
+
+    const updateSede = useCallback((fornitoreId: string, updatedSede: Sede) => {
+        setFornitori(prev => prev.map(f => {
+            if (f.id === fornitoreId) {
+                return { ...f, sedi: f.sedi.map(s => s.id === updatedSede.id ? updatedSede : s) };
+            }
+            return f;
+        }));
+    }, []);
+
+    const deleteSede = useCallback((fornitoreId: string, sedeId: string) => {
+        setFornitori(prev => prev.map(f => {
+            if (f.id === fornitoreId) {
+                return { ...f, sedi: f.sedi.filter(s => s.id !== sedeId) };
+            }
+            return f;
+        }));
+    }, []);
+
 
     return {
         clienti, addCliente, updateCliente, deleteCliente,
-        fornitori, addFornitore, updateFornitore, deleteFornitore
+        fornitori, addFornitore, updateFornitore, deleteFornitore,
+        addSede, updateSede, deleteSede
     };
 }

@@ -4,10 +4,11 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './components/micro-apps/Dashboard';
 import { Clienti } from './components/micro-apps/Clienti';
 import { Fornitori } from './components/micro-apps/Fornitori';
+import { Sedi } from './components/micro-apps/Sedi';
 import { Configuration } from './components/micro-apps/Configuration';
 import { RegimeFiscale } from './types';
 import type { AppContextType } from './types';
-import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon } from './components/icons/Icons';
+import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon, BuildingIcon } from './components/icons/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
 
@@ -45,6 +46,8 @@ const App: React.FC = () => {
                 return <Clienti />;
             case 'Fornitori':
                 return <Fornitori />;
+            case 'Sedi':
+                return <Sedi />;
              case 'Configurazione':
                 return <Configuration />;
             // Add cases for other micro-apps here
@@ -65,9 +68,5 @@ const App: React.FC = () => {
         </AppContext.Provider>
     );
 };
-
-// Placeholder icons for menu items that don't have one yet
-const BuildingIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0v-4m6 4v-4m6 4v-4m-9-4h5m6 0h2" /></svg>;
-
 
 export default App;

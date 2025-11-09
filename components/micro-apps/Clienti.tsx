@@ -7,7 +7,8 @@ import { Select } from '../ui/Select';
 import { Tabs } from '../ui/Tabs';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '../icons/Icons';
 import { CLIENTE_CLASSE_OPTIONS, CLIENTE_TIPO_OPTIONS, CLIENTE_STATO_OPTIONS, EMPTY_INDIRIZZO, EMPTY_GENITORE, EMPTY_DITTA } from '../../constants';
-import { Cliente, ClienteTipo, DatiFamiglia, ClienteEnteAzienda, DatiDitta, BambiniEnte, Genitore, Figlio } from '../../types';
+// FIX: Added ClienteFamiglia to imports
+import { Cliente, ClienteTipo, DatiFamiglia, ClienteEnteAzienda, DatiDitta, BambiniEnte, Genitore, Figlio, ClienteFamiglia } from '../../types';
 
 const getInitialFormData = (): Cliente => ({
     id: '',
@@ -36,41 +37,59 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    // FIX: Use type guard in setFormData to ensure correct type for discriminated union
     const handleDittaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, dati: { ...(prev as ClienteEnteAzienda).dati, [name]: value } }));
+        setFormData(prev => {
+            if (prev.tipo === ClienteTipo.ENTE || prev.tipo === ClienteTipo.AZIENDA) {
+                return { ...prev, dati: { ...prev.dati, [name]: value } };
+            }
+            return prev;
+        });
     };
 
+    // FIX: Use type guard in setFormData to ensure correct type for discriminated union
     const handleGenitoreChange = (e: React.ChangeEvent<HTMLInputElement>, genitore: 'genitore1' | 'genitore2') => {
         const { name, value } = e.target;
-        const dati = (formData.dati as DatiFamiglia);
-        setFormData(prev => ({
-            ...prev,
-            dati: {
-                ...dati,
-                [genitore]: { ...dati[genitore], [name]: value }
-            }
-        }));
+        setFormData(prev => {
+            if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
+            return {
+                ...prev,
+                dati: {
+                    ...prev.dati,
+                    [genitore]: { ...prev.dati[genitore], [name]: value }
+                }
+            };
+        });
     };
     
+    // FIX: Use type guard in setFormData to ensure correct type for discriminated union
     const handleAddFiglio = () => {
-        const dati = (formData.dati as DatiFamiglia);
-        const newFigli = [...(dati.figli || []), { nome: '', eta: '' }];
-        setFormData(prev => ({ ...prev, dati: { ...dati, figli: newFigli }}));
+        setFormData(prev => {
+            if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
+            const newFigli = [...(prev.dati.figli || []), { nome: '', eta: '' }];
+            return { ...prev, dati: { ...prev.dati, figli: newFigli }};
+        });
     };
 
+    // FIX: Use type guard in setFormData to ensure correct type for discriminated union
     const handleFiglioChange = (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
         const { name, value } = e.target;
-        const dati = (formData.dati as DatiFamiglia);
-        const newFigli = [...dati.figli];
-        newFigli[index] = { ...newFigli[index], [name]: value };
-        setFormData(prev => ({ ...prev, dati: { ...dati, figli: newFigli }}));
+        setFormData(prev => {
+            if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
+            const newFigli = [...prev.dati.figli];
+            newFigli[index] = { ...newFigli[index], [name]: value };
+            return { ...prev, dati: { ...prev.dati, figli: newFigli }};
+        });
     };
     
+    // FIX: Use type guard in setFormData to ensure correct type for discriminated union
     const handleRemoveFiglio = (index: number) => {
-        const dati = (formData.dati as DatiFamiglia);
-        const newFigli = dati.figli.filter((_, i) => i !== index);
-        setFormData(prev => ({ ...prev, dati: { ...dati, figli: newFigli }}));
+        setFormData(prev => {
+            if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
+            const newFigli = prev.dati.figli.filter((_, i) => i !== index);
+            return { ...prev, dati: { ...prev.dati, figli: newFigli }};
+        });
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -133,14 +152,35 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
             <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Select id="classe" name="classe" label="Classe" options={CLIENTE_CLASSE_OPTIONS} value={formData.classe} onChange={handleChange} />
+                    {/* FIX: Replaced onChange logic to correctly handle discriminated union state update */}
                     <Select id="tipo" name="tipo" label="Tipo" options={CLIENTE_TIPO_OPTIONS} value={formData.tipo} onChange={(e) => {
                         const newTipo = e.target.value as ClienteTipo;
-                        handleChange(e);
-                        if (newTipo === ClienteTipo.FAMIGLIA) {
-                             setFormData(prev => ({...prev, dati: { genitore1: {...EMPTY_GENITORE}, genitore2: {...EMPTY_GENITORE}, figli: [] }}));
-                        } else {
-                            setFormData(prev => ({...prev, dati: {...EMPTY_DITTA}}));
-                        }
+                        setFormData(prev => {
+                            if (prev.tipo === newTipo) return prev;
+
+                            const commonProps = {
+                                id: prev.id,
+                                classe: prev.classe,
+                                stato: prev.stato,
+                                rating: prev.rating,
+                            };
+
+                            if (newTipo === ClienteTipo.FAMIGLIA) {
+                                const newCliente: ClienteFamiglia = {
+                                    ...commonProps,
+                                    tipo: newTipo,
+                                    dati: { genitore1: {...EMPTY_GENITORE}, genitore2: {...EMPTY_GENITORE}, figli: [] }
+                                };
+                                return newCliente;
+                            } else {
+                                const newCliente: ClienteEnteAzienda = {
+                                    ...commonProps,
+                                    tipo: newTipo,
+                                    dati: {...EMPTY_DITTA}
+                                };
+                                return newCliente;
+                            }
+                        });
                     }} />
                     <Select id="stato" name="stato" label="Stato" options={CLIENTE_STATO_OPTIONS} value={formData.stato} onChange={handleChange} />
                 </div>
