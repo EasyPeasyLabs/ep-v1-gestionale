@@ -1,7 +1,29 @@
 
-import React from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useMockData } from '../../hooks/useMockData';
+import { ClienteStato } from '../../types';
 
 export const Dashboard: React.FC = () => {
+    const { clienti } = useMockData();
+    const [lastUpdated, setLastUpdated] = useState<string>('');
+
+    // Calcola il numero di clienti attivi, ricalcola solo se la lista clienti cambia
+    const activeClientsCount = useMemo(() => {
+        return clienti.filter(c => c.stato === ClienteStato.ATTIVO).length;
+    }, [clienti]);
+    
+    // Aggiorna il timestamp ogni volta che i dati dei clienti vengono aggiornati
+    useEffect(() => {
+        // Aggiungiamo un piccolo ritardo per assicurarci che il rendering sia completo
+        // prima di mostrare il timestamp, evitando un "flash" al primo caricamento.
+        if (clienti.length > 0) {
+            const timer = setTimeout(() => {
+                 setLastUpdated(new Date().toLocaleString('it-IT'));
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [clienti]);
+
     return (
         <div className="p-4 md:p-8">
             <h1 className="text-3xl font-bold text-gray-800 dark:text-white">Home</h1>
@@ -12,9 +34,14 @@ export const Dashboard: React.FC = () => {
                     <h2 className="text-xl font-semibold">Prossimi Laboratori</h2>
                     <p className="text-gray-500 dark:text-gray-400 mt-2">Nessun laboratorio in programma per oggi.</p>
                 </div>
-                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md flex flex-col">
                     <h2 className="text-xl font-semibold">Clienti Attivi</h2>
-                    <p className="text-5xl font-bold text-blue-600 dark:text-blue-400 mt-2">2</p>
+                    <div className="flex-grow flex flex-col justify-center items-center">
+                        <p className="text-5xl font-bold text-blue-600 dark:text-blue-400 my-2">{activeClientsCount}</p>
+                    </div>
+                    <p className="text-xs text-gray-400 text-center mt-1 h-4">
+                        {lastUpdated ? `Aggiornato il: ${lastUpdated}` : ''}
+                    </p>
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold">Promemoria</h2>
