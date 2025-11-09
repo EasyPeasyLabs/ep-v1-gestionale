@@ -7,7 +7,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '../icons/Icons';
 import { CLIENTE_CLASSE_OPTIONS, FORNITORE_TIPO_OPTIONS, CLIENTE_STATO_OPTIONS, EMPTY_DITTA } from '../../constants';
-import { Fornitore, FornitoreTipo, DatiDitta, ClienteClasse, ClienteStato } from '../../types';
+import { Fornitore, FornitoreTipo, DatiDitta, ClienteClasse, ClienteStato, Indirizzo } from '../../types';
 
 const getInitialFormData = (): Omit<Fornitore, 'id' | 'sedi'> => ({
     classe: ClienteClasse.PRIVATO,
@@ -30,6 +30,20 @@ const FornitoreForm: React.FC<{ fornitore: Fornitore | Omit<Fornitore, 'id' | 's
         setFormData(prev => ({ ...prev, dati: { ...prev.dati, [name]: value } }));
     };
 
+    const handleIndirizzoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            dati: {
+                ...prev.dati,
+                indirizzo: {
+                    ...(prev.dati.indirizzo as Indirizzo),
+                    [name]: value
+                }
+            }
+        }));
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
@@ -50,6 +64,17 @@ const FornitoreForm: React.FC<{ fornitore: Fornitore | Omit<Fornitore, 'id' | 's
                     <Input id="referente" name="referente" label="Referente" value={formData.dati.referente} onChange={handleDittaChange} />
                     <Input id="email" name="email" label="Email" type="email" value={formData.dati.email} onChange={handleDittaChange} />
                     <Input id="telefono" name="telefono" label="Telefono" value={formData.dati.telefono} onChange={handleDittaChange} />
+                </div>
+
+                <div className="pt-4">
+                    <h4 className="text-md font-medium text-gray-800 dark:text-gray-200">Indirizzo Sede Legale</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                        <Input id="via" name="via" label="Via / Piazza" value={formData.dati.indirizzo.via} onChange={handleIndirizzoChange} />
+                        <Input id="civico" name="civico" label="N. Civico" value={formData.dati.indirizzo.civico} onChange={handleIndirizzoChange} />
+                        <Input id="cap" name="cap" label="CAP" value={formData.dati.indirizzo.cap} onChange={handleIndirizzoChange} />
+                        <Input id="citta" name="citta" label="Città" value={formData.dati.indirizzo.citta} onChange={handleIndirizzoChange} />
+                        <Input id="provincia" name="provincia" label="Provincia" value={formData.dati.indirizzo.provincia} onChange={handleIndirizzoChange} />
+                    </div>
                 </div>
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
