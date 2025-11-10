@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -253,13 +252,16 @@ export const Laboratori: React.FC = () => {
     
     const allSedi = useMemo(() => getAllSedi(fornitori), [fornitori]);
 
-    // BUG FIX: This effect ensures that the data shown in the TimeSlotManager modal
-    // is always in sync with the main data state, preventing stale UI after an update.
+    // BUG FIX: This effect syncs the modal data but now includes a check to prevent infinite re-renders.
+    // An infinite loop could make the UI unresponsive, causing buttons to appear "not working".
     useEffect(() => {
         if (selectedLabForSlots) {
             const updatedLab = laboratori.find(lab => lab.id === selectedLabForSlots.id);
             if (updatedLab) {
-                setSelectedLabForSlots(updatedLab);
+                 // Only update state if the data has actually changed to prevent a loop.
+                if (JSON.stringify(updatedLab) !== JSON.stringify(selectedLabForSlots)) {
+                    setSelectedLabForSlots(updatedLab);
+                }
             } else {
                 // The lab was deleted, close the modal
                 setSelectedLabForSlots(null);
@@ -278,11 +280,16 @@ export const Laboratori: React.FC = () => {
         setIsModalOpen(false);
     };
 
+    // BUG FIX: Correctly differentiate between add and update.
+    // This prevents existing labs from being duplicated instead of saved.
     const handleSave = (lab: Laboratorio | Omit<Laboratorio, 'id'>) => {
-        if ('id' in lab && lab.id) {
-            updateLaboratorio(lab);
+        const labWithId = lab as Laboratorio; // Cast to safely access id
+        if (labWithId.id) { // A non-empty id means it's an existing lab
+            updateLaboratorio(labWithId);
         } else {
-            addLaboratorio(lab);
+            // This is a new lab, so we remove the empty id before adding
+            const { id, ...newLab } = labWithId;
+            addLaboratorio(newLab);
         }
         handleCloseModal();
     };
