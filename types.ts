@@ -126,6 +126,21 @@ export interface Fornitore {
 
 // --- OPERATIVO ---
 
+// Durate types
+export enum DurataTipo {
+    ORE = "Ore",
+    GIORNI = "Giorni",
+    MESI = "Mesi",
+    INCONTRI = "Numero di Incontri",
+}
+
+export interface Durata {
+    id: string;
+    nome: string;
+    tipo: DurataTipo;
+    valore: number;
+}
+
 // Laboratori types
 export enum TimeSlotStato {
     PROGRAMMATO = "Programmato",
@@ -149,6 +164,7 @@ export interface Laboratorio {
     id: string;
     codice: string; // Es. SPA.LUN.10:00
     sedeId: string;
+    durataId?: string; // ID della Durata predefinita
     dataInizio: string; // YYYY-MM-DD
     dataFine: string; // YYYY-MM-DD
     prezzoListino: number;

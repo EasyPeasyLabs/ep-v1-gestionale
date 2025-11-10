@@ -3,7 +3,8 @@ import {
     AttivitaStato, AttivitaTipo, MaterialeUbicazione, TipoMovimento, CentroDiCosto,
     ImputazioneLavoro, ImputazionePersonale, Imputazione,
     DocumentoTipo, DocumentoStato, PropostaStato, InterazioneTipo,
-    TimeSlotStato
+    TimeSlotStato,
+    DurataTipo
 } from './types';
 
 export const REGIME_FISCALE_OPTIONS = Object.values(RegimeFiscale);
@@ -16,6 +17,7 @@ export const ATTIVITA_TIPO_OPTIONS = Object.values(AttivitaTipo);
 export const MATERIALE_UBICAZIONE_OPTIONS = Object.values(MaterialeUbicazione);
 export const GIORNI_SETTIMANA = ['LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB', 'DOM'];
 export const TIME_SLOT_STATO_OPTIONS = Object.values(TimeSlotStato);
+export const DURATA_TIPO_OPTIONS = Object.values(DurataTipo);
 
 // Finance Constants
 export const TIPO_MOVIMENTO_OPTIONS = Object.values(TipoMovimento);
@@ -45,6 +47,7 @@ export const EMPTY_INDIRIZZO = { via: '', civico: '', cap: '', citta: '', provin
 export const EMPTY_GENITORE = { cognome: '', nome: '', codiceFiscale: '', indirizzo: { ...EMPTY_INDIRIZZO }, telefono: '', email: '' };
 export const EMPTY_DITTA = { ragioneSociale: '', partitaIva: '', indirizzo: { ...EMPTY_INDIRIZZO }, telefono: '', email: '', referente: '' };
 export const EMPTY_SEDE = { id: '', fornitoreId: '', nome: '', indirizzo: { ...EMPTY_INDIRIZZO }, capienzaMassima: 0, fasciaEta: '', costoNoloOra: 0 };
+export const EMPTY_DURATA = { id: '', nome: '', tipo: DurataTipo.INCONTRI, valore: 1 };
 export const EMPTY_LABORATORIO = { id: '', codice: '', sedeId: '', dataInizio: '', dataFine: '', prezzoListino: 0, costoAttivita: 0, costoLogistica: 0, timeSlots: [] };
 export const EMPTY_TIMESLOT = { stato: TimeSlotStato.PROGRAMMATO, data: new Date().toISOString().split('T')[0], iscritti: 0, partecipanti: 0 };
 export const EMPTY_ATTIVITA = { id: '', stato: AttivitaStato.PIANIFICATA, tipo: AttivitaTipo.GIOCO, titolo: '', materiali: [], rating: 0 };

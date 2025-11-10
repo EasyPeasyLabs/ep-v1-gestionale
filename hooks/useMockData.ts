@@ -12,11 +12,12 @@ import {
     orderBy,
     getDoc
 } from "firebase/firestore";
-import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot } from '../types';
+import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata } from '../types';
 
 export function useMockData() {
     const [clienti, setClienti] = useState<Cliente[]>([]);
     const [fornitori, setFornitori] = useState<Fornitore[]>([]);
+    const [durate, setDurate] = useState<Durata[]>([]);
     const [laboratori, setLaboratori] = useState<Laboratorio[]>([]);
     const [attivita, setAttivita] = useState<Attivita[]>([]);
     const [materiali, setMateriali] = useState<Materiale[]>([]);
@@ -39,6 +40,7 @@ export function useMockData() {
 
         const unsubClienti = createSubscription('clienti', setClienti, 'lastModified');
         const unsubFornitori = createSubscription('fornitori', setFornitori, 'lastModified');
+        const unsubDurate = createSubscription('durate', setDurate);
         const unsubLaboratori = createSubscription('laboratori', setLaboratori);
         const unsubAttivita = createSubscription('attivita', setAttivita);
         const unsubMateriali = createSubscription('materiali', setMateriali);
@@ -50,6 +52,7 @@ export function useMockData() {
         return () => {
             unsubClienti();
             unsubFornitori();
+            unsubDurate();
             unsubLaboratori();
             unsubAttivita();
             unsubMateriali();
@@ -136,6 +139,14 @@ export function useMockData() {
         }
     }, []);
 
+    // Durate CRUD
+    const addDurata = useCallback((dur: Omit<Durata, 'id'>) => addDocument('durate', dur), [addDocument]);
+    const updateDurata = useCallback((updatedDur: Durata) => {
+        const { id, ...data } = updatedDur;
+        updateDocument('durate', id, data);
+    }, [updateDocument]);
+    const deleteDurata = useCallback((durId: string) => deleteDocument('durate', durId), [deleteDocument]);
+
     // Laboratori CRUD
     const addLaboratorio = useCallback((lab: Omit<Laboratorio, 'id'>) => addDocument('laboratori', lab), [addDocument]);
     const updateLaboratorio = useCallback((updatedLab: Laboratorio) => {
@@ -145,7 +156,7 @@ export function useMockData() {
     const deleteLaboratorio = useCallback((labId: string) => deleteDocument('laboratori', labId), [deleteDocument]);
 
     // TimeSlot CRUD (within Laboratorio)
-    const addTimeSlot = useCallback(async (laboratorioId: string, timeSlot: Omit<TimeSlot, 'id' | 'laboratorioId'>) => {
+    const addTimeSlot = useCallback(async (laboratorioId: string, timeSlot: Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => {
         const laboratorioRef = doc(db, 'laboratori', laboratorioId);
         const laboratorioSnap = await getDoc(laboratorioRef);
         if (laboratorioSnap.exists()) {
@@ -234,6 +245,7 @@ export function useMockData() {
         clienti, addCliente, updateCliente, deleteCliente,
         fornitori, addFornitore, updateFornitore, deleteFornitore,
         addSede, updateSede, deleteSede,
+        durate, addDurata, updateDurata, deleteDurata,
         laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio,
         addTimeSlot, updateTimeSlot, deleteTimeSlot,
         attivita, addAttivita, updateAttivita, deleteAttivita,

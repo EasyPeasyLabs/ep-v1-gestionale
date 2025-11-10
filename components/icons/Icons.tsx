@@ -49,6 +49,12 @@ export const CalendarIcon: React.FC<IconProps> = ({ className = "h-5 w-5" }) => 
     </svg>
 );
 
+export const ClockIcon: React.FC<IconProps> = ({ className = "h-6 w-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+);
+
 export const LabsIcon: React.FC<IconProps> = ({ className = "h-6 w-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104l-1.12 2.24a1.25 1.25 0 01-1.085.69H4.5a1.25 1.25 0 00-1.25 1.25v1.656a1.25 1.25 0 01-.69 1.085l-2.24 1.12a1.25 1.25 0 000 2.17l2.24 1.12a1.25 1.25 0 01.69 1.085v1.656a1.25 1.25 0 001.25 1.25h3.045a1.25 1.25 0 011.085.69l1.12 2.24a1.25 1.25 0 002.17 0l1.12-2.24a1.25 1.25 0 011.085-.69h3.045a1.25 1.25 0 001.25-1.25v-1.656a1.25 1.25 0 01.69-1.085l2.24-1.12a1.25 1.25 0 000-2.17l-2.24-1.12a1.25 1.25 0 01-.69-1.085V7.29a1.25 1.25 0 00-1.25-1.25h-3.045a1.25 1.25 0 01-1.085-.69L12.32 3.104a1.25 1.25 0 00-2.17 0z" /></svg>);
 export const AttivitaIcon: React.FC<IconProps> = ({ className = "h-6 w-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v11.494m-5.747-6.995l11.494 0" /></svg>);
 export const MaterialiIcon: React.FC<IconProps> = ({ className = "h-6 w-6" }) => (<svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4" /></svg>);

@@ -4,6 +4,7 @@ import { Dashboard } from './components/micro-apps/Dashboard';
 import { Clienti } from './components/micro-apps/Clienti';
 import { Fornitori } from './components/micro-apps/Fornitori';
 import { Sedi } from './components/micro-apps/Sedi';
+import { Durate } from './components/micro-apps/Durate';
 import { Laboratori } from './components/micro-apps/Laboratori.tsx';
 import { Attivita } from './components/micro-apps/Attivita';
 import { Materiali } from './components/micro-apps/Materiali';
@@ -16,7 +17,7 @@ import { Brain } from './components/micro-apps/Brain';
 import { Configuration } from './components/micro-apps/Configuration';
 import { RegimeFiscale } from './types';
 import type { AppContextType } from './types';
-import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon, BuildingIcon } from './components/icons/Icons';
+import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon, BuildingIcon, ClockIcon } from './components/icons/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
 
@@ -34,6 +35,7 @@ const App: React.FC = () => {
         { id: 'Clienti', label: 'Clienti', icon: ClientiIcon },
         { id: 'Fornitori', label: 'Fornitori', icon: FornitoriIcon },
         { id: 'Sedi', label: 'Sedi', icon: BuildingIcon },
+        { id: 'Durate', label: 'Durate', icon: ClockIcon },
         { id: 'Laboratori', label: 'Laboratori', icon: LabsIcon },
         { id: 'Attivita', label: 'Attività', icon: AttivitaIcon },
         { id: 'Materiali', label: 'Materiali', icon: MaterialiIcon },
@@ -56,6 +58,8 @@ const App: React.FC = () => {
                 return <Fornitori />;
             case 'Sedi':
                 return <Sedi />;
+            case 'Durate':
+                return <Durate />;
             case 'Laboratori':
                 return <Laboratori />;
             case 'Attivita':

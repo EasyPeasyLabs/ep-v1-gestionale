@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -6,7 +7,7 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, CalendarIcon } from '../icons/Icons';
-import { Laboratorio, Sede, TimeSlot, TimeSlotStato } from '../../types';
+import { Laboratorio, Sede, TimeSlot, TimeSlotStato, Durata, DurataTipo } from '../../types';
 import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS } from '../../constants';
 
 // Helper to get all sedi from all fornitori
@@ -61,7 +62,7 @@ const TimeSlotForm: React.FC<{
 const TimeSlotManager: React.FC<{
     laboratorio: Laboratorio,
     onClose: () => void,
-    addTimeSlot: (labId: string, ts: Omit<TimeSlot, 'id' | 'laboratorioId'>) => void,
+    addTimeSlot: (labId: string, ts: Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => void,
     updateTimeSlot: (labId: string, ts: TimeSlot) => void,
     deleteTimeSlot: (labId: string, tsId: string) => void,
 }> = ({ laboratorio, onClose, addTimeSlot, updateTimeSlot, deleteTimeSlot }) => {
@@ -156,9 +157,10 @@ const TimeSlotManager: React.FC<{
 const LaboratorioForm: React.FC<{
     laboratorio: Laboratorio | Omit<Laboratorio, 'id'>,
     sedi: Sede[],
+    durate: Durata[],
     onSave: (lab: Laboratorio | Omit<Laboratorio, 'id'>) => void,
     onCancel: () => void
-}> = ({ laboratorio, sedi, onSave, onCancel }) => {
+}> = ({ laboratorio, sedi, durate, onSave, onCancel }) => {
     const [formData, setFormData] = useState(laboratorio);
     const [giorno, setGiorno] = useState(GIORNI_SETTIMANA[0]);
     const [ora, setOra] = useState('10:00');
@@ -168,6 +170,29 @@ const LaboratorioForm: React.FC<{
         const newCode = generateCode(selectedSede, giorno, ora);
         setFormData(prev => ({ ...prev, codice: newCode }));
     }, [formData.sedeId, giorno, ora, sedi]);
+
+    // Auto-calculate dataFine when dataInizio or durataId changes
+    useEffect(() => {
+        if (formData.dataInizio && formData.durataId) {
+            const durata = durate.find(d => d.id === formData.durataId);
+            if (durata) {
+                const startDate = new Date(formData.dataInizio);
+                let endDate = new Date(startDate);
+
+                if (durata.tipo === DurataTipo.GIORNI) {
+                    endDate.setDate(startDate.getDate() + durata.valore);
+                } else if (durata.tipo === DurataTipo.MESI) {
+                    endDate.setMonth(startDate.getMonth() + durata.valore);
+                } else {
+                    return; // Don't auto-calculate for Ore or Incontri
+                }
+                
+                // Format YYYY-MM-DD
+                const finalDate = endDate.toISOString().split('T')[0];
+                setFormData(prev => ({...prev, dataFine: finalDate }));
+            }
+        }
+    }, [formData.dataInizio, formData.durataId, durate]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -199,8 +224,13 @@ const LaboratorioForm: React.FC<{
                 <hr className="my-6 dark:border-gray-600"/>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli e Costi</h3>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Select id="durataId" name="durataId" label="Durata Predefinita" value={formData.durataId} onChange={handleChange}>
+                        <option value="">Manuale</option>
+                        {durate.map(d => <option key={d.id} value={d.id}>{d.nome} ({d.valore} {d.tipo})</option>)}
+                    </Select>
+                    <div></div>
                     <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required />
-                    <Input id="dataFine" name="dataFine" label="Data Fine" type="date" value={formData.dataFine} onChange={handleChange} required />
+                    <Input id="dataFine" name="dataFine" label="Data Fine" type="date" value={formData.dataFine} onChange={handleChange} required readOnly={!!formData.durataId}/>
                     <Input id="prezzoListino" name="prezzoListino" label="Prezzo Listino (€)" type="number" step="0.01" value={formData.prezzoListino} onChange={handleChange} required />
                     <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} onChange={handleChange} />
                     <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} onChange={handleChange} />
@@ -216,12 +246,27 @@ const LaboratorioForm: React.FC<{
 
 // --- COMPONENTE PRINCIPALE ---
 export const Laboratori: React.FC = () => {
-    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
+    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, durate, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | Omit<Laboratorio, 'id'> | null>(null);
     const [selectedLabForSlots, setSelectedLabForSlots] = useState<Laboratorio | null>(null);
     
     const allSedi = useMemo(() => getAllSedi(fornitori), [fornitori]);
+
+    // BUG FIX: This effect ensures that the data shown in the TimeSlotManager modal
+    // is always in sync with the main data state, preventing stale UI after an update.
+    useEffect(() => {
+        if (selectedLabForSlots) {
+            const updatedLab = laboratori.find(lab => lab.id === selectedLabForSlots.id);
+            if (updatedLab) {
+                setSelectedLabForSlots(updatedLab);
+            } else {
+                // The lab was deleted, close the modal
+                setSelectedLabForSlots(null);
+            }
+        }
+    }, [laboratori, selectedLabForSlots]);
+
 
     const handleOpenModal = (lab?: Laboratorio) => {
         setEditingLaboratorio(lab || { ...EMPTY_LABORATORIO });
@@ -306,7 +351,7 @@ export const Laboratori: React.FC = () => {
 
             {isModalOpen && editingLaboratorio && (
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingLaboratorio && editingLaboratorio.id ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
-                    <LaboratorioForm laboratorio={editingLaboratorio} sedi={allSedi} onSave={handleSave} onCancel={handleCloseModal} />
+                    <LaboratorioForm laboratorio={editingLaboratorio} sedi={allSedi} durate={durate} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}
 
