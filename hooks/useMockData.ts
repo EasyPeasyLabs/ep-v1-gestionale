@@ -74,6 +74,13 @@ export function useMockData() {
     }, []);
 
     const deleteDocument = useCallback(async (collectionName: string, id: string) => {
+        // BUG FIX: Added a guard to prevent Firebase errors when trying to delete a document with an empty ID.
+        // This can happen in race conditions where the UI tries to delete an item before its ID is synced from Firestore.
+        if (!id) {
+            console.error(`Attempted to delete a document from '${collectionName}' with a missing ID.`);
+            alert("Operazione non riuscita: ID del documento non valido.");
+            return;
+        }
         try {
             await deleteDoc(doc(db, collectionName, id));
         } catch (error) {
