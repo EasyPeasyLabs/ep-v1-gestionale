@@ -343,7 +343,13 @@ export const Laboratori: React.FC = () => {
                                 <td className="px-6 py-4 text-right space-x-2">
                                     <button onClick={() => setSelectedLabForSlots(lab)} className="text-gray-500 hover:text-blue-600"><CalendarIcon /></button>
                                     <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
-                                    <button onClick={() => handleDelete(lab.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                    <button
+                                        onClick={() => handleDelete(lab.id)}
+                                        className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                        disabled={!lab.id}
+                                    >
+                                        <TrashIcon />
+                                    </button>
                                 </td>
                             </tr>
                         ))}
