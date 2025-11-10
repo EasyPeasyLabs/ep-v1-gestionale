@@ -5,9 +5,9 @@ import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
-import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
-import { Laboratorio, Sede } from '../../types';
-import { EMPTY_LABORATORIO, GIORNI_SETTIMANA } from '../../constants';
+import { PlusIcon, PencilIcon, TrashIcon, CalendarIcon } from '../icons/Icons';
+import { Laboratorio, Sede, TimeSlot, TimeSlotStato } from '../../types';
+import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS } from '../../constants';
 
 // Helper to get all sedi from all fornitori
 const getAllSedi = (fornitori: any[]): Sede[] => {
@@ -18,9 +18,141 @@ const getAllSedi = (fornitori: any[]): Sede[] => {
 const generateCode = (sede: Sede | undefined, giorno: string, ora: string): string => {
     if (!sede || !giorno || !ora) return '';
     const nomeSede = sede.nome.replace(/\s/g, '').substring(0, 3).toUpperCase();
-    return `${nomeSede}.${giorno}.${ora}`;
+    return `${nomeSede}.${giorno}.${ora.replace(':', '')}`;
 };
 
+// --- FORM TIME SLOT ---
+const TimeSlotForm: React.FC<{
+    timeSlot: TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>,
+    onSave: (ts: TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => void,
+    onCancel: () => void,
+}> = ({ timeSlot, onSave, onCancel }) => {
+    const [formData, setFormData] = useState(timeSlot);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        const valueToSet = e.target.type === 'number' ? parseFloat(value) || 0 : value;
+        setFormData(prev => ({ ...prev, [name]: valueToSet }));
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <form onSubmit={handleSubmit}>
+             <div className="space-y-4">
+                <Input id="data" name="data" label="Data" type="date" value={formData.data} onChange={handleChange} required />
+                <Select id="stato" name="stato" label="Stato" options={TIME_SLOT_STATO_OPTIONS} value={formData.stato} onChange={handleChange} required />
+                <Input id="iscritti" name="iscritti" label="Iscritti" type="number" value={formData.iscritti} onChange={handleChange} />
+                {'id' in formData && <Input id="partecipanti" name="partecipanti" label="Partecipanti Effettivi" type="number" value={formData.partecipanti || ''} onChange={handleChange} />}
+            </div>
+            <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
+                 <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
+                 <Button type="submit" variant="primary">Salva Incontro</Button>
+            </div>
+        </form>
+    )
+}
+
+
+// --- MANAGER TIME SLOT ---
+const TimeSlotManager: React.FC<{
+    laboratorio: Laboratorio,
+    onClose: () => void,
+    addTimeSlot: (labId: string, ts: Omit<TimeSlot, 'id' | 'laboratorioId'>) => void,
+    updateTimeSlot: (labId: string, ts: TimeSlot) => void,
+    deleteTimeSlot: (labId: string, tsId: string) => void,
+}> = ({ laboratorio, onClose, addTimeSlot, updateTimeSlot, deleteTimeSlot }) => {
+    const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
+    const [editingSlot, setEditingSlot] = useState<TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'> | null>(null);
+
+    const handleSaveSlot = (slot: TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => {
+        if ('id' in slot) {
+            updateTimeSlot(laboratorio.id, slot);
+        } else {
+            addTimeSlot(laboratorio.id, slot);
+        }
+        setIsSlotModalOpen(false);
+        setEditingSlot(null);
+    };
+    
+    const handleDeleteSlot = (slotId: string) => {
+        if (window.confirm("Sei sicuro di voler eliminare questo incontro?")) {
+            deleteTimeSlot(laboratorio.id, slotId);
+        }
+    }
+
+    const getStatoBadgeColor = (stato: TimeSlotStato) => {
+        switch (stato) {
+            case TimeSlotStato.CONFERMATO: return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+            case TimeSlotStato.PROGRAMMATO: return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+            case TimeSlotStato.ANTICIPATO: case TimeSlotStato.POSTICIPATO: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+            case TimeSlotStato.ANNULLATO: return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+            default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        }
+    };
+    
+    return (
+        <Modal isOpen={true} onClose={onClose} title={`Gestione Incontri: ${laboratorio.codice}`}>
+            <div className="space-y-6">
+                <div className="flex justify-end">
+                    <Button onClick={() => { setEditingSlot({ ...EMPTY_TIMESLOT }); setIsSlotModalOpen(true); }} icon={<PlusIcon />}>
+                        Aggiungi Incontro
+                    </Button>
+                </div>
+
+                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-x-auto">
+                     <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                            <tr>
+                                <th scope="col" className="px-6 py-3">#</th>
+                                <th scope="col" className="px-6 py-3">Data</th>
+                                <th scope="col" className="px-6 py-3">Stato</th>
+                                <th scope="col" className="px-6 py-3">Iscritti</th>
+                                <th scope="col" className="px-6 py-3">Partecipanti</th>
+                                <th scope="col" className="px-6 py-3 text-right">Azioni</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {laboratorio.timeSlots.sort((a,b) => a.ordine - b.ordine).map(ts => (
+                                <tr key={ts.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                    <td className="px-6 py-4">{ts.ordine}</td>
+                                    <td className="px-6 py-4 font-semibold">{new Date(ts.data).toLocaleDateString('it-IT')}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(ts.stato)}`}>{ts.stato}</span>
+                                    </td>
+                                    <td className="px-6 py-4">{ts.iscritti}</td>
+                                    <td className="px-6 py-4">{ts.partecipanti ?? '-'}</td>
+                                    <td className="px-6 py-4 text-right space-x-2">
+                                        <button onClick={() => { setEditingSlot(ts); setIsSlotModalOpen(true); }} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
+                                        <button onClick={() => handleDeleteSlot(ts.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {laboratorio.timeSlots.length === 0 && (
+                                <tr><td colSpan={6} className="text-center py-6 text-gray-500">Nessun incontro programmato.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+             {isSlotModalOpen && editingSlot && (
+                <Modal 
+                    isOpen={isSlotModalOpen} 
+                    onClose={() => setIsSlotModalOpen(false)} 
+                    title={'id' in editingSlot ? 'Modifica Incontro' : 'Nuovo Incontro'}
+                >
+                    <TimeSlotForm timeSlot={editingSlot} onSave={handleSaveSlot} onCancel={() => setIsSlotModalOpen(false)} />
+                </Modal>
+            )}
+        </Modal>
+    );
+};
+
+
+// --- FORM LABORATORIO ---
 const LaboratorioForm: React.FC<{
     laboratorio: Laboratorio | Omit<Laboratorio, 'id'>,
     sedi: Sede[],
@@ -28,8 +160,6 @@ const LaboratorioForm: React.FC<{
     onCancel: () => void
 }> = ({ laboratorio, sedi, onSave, onCancel }) => {
     const [formData, setFormData] = useState(laboratorio);
-    
-    // State for code generation
     const [giorno, setGiorno] = useState(GIORNI_SETTIMANA[0]);
     const [ora, setOra] = useState('10:00');
 
@@ -38,7 +168,6 @@ const LaboratorioForm: React.FC<{
         const newCode = generateCode(selectedSede, giorno, ora);
         setFormData(prev => ({ ...prev, codice: newCode }));
     }, [formData.sedeId, giorno, ora, sedi]);
-
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -72,9 +201,9 @@ const LaboratorioForm: React.FC<{
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required />
                     <Input id="dataFine" name="dataFine" label="Data Fine" type="date" value={formData.dataFine} onChange={handleChange} required />
-                    <Input id="prezzoListino" name="prezzoListino" label="Prezzo Listino (€)" type="number" value={formData.prezzoListino} onChange={handleChange} required />
-                    <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" value={formData.costoAttivita} onChange={handleChange} />
-                    <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" value={formData.costoLogistica} onChange={handleChange} />
+                    <Input id="prezzoListino" name="prezzoListino" label="Prezzo Listino (€)" type="number" step="0.01" value={formData.prezzoListino} onChange={handleChange} required />
+                    <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} onChange={handleChange} />
+                    <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} onChange={handleChange} />
                  </div>
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
@@ -85,12 +214,13 @@ const LaboratorioForm: React.FC<{
     );
 };
 
-
+// --- COMPONENTE PRINCIPALE ---
 export const Laboratori: React.FC = () => {
-    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori } = useMockData();
+    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | Omit<Laboratorio, 'id'> | null>(null);
-
+    const [selectedLabForSlots, setSelectedLabForSlots] = useState<Laboratorio | null>(null);
+    
     const allSedi = useMemo(() => getAllSedi(fornitori), [fornitori]);
 
     const handleOpenModal = (lab?: Laboratorio) => {
@@ -113,7 +243,7 @@ export const Laboratori: React.FC = () => {
     };
     
     const handleDelete = (labId: string) => {
-        if(window.confirm('Sei sicuro di voler eliminare questo laboratorio?')) {
+        if(window.confirm('Sei sicuro di voler eliminare questo laboratorio e tutti i suoi incontri programmati?')) {
             deleteLaboratorio(labId);
         }
     }
@@ -143,7 +273,7 @@ export const Laboratori: React.FC = () => {
                             <th scope="col" className="px-6 py-3">Codice</th>
                             <th scope="col" className="px-6 py-3">Sede</th>
                             <th scope="col" className="px-6 py-3">Periodo</th>
-                            <th scope="col" className="px-6 py-3">Time Slots</th>
+                            <th scope="col" className="px-6 py-3">Incontri</th>
                             <th scope="col" className="px-6 py-3">Prezzo</th>
                             <th scope="col" className="px-6 py-3 text-right">Azioni</th>
                         </tr>
@@ -157,13 +287,19 @@ export const Laboratori: React.FC = () => {
                                 <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
                                 <td className="px-6 py-4">{lab.dataInizio} / {lab.dataFine}</td>
                                 <td className="px-6 py-4">{lab.timeSlots.length}</td>
-                                <td className="px-6 py-4">{lab.prezzoListino}€</td>
+                                <td className="px-6 py-4">{lab.prezzoListino.toFixed(2)}€</td>
                                 <td className="px-6 py-4 text-right space-x-2">
+                                    <button onClick={() => setSelectedLabForSlots(lab)} className="text-gray-500 hover:text-blue-600"><CalendarIcon /></button>
                                     <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
                                     <button onClick={() => handleDelete(lab.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}
+                         {laboratori.length === 0 && (
+                             <tr>
+                                 <td colSpan={6} className="text-center py-8 text-gray-500">Nessun laboratorio trovato.</td>
+                             </tr>
+                         )}
                     </tbody>
                 </table>
             </div>
@@ -172,6 +308,16 @@ export const Laboratori: React.FC = () => {
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingLaboratorio && editingLaboratorio.id ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
                     <LaboratorioForm laboratorio={editingLaboratorio} sedi={allSedi} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
+            )}
+
+            {selectedLabForSlots && (
+                <TimeSlotManager 
+                    laboratorio={selectedLabForSlots} 
+                    onClose={() => setSelectedLabForSlots(null)}
+                    addTimeSlot={addTimeSlot}
+                    updateTimeSlot={updateTimeSlot}
+                    deleteTimeSlot={deleteTimeSlot}
+                />
             )}
         </div>
     );

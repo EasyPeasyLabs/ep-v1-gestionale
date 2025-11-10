@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+// FIX: Add React to imports to provide the React namespace for types.
+import React, { useState, useCallback, useEffect } from 'react';
 import { db } from '../firebaseConfig';
 import { 
     collection, 
@@ -11,7 +12,7 @@ import {
     orderBy,
     getDoc
 } from "firebase/firestore";
-import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM } from '../types';
+import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot } from '../types';
 
 export function useMockData() {
     const [clienti, setClienti] = useState<Cliente[]>([]);
@@ -143,6 +144,44 @@ export function useMockData() {
     }, [updateDocument]);
     const deleteLaboratorio = useCallback((labId: string) => deleteDocument('laboratori', labId), [deleteDocument]);
 
+    // TimeSlot CRUD (within Laboratorio)
+    const addTimeSlot = useCallback(async (laboratorioId: string, timeSlot: Omit<TimeSlot, 'id' | 'laboratorioId'>) => {
+        const laboratorioRef = doc(db, 'laboratori', laboratorioId);
+        const laboratorioSnap = await getDoc(laboratorioRef);
+        if (laboratorioSnap.exists()) {
+            const laboratorioData = laboratorioSnap.data() as Laboratorio;
+            const newTimeSlot: TimeSlot = {
+                ...timeSlot,
+                id: `ts_${Date.now()}`,
+                laboratorioId,
+                ordine: (laboratorioData.timeSlots || []).length + 1,
+            };
+            const updatedTimeSlots = [...(laboratorioData.timeSlots || []), newTimeSlot];
+            await updateDoc(laboratorioRef, { timeSlots: updatedTimeSlots });
+        }
+    }, []);
+
+    const updateTimeSlot = useCallback(async (laboratorioId: string, updatedTimeSlot: TimeSlot) => {
+        const laboratorioRef = doc(db, 'laboratori', laboratorioId);
+        const laboratorioSnap = await getDoc(laboratorioRef);
+        if (laboratorioSnap.exists()) {
+            const laboratorioData = laboratorioSnap.data() as Laboratorio;
+            const updatedTimeSlots = laboratorioData.timeSlots.map(ts => ts.id === updatedTimeSlot.id ? updatedTimeSlot : ts);
+            await updateDoc(laboratorioRef, { timeSlots: updatedTimeSlots });
+        }
+    }, []);
+    
+    const deleteTimeSlot = useCallback(async (laboratorioId: string, timeSlotId: string) => {
+       const laboratorioRef = doc(db, 'laboratori', laboratorioId);
+        const laboratorioSnap = await getDoc(laboratorioRef);
+        if (laboratorioSnap.exists()) {
+            const laboratorioData = laboratorioSnap.data() as Laboratorio;
+            const updatedTimeSlots = laboratorioData.timeSlots.filter(ts => ts.id !== timeSlotId);
+            const reorderedTimeSlots = updatedTimeSlots.map((ts, index) => ({...ts, ordine: index + 1}));
+            await updateDoc(laboratorioRef, { timeSlots: reorderedTimeSlots });
+        }
+    }, []);
+
     // Attivita CRUD
     const addAttivita = useCallback((act: Omit<Attivita, 'id'>) => addDocument('attivita', act), [addDocument]);
     const updateAttivita = useCallback((updatedAct: Attivita) => {
@@ -196,6 +235,7 @@ export function useMockData() {
         fornitori, addFornitore, updateFornitore, deleteFornitore,
         addSede, updateSede, deleteSede,
         laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio,
+        addTimeSlot, updateTimeSlot, deleteTimeSlot,
         attivita, addAttivita, updateAttivita, deleteAttivita,
         materiali, addMateriale, updateMateriale, deleteMateriale,
         movimenti, addMovimento, updateMovimento, deleteMovimento,
