@@ -14,21 +14,27 @@ type EditingSedeState = {
     fornitoreId: string;
 }
 
-const SedeForm: React.FC<{ 
-    sedeState: EditingSedeState, 
+const SedeForm: React.FC<{
+    sedeState: EditingSedeState,
     fornitori: Fornitore[],
-    onSave: (fornitoreId: string, sede: Sede | Omit<Sede, 'id'>) => void, 
-    onCancel: () => void 
+    onSave: (fornitoreId: string, sede: Sede | Omit<Sede, 'id'>) => void,
+    onCancel: () => void
 }> = ({ sedeState, fornitori, onSave, onCancel }) => {
-    const [formData, setFormData] = useState(sedeState.sede);
-    const [fornitoreId, setFornitoreId] = useState(sedeState.fornitoreId);
+    // FIX: Unificato lo stato del form in un unico oggetto per evitare dati inconsistenti.
+    // L'ID del fornitore (fornitoreId) è ora gestito direttamente all'interno di formData.
+    const [formData, setFormData] = useState({
+        ...sedeState.sede,
+        fornitoreId: sedeState.fornitoreId,
+    });
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // FIX: Creato un handler generico per tutti gli input e select del form.
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        const valueToSet = e.target.type === 'number' ? parseFloat(value) || 0 : value;
+        const target = e.target as HTMLInputElement;
+        const valueToSet = target.type === 'number' ? parseFloat(value) || 0 : value;
         setFormData(prev => ({ ...prev, [name]: valueToSet }));
     };
-    
+
     const handleIndirizzoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, indirizzo: { ...(prev.indirizzo as Indirizzo), [name]: value } }));
@@ -36,11 +42,12 @@ const SedeForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!fornitoreId) {
+        if (!formData.fornitoreId) {
             alert("Seleziona un fornitore.");
             return;
         }
-        onSave(fornitoreId, formData);
+        // Passa a onSave il fornitoreId e l'oggetto sede completo dallo stato unificato.
+        onSave(formData.fornitoreId, formData);
     };
 
     return (
@@ -48,10 +55,13 @@ const SedeForm: React.FC<{
             <div className="space-y-4">
                 <Select
                     id="fornitoreId"
+                    name="fornitoreId" // Aggiunto per l'handler generico
                     label="Fornitore Padre"
-                    value={fornitoreId}
-                    onChange={(e) => setFornitoreId(e.target.value)}
-                    disabled={'id' in formData} // Disable if editing, can't change parent
+                    value={formData.fornitoreId} // Controllato dallo stato unificato
+                    onChange={handleChange} // Usa l'handler unificato
+                    // FIX: La logica di disabilitazione è stata corretta per bloccare
+                    // la modifica solo per le sedi esistenti (con un ID valido).
+                    disabled={'id' in formData && !!formData.id}
                     required
                 >
                     <option value="">Seleziona un fornitore...</option>
