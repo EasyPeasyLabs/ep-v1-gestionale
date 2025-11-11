@@ -164,8 +164,70 @@ export function useMockData() {
         updateDocument('laboratori', id, data);
     }, [updateDocument]);
     const deleteLaboratorio = useCallback((labId: string) => deleteDocument('laboratori', labId), [deleteDocument]);
+    
+    // Date Helpers for cascading update
+    const parseDate = (dateStr: string): Date => {
+        const [year, month, day] = dateStr.split('-').map(Number);
+        return new Date(year, month - 1, day);
+    };
+    const formatDate = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
 
     // TimeSlot CRUD (within Laboratorio)
+    const updateCascadingTimeSlots = useCallback(async (laboratorioId: string, movedTimeSlotId: string, newDateStr: string) => {
+        const laboratorioRef = doc(db, 'laboratori', laboratorioId);
+        const laboratorioSnap = await getDoc(laboratorioRef);
+
+        if (!laboratorioSnap.exists()) {
+            console.error("Laboratorio non trovato!");
+            return;
+        }
+
+        const laboratorioData = laboratorioSnap.data() as Laboratorio;
+        const originalTimeSlots = [...laboratorioData.timeSlots].sort((a, b) => a.ordine - b.ordine);
+
+        const movedSlotIndex = originalTimeSlots.findIndex(ts => ts.id === movedTimeSlotId);
+        if (movedSlotIndex === -1) {
+            console.error("Time slot da spostare non trovato!");
+            return;
+        }
+
+        const movedSlotOriginal = originalTimeSlots[movedSlotIndex];
+        const oldDate = parseDate(movedSlotOriginal.data);
+        const newDate = parseDate(newDateStr);
+
+        const diffTime = newDate.getTime() - oldDate.getTime();
+        
+        if (diffTime === 0) return; // No change
+
+        const updatedTimeSlots = originalTimeSlots.map((ts, index) => {
+            if (index >= movedSlotIndex) {
+                const currentDate = parseDate(ts.data);
+                const updatedDate = new Date(currentDate.getTime() + diffTime);
+                return {
+                    ...ts,
+                    data: formatDate(updatedDate)
+                };
+            }
+            return ts;
+        });
+
+        // Recalculate dataInizio and dataFine based on the actual slots
+        const sortedSlots = updatedTimeSlots.sort((a, b) => parseDate(a.data).getTime() - parseDate(b.data).getTime());
+        const newDataInizio = sortedSlots.length > 0 ? sortedSlots[0].data : laboratorioData.dataInizio;
+        const newDataFine = sortedSlots.length > 0 ? sortedSlots[sortedSlots.length - 1].data : laboratorioData.dataFine;
+
+        await updateDoc(laboratorioRef, { 
+            timeSlots: updatedTimeSlots,
+            dataInizio: newDataInizio,
+            dataFine: newDataFine 
+        });
+    }, []);
+
     const addTimeSlot = useCallback(async (laboratorioId: string, timeSlot: Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => {
         const laboratorioRef = doc(db, 'laboratori', laboratorioId);
         const laboratorioSnap = await getDoc(laboratorioRef);
@@ -261,7 +323,7 @@ export function useMockData() {
         addSede, updateSede, deleteSede,
         durate, addDurata, updateDurata, deleteDurata,
         laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio,
-        addTimeSlot, updateTimeSlot, deleteTimeSlot,
+        addTimeSlot, updateTimeSlot, deleteTimeSlot, updateCascadingTimeSlots,
         attivita, addAttivita, updateAttivita, deleteAttivita,
         attivitaTipi, addAttivitaTipo, deleteAttivitaTipo,
         materiali, addMateriale, updateMateriale, deleteMateriale,
