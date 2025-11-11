@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -11,8 +10,8 @@ import { Attivita as AttivitaType } from '../../types';
 import { EMPTY_ATTIVITA, ATTIVITA_STATO_OPTIONS, ATTIVITA_TIPO_OPTIONS } from '../../constants';
 
 const AttivitaForm: React.FC<{
-    attivita: AttivitaType | Omit<AttivitaType, 'id'>,
-    onSave: (act: AttivitaType | Omit<AttivitaType, 'id'>) => void,
+    attivita: AttivitaType,
+    onSave: (act: AttivitaType) => void,
     onCancel: () => void
 }> = ({ attivita, onSave, onCancel }) => {
     const [formData, setFormData] = useState(attivita);
@@ -51,7 +50,7 @@ const AttivitaForm: React.FC<{
 export const Attivita: React.FC = () => {
     const { attivita, addAttivita, updateAttivita, deleteAttivita } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingAttivita, setEditingAttivita] = useState<AttivitaType | Omit<AttivitaType, 'id'> | null>(null);
+    const [editingAttivita, setEditingAttivita] = useState<AttivitaType | null>(null);
 
     const handleOpenModal = (act?: AttivitaType) => {
         setEditingAttivita(act || { ...EMPTY_ATTIVITA });
@@ -63,11 +62,12 @@ export const Attivita: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (act: AttivitaType | Omit<AttivitaType, 'id'>) => {
-        if ('id' in act && act.id) {
+    const handleSave = (act: AttivitaType) => {
+        if (act.id) {
             updateAttivita(act);
         } else {
-            addAttivita(act);
+            const { id, ...newAct } = act;
+            addAttivita(newAct);
         }
         handleCloseModal();
     };
@@ -122,7 +122,7 @@ export const Attivita: React.FC = () => {
             </div>
 
             {isModalOpen && editingAttivita && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingAttivita && editingAttivita.id ? 'Modifica Attività' : 'Nuova Attività'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingAttivita.id ? 'Modifica Attività' : 'Nuova Attività'}>
                     <AttivitaForm attivita={editingAttivita} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}

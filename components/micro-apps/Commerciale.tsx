@@ -9,9 +9,9 @@ import { PropostaCommerciale, PropostaServizio, Cliente, ClienteTipo } from '../
 import { EMPTY_PROPOSTA, EMPTY_SERVIZIO_PROPOSTA, PROPOSTA_STATO_OPTIONS } from '../../constants';
 
 const PropostaForm: React.FC<{
-    proposta: PropostaCommerciale | Omit<PropostaCommerciale, 'id'>,
+    proposta: PropostaCommerciale,
     clienti: Cliente[],
-    onSave: (prop: PropostaCommerciale | Omit<PropostaCommerciale, 'id'>) => void,
+    onSave: (prop: PropostaCommerciale) => void,
     onCancel: () => void
 }> = ({ proposta, clienti, onSave, onCancel }) => {
     const [formData, setFormData] = useState(proposta);
@@ -92,7 +92,7 @@ const PropostaForm: React.FC<{
 export const Commerciale: React.FC = () => {
     const { proposte, addProposta, updateProposta, deleteProposta, clienti } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingProposta, setEditingProposta] = useState<PropostaCommerciale | Omit<PropostaCommerciale, 'id'> | null>(null);
+    const [editingProposta, setEditingProposta] = useState<PropostaCommerciale | null>(null);
 
     const getClienteNome = (clienteId: string) => {
         const cliente = clienti.find(c => c.id === clienteId);
@@ -110,11 +110,12 @@ export const Commerciale: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (prop: PropostaCommerciale | Omit<PropostaCommerciale, 'id'>) => {
-        if ('id' in prop && prop.id) {
+    const handleSave = (prop: PropostaCommerciale) => {
+        if (prop.id) {
             updateProposta(prop);
         } else {
-            addProposta(prop);
+            const { id, ...newProp } = prop;
+            addProposta(newProp);
         }
         handleCloseModal();
     };
@@ -162,7 +163,7 @@ export const Commerciale: React.FC = () => {
                 </table>
             </div>
              {isModalOpen && editingProposta && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingProposta && editingProposta.id ? 'Modifica Proposta' : 'Nuova Proposta'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingProposta.id ? 'Modifica Proposta' : 'Nuova Proposta'}>
                     <PropostaForm proposta={editingProposta} clienti={clienti} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}

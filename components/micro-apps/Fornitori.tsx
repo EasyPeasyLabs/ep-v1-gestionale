@@ -6,17 +6,19 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '../icons/Icons';
 import { CLIENTE_CLASSE_OPTIONS, FORNITORE_TIPO_OPTIONS, CLIENTE_STATO_OPTIONS, EMPTY_DITTA } from '../../constants';
-import { Fornitore, FornitoreTipo, DatiDitta, ClienteClasse, ClienteStato, Indirizzo } from '../../types';
+import { Fornitore, FornitoreTipo, ClienteClasse, ClienteStato, Indirizzo } from '../../types';
 
-const getInitialFormData = (): Omit<Fornitore, 'id' | 'sedi'> => ({
+const getInitialFormData = (): Fornitore => ({
+    id: '',
     classe: ClienteClasse.PRIVATO,
     tipo: FornitoreTipo.AZIENDA,
     stato: ClienteStato.ATTIVO,
     rating: 0,
-    dati: { ...EMPTY_DITTA }
+    dati: { ...EMPTY_DITTA },
+    sedi: [],
 });
 
-const FornitoreForm: React.FC<{ fornitore: Fornitore | Omit<Fornitore, 'id' | 'sedi'>, onSave: (fornitore: Fornitore | Omit<Fornitore, 'id' | 'sedi'>) => void, onCancel: () => void }> = ({ fornitore, onSave, onCancel }) => {
+const FornitoreForm: React.FC<{ fornitore: Fornitore, onSave: (fornitore: Fornitore) => void, onCancel: () => void }> = ({ fornitore, onSave, onCancel }) => {
     const [formData, setFormData] = useState(fornitore);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -87,7 +89,7 @@ const FornitoreForm: React.FC<{ fornitore: Fornitore | Omit<Fornitore, 'id' | 's
 export const Fornitori: React.FC = () => {
     const { fornitori, addFornitore, updateFornitore, deleteFornitore } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingFornitore, setEditingFornitore] = useState<Fornitore | Omit<Fornitore, 'id' | 'sedi'> | null>(null);
+    const [editingFornitore, setEditingFornitore] = useState<Fornitore | null>(null);
 
     const handleOpenModal = (fornitore?: Fornitore) => {
         setEditingFornitore(fornitore || getInitialFormData());
@@ -99,11 +101,12 @@ export const Fornitori: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSaveFornitore = (fornitore: Fornitore | Omit<Fornitore, 'id' | 'sedi'>) => {
-        if ('id' in fornitore) {
+    const handleSaveFornitore = (fornitore: Fornitore) => {
+        if (fornitore.id) {
             updateFornitore(fornitore);
         } else {
-            addFornitore(fornitore);
+            const { id, sedi, ...newFornitore } = fornitore;
+            addFornitore(newFornitore);
         }
         handleCloseModal();
     };
@@ -177,7 +180,7 @@ export const Fornitori: React.FC = () => {
             </div>
 
             {isModalOpen && editingFornitore && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingFornitore ? 'Modifica Fornitore' : 'Nuovo Fornitore'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingFornitore.id ? 'Modifica Fornitore' : 'Nuovo Fornitore'}>
                     <FornitoreForm fornitore={editingFornitore} onSave={handleSaveFornitore} onCancel={handleCloseModal} />
                 </Modal>
             )}

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -10,8 +9,8 @@ import { Materiale } from '../../types';
 import { EMPTY_MATERIALE, MATERIALE_UBICAZIONE_OPTIONS } from '../../constants';
 
 const MaterialeForm: React.FC<{
-    materiale: Materiale | Omit<Materiale, 'id'>,
-    onSave: (mat: Materiale | Omit<Materiale, 'id'>) => void,
+    materiale: Materiale,
+    onSave: (mat: Materiale) => void,
     onCancel: () => void
 }> = ({ materiale, onSave, onCancel }) => {
     const [formData, setFormData] = useState(materiale);
@@ -53,7 +52,7 @@ const MaterialeForm: React.FC<{
 export const Materiali: React.FC = () => {
     const { materiali, addMateriale, updateMateriale, deleteMateriale } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingMateriale, setEditingMateriale] = useState<Materiale | Omit<Materiale, 'id'> | null>(null);
+    const [editingMateriale, setEditingMateriale] = useState<Materiale | null>(null);
 
     const handleOpenModal = (mat?: Materiale) => {
         setEditingMateriale(mat || { ...EMPTY_MATERIALE });
@@ -65,11 +64,12 @@ export const Materiali: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (mat: Materiale | Omit<Materiale, 'id'>) => {
-        if ('id' in mat && mat.id) {
+    const handleSave = (mat: Materiale) => {
+        if (mat.id) {
             updateMateriale(mat);
         } else {
-            addMateriale(mat);
+            const { id, ...newMat } = mat;
+            addMateriale(newMat);
         }
         handleCloseModal();
     };
@@ -116,7 +116,7 @@ export const Materiali: React.FC = () => {
             </div>
 
             {isModalOpen && editingMateriale && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingMateriale && editingMateriale.id ? 'Modifica Materiale' : 'Nuovo Materiale'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingMateriale.id ? 'Modifica Materiale' : 'Nuovo Materiale'}>
                     <MaterialeForm materiale={editingMateriale} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}

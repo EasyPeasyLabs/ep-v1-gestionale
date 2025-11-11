@@ -10,8 +10,8 @@ import { InterazioneCRM, Cliente, ClienteTipo } from '../../types';
 import { EMPTY_INTERAZIONE, INTERAZIONE_TIPO_OPTIONS } from '../../constants';
 
 const InterazioneForm: React.FC<{
-    interazione: InterazioneCRM | Omit<InterazioneCRM, 'id'>,
-    onSave: (interazione: InterazioneCRM | Omit<InterazioneCRM, 'id'>) => void,
+    interazione: InterazioneCRM,
+    onSave: (interazione: InterazioneCRM) => void,
     onCancel: () => void
 }> = ({ interazione, onSave, onCancel }) => {
     const [formData, setFormData] = useState(interazione);
@@ -50,7 +50,7 @@ export const CRM: React.FC = () => {
     const { clienti, interazioni, addInterazione, updateInterazione, deleteInterazione } = useMockData();
     const [selectedClienteId, setSelectedClienteId] = useState<string | null>(clienti[0]?.id || null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingInterazione, setEditingInterazione] = useState<InterazioneCRM | Omit<InterazioneCRM, 'id'> | null>(null);
+    const [editingInterazione, setEditingInterazione] = useState<InterazioneCRM | null>(null);
 
     // FIX: Used specific `Cliente` type instead of `any` for better type safety.
     const getClienteNome = (cliente: Cliente) => cliente.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${cliente.dati.genitore1.cognome}` : cliente.dati.ragioneSociale;
@@ -83,11 +83,12 @@ export const CRM: React.FC = () => {
         setEditingInterazione(null);
     };
 
-    const handleSave = (interazione: InterazioneCRM | Omit<InterazioneCRM, 'id'>) => {
-        if ('id' in interazione && interazione.id) {
+    const handleSave = (interazione: InterazioneCRM) => {
+        if (interazione.id) {
             updateInterazione(interazione);
         } else {
-            addInterazione(interazione);
+            const { id, ...newInteraction } = interazione;
+            addInterazione(newInteraction);
         }
         handleCloseModal();
     };
@@ -151,7 +152,7 @@ export const CRM: React.FC = () => {
                 </div>
             </div>
              {isModalOpen && editingInterazione && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingInterazione && editingInterazione.id ? 'Modifica Interazione' : 'Nuova Interazione'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingInterazione.id ? 'Modifica Interazione' : 'Nuova Interazione'}>
                     <InterazioneForm interazione={editingInterazione} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}

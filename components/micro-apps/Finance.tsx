@@ -5,12 +5,12 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
-import { MovimentoFinance, TipoMovimento, CentroDiCosto, Imputazione } from '../../types';
+import { MovimentoFinance, TipoMovimento } from '../../types';
 import { EMPTY_MOVIMENTO, TIPO_MOVIMENTO_OPTIONS, CENTRO_DI_COSTO_OPTIONS, IMPUTAZIONI_MAP } from '../../constants';
 
 const MovimentoForm: React.FC<{
-    movimento: MovimentoFinance | Omit<MovimentoFinance, 'id'>,
-    onSave: (mov: MovimentoFinance | Omit<MovimentoFinance, 'id'>) => void,
+    movimento: MovimentoFinance,
+    onSave: (mov: MovimentoFinance) => void,
     onCancel: () => void
 }> = ({ movimento, onSave, onCancel }) => {
     const [formData, setFormData] = useState(movimento);
@@ -61,7 +61,7 @@ const MovimentoForm: React.FC<{
 export const Finance: React.FC = () => {
     const { movimenti, addMovimento, updateMovimento, deleteMovimento } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingMovimento, setEditingMovimento] = useState<MovimentoFinance | Omit<MovimentoFinance, 'id'> | null>(null);
+    const [editingMovimento, setEditingMovimento] = useState<MovimentoFinance | null>(null);
 
     const handleOpenModal = (mov?: MovimentoFinance) => {
         setEditingMovimento(mov || { ...EMPTY_MOVIMENTO });
@@ -73,11 +73,12 @@ export const Finance: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (mov: MovimentoFinance | Omit<MovimentoFinance, 'id'>) => {
-        if ('id' in mov && mov.id) {
+    const handleSave = (mov: MovimentoFinance) => {
+        if (mov.id) {
             updateMovimento(mov);
         } else {
-            addMovimento(mov);
+            const { id, ...newMov } = mov;
+            addMovimento(newMov);
         }
         handleCloseModal();
     };
@@ -134,7 +135,7 @@ export const Finance: React.FC = () => {
             </div>
 
             {isModalOpen && editingMovimento && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingMovimento && editingMovimento.id ? 'Modifica Movimento' : 'Nuovo Movimento'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingMovimento.id ? 'Modifica Movimento' : 'Nuovo Movimento'}>
                     <MovimentoForm movimento={editingMovimento} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}

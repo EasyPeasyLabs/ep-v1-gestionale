@@ -9,9 +9,9 @@ import { Documento, Associato, ClienteTipo } from '../../types';
 import { EMPTY_DOCUMENTO, DOCUMENTO_TIPO_OPTIONS, DOCUMENTO_STATO_OPTIONS } from '../../constants';
 
 const DocumentoForm: React.FC<{
-    documento: Documento | Omit<Documento, 'id'>,
+    documento: Documento,
     associabili: Associato[],
-    onSave: (doc: Documento | Omit<Documento, 'id'>) => void,
+    onSave: (doc: Documento) => void,
     onCancel: () => void
 }> = ({ documento, associabili, onSave, onCancel }) => {
     const [formData, setFormData] = useState(documento);
@@ -69,7 +69,7 @@ const DocumentoForm: React.FC<{
 export const Documenti: React.FC = () => {
     const { documenti, addDocumento, updateDocumento, deleteDocumento, clienti, fornitori } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingDocumento, setEditingDocumento] = useState<Documento | Omit<Documento, 'id'> | null>(null);
+    const [editingDocumento, setEditingDocumento] = useState<Documento | null>(null);
 
     const associabili = useMemo<Associato[]>(() => {
         const clientiAssociabili = clienti.map(c => ({
@@ -95,11 +95,12 @@ export const Documenti: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (doc: Documento | Omit<Documento, 'id'>) => {
-        if ('id' in doc && doc.id) {
+    const handleSave = (doc: Documento) => {
+        if (doc.id) {
             updateDocumento(doc);
         } else {
-            addDocumento(doc);
+            const { id, ...newDoc } = doc;
+            addDocumento(newDoc);
         }
         handleCloseModal();
     };
@@ -148,7 +149,7 @@ export const Documenti: React.FC = () => {
             </div>
 
             {isModalOpen && editingDocumento && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingDocumento && editingDocumento.id ? 'Modifica Documento' : 'Nuovo Documento'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingDocumento.id ? 'Modifica Documento' : 'Nuovo Documento'}>
                     <DocumentoForm documento={editingDocumento} associabili={associabili} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}
