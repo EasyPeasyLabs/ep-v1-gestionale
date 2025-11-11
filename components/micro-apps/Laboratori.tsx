@@ -5,11 +5,11 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, CalendarIcon } from '../icons/Icons';
-import { Laboratorio, Sede, TimeSlot, TimeSlotStato, Durata, DurataTipo } from '../../types';
-import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS } from '../../constants';
+import { Laboratorio, Sede, TimeSlot, TimeSlotStato, Durata, Fornitore, LaboratorioStato } from '../../types';
+import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS, LABORATORIO_STATO_OPTIONS } from '../../constants';
 
 // Helper to get all sedi from all fornitori
-const getAllSedi = (fornitori: any[]): Sede[] => {
+const getAllSedi = (fornitori: Fornitore[]): Sede[] => {
     return fornitori.flatMap(f => f.sedi);
 };
 
@@ -162,6 +162,8 @@ const LaboratorioForm: React.FC<{
     const [formData, setFormData] = useState(laboratorio);
     const [giorno, setGiorno] = useState(GIORNI_SETTIMANA[0]);
     const [ora, setOra] = useState('10:00');
+    const [isManualDuration, setIsManualDuration] = useState(false);
+    const [manualSlotCount, setManualSlotCount] = useState(0);
 
     useEffect(() => {
         const selectedSede = sedi.find(s => s.id === formData.sedeId);
@@ -169,28 +171,70 @@ const LaboratorioForm: React.FC<{
         setFormData(prev => ({ ...prev, codice: newCode }));
     }, [formData.sedeId, giorno, ora, sedi]);
 
-    // Auto-calculate dataFine when dataInizio or durataId changes
+    // Auto-calculate dataFine and generate timeSlots
     useEffect(() => {
-        if (formData.dataInizio && formData.durataId) {
-            const durata = durate.find(d => d.id === formData.durataId);
-            if (durata) {
-                const startDate = new Date(formData.dataInizio);
-                let endDate = new Date(startDate);
+        // Only run for new labs
+        if (formData.id) return;
 
-                if (durata.tipo === DurataTipo.GIORNI) {
-                    endDate.setDate(startDate.getDate() + durata.valore);
-                } else if (durata.tipo === DurataTipo.MESI) {
-                    endDate.setMonth(startDate.getMonth() + durata.valore);
-                } else {
-                    return; // Don't auto-calculate for Ore or Incontri
+        const calculateDatesAndSlots = () => {
+            if (!formData.dataInizio) return;
+
+            const selectedDurata = durate.find(d => d.id === formData.durataId);
+            const startDate = new Date(formData.dataInizio);
+            startDate.setMinutes(startDate.getMinutes() + startDate.getTimezoneOffset());
+
+            let numSlots = 0;
+            let isManual = false;
+
+            if (selectedDurata) {
+                switch (selectedDurata.nome) {
+                    case 'OpenDay': numSlots = 1; break;
+                    case 'Mensile': numSlots = 4; break;
+                    case 'Bimestrale': numSlots = 8; break;
+                    case 'Trimestrale': numSlots = 12; break;
+                    default: isManual = true;
                 }
-                
-                // Format YYYY-MM-DD
-                const finalDate = endDate.toISOString().split('T')[0];
-                setFormData(prev => ({...prev, dataFine: finalDate }));
+            } else {
+                isManual = true;
             }
-        }
-    }, [formData.dataInizio, formData.durataId, durate]);
+
+            setIsManualDuration(isManual);
+
+            if (isManual) {
+                numSlots = manualSlotCount > 0 ? manualSlotCount : 0;
+            }
+
+            if (numSlots <= 0) {
+                setFormData(prev => ({ ...prev, timeSlots: [], dataFine: prev.dataFine })); // Don't clear manual date
+                return;
+            }
+
+            const newSlots: TimeSlot[] = [];
+            for (let i = 0; i < numSlots; i++) {
+                const slotDate = new Date(startDate);
+                slotDate.setDate(slotDate.getDate() + (i * 7)); // 1 per week
+                
+                newSlots.push({
+                    ...EMPTY_TIMESLOT,
+                    id: `new_${Date.now()}_${i}`,
+                    laboratorioId: formData.id,
+                    ordine: i + 1,
+                    data: slotDate.toISOString().split('T')[0],
+                });
+            }
+
+            const finalDate = newSlots.length > 0 ? newSlots[newSlots.length - 1].data : '';
+
+            setFormData(prev => ({
+                ...prev,
+                timeSlots: newSlots,
+                dataFine: finalDate
+            }));
+        };
+
+        calculateDatesAndSlots();
+    }, [formData.id, formData.dataInizio, formData.durataId, durate, manualSlotCount]);
+
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -206,6 +250,11 @@ const LaboratorioForm: React.FC<{
     return (
         <form onSubmit={handleSubmit}>
             <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Select id="stato" name="stato" label="Stato" options={LABORATORIO_STATO_OPTIONS} value={formData.stato} onChange={handleChange} disabled={!formData.id} />
+                </div>
+
+                <hr className="my-6 dark:border-gray-600"/>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Codifica Laboratorio</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-md dark:border-gray-600">
                      <Select id="sedeId" name="sedeId" label="Sede" value={formData.sedeId} onChange={handleChange} required>
@@ -222,16 +271,18 @@ const LaboratorioForm: React.FC<{
                 <hr className="my-6 dark:border-gray-600"/>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli e Costi</h3>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select id="durataId" name="durataId" label="Durata Predefinita" value={formData.durataId || ''} onChange={handleChange}>
-                        <option value="">Manuale</option>
-                        {durate.map(d => <option key={d.id} value={d.id}>{d.nome} ({d.valore} {d.tipo})</option>)}
+                    <Select id="durataId" name="durataId" label="Durata Predefinita" value={formData.durataId || ''} onChange={handleChange} disabled={!!formData.id}>
+                        <option value="">Manuale / Altro</option>
+                        {durate.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                     </Select>
+                    {isManualDuration && !formData.id && (
+                         <Input id="manualSlotCount" name="manualSlotCount" label="Numero di Incontri" type="number" value={manualSlotCount} onChange={(e) => setManualSlotCount(parseInt(e.target.value) || 0)} min="0" />
+                    )}
                     <div></div>
-                    <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required />
-                    <Input id="dataFine" name="dataFine" label="Data Fine" type="date" value={formData.dataFine} onChange={handleChange} required readOnly={!!formData.durataId}/>
-                    <Input id="prezzoListino" name="prezzoListino" label="Prezzo Listino (€)" type="number" step="0.01" value={formData.prezzoListino} onChange={handleChange} required />
-                    <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} onChange={handleChange} />
-                    <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} onChange={handleChange} />
+                    <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required  disabled={!!formData.id}/>
+                    <Input id="dataFine" name="dataFine" label="Data Fine" type="date" value={formData.dataFine} onChange={handleChange} required readOnly />
+                    <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} readOnly />
+                    <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} readOnly />
                  </div>
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
@@ -246,7 +297,6 @@ const LaboratorioForm: React.FC<{
 export const Laboratori: React.FC = () => {
     const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, durate, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    // BUG FIX: Cleaned up the state type to always be `Laboratorio | null` for better type safety.
     const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | null>(null);
     const [selectedLabForSlots, setSelectedLabForSlots] = useState<Laboratorio | null>(null);
     
@@ -267,7 +317,7 @@ export const Laboratori: React.FC = () => {
 
 
     const handleOpenModal = (lab?: Laboratorio) => {
-        setEditingLaboratorio(lab || { ...EMPTY_LABORATORIO });
+        setEditingLaboratorio(lab || { ...EMPTY_LABORATORIO, id: '' });
         setIsModalOpen(true);
     };
 
@@ -276,14 +326,10 @@ export const Laboratori: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    // BUG FIX: Reworked save logic to be more robust. It now strictly checks for a non-empty `id`
-    // to decide whether to update an existing lab or create a new one, resolving the duplication bug.
     const handleSave = (lab: Laboratorio) => {
-        if (lab.id) { // A non-empty, truthy ID indicates an existing lab.
+        if (lab.id) {
             updateLaboratorio(lab);
         } else {
-            // A missing or empty ID indicates a new lab.
-            // Destructure to remove the empty `id` before sending to Firestore.
             const { id, ...newLab } = lab;
             addLaboratorio(newLab);
         }
@@ -296,9 +342,24 @@ export const Laboratori: React.FC = () => {
         }
     }
 
+    const handleConfirmLab = (lab: Laboratorio) => {
+        if (window.confirm(`Confermare l'attivazione del laboratorio "${lab.codice}"? Lo stato passerà a "Attivo".`)) {
+            updateLaboratorio({ ...lab, stato: LaboratorioStato.ATTIVO });
+        }
+    };
+
     const getSedeName = (sedeId: string) => {
         return allSedi.find(s => s.id === sedeId)?.nome || 'Sede non trovata';
     }
+    
+    const getStatoBadgeColor = (stato: LaboratorioStato) => {
+        switch (stato) {
+            case LaboratorioStato.ATTIVO: return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+            case LaboratorioStato.PROGRAMMATO: return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+            case LaboratorioStato.IN_PAUSA: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+            default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        }
+    };
 
     return (
         <div className="p-4 md:p-8">
@@ -319,10 +380,11 @@ export const Laboratori: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                         <tr>
                             <th scope="col" className="px-6 py-3">Codice</th>
+                            <th scope="col" className="px-6 py-3">Stato</th>
                             <th scope="col" className="px-6 py-3">Sede</th>
                             <th scope="col" className="px-6 py-3">Periodo</th>
                             <th scope="col" className="px-6 py-3">Incontri</th>
-                            <th scope="col" className="px-6 py-3">Prezzo</th>
+                            <th scope="col" className="px-6 py-3">Costi</th>
                             <th scope="col" className="px-6 py-3 text-right">Azioni</th>
                         </tr>
                     </thead>
@@ -332,10 +394,23 @@ export const Laboratori: React.FC = () => {
                                 <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                                     <span className="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{lab.codice}</span>
                                 </th>
+                                <td className="px-6 py-4">
+                                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(lab.stato)}`}>{lab.stato}</span>
+                                </td>
                                 <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
-                                <td className="px-6 py-4">{lab.dataInizio} / {lab.dataFine}</td>
+                                <td className="px-6 py-4 flex items-center gap-2">
+                                    <span>{lab.dataInizio} / {lab.dataFine}</span>
+                                    {lab.stato === LaboratorioStato.PROGRAMMATO && (
+                                        <button onClick={() => handleConfirmLab(lab)} className="text-xs bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded-full">
+                                            ✓
+                                        </button>
+                                    )}
+                                </td>
                                 <td className="px-6 py-4">{lab.timeSlots.length}</td>
-                                <td className="px-6 py-4">{lab.prezzoListino.toFixed(2)}€</td>
+                                <td className="px-6 py-4 text-xs">
+                                    <div>Att: {lab.costoAttivita.toFixed(2)}€</div>
+                                    <div>Log: {lab.costoLogistica.toFixed(2)}€</div>
+                                </td>
                                 <td className="px-6 py-4 text-right space-x-2">
                                     <button onClick={() => setSelectedLabForSlots(lab)} className="text-gray-500 hover:text-blue-600"><CalendarIcon /></button>
                                     <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
@@ -351,7 +426,7 @@ export const Laboratori: React.FC = () => {
                         ))}
                          {laboratori.length === 0 && (
                              <tr>
-                                 <td colSpan={6} className="text-center py-8 text-gray-500">Nessun laboratorio trovato.</td>
+                                 <td colSpan={7} className="text-center py-8 text-gray-500">Nessun laboratorio trovato.</td>
                              </tr>
                          )}
                     </tbody>

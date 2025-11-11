@@ -160,14 +160,20 @@ export interface TimeSlot {
     partecipanti?: number;
 }
 
+export enum LaboratorioStato {
+    PROGRAMMATO = "Programmato",
+    ATTIVO = "Attivo",
+    IN_PAUSA = "In Pausa",
+}
+
 export interface Laboratorio {
     id: string;
     codice: string; // Es. SPA.LUN.10:00
+    stato: LaboratorioStato;
     sedeId: string;
     durataId?: string; // ID della Durata predefinita
     dataInizio: string; // YYYY-MM-DD
     dataFine: string; // YYYY-MM-DD
-    prezzoListino: number;
     costoAttivita: number;
     costoLogistica: number;
     timeSlots: TimeSlot[];
