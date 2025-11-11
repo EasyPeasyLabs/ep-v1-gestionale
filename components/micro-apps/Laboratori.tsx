@@ -222,7 +222,7 @@ const LaboratorioForm: React.FC<{
                 <hr className="my-6 dark:border-gray-600"/>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli e Costi</h3>
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select id="durataId" name="durataId" label="Durata Predefinita" value={formData.durataId} onChange={handleChange}>
+                    <Select id="durataId" name="durataId" label="Durata Predefinita" value={formData.durataId || ''} onChange={handleChange}>
                         <option value="">Manuale</option>
                         {durate.map(d => <option key={d.id} value={d.id}>{d.nome} ({d.valore} {d.tipo})</option>)}
                     </Select>
