@@ -177,14 +177,48 @@ const LaboratorioForm: React.FC<{
     const [manualSlotCount, setManualSlotCount] = useState(0);
 
     useEffect(() => {
+        // Popola lo stato del form quando si modifica un laboratorio esistente
+        if (laboratorio.id) {
+            // 1. Analizza 'codice' per impostare 'giorno' e 'ora'
+            const codeParts = laboratorio.codice.split('.');
+            if (codeParts.length === 3) {
+                const parsedGiorno = codeParts[1];
+                const parsedOraRaw = codeParts[2];
+                if (parsedOraRaw && parsedOraRaw.length === 4) {
+                    const parsedOra = `${parsedOraRaw.substring(0, 2)}:${parsedOraRaw.substring(2, 4)}`;
+                    if (GIORNI_SETTIMANA.includes(parsedGiorno)) {
+                        setGiorno(parsedGiorno);
+                    }
+                    setOra(parsedOra);
+                }
+            }
+    
+            // 2. Determina l'opzione di durata dal numero di time slot
+            const numSlots = laboratorio.timeSlots.length;
+            const matchingDurationKey = Object.keys(DURATION_OPTIONS).find(key => 
+                DURATION_OPTIONS[key as keyof typeof DURATION_OPTIONS] === numSlots
+            );
+    
+            if (matchingDurationKey) {
+                setDurationOption(matchingDurationKey);
+            } else if (numSlots > 0) {
+                // Se nessuna durata fissa corrisponde, si presume un inserimento manuale
+                setDurationOption('Evento'); // Predefinito su 'Evento'
+                setManualSlotCount(numSlots);
+            }
+        }
+    }, [laboratorio]);
+
+
+    useEffect(() => {
         const selectedSede = sedi.find(s => s.id === formData.sedeId);
         const newCode = generateCode(selectedSede, giorno, ora);
         setFormData(prev => ({ ...prev, codice: newCode }));
     }, [formData.sedeId, giorno, ora, sedi]);
 
-    // Auto-calculate dataFine and generate timeSlots
+    // Calcola automaticamente dataFine e genera i timeSlot
     useEffect(() => {
-        if (formData.id) return; // Only run for new labs
+        if (formData.id) return; // Eseguire solo per nuovi laboratori
 
         const calculateDatesAndSlots = () => {
             if (!formData.dataInizio) {
@@ -193,7 +227,7 @@ const LaboratorioForm: React.FC<{
             };
 
             const startDate = new Date(formData.dataInizio);
-            // Adjust for timezone offset to prevent date shifting
+            // Correzione per il fuso orario per evitare spostamenti di data
             startDate.setMinutes(startDate.getMinutes() + startDate.getTimezoneOffset());
 
             let numSlots = 0;
@@ -213,7 +247,7 @@ const LaboratorioForm: React.FC<{
             const newSlots: TimeSlot[] = [];
             for (let i = 0; i < numSlots; i++) {
                 const slotDate = new Date(startDate);
-                slotDate.setDate(slotDate.getDate() + (i * 7)); // 1 per week
+                slotDate.setDate(slotDate.getDate() + (i * 7)); // 1 a settimana
                 
                 newSlots.push({
                     ...EMPTY_TIMESLOT,
