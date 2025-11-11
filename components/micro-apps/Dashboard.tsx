@@ -29,7 +29,6 @@ export const Dashboard: React.FC = () => {
             if (lab.stato === LaboratorioStato.ATTIVO) {
                 lab.timeSlots.forEach(slot => {
                     const slotDate = new Date(slot.data);
-                    slotDate.setMinutes(slotDate.getMinutes() + slotDate.getTimezoneOffset());
                     if (slotDate >= startOfWeek && slotDate <= endOfWeek) {
                         labsInWeek.add(lab.id);
                     }

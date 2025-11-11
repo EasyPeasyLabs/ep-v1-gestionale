@@ -227,8 +227,6 @@ const LaboratorioForm: React.FC<{
             };
 
             const startDate = new Date(formData.dataInizio);
-            // Correzione per il fuso orario per evitare spostamenti di data
-            startDate.setMinutes(startDate.getMinutes() + startDate.getTimezoneOffset());
 
             let numSlots = 0;
             const durationValue = DURATION_OPTIONS[durationOption as keyof typeof DURATION_OPTIONS];
