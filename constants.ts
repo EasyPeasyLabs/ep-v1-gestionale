@@ -1,4 +1,3 @@
-
 import { 
     RegimeFiscale, ClienteClasse, ClienteTipo, ClienteStato, FornitoreTipo, 
     AttivitaStato, MaterialeUbicazione, TipoMovimento, CentroDiCosto,
@@ -22,6 +21,7 @@ export const TIME_SLOT_STATO_OPTIONS = Object.values(TimeSlotStato);
 export const DURATA_TIPO_OPTIONS = Object.values(DurataTipo);
 export const LABORATORIO_STATO_OPTIONS = Object.values(LaboratorioStato);
 export const ISCRIZIONE_STATO_OPTIONS = Object.values(IscrizioneStato);
+export const DURATA_LABORATORIO_OPTIONS = ['OpenDay', 'Mensile', 'Bimestrale', 'Trimestrale', 'Evento', 'Scolastico', 'Campus'];
 
 
 // Finance Constants
@@ -63,4 +63,4 @@ export const EMPTY_SERVIZIO_PROPOSTA = { id: `new_${Date.now()}`, descrizione: '
 export const EMPTY_PROPOSTA = { id: '', codice: '', clienteId: '', dataEmissione: new Date().toISOString().split('T')[0], dataScadenza: '', stato: PropostaStato.BOZZA, servizi: [], totale: 0 };
 export const EMPTY_INTERAZIONE = { id: '', clienteId: '', data: new Date().toISOString(), tipo: InterazioneTipo.NOTA, oggetto: '', descrizione: '' };
 export const EMPTY_LISTINO = { id: '', laboratorioId: '', listinoBase: 0, profittoPercentuale: 20 };
-export const EMPTY_ISCRIZIONE = { id: '', clienteId: '', laboratorioId: '', figliIscritti: [], listinoBaseApplicato: 0, scadenza: '', stato: IscrizioneStato.PROMEMORIA };
+export const EMPTY_ISCRIZIONE = { id: '', clienteId: '', laboratorioId: '', figliIscritti: [], listinoBaseApplicato: 0, scadenza: '', stato: IscrizioneStato.PROMEMORIA, tipoIscrizione: '' };

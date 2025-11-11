@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -6,29 +5,37 @@ import { Modal } from '../ui/Modal';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
 import { Iscrizione, Cliente, ClienteTipo, Laboratorio, Figlio, Listino, IscrizioneStato } from '../../types';
-import { EMPTY_ISCRIZIONE, ISCRIZIONE_STATO_OPTIONS } from '../../constants';
+import { EMPTY_ISCRIZIONE, ISCRIZIONE_STATO_OPTIONS, DURATA_LABORATORIO_OPTIONS } from '../../constants';
 
 type IscrizioneFormProps = {
-    iscrizione: Omit<Iscrizione, 'id'>,
+    iscrizione: Iscrizione,
+    isEditing: boolean,
     clienti: Cliente[],
     laboratori: Laboratorio[],
     listini: Listino[],
-    onSave: (isc: Omit<Iscrizione, 'id'>) => void,
+    onSave: (isc: Iscrizione) => void,
     onCancel: () => void,
 };
 
-const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, clienti, laboratori, listini, onSave, onCancel }) => {
+const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, isEditing, clienti, laboratori, listini, onSave, onCancel }) => {
     const [formData, setFormData] = useState(iscrizione);
 
     const selectedCliente = useMemo(() => clienti.find(c => c.id === formData.clienteId), [clienti, formData.clienteId]);
     const selectedLaboratorio = useMemo(() => laboratori.find(l => l.id === formData.laboratorioId), [laboratori, formData.laboratorioId]);
     const listinoAssociato = useMemo(() => listini.find(li => li.laboratorioId === selectedLaboratorio?.id), [listini, selectedLaboratorio]);
+    
+    const handleFormChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
 
     const handleClienteChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (isEditing) return;
         setFormData({ ...EMPTY_ISCRIZIONE, clienteId: e.target.value });
     };
 
     const handleLaboratorioChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        if (isEditing) return;
         const labId = e.target.value;
         const lab = laboratori.find(l => l.id === labId);
         const listino = listini.find(l => l.laboratorioId === labId);
@@ -56,6 +63,10 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, clienti, laborato
             alert("Cliente e Laboratorio sono obbligatori.");
             return;
         }
+         if (!formData.tipoIscrizione) {
+            alert("Il Tipo Iscrizione è obbligatorio.");
+            return;
+        }
         if (selectedCliente?.tipo === ClienteTipo.FAMIGLIA && formData.figliIscritti.length === 0) {
             alert("Selezionare almeno un figlio per l'iscrizione.");
             return;
@@ -67,8 +78,8 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, clienti, laborato
         <form onSubmit={handleSubmit}>
             <div className="space-y-6">
                 <div>
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">1. Seleziona Cliente</h3>
-                    <Select id="clienteId" name="clienteId" label="" value={formData.clienteId} onChange={handleClienteChange} required>
+                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">1. Cliente</h3>
+                    <Select id="clienteId" name="clienteId" label="" value={formData.clienteId} onChange={handleClienteChange} required disabled={isEditing}>
                         <option value="">Seleziona...</option>
                         {clienti.map(c => <option key={c.id} value={c.id}>{c.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${c.dati.genitore1.cognome}` : c.dati.ragioneSociale}</option>)}
                     </Select>
@@ -76,7 +87,7 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, clienti, laborato
 
                 {selectedCliente?.tipo === ClienteTipo.FAMIGLIA && (
                      <div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">2. Seleziona Figli</h3>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">2. Figli</h3>
                         <div className="space-y-2 p-2 border rounded-md dark:border-gray-600">
                             {selectedCliente.dati.figli.map(figlio => (
                                 <label key={figlio.id} className="flex items-center">
@@ -95,17 +106,24 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, clienti, laborato
 
                 {selectedCliente && (
                      <div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">3. Seleziona Laboratorio</h3>
-                        <Select id="laboratorioId" name="laboratorioId" label="" value={formData.laboratorioId} onChange={handleLaboratorioChange} required>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">3. Laboratorio</h3>
+                        <Select id="laboratorioId" name="laboratorioId" label="" value={formData.laboratorioId} onChange={handleLaboratorioChange} required disabled={isEditing}>
                             <option value="">Seleziona...</option>
                             {laboratori.map(l => <option key={l.id} value={l.id}>{l.codice}</option>)}
                         </Select>
                     </div>
                 )}
+                
+                {selectedLaboratorio && (
+                     <div>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">4. Tipo Iscrizione</h3>
+                        <Select id="tipoIscrizione" name="tipoIscrizione" label="" value={formData.tipoIscrizione} onChange={handleFormChange} options={DURATA_LABORATORIO_OPTIONS} required />
+                    </div>
+                )}
 
                 {listinoAssociato && (
                     <div>
-                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">4. Applica Listino</h3>
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">5. Listino</h3>
                         <div className="p-3 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-700">
                              <label className="flex items-center">
                                 <input type="checkbox" checked={true} readOnly className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
@@ -114,11 +132,18 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, clienti, laborato
                         </div>
                     </div>
                 )}
+                
+                {isEditing && (
+                    <div>
+                         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">6. Stato Iscrizione</h3>
+                         <Select id="stato" name="stato" label="" value={formData.stato} onChange={handleFormChange} options={ISCRIZIONE_STATO_OPTIONS} required />
+                    </div>
+                )}
 
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
                  <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
-                 <Button type="submit" variant="primary">Crea Promemoria Iscrizione</Button>
+                 <Button type="submit" variant="primary">{isEditing ? 'Salva Modifiche' : 'Crea Promemoria Iscrizione'}</Button>
             </div>
         </form>
     );
@@ -140,8 +165,13 @@ export const Iscrizioni: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (isc: Omit<Iscrizione, 'id'>) => {
-        addIscrizione(isc);
+    const handleSave = (isc: Iscrizione) => {
+        if (isc.id) {
+            updateIscrizione(isc);
+        } else {
+            const { id, ...newIsc } = isc;
+            addIscrizione(newIsc as Omit<Iscrizione, 'id'>);
+        }
         handleCloseModal();
     };
     
@@ -158,6 +188,15 @@ export const Iscrizioni: React.FC = () => {
         return c.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${c.dati.genitore1.cognome}` : c.dati.ragioneSociale;
     }
 
+    const getStatoBadgeColor = (stato: IscrizioneStato) => {
+        switch(stato) {
+            case IscrizioneStato.PAGATO: return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+            case IscrizioneStato.PROMEMORIA: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+            case IscrizioneStato.ANNULLATO: return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+            default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        }
+    }
+
     return (
         <div className="p-4 md:p-8">
             <div className="flex justify-between items-center mb-6">
@@ -171,6 +210,7 @@ export const Iscrizioni: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-6 py-3">Cliente</th>
                             <th scope="col" className="px-6 py-3">Laboratorio</th>
+                            <th scope="col" className="px-6 py-3">Tipo</th>
                             <th scope="col" className="px-6 py-3">Stato</th>
                             <th scope="col" className="px-6 py-3">Scadenza</th>
                             <th scope="col" className="px-6 py-3 text-right">Quota</th>
@@ -182,11 +222,15 @@ export const Iscrizioni: React.FC = () => {
                              <tr key={isc.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                 <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{getClienteNome(isc.clienteId)}</th>
                                 <td className="px-6 py-4">{getLabCodice(isc.laboratorioId)}</td>
-                                <td className="px-6 py-4">{isc.stato}</td>
+                                <td className="px-6 py-4">{isc.tipoIscrizione}</td>
+                                <td className="px-6 py-4">
+                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(isc.stato)}`}>{isc.stato}</span>
+                                </td>
                                 <td className="px-6 py-4">{new Date(isc.scadenza).toLocaleDateString('it-IT')}</td>
                                 <td className="px-6 py-4 text-right">{isc.listinoBaseApplicato.toFixed(2)}€</td>
                                 <td className="px-6 py-4 text-right space-x-2">
-                                    <button onClick={() => handleDelete(isc.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                    <button onClick={() => handleOpenModal(isc)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
+                                    <button onClick={() => handleDelete(isc.id)} className="text-red-600 hover:text-red-800 disabled:text-gray-400" disabled={!isc.id}><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}
@@ -195,9 +239,10 @@ export const Iscrizioni: React.FC = () => {
             </div>
 
             {isModalOpen && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title="Nuova Iscrizione">
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingIscrizione ? "Modifica Iscrizione" : "Nuova Iscrizione"}>
                     <IscrizioneForm
                         iscrizione={editingIscrizione || EMPTY_ISCRIZIONE}
+                        isEditing={!!editingIscrizione}
                         clienti={clienti}
                         laboratori={laboratori}
                         listini={listini}

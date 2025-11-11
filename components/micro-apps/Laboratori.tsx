@@ -6,7 +6,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, CalendarIcon } from '../icons/Icons';
 import { Laboratorio, Sede, TimeSlot, TimeSlotStato, Fornitore, LaboratorioStato } from '../../types';
-import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS, LABORATORIO_STATO_OPTIONS } from '../../constants';
+import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS, LABORATORIO_STATO_OPTIONS, DURATA_LABORATORIO_OPTIONS } from '../../constants';
 
 // Helper to get all sedi from all fornitori
 const getAllSedi = (fornitori: Fornitore[]): Sede[] => {
@@ -154,8 +154,7 @@ const TimeSlotManager: FC<TimeSlotManagerProps> = ({ laboratorio, onClose, addTi
     );
 };
 
-
-const DURATION_OPTIONS = {
+const DURATION_MAP: { [key: string]: number | 'manual' } = {
     'OpenDay': 1,
     'Mensile': 4,
     'Bimestrale': 8,
@@ -201,8 +200,8 @@ const LaboratorioForm: FC<LaboratorioFormProps> = ({ laboratorio, sedi, onSave, 
     
             // 2. Determina l'opzione di durata dal numero di time slot
             const numSlots = laboratorio.timeSlots.length;
-            const matchingDurationKey = Object.keys(DURATION_OPTIONS).find(key => 
-                DURATION_OPTIONS[key as keyof typeof DURATION_OPTIONS] === numSlots
+            const matchingDurationKey = Object.keys(DURATION_MAP).find(key => 
+                DURATION_MAP[key as keyof typeof DURATION_MAP] === numSlots
             );
     
             if (matchingDurationKey) {
@@ -241,7 +240,7 @@ const LaboratorioForm: FC<LaboratorioFormProps> = ({ laboratorio, sedi, onSave, 
             const startDate = new Date(year, month, day);
 
             let numSlots = 0;
-            const durationValue = DURATION_OPTIONS[durationOption as keyof typeof DURATION_OPTIONS];
+            const durationValue = DURATION_MAP[durationOption as keyof typeof DURATION_MAP];
 
             if (typeof durationValue === 'number') {
                 numSlots = durationValue;
@@ -324,7 +323,7 @@ const LaboratorioForm: FC<LaboratorioFormProps> = ({ laboratorio, sedi, onSave, 
                 <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Durata Predefinita</label>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                         {Object.keys(DURATION_OPTIONS).map(key => (
+                         {DURATA_LABORATORIO_OPTIONS.map(key => (
                              <label key={key} className={`flex items-center p-3 rounded-md border cursor-pointer transition-colors ${durationOption === key ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}>
                                  <input
                                      type="radio"

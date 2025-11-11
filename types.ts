@@ -1,4 +1,4 @@
-
+// FIX: Removed self-import of `RegimeFiscale` which was causing a conflict with its own declaration.
 export enum RegimeFiscale {
     FORFETTARIO = "Regime forfettario",
     ASSOCIAZIONE_CULTURALE = "Associazione culturale",
@@ -205,6 +205,7 @@ export interface Iscrizione {
     listinoBaseApplicato: number;
     scadenza: string; // YYYY-MM-DD
     stato: IscrizioneStato;
+    tipoIscrizione: string;
 }
 
 // Attività types
