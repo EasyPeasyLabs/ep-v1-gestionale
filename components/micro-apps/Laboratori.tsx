@@ -225,8 +225,14 @@ const LaboratorioForm: React.FC<{
                 setFormData(prev => ({ ...prev, timeSlots: [], dataFine: '' }));
                 return;
             };
-
-            const startDate = new Date(formData.dataInizio);
+            
+            // Parse date string to avoid timezone issues.
+            // "YYYY-MM-DD" from input is treated as a local date.
+            const parts = formData.dataInizio.split('-');
+            const year = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+            const day = parseInt(parts[2], 10);
+            const startDate = new Date(year, month, day);
 
             let numSlots = 0;
             const durationValue = DURATION_OPTIONS[durationOption as keyof typeof DURATION_OPTIONS];
@@ -247,12 +253,17 @@ const LaboratorioForm: React.FC<{
                 const slotDate = new Date(startDate);
                 slotDate.setDate(slotDate.getDate() + (i * 7)); // 1 a settimana
                 
+                // Format date back to "YYYY-MM-DD" string without timezone conversion
+                const slotYear = slotDate.getFullYear();
+                const slotMonth = String(slotDate.getMonth() + 1).padStart(2, '0');
+                const slotDay = String(slotDate.getDate()).padStart(2, '0');
+
                 newSlots.push({
                     ...EMPTY_TIMESLOT,
                     id: `new_${Date.now()}_${i}`,
                     laboratorioId: formData.id,
                     ordine: i + 1,
-                    data: slotDate.toISOString().split('T')[0],
+                    data: `${slotYear}-${slotMonth}-${slotDay}`,
                 });
             }
 
