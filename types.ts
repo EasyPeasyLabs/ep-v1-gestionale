@@ -171,7 +171,6 @@ export interface Laboratorio {
     codice: string; // Es. SPA.LUN.10:00
     stato: LaboratorioStato;
     sedeId: string;
-    durataId?: string; // ID della Durata predefinita
     dataInizio: string; // YYYY-MM-DD
     dataFine: string; // YYYY-MM-DD
     costoAttivita: number;

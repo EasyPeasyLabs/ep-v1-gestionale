@@ -5,7 +5,7 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, CalendarIcon } from '../icons/Icons';
-import { Laboratorio, Sede, TimeSlot, TimeSlotStato, Durata, Fornitore, LaboratorioStato } from '../../types';
+import { Laboratorio, Sede, TimeSlot, TimeSlotStato, Fornitore, LaboratorioStato } from '../../types';
 import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS, LABORATORIO_STATO_OPTIONS } from '../../constants';
 
 // Helper to get all sedi from all fornitori
@@ -151,18 +151,29 @@ const TimeSlotManager: React.FC<{
 };
 
 
+const DURATION_OPTIONS = {
+    'OpenDay': 1,
+    'Mensile': 4,
+    'Bimestrale': 8,
+    'Trimestrale': 12,
+    'Evento': 'manual',
+    'Scolastico': 'manual',
+    'Campus': 'manual'
+};
+
+const MANUAL_DURATION_KEYS = ['Evento', 'Scolastico', 'Campus'];
+
 // --- FORM LABORATORIO ---
 const LaboratorioForm: React.FC<{
     laboratorio: Laboratorio,
     sedi: Sede[],
-    durate: Durata[],
     onSave: (lab: Laboratorio) => void,
     onCancel: () => void
-}> = ({ laboratorio, sedi, durate, onSave, onCancel }) => {
+}> = ({ laboratorio, sedi, onSave, onCancel }) => {
     const [formData, setFormData] = useState(laboratorio);
     const [giorno, setGiorno] = useState(GIORNI_SETTIMANA[0]);
     const [ora, setOra] = useState('10:00');
-    const [isManualDuration, setIsManualDuration] = useState(false);
+    const [durationOption, setDurationOption] = useState('Mensile');
     const [manualSlotCount, setManualSlotCount] = useState(0);
 
     useEffect(() => {
@@ -173,39 +184,29 @@ const LaboratorioForm: React.FC<{
 
     // Auto-calculate dataFine and generate timeSlots
     useEffect(() => {
-        // Only run for new labs
-        if (formData.id) return;
+        if (formData.id) return; // Only run for new labs
 
         const calculateDatesAndSlots = () => {
-            if (!formData.dataInizio) return;
+            if (!formData.dataInizio) {
+                setFormData(prev => ({ ...prev, timeSlots: [], dataFine: '' }));
+                return;
+            };
 
-            const selectedDurata = durate.find(d => d.id === formData.durataId);
             const startDate = new Date(formData.dataInizio);
+            // Adjust for timezone offset to prevent date shifting
             startDate.setMinutes(startDate.getMinutes() + startDate.getTimezoneOffset());
 
             let numSlots = 0;
-            let isManual = false;
+            const durationValue = DURATION_OPTIONS[durationOption as keyof typeof DURATION_OPTIONS];
 
-            if (selectedDurata) {
-                switch (selectedDurata.nome) {
-                    case 'OpenDay': numSlots = 1; break;
-                    case 'Mensile': numSlots = 4; break;
-                    case 'Bimestrale': numSlots = 8; break;
-                    case 'Trimestrale': numSlots = 12; break;
-                    default: isManual = true;
-                }
-            } else {
-                isManual = true;
-            }
-
-            setIsManualDuration(isManual);
-
-            if (isManual) {
+            if (typeof durationValue === 'number') {
+                numSlots = durationValue;
+            } else { // 'manual'
                 numSlots = manualSlotCount > 0 ? manualSlotCount : 0;
             }
 
             if (numSlots <= 0) {
-                setFormData(prev => ({ ...prev, timeSlots: [], dataFine: prev.dataFine })); // Don't clear manual date
+                setFormData(prev => ({ ...prev, timeSlots: [], dataFine: '' }));
                 return;
             }
 
@@ -233,7 +234,7 @@ const LaboratorioForm: React.FC<{
         };
 
         calculateDatesAndSlots();
-    }, [formData.id, formData.dataInizio, formData.durataId, durate, manualSlotCount]);
+    }, [formData.id, formData.dataInizio, durationOption, manualSlotCount]);
 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -270,17 +271,36 @@ const LaboratorioForm: React.FC<{
                 
                 <hr className="my-6 dark:border-gray-600"/>
                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli e Costi</h3>
+                
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Durata Predefinita</label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                         {Object.keys(DURATION_OPTIONS).map(key => (
+                             <label key={key} className={`flex items-center p-3 rounded-md border cursor-pointer transition-colors ${durationOption === key ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}>
+                                 <input
+                                     type="radio"
+                                     name="durationOption"
+                                     value={key}
+                                     checked={durationOption === key}
+                                     onChange={() => setDurationOption(key)}
+                                     className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                     disabled={!!formData.id}
+                                 />
+                                 <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-100">{key}</span>
+                             </label>
+                         ))}
+                    </div>
+                </div>
+
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select id="durataId" name="durataId" label="Durata Predefinita" value={formData.durataId || ''} onChange={handleChange} disabled={!!formData.id}>
-                        <option value="">Manuale / Altro</option>
-                        {durate.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-                    </Select>
-                    {isManualDuration && !formData.id && (
-                         <Input id="manualSlotCount" name="manualSlotCount" label="Numero di Incontri" type="number" value={manualSlotCount} onChange={(e) => setManualSlotCount(parseInt(e.target.value) || 0)} min="0" />
+                     {MANUAL_DURATION_KEYS.includes(durationOption) && !formData.id && (
+                         <Input id="manualSlotCount" name="manualSlotCount" label={`Numero di Incontri (${durationOption})`} type="number" value={manualSlotCount} onChange={(e) => setManualSlotCount(parseInt(e.target.value) || 0)} min="1" />
                     )}
-                    <div></div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required  disabled={!!formData.id}/>
-                    <Input id="dataFine" name="dataFine" label="Data Fine" type="date" value={formData.dataFine} onChange={handleChange} required readOnly />
+                    <Input id="dataFine" name="dataFine" label="Data Fine (calcolata)" type="date" value={formData.dataFine} readOnly />
                     <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} readOnly />
                     <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} readOnly />
                  </div>
@@ -295,7 +315,7 @@ const LaboratorioForm: React.FC<{
 
 // --- COMPONENTE PRINCIPALE ---
 export const Laboratori: React.FC = () => {
-    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, durate, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
+    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | null>(null);
     const [selectedLabForSlots, setSelectedLabForSlots] = useState<Laboratorio | null>(null);
@@ -435,7 +455,7 @@ export const Laboratori: React.FC = () => {
 
             {isModalOpen && editingLaboratorio && (
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingLaboratorio.id ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
-                    <LaboratorioForm laboratorio={editingLaboratorio} sedi={allSedi} durate={durate} onSave={handleSave} onCancel={handleCloseModal} />
+                    <LaboratorioForm laboratorio={editingLaboratorio} sedi={allSedi} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}
 
