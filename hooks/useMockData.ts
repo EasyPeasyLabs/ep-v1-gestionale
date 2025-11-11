@@ -1,3 +1,4 @@
+
 // FIX: Add React to imports to provide the React namespace for types.
 import React, { useState, useCallback, useEffect } from 'react';
 import { db } from '../firebaseConfig';
@@ -12,13 +13,15 @@ import {
     orderBy,
     getDoc
 } from "firebase/firestore";
-import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata, AttivitaTipoDef } from '../types';
+import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata, AttivitaTipoDef, Listino, Iscrizione } from '../types';
 
 export function useMockData() {
     const [clienti, setClienti] = useState<Cliente[]>([]);
     const [fornitori, setFornitori] = useState<Fornitore[]>([]);
     const [durate, setDurate] = useState<Durata[]>([]);
     const [laboratori, setLaboratori] = useState<Laboratorio[]>([]);
+    const [listini, setListini] = useState<Listino[]>([]);
+    const [iscrizioni, setIscrizioni] = useState<Iscrizione[]>([]);
     const [attivita, setAttivita] = useState<Attivita[]>([]);
     const [attivitaTipi, setAttivitaTipi] = useState<AttivitaTipoDef[]>([]);
     const [materiali, setMateriali] = useState<Materiale[]>([]);
@@ -43,6 +46,8 @@ export function useMockData() {
         const unsubFornitori = createSubscription('fornitori', setFornitori, 'lastModified');
         const unsubDurate = createSubscription('durate', setDurate);
         const unsubLaboratori = createSubscription('laboratori', setLaboratori);
+        const unsubListini = createSubscription('listini', setListini);
+        const unsubIscrizioni = createSubscription('iscrizioni', setIscrizioni, 'scadenza');
         const unsubAttivita = createSubscription('attivita', setAttivita);
         const unsubAttivitaTipi = createSubscription('attivitaTipi', setAttivitaTipi, 'nome');
         const unsubMateriali = createSubscription('materiali', setMateriali);
@@ -56,6 +61,8 @@ export function useMockData() {
             unsubFornitori();
             unsubDurate();
             unsubLaboratori();
+            unsubListini();
+            unsubIscrizioni();
             unsubAttivita();
             unsubAttivitaTipi();
             unsubMateriali();
@@ -265,6 +272,23 @@ export function useMockData() {
         }
     }, []);
 
+    // Listini CRUD
+    const addListino = useCallback((list: Omit<Listino, 'id'>) => addDocument('listini', list), [addDocument]);
+    const updateListino = useCallback((updatedList: Listino) => {
+        const { id, ...data } = updatedList;
+        updateDocument('listini', id, data);
+    }, [updateDocument]);
+    const deleteListino = useCallback((listId: string) => deleteDocument('listini', listId), [deleteDocument]);
+
+    // Iscrizioni CRUD
+    const addIscrizione = useCallback((isc: Omit<Iscrizione, 'id'>) => addDocument('iscrizioni', isc), [addDocument]);
+    const updateIscrizione = useCallback((updatedIsc: Iscrizione) => {
+        const { id, ...data } = updatedIsc;
+        updateDocument('iscrizioni', id, data);
+    }, [updateDocument]);
+    const deleteIscrizione = useCallback((iscId: string) => deleteDocument('iscrizioni', iscId), [deleteDocument]);
+
+
     // Attivita CRUD
     const addAttivita = useCallback((act: Omit<Attivita, 'id'>) => addDocument('attivita', act), [addDocument]);
     const updateAttivita = useCallback((updatedAct: Attivita) => {
@@ -324,6 +348,8 @@ export function useMockData() {
         durate, addDurata, updateDurata, deleteDurata,
         laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio,
         addTimeSlot, updateTimeSlot, deleteTimeSlot, updateCascadingTimeSlots,
+        listini, addListino, updateListino, deleteListino,
+        iscrizioni, addIscrizione, updateIscrizione, deleteIscrizione,
         attivita, addAttivita, updateAttivita, deleteAttivita,
         attivitaTipi, addAttivitaTipo, deleteAttivitaTipo,
         materiali, addMateriale, updateMateriale, deleteMateriale,

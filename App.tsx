@@ -1,3 +1,4 @@
+
 import React, { useState, createContext, useMemo } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/micro-apps/Dashboard';
@@ -6,8 +7,10 @@ import { Fornitori } from './components/micro-apps/Fornitori';
 import { Sedi } from './components/micro-apps/Sedi';
 import { Durate } from './components/micro-apps/Durate';
 import { Laboratori } from './components/micro-apps/Laboratori.tsx';
+import { Iscrizioni } from './components/micro-apps/Iscrizioni';
 import { Attivita } from './components/micro-apps/Attivita';
 import { Materiali } from './components/micro-apps/Materiali';
+import { Listini } from './components/micro-apps/Listini';
 import { Finance } from './components/micro-apps/Finance';
 import { Documenti } from './components/micro-apps/Documenti';
 import { Commerciale } from './components/micro-apps/Commerciale';
@@ -17,7 +20,7 @@ import { Brain } from './components/micro-apps/Brain';
 import { Configuration } from './components/micro-apps/Configuration';
 import { RegimeFiscale } from './types';
 import type { AppContextType } from './types';
-import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon, BuildingIcon, ClockIcon } from './components/icons/Icons';
+import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon, BuildingIcon, ClockIcon, ListinoIcon, IscrizioniIcon } from './components/icons/Icons';
 
 export const AppContext = createContext<AppContextType | null>(null);
 
@@ -37,8 +40,10 @@ const App: React.FC = () => {
         { id: 'Sedi', label: 'Sedi', icon: BuildingIcon },
         { id: 'Durate', label: 'Durate', icon: ClockIcon },
         { id: 'Laboratori', label: 'Laboratori', icon: LabsIcon },
+        { id: 'Iscrizioni', label: 'Iscrizioni', icon: IscrizioniIcon },
         { id: 'Attivita', label: 'Attività', icon: AttivitaIcon },
         { id: 'Materiali', label: 'Materiali', icon: MaterialiIcon },
+        { id: 'Listini', label: 'Listini', icon: ListinoIcon },
         { id: 'Finance', label: 'Finance', icon: FinanzaIcon },
         { id: 'Documenti', label: 'Documenti', icon: DocumentiIcon },
         { id: 'Commerciale', label: 'Commerciale', icon: CommercialeIcon },
@@ -62,10 +67,14 @@ const App: React.FC = () => {
                 return <Durate />;
             case 'Laboratori':
                 return <Laboratori />;
+            case 'Iscrizioni':
+                return <Iscrizioni />;
             case 'Attivita':
                 return <Attivita />;
             case 'Materiali':
                 return <Materiali />;
+            case 'Listini':
+                return <Listini />;
             case 'Finance':
                 return <Finance />;
             case 'Documenti':

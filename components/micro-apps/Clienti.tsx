@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { Tabs } from '../ui/Tabs';
-import { PlusIcon, PencilIcon, TrashIcon, StarIcon } from '../icons/Icons';
+import { PlusIcon, PencilIcon, TrashIcon, StarIcon, AlertIcon } from '../icons/Icons';
 import { CLIENTE_CLASSE_OPTIONS, CLIENTE_TIPO_OPTIONS, CLIENTE_STATO_OPTIONS, EMPTY_INDIRIZZO, EMPTY_GENITORE, EMPTY_DITTA } from '../../constants';
 // FIX: Added ClienteFamiglia to imports
-import { Cliente, ClienteTipo, DatiFamiglia, ClienteEnteAzienda, DatiDitta, BambiniEnte, Genitore, Figlio, ClienteFamiglia, Indirizzo } from '../../types';
+import { Cliente, ClienteTipo, DatiFamiglia, ClienteEnteAzienda, DatiDitta, BambiniEnte, Genitore, Figlio, ClienteFamiglia, Indirizzo, IscrizioneStato, Iscrizione } from '../../types';
 
 const getInitialFormData = (): Cliente => ({
     id: '',
@@ -89,7 +90,7 @@ const FamigliaForm: React.FC<{
             <div className="mt-6">
                 <h4 className="text-lg font-medium mb-2">Figli</h4>
                 {dati.figli?.map((figlio, index) => (
-                    <div key={index} className="flex items-end gap-4 mb-2 p-2 border rounded-md">
+                    <div key={figlio.id} className="flex items-end gap-4 mb-2 p-2 border rounded-md">
                         <Input id={`figlio-nome-${index}`} name="nome" label="Nome Figlio" value={figlio.nome} onChange={e => onFiglioChange(e, index)} />
                         <Input id={`figlio-eta-${index}`} name="eta" label="Età (anni/mesi)" value={figlio.eta} onChange={e => onFiglioChange(e, index)} />
                          <Button variant="danger" type="button" onClick={() => onRemoveFiglio(index)}>
@@ -165,7 +166,7 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
     const handleAddFiglio = () => {
         setFormData(prev => {
             if (prev.tipo !== ClienteTipo.FAMIGLIA) return prev;
-            const newFigli = [...(prev.dati.figli || []), { nome: '', eta: '' }];
+            const newFigli = [...(prev.dati.figli || []), { id: `figlio_${Date.now()}`, nome: '', eta: '' }];
             return { ...prev, dati: { ...prev.dati, figli: newFigli }};
         });
     };
@@ -255,9 +256,24 @@ const ClienteForm: React.FC<{ cliente: Cliente, onSave: (cliente: Cliente) => vo
 
 
 export const Clienti: React.FC = () => {
-    const { clienti, addCliente, updateCliente, deleteCliente } = useMockData();
+    const { clienti, addCliente, updateCliente, deleteCliente, iscrizioni, laboratori } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+    const [promemoriaToShow, setPromemoriaToShow] = useState<Iscrizione[] | null>(null);
+
+    const clientiConPromemoria = useMemo(() => {
+        const promemoriaMap = new Map<string, Iscrizione[]>();
+        iscrizioni
+            .filter(isc => isc.stato === IscrizioneStato.PROMEMORIA)
+            .forEach(isc => {
+                if (!promemoriaMap.has(isc.clienteId)) {
+                    promemoriaMap.set(isc.clienteId, []);
+                }
+                promemoriaMap.get(isc.clienteId)?.push(isc);
+            });
+        return promemoriaMap;
+    }, [iscrizioni]);
+
 
     const handleOpenModal = (cliente?: Cliente) => {
         setEditingCliente(cliente || getInitialFormData());
@@ -321,6 +337,8 @@ export const Clienti: React.FC = () => {
         });
     }
 
+    const getLabCodice = (labId: string) => laboratori.find(l => l.id === labId)?.codice || 'N/A';
+
     return (
         <div className="p-4 md:p-8">
             <div className="flex justify-between items-center mb-6">
@@ -341,10 +359,17 @@ export const Clienti: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {clienti.map(cliente => (
+                        {clienti.map(cliente => {
+                            const promemoria = clientiConPromemoria.get(cliente.id);
+                            return (
                             <tr key={cliente.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
+                                <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white flex items-center gap-2">
                                     {getClienteDisplayName(cliente)}
+                                    {promemoria && (
+                                        <button onClick={() => setPromemoriaToShow(promemoria)} title="Promemoria iscrizione presente">
+                                            <AlertIcon className="h-5 w-5 text-yellow-500" />
+                                        </button>
+                                    )}
                                 </th>
                                 <td className="px-6 py-4 text-xs text-gray-500">{formatLastModified(cliente.lastModified)}</td>
                                 <td className="px-6 py-4">{cliente.tipo}</td>
@@ -357,7 +382,7 @@ export const Clienti: React.FC = () => {
                                     <button onClick={() => handleDeleteCliente(cliente.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
                                 </td>
                             </tr>
-                        ))}
+                        )})}
                     </tbody>
                 </table>
             </div>
@@ -365,6 +390,21 @@ export const Clienti: React.FC = () => {
             {isModalOpen && editingCliente && (
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingCliente.id ? 'Modifica Cliente' : 'Nuovo Cliente'}>
                     <ClienteForm cliente={editingCliente} onSave={handleSaveCliente} onCancel={handleCloseModal} />
+                </Modal>
+            )}
+
+            {promemoriaToShow && (
+                <Modal isOpen={true} onClose={() => setPromemoriaToShow(null)} title="Promemoria Iscrizioni">
+                    <div className="space-y-4">
+                        {promemoriaToShow.map(p => (
+                            <div key={p.id} className="p-3 border rounded-md dark:border-gray-600">
+                                <p><strong>Laboratorio:</strong> {getLabCodice(p.laboratorioId)}</p>
+                                <p><strong>Quota:</strong> {p.listinoBaseApplicato.toFixed(2)}€</p>
+                                <p><strong>Scadenza:</strong> {new Date(p.scadenza).toLocaleDateString('it-IT')}</p>
+                                {p.figliIscritti.length > 0 && <p><strong>Figli:</strong> {p.figliIscritti.map(f => f.nome).join(', ')}</p>}
+                            </div>
+                        ))}
+                    </div>
                 </Modal>
             )}
         </div>

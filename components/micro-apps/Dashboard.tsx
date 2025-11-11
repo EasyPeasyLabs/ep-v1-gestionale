@@ -1,9 +1,11 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { useMockData } from '../../hooks/useMockData';
-import { ClienteStato, LaboratorioStato } from '../../types';
+import { ClienteStato, IscrizioneStato, LaboratorioStato } from '../../types';
+import { AlertIcon } from '../icons/Icons';
 
 export const Dashboard: React.FC = () => {
-    const { clienti, laboratori, fornitori, updateCascadingTimeSlots } = useMockData();
+    const { clienti, laboratori, fornitori, updateCascadingTimeSlots, iscrizioni } = useMockData();
     const [lastUpdated, setLastUpdated] = useState<string>('');
     const [currentDate, setCurrentDate] = useState(new Date());
     const [dragOverDate, setDragOverDate] = useState<string | null>(null);
@@ -47,6 +49,15 @@ export const Dashboard: React.FC = () => {
         return labsInWeek.size;
     }, [laboratori]);
 
+    const promemoriaIscrizioni = useMemo(() => {
+        return iscrizioni
+            .filter(i => i.stato === IscrizioneStato.PROMEMORIA)
+            .map(i => {
+                const lab = laboratori.find(l => l.id === i.laboratorioId);
+                return { ...i, labCodice: lab?.codice || 'N/A' };
+            });
+    }, [iscrizioni, laboratori]);
+
     useEffect(() => {
         if (clienti.length > 0 || laboratori.length > 0) {
             const timer = setTimeout(() => {
@@ -81,7 +92,7 @@ export const Dashboard: React.FC = () => {
 
 
     const labsByDay = useMemo(() => {
-        const labsMap = new Map<string, { codice: string; colore: string; ora: string; laboratorioId: string; timeSlotId: string; }[]>();
+        const labsMap = new Map<string, { codice: string; colore: string; ora: string; laboratorioId: string; timeSlotId: string; hasPromemoria: boolean }[]>();
         
         laboratori.forEach(lab => {
             if (lab.stato === LaboratorioStato.ATTIVO) {
@@ -99,18 +110,20 @@ export const Dashboard: React.FC = () => {
                     if (!labsMap.has(dateKey)) {
                         labsMap.set(dateKey, []);
                     }
+                    const hasPromemoria = dateKey === lab.dataFine && promemoriaIscrizioni.some(p => p.laboratorioId === lab.id);
                     labsMap.get(dateKey)?.push({ 
                         codice: lab.codice, 
                         colore, 
                         ora,
                         laboratorioId: lab.id,
-                        timeSlotId: slot.id
+                        timeSlotId: slot.id,
+                        hasPromemoria
                     });
                 });
             }
         });
         return labsMap;
-    }, [laboratori, sedeDetailsMap]);
+    }, [laboratori, sedeDetailsMap, promemoriaIscrizioni]);
 
     const handleDragStart = (e: React.DragEvent<HTMLDivElement>, laboratorioId: string, timeSlotId: string) => {
         e.dataTransfer.setData('application/json', JSON.stringify({ laboratorioId, timeSlotId }));
@@ -184,14 +197,15 @@ export const Dashboard: React.FC = () => {
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, lab.laboratorioId, lab.timeSlotId)}
                                 onDragEnd={handleDragEnd}
-                                className="text-xs p-1 rounded font-mono cursor-grab"
+                                className="text-xs p-1 rounded font-mono cursor-grab flex items-center justify-between"
                                 style={{ 
                                     backgroundColor: lab.colore,
                                     color: getContrastColor(lab.colore)
                                 }}
                                 title={`Sposta ${lab.codice}`}
                             >
-                                {lab.codice}
+                                <span>{lab.codice}</span>
+                                {lab.hasPromemoria && <AlertIcon className="h-4 w-4 text-yellow-500 flex-shrink-0" />}
                             </div>
                         ))}
                     </div>
@@ -245,10 +259,15 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
                     <h2 className="text-xl font-semibold">Promemoria</h2>
-                    <ul className="list-disc list-inside mt-2 text-gray-500 dark:text-gray-400">
-                        <li>Contattare "Asilo Nido Sole"</li>
-                        <li>Ordinare materiali per attività musicale</li>
-                    </ul>
+                    {promemoriaIscrizioni.length > 0 ? (
+                         <ul className="list-disc list-inside mt-2 text-gray-500 dark:text-gray-400 text-sm">
+                            {promemoriaIscrizioni.map(p => (
+                                <li key={p.id}>Pagamento {p.labCodice} - Scad. {p.scadenza}</li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Nessun promemoria attivo.</p>
+                    )}
                 </div>
             </div>
 

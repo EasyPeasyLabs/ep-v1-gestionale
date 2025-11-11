@@ -1,3 +1,4 @@
+
 export enum RegimeFiscale {
     FORFETTARIO = "Regime forfettario",
     ASSOCIAZIONE_CULTURALE = "Associazione culturale",
@@ -65,6 +66,7 @@ export interface Genitore {
 }
 
 export interface Figlio {
+    id: string;
     nome: string;
     eta: string;
 }
@@ -177,6 +179,32 @@ export interface Laboratorio {
     costoAttivita: number;
     costoLogistica: number;
     timeSlots: TimeSlot[];
+}
+
+// Listini types
+export interface Listino {
+    id: string;
+    laboratorioId: string;
+    listinoBase: number;
+    profittoPercentuale: number;
+}
+
+
+// Iscrizioni types
+export enum IscrizioneStato {
+    PROMEMORIA = "Promemoria",
+    PAGATO = "Pagato",
+    ANNULLATO = "Annullato",
+}
+
+export interface Iscrizione {
+    id: string;
+    clienteId: string;
+    laboratorioId: string;
+    figliIscritti: Figlio[];
+    listinoBaseApplicato: number;
+    scadenza: string; // YYYY-MM-DD
+    stato: IscrizioneStato;
 }
 
 // Attività types

@@ -1,12 +1,14 @@
+
 import React, { useState, useMemo } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
+import { Tabs } from '../ui/Tabs';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
 // FIX: Added `Cliente` to imports for type safety.
-import { InterazioneCRM, Cliente, ClienteTipo } from '../../types';
+import { InterazioneCRM, Cliente, ClienteTipo, IscrizioneStato, Laboratorio } from '../../types';
 import { EMPTY_INTERAZIONE, INTERAZIONE_TIPO_OPTIONS } from '../../constants';
 
 const InterazioneForm: React.FC<{
@@ -46,21 +48,21 @@ const InterazioneForm: React.FC<{
     )
 }
 
-export const CRM: React.FC = () => {
-    const { clienti, interazioni, addInterazione, updateInterazione, deleteInterazione } = useMockData();
+const getClienteNome = (cliente: Cliente) => cliente.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${cliente.dati.genitore1.cognome}` : cliente.dati.ragioneSociale;
+
+const InterazioniView: React.FC<{
+    clienti: Cliente[],
+    interazioni: InterazioneCRM[],
+    onAdd: (interazione: Omit<InterazioneCRM, 'id'>) => void,
+    onUpdate: (interazione: InterazioneCRM) => void,
+    onDelete: (id: string) => void,
+}> = ({ clienti, interazioni, onAdd, onUpdate, onDelete }) => {
     const [selectedClienteId, setSelectedClienteId] = useState<string | null>(clienti[0]?.id || null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingInterazione, setEditingInterazione] = useState<InterazioneCRM | null>(null);
 
-    // FIX: Used specific `Cliente` type instead of `any` for better type safety.
-    const getClienteNome = (cliente: Cliente) => cliente.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${cliente.dati.genitore1.cognome}` : cliente.dati.ragioneSociale;
-
-    // FIX: Added a helper function to correctly retrieve the email address based on the client type,
-    // resolving the error on the discriminated union.
     const getClienteEmail = (cliente: Cliente) => {
-        if (cliente.tipo === ClienteTipo.FAMIGLIA) {
-            return cliente.dati.genitore1.email;
-        }
+        if (cliente.tipo === ClienteTipo.FAMIGLIA) return cliente.dati.genitore1.email;
         return cliente.dati.email;
     }
 
@@ -78,84 +80,138 @@ export const CRM: React.FC = () => {
         setIsModalOpen(true);
     };
     
-    const handleCloseModal = () => {
-        setIsModalOpen(false);
-        setEditingInterazione(null);
-    };
+    const handleCloseModal = () => setIsModalOpen(false);
 
     const handleSave = (interazione: InterazioneCRM) => {
-        if (interazione.id) {
-            updateInterazione(interazione);
-        } else {
+        if (interazione.id) onUpdate(interazione);
+        else {
             const { id, ...newInteraction } = interazione;
-            addInterazione(newInteraction);
+            onAdd(newInteraction);
         }
         handleCloseModal();
     };
-
-    const handleDelete = (id: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questa interazione?")) {
-            deleteInterazione(id);
-        }
-    };
-
+    
     return (
-        <div className="p-4 md:p-8 h-full flex flex-col">
-            <h1 className="text-3xl font-bold mb-6">CRM</h1>
-            <div className="flex-grow grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
-                {/* Client List */}
-                <div className="md:col-span-1 bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-y-auto">
-                    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-                        {clienti.map(c => (
-                            <li key={c.id}>
-                                <button onClick={() => setSelectedClienteId(c.id)} className={`w-full text-left p-4 ${selectedClienteId === c.id ? 'bg-blue-50 dark:bg-blue-900/50' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                                    <p className={`font-semibold ${selectedClienteId === c.id ? 'text-blue-600' : 'text-gray-900 dark:text-white'}`}>{getClienteNome(c)}</p>
-                                    {/* FIX: Used the new helper function to safely get the client email. */}
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">{getClienteEmail(c)}</p>
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-                {/* Interactions View */}
-                <div className="md:col-span-2 bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 flex flex-col">
-                    {selectedClienteId ? (
-                        <>
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-bold">Storico Interazioni</h2>
-                            <Button onClick={() => handleOpenModal()} icon={<PlusIcon/>}>Nuova</Button>
-                        </div>
-                        <div className="flex-grow overflow-y-auto -mr-6 pr-6 space-y-4">
-                            {filteredInterazioni.length > 0 ? filteredInterazioni.map(i => (
-                                <div key={i.id} className="p-4 border rounded-md dark:border-gray-700">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <p className="font-semibold">{i.oggetto} <span className="text-xs ml-2 px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded-full">{i.tipo}</span></p>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(i.data).toLocaleString('it-IT')}</p>
-                                        </div>
-                                        <div className="space-x-2 flex-shrink-0">
-                                            <button onClick={() => handleOpenModal(i)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
-                                            <button onClick={() => handleDelete(i.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
-                                        </div>
+        <div className="flex-grow grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
+            <div className="md:col-span-1 bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-y-auto">
+                <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {clienti.map(c => (
+                        <li key={c.id}>
+                            <button onClick={() => setSelectedClienteId(c.id)} className={`w-full text-left p-4 ${selectedClienteId === c.id ? 'bg-blue-50 dark:bg-blue-900/50' : 'hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+                                <p className={`font-semibold ${selectedClienteId === c.id ? 'text-blue-600' : 'text-gray-900 dark:text-white'}`}>{getClienteNome(c)}</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">{getClienteEmail(c)}</p>
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            </div>
+            <div className="md:col-span-2 bg-white dark:bg-gray-800 shadow-md rounded-lg p-6 flex flex-col">
+                {selectedClienteId ? (
+                    <>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-bold">Storico Interazioni</h2>
+                        <Button onClick={() => handleOpenModal()} icon={<PlusIcon/>}>Nuova</Button>
+                    </div>
+                    <div className="flex-grow overflow-y-auto -mr-6 pr-6 space-y-4">
+                        {filteredInterazioni.length > 0 ? filteredInterazioni.map(i => (
+                            <div key={i.id} className="p-4 border rounded-md dark:border-gray-700">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-semibold">{i.oggetto} <span className="text-xs ml-2 px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded-full">{i.tipo}</span></p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">{new Date(i.data).toLocaleString('it-IT')}</p>
                                     </div>
-                                    <p className="mt-2 text-gray-700 dark:text-gray-300">{i.descrizione}</p>
-                                    {i.followUp && <p className="mt-2 text-sm font-semibold text-amber-600 dark:text-amber-400">Follow-up: {new Date(i.followUp).toLocaleDateString('it-IT')}</p>}
+                                    <div className="space-x-2 flex-shrink-0">
+                                        <button onClick={() => handleOpenModal(i)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
+                                        <button onClick={() => onDelete(i.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                    </div>
                                 </div>
-                            )) : <p className="text-gray-500 dark:text-gray-400 text-center pt-10">Nessuna interazione registrata per questo cliente.</p>}
-                        </div>
-                        </>
-                    ) : (
-                        <div className="flex items-center justify-center h-full">
-                            <p className="text-gray-500 dark:text-gray-400">Seleziona un cliente per vedere le interazioni.</p>
-                        </div>
-                    )}
-                </div>
+                                <p className="mt-2 text-gray-700 dark:text-gray-300">{i.descrizione}</p>
+                                {i.followUp && <p className="mt-2 text-sm font-semibold text-amber-600 dark:text-amber-400">Follow-up: {new Date(i.followUp).toLocaleDateString('it-IT')}</p>}
+                            </div>
+                        )) : <p className="text-gray-500 dark:text-gray-400 text-center pt-10">Nessuna interazione registrata per questo cliente.</p>}
+                    </div>
+                    </>
+                ) : (
+                    <div className="flex items-center justify-center h-full">
+                        <p className="text-gray-500 dark:text-gray-400">Seleziona un cliente per vedere le interazioni.</p>
+                    </div>
+                )}
             </div>
              {isModalOpen && editingInterazione && (
                 <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingInterazione.id ? 'Modifica Interazione' : 'Nuova Interazione'}>
                     <InterazioneForm interazione={editingInterazione} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}
+        </div>
+    );
+}
+
+const ScadenziarioIscrizioni: React.FC<{
+    iscrizioni: ReturnType<typeof useMockData>['iscrizioni'],
+    clienti: Cliente[],
+    laboratori: Laboratorio[],
+}> = ({ iscrizioni, clienti, laboratori }) => {
+    
+    const promemoria = useMemo(() => iscrizioni.filter(i => i.stato === IscrizioneStato.PROMEMORIA), [iscrizioni]);
+
+    const getLabCodice = (labId: string) => laboratori.find(l => l.id === labId)?.codice || 'N/A';
+    const getClienteNomeById = (clienteId: string) => {
+        const cliente = clienti.find(c => c.id === clienteId);
+        return cliente ? getClienteNome(cliente) : 'N/A';
+    }
+
+    return (
+        <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-x-auto">
+            <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
+                    <tr>
+                        <th scope="col" className="px-6 py-3">Cliente</th>
+                        <th scope="col" className="px-6 py-3">Laboratorio</th>
+                        <th scope="col" className="px-6 py-3">Scadenza</th>
+                        <th scope="col" className="px-6 py-3 text-right">Quota</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {promemoria.map(p => (
+                        <tr key={p.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                           <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{getClienteNomeById(p.clienteId)}</td>
+                           <td className="px-6 py-4">{getLabCodice(p.laboratorioId)}</td>
+                           <td className="px-6 py-4">{new Date(p.scadenza).toLocaleDateString('it-IT')}</td>
+                           <td className="px-6 py-4 text-right font-semibold">{p.listinoBaseApplicato.toFixed(2)}€</td>
+                        </tr>
+                    ))}
+                    {promemoria.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-gray-500">Nessun promemoria di iscrizione attivo.</td></tr>}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+
+export const CRM: React.FC = () => {
+    const { clienti, interazioni, addInterazione, updateInterazione, deleteInterazione, iscrizioni, laboratori } = useMockData();
+    
+    const handleDeleteInterazione = (id: string) => {
+        if (window.confirm("Sei sicuro di voler eliminare questa interazione?")) {
+            deleteInterazione(id);
+        }
+    };
+    
+    const tabs = [
+        {
+            label: 'Interazioni Clienti',
+            content: <InterazioniView clienti={clienti} interazioni={interazioni} onAdd={addInterazione} onUpdate={updateInterazione} onDelete={handleDeleteInterazione} />
+        },
+        {
+            label: 'Scadenziario Iscrizioni',
+            content: <ScadenziarioIscrizioni iscrizioni={iscrizioni} clienti={clienti} laboratori={laboratori} />
+        }
+    ];
+
+    return (
+        <div className="p-4 md:p-8 h-full flex flex-col">
+            <h1 className="text-3xl font-bold mb-6">CRM</h1>
+            <Tabs tabs={tabs} />
         </div>
     );
 };
