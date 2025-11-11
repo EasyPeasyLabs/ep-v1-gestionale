@@ -356,6 +356,16 @@ export const Laboratori: React.FC = () => {
     
     const allSedi = useMemo(() => getAllSedi(fornitori), [fornitori]);
 
+    const sedeColorMap = useMemo(() => {
+        const map = new Map<string, string>();
+        allSedi.forEach(sede => {
+            if (sede.colore) {
+                map.set(sede.id, sede.colore);
+            }
+        });
+        return map;
+    }, [allSedi]);
+
     useEffect(() => {
         if (selectedLabForSlots) {
             const updatedLab = laboratori.find(lab => lab.id === selectedLabForSlots.id);
@@ -443,41 +453,44 @@ export const Laboratori: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {laboratori.map(lab => (
-                            <tr key={lab.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                    <span className="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{lab.codice}</span>
-                                </th>
-                                <td className="px-6 py-4">
-                                     <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(lab.stato)}`}>{lab.stato}</span>
-                                </td>
-                                <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
-                                <td className="px-6 py-4 flex items-center gap-2">
-                                    <span>{lab.dataInizio} / {lab.dataFine}</span>
-                                    {lab.stato === LaboratorioStato.PROGRAMMATO && (
-                                        <button onClick={() => handleConfirmLab(lab)} className="text-xs bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded-full">
-                                            ✓
+                        {laboratori.map(lab => {
+                            const coloreSede = sedeColorMap.get(lab.sedeId) || '#A0AEC0';
+                            return (
+                                <tr key={lab.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600" style={{borderLeft: `5px solid ${coloreSede}`}}>
+                                    <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
+                                        <span className="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{lab.codice}</span>
+                                    </th>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(lab.stato)}`}>{lab.stato}</span>
+                                    </td>
+                                    <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
+                                    <td className="px-6 py-4 flex items-center gap-2">
+                                        <span>{lab.dataInizio} / {lab.dataFine}</span>
+                                        {lab.stato === LaboratorioStato.PROGRAMMATO && (
+                                            <button onClick={() => handleConfirmLab(lab)} className="text-xs bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded-full">
+                                                ✓
+                                            </button>
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-4">{lab.timeSlots.length}</td>
+                                    <td className="px-6 py-4 text-xs">
+                                        <div>Att: {lab.costoAttivita.toFixed(2)}€</div>
+                                        <div>Log: {lab.costoLogistica.toFixed(2)}€</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-right space-x-2">
+                                        <button onClick={() => setSelectedLabForSlots(lab)} className="text-gray-500 hover:text-blue-600"><CalendarIcon /></button>
+                                        <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
+                                        <button
+                                            onClick={() => handleDelete(lab.id)}
+                                            className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                            disabled={!lab.id}
+                                        >
+                                            <TrashIcon />
                                         </button>
-                                    )}
-                                </td>
-                                <td className="px-6 py-4">{lab.timeSlots.length}</td>
-                                <td className="px-6 py-4 text-xs">
-                                    <div>Att: {lab.costoAttivita.toFixed(2)}€</div>
-                                    <div>Log: {lab.costoLogistica.toFixed(2)}€</div>
-                                </td>
-                                <td className="px-6 py-4 text-right space-x-2">
-                                    <button onClick={() => setSelectedLabForSlots(lab)} className="text-gray-500 hover:text-blue-600"><CalendarIcon /></button>
-                                    <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
-                                    <button
-                                        onClick={() => handleDelete(lab.id)}
-                                        className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed"
-                                        disabled={!lab.id}
-                                    >
-                                        <TrashIcon />
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                          {laboratori.length === 0 && (
                              <tr>
                                  <td colSpan={7} className="text-center py-8 text-gray-500">Nessun laboratorio trovato.</td>

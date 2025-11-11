@@ -3,7 +3,7 @@ import { useMockData } from '../../hooks/useMockData';
 import { ClienteStato, LaboratorioStato } from '../../types';
 
 export const Dashboard: React.FC = () => {
-    const { clienti, laboratori } = useMockData();
+    const { clienti, laboratori, fornitori } = useMockData();
     const [lastUpdated, setLastUpdated] = useState<string>('');
     const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -49,22 +49,55 @@ export const Dashboard: React.FC = () => {
         }
     }, [clienti, laboratori]);
 
+    const getContrastColor = (hexcolor: string | undefined): string => {
+        if (!hexcolor) return '#000000';
+        hexcolor = hexcolor.replace("#", "");
+        if (hexcolor.length === 3) {
+            hexcolor = hexcolor.split('').map(char => char + char).join('');
+        }
+        const r = parseInt(hexcolor.substring(0, 2), 16);
+        const g = parseInt(hexcolor.substring(2, 4), 16);
+        const b = parseInt(hexcolor.substring(4, 6), 16);
+        const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+        return (yiq >= 128) ? '#000000' : '#FFFFFF';
+    };
+
+    const allSedi = useMemo(() => fornitori.flatMap(f => f.sedi), [fornitori]);
+
+    const sedeDetailsMap = useMemo(() => {
+        const map = new Map<string, { colore: string }>();
+        allSedi.forEach(sede => {
+            map.set(sede.id, { colore: sede.colore });
+        });
+        return map;
+    }, [allSedi]);
+
+
     const labsByDay = useMemo(() => {
-        const labsMap = new Map<string, { codice: string }[]>();
+        const labsMap = new Map<string, { codice: string; colore: string; ora: string }[]>();
         
         laboratori.forEach(lab => {
             if (lab.stato === LaboratorioStato.ATTIVO) {
+                 const sede = sedeDetailsMap.get(lab.sedeId);
+                const colore = sede?.colore || '#A0AEC0';
+                
+                const codeParts = lab.codice.split('.');
+                let ora = '00:00';
+                if (codeParts.length === 3 && codeParts[2].length === 4) {
+                    ora = `${codeParts[2].substring(0, 2)}:${codeParts[2].substring(2, 4)}`;
+                }
+
                 lab.timeSlots.forEach(slot => {
                     const dateKey = slot.data; // YYYY-MM-DD
                     if (!labsMap.has(dateKey)) {
                         labsMap.set(dateKey, []);
                     }
-                    labsMap.get(dateKey)?.push({ codice: lab.codice });
+                    labsMap.get(dateKey)?.push({ codice: lab.codice, colore, ora });
                 });
             }
         });
         return labsMap;
-    }, [laboratori]);
+    }, [laboratori, sedeDetailsMap]);
 
     const renderCalendar = () => {
         const year = currentDate.getFullYear();
@@ -86,13 +119,22 @@ export const Dashboard: React.FC = () => {
         for (let day = 1; day <= daysInMonth; day++) {
             const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const todaysLabs = labsByDay.get(dateKey) || [];
+
+            todaysLabs.sort((a, b) => a.ora.localeCompare(b.ora));
             
             calendarDays.push(
                 <div key={day} className="p-2 border-r border-b dark:border-gray-700 min-h-[100px] flex flex-col">
                     <span className="font-semibold">{day}</span>
                     <div className="flex-grow mt-1 space-y-1 overflow-y-auto">
                         {todaysLabs.map((lab, index) => (
-                            <div key={index} className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 p-1 rounded">
+                            <div 
+                                key={index} 
+                                className="text-xs p-1 rounded font-mono"
+                                style={{ 
+                                    backgroundColor: lab.colore,
+                                    color: getContrastColor(lab.colore)
+                                }}
+                            >
                                 {lab.codice}
                             </div>
                         ))}

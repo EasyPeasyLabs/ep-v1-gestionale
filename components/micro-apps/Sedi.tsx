@@ -70,7 +70,22 @@ const SedeForm: React.FC<{
                     ))}
                 </Select>
                  <hr className="my-6 dark:border-gray-600"/>
-                <Input id="nome" name="nome" label="Nome Sede" value={formData.nome} onChange={handleChange} required />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input id="nome" name="nome" label="Nome Sede" value={formData.nome} onChange={handleChange} required />
+                     <div>
+                        <label htmlFor="colore" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Colore Identificativo
+                        </label>
+                        <input 
+                            id="colore" 
+                            name="colore" 
+                            type="color" 
+                            value={formData.colore || '#A0AEC0'} 
+                            onChange={handleChange} 
+                            className="p-1 h-10 w-full block border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600"
+                        />
+                    </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input id="capienzaMassima" name="capienzaMassima" label="Capienza Massima" type="number" value={formData.capienzaMassima} onChange={handleChange} required />
                     <Input id="costoNoloOra" name="costoNoloOra" label="Costo Nolo (€/ora)" type="number" value={formData.costoNoloOra} onChange={handleChange} required />
@@ -163,7 +178,7 @@ export const Sedi: React.FC = () => {
                     <tbody>
                         {fornitori.flatMap(fornitore => 
                             fornitore.sedi.map(sede => (
-                                <tr key={sede.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                <tr key={sede.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600" style={{borderLeft: `5px solid ${sede.colore || '#A0AEC0'}`}}>
                                     <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
                                         {sede.nome}
                                     </th>

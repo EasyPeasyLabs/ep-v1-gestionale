@@ -111,6 +111,7 @@ export interface Sede {
     capienzaMassima: number;
     fasciaEta: string;
     costoNoloOra: number;
+    colore: string;
 }
 
 export interface Fornitore {
