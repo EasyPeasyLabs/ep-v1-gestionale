@@ -327,7 +327,6 @@ const LaboratorioForm: React.FC<{
                                      checked={durationOption === key}
                                      onChange={() => setDurationOption(key)}
                                      className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                                     disabled={!!formData.id}
                                  />
                                  <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-100">{key}</span>
                              </label>
@@ -337,15 +336,15 @@ const LaboratorioForm: React.FC<{
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                      {MANUAL_DURATION_KEYS.includes(durationOption) && (
-                         <Input id="manualSlotCount" name="manualSlotCount" label={`Numero di Incontri (${durationOption})`} type="number" value={manualSlotCount} onChange={(e) => setManualSlotCount(parseInt(e.target.value) || 0)} min="1" disabled={!!formData.id} />
+                         <Input id="manualSlotCount" name="manualSlotCount" label={`Numero di Incontri (${durationOption})`} type="number" value={manualSlotCount} onChange={(e) => setManualSlotCount(parseInt(e.target.value) || 0)} min="1" />
                     )}
                  </div>
 
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required  disabled={!!formData.id}/>
+                    <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required />
                     <Input id="dataFine" name="dataFine" label="Data Fine (calcolata)" type="date" value={formData.dataFine} readOnly />
-                    <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} readOnly />
-                    <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} readOnly />
+                    <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} onChange={handleChange} />
+                    <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} onChange={handleChange} />
                  </div>
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
