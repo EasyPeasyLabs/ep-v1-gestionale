@@ -187,18 +187,15 @@ export enum AttivitaStato {
     OBSOLETA = "Obsoleta",
 }
 
-export enum AttivitaTipo {
-    LETTURA = "Lettura",
-    MUSICA = "Musica",
-    GIOCO = "Gioco",
-    ROUTINE = "Routine",
-    ASCOLTO_RIPETIZIONE = "Ascolto e Ripetizione",
+export interface AttivitaTipoDef {
+    id: string;
+    nome: string;
 }
 
 export interface Attivita {
     id: string;
     stato: AttivitaStato;
-    tipo: AttivitaTipo;
+    tipo: string; // Nome del tipo da collezione AttivitaTipoDef
     titolo: string;
     materiali: string[]; // Lista di ID Materiale
     rating: number; // 1 to 5

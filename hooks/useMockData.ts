@@ -12,7 +12,7 @@ import {
     orderBy,
     getDoc
 } from "firebase/firestore";
-import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata } from '../types';
+import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata, AttivitaTipoDef } from '../types';
 
 export function useMockData() {
     const [clienti, setClienti] = useState<Cliente[]>([]);
@@ -20,6 +20,7 @@ export function useMockData() {
     const [durate, setDurate] = useState<Durata[]>([]);
     const [laboratori, setLaboratori] = useState<Laboratorio[]>([]);
     const [attivita, setAttivita] = useState<Attivita[]>([]);
+    const [attivitaTipi, setAttivitaTipi] = useState<AttivitaTipoDef[]>([]);
     const [materiali, setMateriali] = useState<Materiale[]>([]);
     const [movimenti, setMovimenti] = useState<MovimentoFinance[]>([]);
     const [documenti, setDocumenti] = useState<Documento[]>([]);
@@ -43,6 +44,7 @@ export function useMockData() {
         const unsubDurate = createSubscription('durate', setDurate);
         const unsubLaboratori = createSubscription('laboratori', setLaboratori);
         const unsubAttivita = createSubscription('attivita', setAttivita);
+        const unsubAttivitaTipi = createSubscription('attivitaTipi', setAttivitaTipi, 'nome');
         const unsubMateriali = createSubscription('materiali', setMateriali);
         const unsubMovimenti = createSubscription('movimenti', setMovimenti, 'data');
         const unsubDocumenti = createSubscription('documenti', setDocumenti, 'dataCreazione');
@@ -55,6 +57,7 @@ export function useMockData() {
             unsubDurate();
             unsubLaboratori();
             unsubAttivita();
+            unsubAttivitaTipi();
             unsubMateriali();
             unsubMovimenti();
             unsubDocumenti();
@@ -208,6 +211,10 @@ export function useMockData() {
     }, [updateDocument]);
     const deleteAttivita = useCallback((actId: string) => deleteDocument('attivita', actId), [deleteDocument]);
     
+    // Attivita Tipi CRUD
+    const addAttivitaTipo = useCallback((tipo: Omit<AttivitaTipoDef, 'id'>) => addDocument('attivitaTipi', tipo), [addDocument]);
+    const deleteAttivitaTipo = useCallback((tipoId: string) => deleteDocument('attivitaTipi', tipoId), [deleteDocument]);
+
     // Materiali CRUD
     const addMateriale = useCallback((mat: Omit<Materiale, 'id'>) => addDocument('materiali', mat), [addDocument]);
     const updateMateriale = useCallback((updatedMat: Materiale) => {
@@ -256,6 +263,7 @@ export function useMockData() {
         laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio,
         addTimeSlot, updateTimeSlot, deleteTimeSlot,
         attivita, addAttivita, updateAttivita, deleteAttivita,
+        attivitaTipi, addAttivitaTipo, deleteAttivitaTipo,
         materiali, addMateriale, updateMateriale, deleteMateriale,
         movimenti, addMovimento, updateMovimento, deleteMovimento,
         documenti, addDocumento, updateDocumento, deleteDocumento,
