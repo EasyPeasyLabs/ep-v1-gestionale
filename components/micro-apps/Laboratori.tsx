@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -154,10 +153,10 @@ const TimeSlotManager: React.FC<{
 
 // --- FORM LABORATORIO ---
 const LaboratorioForm: React.FC<{
-    laboratorio: Laboratorio | Omit<Laboratorio, 'id'>,
+    laboratorio: Laboratorio,
     sedi: Sede[],
     durate: Durata[],
-    onSave: (lab: Laboratorio | Omit<Laboratorio, 'id'>) => void,
+    onSave: (lab: Laboratorio) => void,
     onCancel: () => void
 }> = ({ laboratorio, sedi, durate, onSave, onCancel }) => {
     const [formData, setFormData] = useState(laboratorio);
@@ -247,23 +246,20 @@ const LaboratorioForm: React.FC<{
 export const Laboratori: React.FC = () => {
     const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, fornitori, durate, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | Omit<Laboratorio, 'id'> | null>(null);
+    // BUG FIX: Cleaned up the state type to always be `Laboratorio | null` for better type safety.
+    const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | null>(null);
     const [selectedLabForSlots, setSelectedLabForSlots] = useState<Laboratorio | null>(null);
     
     const allSedi = useMemo(() => getAllSedi(fornitori), [fornitori]);
 
-    // BUG FIX: This effect syncs the modal data but now includes a check to prevent infinite re-renders.
-    // An infinite loop could make the UI unresponsive, causing buttons to appear "not working".
     useEffect(() => {
         if (selectedLabForSlots) {
             const updatedLab = laboratori.find(lab => lab.id === selectedLabForSlots.id);
             if (updatedLab) {
-                 // Only update state if the data has actually changed to prevent a loop.
                 if (JSON.stringify(updatedLab) !== JSON.stringify(selectedLabForSlots)) {
                     setSelectedLabForSlots(updatedLab);
                 }
             } else {
-                // The lab was deleted, close the modal
                 setSelectedLabForSlots(null);
             }
         }
@@ -280,15 +276,15 @@ export const Laboratori: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    // BUG FIX: Correctly differentiate between add and update.
-    // This prevents existing labs from being duplicated instead of saved.
-    const handleSave = (lab: Laboratorio | Omit<Laboratorio, 'id'>) => {
-        const labWithId = lab as Laboratorio; // Cast to safely access id
-        if (labWithId.id) { // A non-empty id means it's an existing lab
-            updateLaboratorio(labWithId);
+    // BUG FIX: Reworked save logic to be more robust. It now strictly checks for a non-empty `id`
+    // to decide whether to update an existing lab or create a new one, resolving the duplication bug.
+    const handleSave = (lab: Laboratorio) => {
+        if (lab.id) { // A non-empty, truthy ID indicates an existing lab.
+            updateLaboratorio(lab);
         } else {
-            // This is a new lab, so we remove the empty id before adding
-            const { id, ...newLab } = labWithId;
+            // A missing or empty ID indicates a new lab.
+            // Destructure to remove the empty `id` before sending to Firestore.
+            const { id, ...newLab } = lab;
             addLaboratorio(newLab);
         }
         handleCloseModal();
@@ -363,7 +359,7 @@ export const Laboratori: React.FC = () => {
             </div>
 
             {isModalOpen && editingLaboratorio && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={'id' in editingLaboratorio && editingLaboratorio.id ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingLaboratorio.id ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
                     <LaboratorioForm laboratorio={editingLaboratorio} sedi={allSedi} durate={durate} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}
