@@ -1,46 +1,125 @@
-
-import React, { useContext } from 'react';
-import { AppContext } from '../../App';
+import React, { useState, useEffect } from 'react';
+import { useMockData } from '../../hooks/useMockData';
 import { Select } from '../ui/Select';
-import { REGIME_FISCALE_OPTIONS } from '../../constants';
-import { RegimeFiscale } from '../../types';
-import type { AppContextType } from '../../types';
+import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
+import { REGIME_FISCALE_OPTIONS, EMPTY_CONFIGURAZIONE } from '../../constants';
+import { ConfigurazioneAzienda, RegimeFiscale, Indirizzo } from '../../types';
+import { EmailIcon, ChatIcon } from '../icons/Icons';
 
 export const Configuration: React.FC = () => {
-    const { regimeFiscale, setRegimeFiscale } = useContext(AppContext) as AppContextType;
+    const { configurazione, updateConfigurazione } = useMockData();
+    const [formData, setFormData] = useState<ConfigurazioneAzienda>(EMPTY_CONFIGURAZIONE);
 
-    const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setRegimeFiscale(e.target.value as RegimeFiscale);
+    useEffect(() => {
+        if (configurazione) {
+            setFormData(configurazione);
+        } else {
+            setFormData(EMPTY_CONFIGURAZIONE);
+        }
+    }, [configurazione]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value as RegimeFiscale }));
+    };
+
+    const handleAziendaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            datiAzienda: {
+                ...prev.datiAzienda,
+                [name]: value,
+            }
+        }));
+    };
+
+    const handleIndirizzoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            datiAzienda: {
+                ...prev.datiAzienda,
+                indirizzo: {
+                    ...(prev.datiAzienda.indirizzo as Indirizzo),
+                    [name]: value,
+                }
+            }
+        }));
+    };
+
+    const handleSave = () => {
+        const { id, ...dataToSave } = formData;
+        updateConfigurazione(dataToSave).then(() => {
+            alert('Configurazione salvata con successo!');
+        }).catch((error) => {
+            console.error("Errore nel salvataggio della configurazione:", error);
+            alert('Si è verificato un errore durante il salvataggio.');
+        });
     };
 
     return (
         <div className="p-4 md:p-8">
-            <div className="max-w-md bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-                <h2 className="text-2xl font-bold mb-4">Configurazione Fiscale</h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">Seleziona il regime fiscale da applicare. Questa impostazione influenzerà la creazione dei documenti e le simulazioni.</p>
-                
-                <Select
-                    id="regime-fiscale"
-                    label="Regime Fiscale Attuale"
-                    options={REGIME_FISCALE_OPTIONS}
-                    value={regimeFiscale}
-                    onChange={handleChange}
-                />
-
-                <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/50 border-l-4 border-blue-500 rounded-r-lg">
-                    <div className="flex">
-                        <div className="flex-shrink-0">
-                            <svg className="h-5 w-5 text-blue-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                            </svg>
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-6">Configurazione</h1>
+            
+            <div className="space-y-8">
+                {/* Dati Azienda */}
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-bold mb-4">Dati Azienda</h2>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input id="ragioneSociale" name="ragioneSociale" label="Ragione Sociale" value={formData.datiAzienda.ragioneSociale} onChange={handleAziendaChange} />
+                            <Input id="partitaIva" name="partitaIva" label="Partita IVA / C.F." value={formData.datiAzienda.partitaIva} onChange={handleAziendaChange} />
                         </div>
-                        <div className="ml-3">
-                            <p className="text-sm text-blue-700 dark:text-blue-300">
-                                Hai selezionato: <span className="font-medium">{regimeFiscale}</span>.
-                            </p>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input id="email" name="email" label="Email" type="email" value={formData.datiAzienda.email} onChange={handleAziendaChange} />
+                            <Input id="telefono" name="telefono" label="Telefono" value={formData.datiAzienda.telefono} onChange={handleAziendaChange} />
+                        </div>
+                        <div className="pt-4">
+                            <h3 className="text-lg font-medium text-gray-800 dark:text-gray-200">Indirizzo Sede Legale</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                                <div className="md:col-span-2">
+                                    <Input id="via" name="via" label="Via / Piazza" value={formData.datiAzienda.indirizzo.via} onChange={handleIndirizzoChange} />
+                                </div>
+                                <Input id="civico" name="civico" label="N. Civico" value={formData.datiAzienda.indirizzo.civico} onChange={handleIndirizzoChange} />
+                            </div>
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                                <Input id="cap" name="cap" label="CAP" value={formData.datiAzienda.indirizzo.cap} onChange={handleIndirizzoChange} />
+                                <Input id="citta" name="citta" label="Città" value={formData.datiAzienda.indirizzo.citta} onChange={handleIndirizzoChange} />
+                                <Input id="provincia" name="provincia" label="Provincia" value={formData.datiAzienda.indirizzo.provincia} onChange={handleIndirizzoChange} />
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                {/* Regime Fiscale */}
+                <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-bold mb-4">Impostazioni Fiscali</h2>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">Seleziona il regime fiscale da applicare. Questa impostazione influenzerà la creazione dei documenti e le simulazioni.</p>
+                    <Select
+                        id="regimeFiscale"
+                        name="regimeFiscale"
+                        label="Regime Fiscale Attuale"
+                        options={REGIME_FISCALE_OPTIONS}
+                        value={formData.regimeFiscale}
+                        onChange={handleChange}
+                    />
+                </div>
+
+                {/* Integrazioni */}
+                 <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-bold mb-4">Integrazioni</h2>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">Collega i tuoi account per automatizzare l'invio di email e messaggi ai tuoi clienti e fornitori.</p>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <Button variant="secondary" icon={<EmailIcon />} disabled>Collega Account Gmail</Button>
+                        <Button variant="secondary" icon={<ChatIcon />} disabled>Collega Account WhatsApp</Button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="mt-8 pt-6 border-t dark:border-gray-700 flex justify-end">
+                <Button onClick={handleSave} variant="primary">Salva Modifiche</Button>
             </div>
         </div>
     );

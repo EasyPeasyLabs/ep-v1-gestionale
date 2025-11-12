@@ -64,3 +64,5 @@ export const EMPTY_PROPOSTA = { id: '', codice: '', clienteId: '', dataEmissione
 export const EMPTY_INTERAZIONE = { id: '', clienteId: '', data: new Date().toISOString(), tipo: InterazioneTipo.NOTA, oggetto: '', descrizione: '' };
 export const EMPTY_LISTINO = { id: '', laboratorioId: '', listinoBase: 0, profittoPercentuale: 20 };
 export const EMPTY_ISCRIZIONE = { id: '', clienteId: '', laboratorioId: '', figliIscritti: [], listinoBaseApplicato: 0, scadenza: '', stato: IscrizioneStato.PROMEMORIA, tipoIscrizione: '' };
+export const EMPTY_MIA_AZIENDA = { ragioneSociale: '', partitaIva: '', indirizzo: { ...EMPTY_INDIRIZZO }, telefono: '', email: '' };
+export const EMPTY_CONFIGURAZIONE = { id: 'main', datiAzienda: { ...EMPTY_MIA_AZIENDA }, regimeFiscale: RegimeFiscale.FORFETTARIO };

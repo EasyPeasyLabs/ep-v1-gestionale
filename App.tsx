@@ -1,5 +1,5 @@
 
-import React, { useState, createContext, useMemo } from 'react';
+import React, { useState, createContext, useMemo, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/micro-apps/Dashboard';
 import { Clienti } from './components/micro-apps/Clienti';
@@ -21,16 +21,23 @@ import { Configuration } from './components/micro-apps/Configuration';
 import { RegimeFiscale } from './types';
 import type { AppContextType } from './types';
 import { FornitoriIcon, ClientiIcon, HomeIcon, CogIcon, LabsIcon, AttivitaIcon, MaterialiIcon, FinanzaIcon, DocumentiIcon, CommercialeIcon, RatingIcon, CrmIcon, BrainIcon, BuildingIcon, ClockIcon, ListinoIcon, IscrizioniIcon } from './components/icons/Icons';
+import { useMockData } from './hooks/useMockData';
 
 export const AppContext = createContext<AppContextType | null>(null);
 
 const App: React.FC = () => {
     const [activeApp, setActiveApp] = useState('Home');
+    const { configurazione } = useMockData();
     const [regimeFiscale, setRegimeFiscale] = useState<RegimeFiscale>(RegimeFiscale.FORFETTARIO);
+
+    useEffect(() => {
+        if (configurazione?.regimeFiscale) {
+            setRegimeFiscale(configurazione.regimeFiscale);
+        }
+    }, [configurazione]);
 
     const appContextValue = useMemo(() => ({
         regimeFiscale,
-        setRegimeFiscale,
     }), [regimeFiscale]);
 
     const menuItems = [

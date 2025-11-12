@@ -9,8 +9,23 @@ export enum RegimeFiscale {
 
 export type AppContextType = {
     regimeFiscale: RegimeFiscale;
-    setRegimeFiscale: (regime: RegimeFiscale) => void;
 };
+
+// --- CONFIGURAZIONE ---
+export interface DatiMiaAzienda {
+    ragioneSociale: string;
+    partitaIva: string;
+    indirizzo: Indirizzo;
+    telefono: string;
+    email: string;
+}
+
+export interface ConfigurazioneAzienda {
+    id: string; // Should be a fixed ID like 'main'
+    datiAzienda: DatiMiaAzienda;
+    regimeFiscale: RegimeFiscale;
+}
+
 
 // --- ANAGRAFICHE ---
 

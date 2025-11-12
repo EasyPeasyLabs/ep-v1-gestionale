@@ -1,4 +1,3 @@
-
 // FIX: Add React to imports to provide the React namespace for types.
 import React, { useState, useCallback, useEffect } from 'react';
 import { db } from '../firebaseConfig';
@@ -11,9 +10,10 @@ import {
     doc, 
     query, 
     orderBy,
-    getDoc
+    getDoc,
+    setDoc
 } from "firebase/firestore";
-import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata, AttivitaTipoDef, Listino, Iscrizione } from '../types';
+import type { Cliente, Fornitore, Sede, Laboratorio, Attivita, Materiale, MovimentoFinance, Documento, PropostaCommerciale, InterazioneCRM, TimeSlot, Durata, AttivitaTipoDef, Listino, Iscrizione, ConfigurazioneAzienda } from '../types';
 
 export function useMockData() {
     const [clienti, setClienti] = useState<Cliente[]>([]);
@@ -29,6 +29,7 @@ export function useMockData() {
     const [documenti, setDocumenti] = useState<Documento[]>([]);
     const [proposte, setProposte] = useState<PropostaCommerciale[]>([]);
     const [interazioni, setInterazioni] = useState<InterazioneCRM[]>([]);
+    const [configurazione, setConfigurazione] = useState<ConfigurazioneAzienda | null>(null);
 
     useEffect(() => {
         const createSubscription = (collectionName: string, setter: React.Dispatch<React.SetStateAction<any[]>>, orderField?: string) => {
@@ -55,6 +56,15 @@ export function useMockData() {
         const unsubDocumenti = createSubscription('documenti', setDocumenti, 'dataCreazione');
         const unsubProposte = createSubscription('proposte', setProposte, 'dataEmissione');
         const unsubInterazioni = createSubscription('interazioni', setInterazioni, 'data');
+        
+        const configRef = doc(db, 'configurazione', 'main');
+        const unsubConfig = onSnapshot(configRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setConfigurazione({ id: docSnap.id, ...docSnap.data() } as ConfigurazioneAzienda);
+            } else {
+                setConfigurazione(null);
+            }
+        });
 
         return () => {
             unsubClienti();
@@ -70,6 +80,7 @@ export function useMockData() {
             unsubDocumenti();
             unsubProposte();
             unsubInterazioni();
+            unsubConfig();
         };
     }, []);
 
@@ -97,6 +108,12 @@ export function useMockData() {
             console.error("Errore durante l'eliminazione del documento: ", error);
             alert(`Impossibile eliminare l'elemento. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla le regole di sicurezza di Firestore o la console per maggiori dettagli.`);
         }
+    }, []);
+
+    // Configurazione update
+    const updateConfigurazione = useCallback(async (configData: Omit<ConfigurazioneAzienda, 'id'>) => {
+        const configRef = doc(db, 'configurazione', 'main');
+        await setDoc(configRef, configData, { merge: true });
     }, []);
 
 
@@ -357,5 +374,6 @@ export function useMockData() {
         documenti, addDocumento, updateDocumento, deleteDocumento,
         proposte, addProposta, updateProposta, deleteProposta,
         interazioni, addInterazione, updateInterazione, deleteInterazione,
+        configurazione, updateConfigurazione,
     };
 }
