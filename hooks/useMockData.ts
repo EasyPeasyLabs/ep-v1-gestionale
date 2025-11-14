@@ -11,7 +11,9 @@ import {
     query, 
     orderBy,
     getDoc,
-    setDoc
+    setDoc,
+    getDocs,
+    limit
 } from "firebase/firestore";
 // FIX: Import new types for Laboratori, Durate, Listini, Iscrizioni, CRM, and LaboratorioTipoDef
 import type { Cliente, Fornitore, SedeAnagrafica, Attivita, Materiale, PropostaCommerciale, AttivitaTipoDef, ConfigurazioneAzienda, GenitoreAnagrafica, FiglioAnagrafica, FornitoreAnagrafica, AttivitaAnagrafica, Laboratorio, LaboratorioTipoDef, TimeSlot, Durata, Listino, Iscrizione, MovimentoFinance, InterazioneCRM, Documento, DocumentoTipoDef, TimeSlotDef, ListinoDef, RelazioneDef } from '../types';
@@ -112,7 +114,7 @@ export function useMockData() {
         const unsubLaboratoriTipi = createSubscription('laboratoriTipi', setLaboratoriTipi, 'tipo');
         const unsubDurate = createSubscription('durate', setDurate, 'nome');
         const unsubListini = createSubscription('listini', setListini);
-        const unsubIscrizioni = createSubscription('iscrizioni', setIscrizioni, 'scadenza');
+        const unsubIscrizioni = createSubscription('iscrizioni', setIscrizioni, 'codice');
         // FIX: Add subscription for finance movements
         const unsubMovimenti = createSubscription('movimenti', setMovimenti, 'data');
         // FIX: Add subscription for CRM interazioni
@@ -400,7 +402,20 @@ export function useMockData() {
     const deleteListino = useCallback((listId: string) => deleteDocument('listini', listId), [deleteDocument]);
     
     // Iscrizioni CRUD
-    const addIscrizione = useCallback((isc: Omit<Iscrizione, 'id'>) => addDocument('iscrizioni', isc), [addDocument]);
+    const addIscrizione = useCallback(async (isc: Omit<Iscrizione, 'id' | 'codice'>) => {
+        const collRef = collection(db, 'iscrizioni');
+        const q = query(collRef, orderBy('codice', 'desc'), limit(1));
+        const lastDocSnap = await getDocs(q);
+        let nextCodiceNum = 1;
+        if (!lastDocSnap.empty) {
+            const lastCodice = lastDocSnap.docs[0].data().codice;
+            nextCodiceNum = parseInt(lastCodice.split('-')[1]) + 1;
+        }
+        const newCodice = `ISC-${String(nextCodiceNum).padStart(3, '0')}`;
+        
+        await addDocument('iscrizioni', {...isc, codice: newCodice});
+    }, [addDocument]);
+
     const updateIscrizione = useCallback((updatedIsc: Iscrizione) => {
         const { id, ...data } = updatedIsc;
         updateDocument('iscrizioni', id, data);

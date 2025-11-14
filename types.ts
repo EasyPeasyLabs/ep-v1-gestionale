@@ -326,13 +326,15 @@ export enum IscrizioneStato {
 
 export interface Iscrizione {
     id: string;
+    codice: string;
     clienteId: string;
     laboratorioId: string;
-    figliIscritti: Figlio[];
-    tipoIscrizione: string; // OpenDay, Mensile, etc.
+    figliIds: string[];
+    timeSlotIds: string[];
+    listinoId: string;
     stato: IscrizioneStato;
-    scadenza: string; // YYYY-MM-DD
-    listinoBaseApplicato: number;
+    importo: number;
+    dataCreazione: string; // YYYY-MM-DD
 }
 
 // --- FINANCE ---

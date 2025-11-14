@@ -10,7 +10,12 @@ interface GenericRelationManagerProps {
 
 // Helper to get a display name for any entity object
 const getDisplayName = (item: any): string => {
-    return item.nome || item.ragioneSociale || `${item.cognome} ${item.nome}`.trim() || item.tipo || item.id || 'N/D';
+    // Specific check for entities with both name and surname (like Genitori)
+    if (item.cognome && item.nome) {
+        return `${item.cognome} ${item.nome}`;
+    }
+    // Fallback for other entities
+    return item.nome || item.ragioneSociale || item.tipo || item.id || 'N/D';
 };
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -90,9 +95,10 @@ export const GenericRelationManager: React.FC<GenericRelationManagerProps> = ({ 
             const updatedParent = { ...selectedParent, [foreignKeyField]: newIds };
             updateDocumentForRelation(relazione.entitaA, updatedParent);
         } else { // One-to-Many
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { [foreignKeyField]: _, ...rest } = child;
-            updateDocumentForRelation(relazione.entitaB, rest);
+            // FIX: Explicitly set the foreign key field to null to ensure its removal from the database,
+            // which resolves the issue of disassociations not persisting.
+            const updatedChild = { ...child, [foreignKeyField]: null };
+            updateDocumentForRelation(relazione.entitaB, updatedChild);
         }
     };
 

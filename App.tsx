@@ -7,9 +7,10 @@ import { Configuration } from './components/micro-apps/Configuration';
 import { Anagrafiche } from './components/micro-apps/Anagrafiche';
 import { Relazioni } from './components/micro-apps/Relazioni';
 import { GenericRelationManager } from './components/micro-apps/GenericRelationManager';
+import { Flussi } from './components/micro-apps/Flussi';
 import { RegimeFiscale } from './types';
 import type { AppContextType } from './types';
-import { HomeIcon, CogIcon, CommercialeIcon, AnagraficheIcon, LinkIcon, PuzzleIcon } from './components/icons/Icons';
+import { HomeIcon, CogIcon, CommercialeIcon, AnagraficheIcon, LinkIcon, PuzzleIcon, WorkflowIcon } from './components/icons/Icons';
 import { useMockData } from './hooks/useMockData';
 
 export const AppContext = createContext<AppContextType | null>(null);
@@ -42,6 +43,7 @@ const App: React.FC = () => {
         { id: 'Anagrafiche', label: 'Anagrafiche', icon: AnagraficheIcon },
         { id: 'Relazioni', label: 'Relazioni', icon: LinkIcon },
         ...generatedMenuItems,
+        { id: 'Flussi', label: 'Flussi', icon: WorkflowIcon },
         { id: 'Commerciale', label: 'Commerciale', icon: CommercialeIcon },
         { id: 'Configurazione', label: 'Configurazione', icon: CogIcon },
     ], [generatedMenuItems]);
@@ -59,6 +61,8 @@ const App: React.FC = () => {
                 return <Anagrafiche />;
             case 'Relazioni':
                 return <Relazioni />;
+            case 'Flussi':
+                return <Flussi />;
             case 'Commerciale':
                 return <Commerciale />;
             case 'Configurazione':

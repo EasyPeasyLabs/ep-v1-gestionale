@@ -70,7 +70,16 @@ export const EMPTY_LISTINO = { id: '', laboratorioId: '', listinoBase: 0, profit
 
 // Iscrizioni Constants
 export const ISCRIZIONE_STATO_OPTIONS = Object.values(IscrizioneStato);
-export const EMPTY_ISCRIZIONE: Iscrizione = { id: '', clienteId: '', laboratorioId: '', figliIscritti: [], tipoIscrizione: '', stato: IscrizioneStato.PROMEMORIA, scadenza: '', listinoBaseApplicato: 0 };
+export const EMPTY_ISCRIZIONE: Omit<Iscrizione, 'id' | 'codice'> = { 
+    clienteId: '', 
+    laboratorioId: '', 
+    figliIds: [], 
+    timeSlotIds: [], 
+    listinoId: '', 
+    stato: IscrizioneStato.PROMEMORIA, 
+    importo: 0,
+    dataCreazione: new Date().toISOString().split('T')[0]
+};
 
 // FIX: Add constants for Finance
 // Finance Constants
