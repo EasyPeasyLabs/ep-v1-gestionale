@@ -5,7 +5,9 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, LinkIcon } from '../icons/Icons';
+// FIX: Import new types for Relazioni feature, which were previously missing.
 import { RelazioneDef, RelazioneTipo } from '../../types';
+// FIX: Import new constants for Relazioni feature, which were previously missing.
 import { EMPTY_RELAZIONE_DEF, RELAZIONE_TIPO_OPTIONS, ANAGRAFICHE_ENTITIES } from '../../constants';
 
 // --- Helper Functions and Components ---
@@ -121,6 +123,7 @@ const RelazioneForm: React.FC<{
 
 // --- Main Component ---
 export const Relazioni: React.FC = () => {
+    // FIX: Destructure new 'relazioni' properties from useMockData, which were previously missing.
     const { relazioni, addRelazione, updateRelazione, deleteRelazione } = useMockData();
     const [isFormModalOpen, setIsFormModalOpen] = useState(false);
     const [editingRelazione, setEditingRelazione] = useState<RelazioneDef | Omit<RelazioneDef, 'id'> | null>(null);

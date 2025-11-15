@@ -2,7 +2,7 @@ import {
     RegimeFiscale, ClienteClasse, ClienteTipo, ClienteStato, FornitoreTipo, 
     AttivitaStato, MaterialeUbicazione, PropostaStato, 
     // FIX: Import new enums and types for Laboratori, Durate, Listini, Iscrizioni
-    LaboratorioStato, TimeSlotStato, IscrizioneStato, TimeSlot, Iscrizione,
+    LaboratorioStato, TimeSlotStato, IscrizioneStato, TimeSlot, Iscrizione, Listino,
     // FIX: Add Finance types
     TipoMovimento, CentroDiCosto, Imputazione, ImputazioneGenerale, ImputazioneCommerciale, ImputazioneOperativa, MovimentoFinance,
 // FIX: Add Documenti types
@@ -11,12 +11,12 @@ import {
     InterazioneCRM, InterazioneTipo,
 // Add new types for Anagrafiche
     TimeSlotDef, ListinoDef, LaboratorioTipoDef,
-// Add new types for Relazioni
-    RelazioneTipo, RelazioneDef,
 // FIX: Import new Promemoria types
     Promemoria, PromemoriaStato,
 // FIX: Add Durata types for the legacy Durate micro-app.
-    Durata, DurataTipo
+    Durata, DurataTipo,
+// FIX: Add Relazioni types for the new relationships feature.
+    RelazioneDef, RelazioneTipo
 } from './types';
 
 export const REGIME_FISCALE_OPTIONS = Object.values(RegimeFiscale);
@@ -76,6 +76,15 @@ export const EMPTY_ISCRIZIONE: Omit<Iscrizione, 'id' | 'codice'> = {
     stato: IscrizioneStato.PROMEMORIA, 
     importo: 0,
     dataCreazione: new Date().toISOString().split('T')[0]
+};
+
+// FIX: Add constant for new Listini feature.
+// Listini Constants
+export const EMPTY_LISTINO: Omit<Listino, 'id'> = {
+    laboratorioId: '',
+    listinoDefId: '',
+    listinoBase: 0,
+    profittoPercentuale: 20,
 };
 
 // FIX: Add constants for Promemoria
@@ -156,6 +165,7 @@ export const EMPTY_TIMESLOT_DEF: Omit<TimeSlotDef, 'id'> = {
 export const EMPTY_LISTINO_DEF: Omit<ListinoDef, 'id'> = {
     tipo: '',
     prezzo: 0,
+    numeroIncontri: 0,
 };
 
 export const EMPTY_LABORATORIO_TIPO_DEF: Omit<LaboratorioTipoDef, 'id'> = {
@@ -170,8 +180,16 @@ export const EMPTY_DOCUMENTO_TIPO_DEF: Omit<DocumentoTipoDef, 'id'> = {
     codice: '',
 };
 
-// Relazioni Constants
+// FIX: Add constants for the new relationships feature.
 export const RELAZIONE_TIPO_OPTIONS = Object.values(RelazioneTipo);
+export const ANAGRAFICHE_ENTITIES = [
+    'genitori', 
+    'figli', 
+    'fornitoriAnagrafica', 
+    'sedi', 
+    'attivitaAnagrafica', 
+    'materiali'
+] as const;
 export const EMPTY_RELAZIONE_DEF: Omit<RelazioneDef, 'id'> = {
     nome: '',
     descrizione: '',
@@ -181,18 +199,3 @@ export const EMPTY_RELAZIONE_DEF: Omit<RelazioneDef, 'id'> = {
     foreignKeyField: '',
     microAppGenerated: false,
 };
-
-// List of entities that can be related
-export const ANAGRAFICHE_ENTITIES = [
-    'genitori',
-    'figli',
-    'fornitoriAnagrafica',
-    'sedi',
-    'attivitaAnagrafica',
-    'materiali',
-    'laboratori',
-    'timeSlotsDef',
-    'laboratoriTipi',
-    'listiniDef',
-    'documentiTipi',
-] as const;

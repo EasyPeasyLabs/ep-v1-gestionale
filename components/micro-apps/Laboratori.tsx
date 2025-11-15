@@ -44,8 +44,6 @@ const LaboratorioForm: FC<{
     }, [formData.sedeId, giornoSettimana, ora, sedi]);
 
     useEffect(() => {
-        if ('id' in formData && formData.id) return;
-
         const calculateDatesAndSlots = () => {
             if (!dataInizioDate || !formData.tipoId) {
                 setFormData(prev => ({ ...prev, timeSlots: [], dataFine: '' }));
@@ -132,12 +130,24 @@ const LaboratorioForm: FC<{
                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} onChange={handleChange} />
                     <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} onChange={handleChange} />
-                    {'id' in formData && formData.id && (
-                        <Select id="stato" name="stato" label="Stato" options={LABORATORIO_STATO_OPTIONS} value={formData.stato} onChange={handleChange} />
-                    )}
+                    <Select id="stato" name="stato" label="Stato" options={LABORATORIO_STATO_OPTIONS} value={formData.stato} onChange={handleChange} />
                  </div>
-                 <p className="text-sm text-gray-500">Verranno generati <strong>{formData.timeSlots.length}</strong> incontri settimanali.</p>
-
+                 
+                 {formData.timeSlots.length > 0 && (
+                    <div className="mt-4 pt-4 border-t dark:border-gray-700">
+                        <h3 className="text-lg font-medium text-gray-900 dark:text-white">Anteprima Incontri Generati</h3>
+                        <p className="text-sm text-gray-500 mb-2">Verranno generati <strong>{formData.timeSlots.length}</strong> incontri settimanali.</p>
+                        <div className="max-h-48 overflow-y-auto space-y-2 bg-gray-50 dark:bg-gray-700/50 p-3 rounded-md">
+                            {formData.timeSlots.map(slot => (
+                                <div key={slot.id || slot.ordine} className="flex items-center gap-3 text-sm">
+                                    <CalendarIcon className="h-4 w-4 text-gray-500" />
+                                    <span>Incontro #{slot.ordine}:</span>
+                                    <span className="font-semibold">{new Date(`${slot.data}T00:00:00`).toLocaleDateString('it-IT', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
                  <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
@@ -174,9 +184,8 @@ export const Laboratori: React.FC = () => {
     };
     
     const handleDelete = (labId: string) => {
-        if(window.confirm('Sei sicuro di voler eliminare questo laboratorio e tutti i suoi incontri programmati?')) {
-            deleteLaboratorio(labId);
-        }
+        // La conferma è ora gestita all'interno dell'hook deleteLaboratorio per un messaggio sull'integrità dei dati più accurato.
+        deleteLaboratorio(labId);
     }
     
     const getSedeName = (sedeId: string) => sedi.find(s => s.id === sedeId)?.nome || 'N/D';
@@ -223,11 +232,11 @@ export const Laboratori: React.FC = () => {
                                 </th>
                                 <td className="px-6 py-4"><span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(lab.stato)}`}>{lab.stato}</span></td>
                                 <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
-                                <td className="px-6 py-4 text-xs">{new Date(lab.dataInizio).toLocaleDateString('it-IT')} - {new Date(lab.dataFine).toLocaleDateString('it-IT')}</td>
+                                <td className="px-6 py-4 text-xs">{new Date(`${lab.dataInizio}T00:00:00`).toLocaleDateString('it-IT')} - {new Date(`${lab.dataFine}T00:00:00`).toLocaleDateString('it-IT')}</td>
                                 <td className="px-6 py-4">{lab.timeSlots.length}</td>
                                 <td className="px-6 py-4 text-right space-x-2">
                                     <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800" title="Modifica Laboratorio"><PencilIcon /></button>
-                                    <button onClick={() => handleDelete(lab.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                    <button onClick={() => handleDelete(lab.id)} className="text-red-600 hover:text-red-800" disabled={!lab.id}><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}

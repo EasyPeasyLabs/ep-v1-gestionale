@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { AlertIcon } from '../icons/Icons';
 import { Button } from '../ui/Button';
+// FIX: Import the RelazioneTipo enum, which was previously missing.
 import { RelazioneTipo } from '../../types';
 
 interface GenericRelationManagerProps {
@@ -27,6 +28,7 @@ const singularize = (s: string) => {
 
 export const GenericRelationManager: React.FC<GenericRelationManagerProps> = ({ relazioneId }) => {
     const allData = useMockData();
+    // FIX: Destructure new 'relazioni' properties from useMockData, which were previously missing.
     const { relazioni, updateDocumentForRelation } = allData;
 
     const [selectedParentId, setSelectedParentId] = useState<string | null>(null);

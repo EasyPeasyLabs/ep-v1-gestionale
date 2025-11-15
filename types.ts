@@ -455,23 +455,33 @@ export interface ListinoDef {
     id: string;
     tipo: string;
     prezzo: number;
+    numeroIncontri: number;
 }
 
+// FIX: Add Listino type for nominal price lists.
+// --- LISTINI ---
+export interface Listino {
+    id: string;
+    laboratorioId: string;
+    listinoDefId: string;
+    listinoBase: number;
+    profittoPercentuale: number;
+}
+
+// FIX: Add types for Relazioni feature
 // --- RELAZIONI ---
 export enum RelazioneTipo {
-    UNO_A_MOLTI = "Uno a Molti",
-    MOLTI_A_MOLTI = "Molti a Molti",
+    UNO_A_MOLTI = "Uno-a-molti",
+    MOLTI_A_MOLTI = "Molti-a-molti",
 }
 
 export interface RelazioneDef {
     id: string;
     nome: string;
     descrizione: string;
-    entitaA: string; // collection name
-    entitaB: string; // collection name
+    entitaA: string; // The "one" side in 1-to-many, or the container in many-to-many
+    entitaB: string; // The "many" side in 1-to-many, or the content in many-to-many
     tipo: RelazioneTipo;
-    // For UNO_A_MOLTI, this field is on the 'MOLTI' side entity
-    // For MOLTI_A_MOLTI, this could be the name of the join collection
-    foreignKeyField: string; 
+    foreignKeyField: string; // e.g., 'genitoreId' or 'figliIds'
     microAppGenerated: boolean;
 }

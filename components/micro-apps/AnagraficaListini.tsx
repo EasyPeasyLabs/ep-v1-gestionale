@@ -29,8 +29,11 @@ const ListinoDefForm: React.FC<{
     return (
         <form onSubmit={handleSubmit}>
             <div className="space-y-4">
-                <Input id="tipo" name="tipo" label="Tipo di Listino" value={formData.tipo} onChange={handleChange} required />
-                <Input id="prezzo" name="prezzo" label="Prezzo (€)" type="number" step="0.01" value={formData.prezzo} onChange={handleChange} required />
+                <Input id="tipo" name="tipo" label="Tipo di Listino (es. Mensile, Trimestrale)" value={formData.tipo} onChange={handleChange} required />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Input id="prezzo" name="prezzo" label="Prezzo (€)" type="number" step="0.01" value={formData.prezzo} onChange={handleChange} required />
+                    <Input id="numeroIncontri" name="numeroIncontri" label="Numero Incontri" type="number" min="1" value={formData.numeroIncontri} onChange={handleChange} required />
+                </div>
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
                 <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
@@ -85,6 +88,7 @@ export const AnagraficaListini: React.FC = () => {
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                         <tr>
                             <th scope="col" className="px-6 py-3">Tipo di Listino</th>
+                            <th scope="col" className="px-6 py-3">Numero Incontri</th>
                             <th scope="col" className="px-6 py-3">Prezzo</th>
                             <th scope="col" className="px-6 py-3 text-right">Azioni</th>
                         </tr>
@@ -93,6 +97,7 @@ export const AnagraficaListini: React.FC = () => {
                         {listiniDef.map(item => (
                             <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
                                 <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{item.tipo}</th>
+                                <td className="px-6 py-4">{item.numeroIncontri}</td>
                                 <td className="px-6 py-4">{formatCurrency(item.prezzo)}</td>
                                 <td className="px-6 py-4 text-right space-x-2">
                                     <button onClick={() => handleOpenModal(item)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
@@ -101,7 +106,7 @@ export const AnagraficaListini: React.FC = () => {
                             </tr>
                         ))}
                         {listiniDef.length === 0 && (
-                             <tr><td colSpan={3} className="text-center py-8 text-gray-500">Nessun listino trovato.</td></tr>
+                             <tr><td colSpan={4} className="text-center py-8 text-gray-500">Nessun listino trovato.</td></tr>
                         )}
                     </tbody>
                 </table>

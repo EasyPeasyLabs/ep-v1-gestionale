@@ -5,15 +5,19 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
+// FIX: Imported the new 'Listino' type to resolve type errors.
 import { Listino, Laboratorio, SedeAnagrafica as Sede, ListinoDef } from '../../types';
+// FIX: Imported the new 'EMPTY_LISTINO' constant for creating new listino objects.
 import { EMPTY_LISTINO } from '../../constants';
 
 type ListinoFormProps = {
-    listino: Listino,
+    // FIX: Updated type to allow both new and existing listino objects.
+    listino: Listino | Omit<Listino, 'id'>,
     laboratori: Laboratorio[],
     sedi: Sede[],
     listiniDef: ListinoDef[],
-    onSave: (l: Listino) => void,
+    // FIX: Updated onSave signature to handle both new and existing objects.
+    onSave: (l: Listino | Omit<Listino, 'id'>) => void,
     onCancel: () => void,
 };
 
@@ -59,7 +63,7 @@ const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, listiniD
     return (
         <form onSubmit={handleSubmit}>
             <div className="space-y-4">
-                <Select id="laboratorioId" name="laboratorioId" label="Laboratorio" value={formData.laboratorioId} onChange={handleChange} required disabled={!!formData.id}>
+                <Select id="laboratorioId" name="laboratorioId" label="Laboratorio" value={formData.laboratorioId} onChange={handleChange} required disabled={'id' in formData && !!formData.id}>
                     <option value="">Seleziona un laboratorio...</option>
                     {laboratori.map(l => <option key={l.id} value={l.id}>{l.codice}</option>)}
                 </Select>
@@ -110,14 +114,17 @@ const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, listiniD
 };
 
 export const Listini: React.FC = () => {
+    // FIX: Added listini, addListino, updateListino, and deleteListino from useMockData.
     const { listini, addListino, updateListino, deleteListino, laboratori, sedi, listiniDef } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingListino, setEditingListino] = useState<Listino | null>(null);
+    // FIX: Updated state to allow for new objects without an ID.
+    const [editingListino, setEditingListino] = useState<Listino | Omit<Listino, 'id'> | null>(null);
 
     const laboratoriConListino = useMemo(() => listini.map(l => l.laboratorioId), [listini]);
     const laboratoriDisponibili = useMemo(() => laboratori.filter(l => !laboratoriConListino.includes(l.id)), [laboratori, laboratoriConListino]);
 
     const handleOpenModal = (list?: Listino) => {
+        // FIX: Now { ...EMPTY_LISTINO } is a valid state.
         setEditingListino(list || { ...EMPTY_LISTINO });
         setIsModalOpen(true);
     };
@@ -127,12 +134,12 @@ export const Listini: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (listino: Listino) => {
-        if (listino.id) {
-            updateListino(listino);
+    // FIX: Update save handler to correctly distinguish between add and update operations.
+    const handleSave = (listino: Listino | Omit<Listino, 'id'>) => {
+        if ('id' in listino && listino.id) {
+            updateListino(listino as Listino);
         } else {
-            const { id, ...newListino } = listino;
-            addListino(newListino);
+            addListino(listino as Omit<Listino, 'id'>);
         }
         handleCloseModal();
     };
@@ -189,11 +196,16 @@ export const Listini: React.FC = () => {
             </div>
 
             {isModalOpen && editingListino && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingListino.id ? "Modifica Listino" : "Nuovo Listino"}>
+                <Modal 
+                    isOpen={isModalOpen} 
+                    onClose={handleCloseModal} 
+                    // FIX: Use type guard to check for 'id' property before accessing it.
+                    title={('id' in editingListino && editingListino.id) ? "Modifica Listino" : "Nuovo Listino"}
+                >
                     <ListinoForm 
                         listino={editingListino}
                         // Se stiamo modificando, passiamo tutti i lab; se nuovo, solo quelli senza listino
-                        laboratori={editingListino.id ? laboratori : laboratoriDisponibili}
+                        laboratori={('id' in editingListino && editingListino.id) ? laboratori : laboratoriDisponibili}
                         sedi={sedi}
                         listiniDef={listiniDef}
                         onSave={handleSave}

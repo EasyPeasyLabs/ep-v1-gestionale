@@ -1,15 +1,14 @@
+
 import React, { useState, createContext, useMemo, useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/micro-apps/Dashboard';
 import { Commerciale } from './components/micro-apps/Commerciale';
 import { Configuration } from './components/micro-apps/Configuration';
 import { Anagrafiche } from './components/micro-apps/Anagrafiche';
-import { Relazioni } from './components/micro-apps/Relazioni';
-import { GenericRelationManager } from './components/micro-apps/GenericRelationManager';
 import { Flussi } from './components/micro-apps/Flussi';
 import { RegimeFiscale, PromemoriaStato } from './types';
 import type { AppContextType } from './types';
-import { HomeIcon, CogIcon, CommercialeIcon, AnagraficheIcon, LinkIcon, PuzzleIcon, WorkflowIcon, LabsIcon, BellIcon } from './components/icons/Icons';
+import { HomeIcon, CogIcon, CommercialeIcon, AnagraficheIcon, WorkflowIcon, LabsIcon, BellIcon } from './components/icons/Icons';
 import { useMockData } from './hooks/useMockData';
 import { Laboratori } from './components/micro-apps/Laboratori';
 import { Promemoria } from './components/micro-apps/Promemoria';
@@ -20,7 +19,7 @@ export const AppContext = createContext<AppContextType | null>(null);
 
 const App: React.FC = () => {
     const [activeApp, setActiveApp] = useState('Home');
-    const { configurazione, relazioni, promemoria } = useMockData();
+    const { configurazione, promemoria } = useMockData();
     const [regimeFiscale, setRegimeFiscale] = useState<RegimeFiscale>(RegimeFiscale.FORFETTARIO);
     const [showPromemoriaAlert, setShowPromemoriaAlert] = useState(false);
 
@@ -45,14 +44,6 @@ const App: React.FC = () => {
         regimeFiscale,
     }), [regimeFiscale]);
 
-    const generatedMenuItems = useMemo(() => relazioni
-        .filter(r => r.microAppGenerated)
-        .map(r => ({
-            id: `rel-${r.id}`,
-            label: r.nome,
-            icon: PuzzleIcon,
-        })), [relazioni]);
-
     const menuItems = useMemo(() => [
         { id: 'Home', label: 'Home', icon: HomeIcon },
         { id: 'Anagrafiche', label: 'Anagrafiche', icon: AnagraficheIcon },
@@ -60,24 +51,15 @@ const App: React.FC = () => {
         { id: 'Flussi', label: 'Flussi', icon: WorkflowIcon },
         { id: 'Promemoria', label: 'Promemoria', icon: BellIcon },
         { id: 'Commerciale', label: 'Commerciale', icon: CommercialeIcon },
-        { id: 'Relazioni', label: 'Relazioni', icon: LinkIcon },
-        ...generatedMenuItems,
         { id: 'Configurazione', label: 'Configurazione', icon: CogIcon },
-    ], [generatedMenuItems]);
+    ], []);
     
     const renderActiveApp = () => {
-        if (activeApp.startsWith('rel-')) {
-            const relazioneId = activeApp.substring(4);
-            return <GenericRelationManager relazioneId={relazioneId} />;
-        }
-
         switch (activeApp) {
             case 'Home':
                 return <Dashboard setActiveApp={setActiveApp} />;
             case 'Anagrafiche':
                 return <Anagrafiche />;
-            case 'Relazioni':
-                return <Relazioni />;
             case 'Laboratori':
                 return <Laboratori />;
             case 'Flussi':

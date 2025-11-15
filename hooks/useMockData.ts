@@ -17,7 +17,7 @@ import {
     where
 } from "firebase/firestore";
 // FIX: Import new types for Laboratori, Durate, Listini, Iscrizioni, CRM, and LaboratorioTipoDef
-import type { Cliente, Fornitore, SedeAnagrafica, Attivita, Materiale, PropostaCommerciale, AttivitaTipoDef, ConfigurazioneAzienda, GenitoreAnagrafica, FiglioAnagrafica, FornitoreAnagrafica, AttivitaAnagrafica, Laboratorio, LaboratorioTipoDef, TimeSlot, Iscrizione, MovimentoFinance, InterazioneCRM, Documento, DocumentoTipoDef, TimeSlotDef, ListinoDef, RelazioneDef, Promemoria, Durata } from '../types';
+import type { Cliente, Fornitore, SedeAnagrafica, Attivita, Materiale, PropostaCommerciale, AttivitaTipoDef, ConfigurazioneAzienda, GenitoreAnagrafica, FiglioAnagrafica, FornitoreAnagrafica, AttivitaAnagrafica, Laboratorio, LaboratorioTipoDef, TimeSlot, Iscrizione, MovimentoFinance, InterazioneCRM, Documento, DocumentoTipoDef, TimeSlotDef, ListinoDef, Listino, Promemoria, Durata, RelazioneDef } from '../types';
 import { IscrizioneStato, PromemoriaStato, TipoMovimento, CentroDiCosto, ImputazioneOperativa } from '../types';
 
 // Helper function to recursively convert Firestore Timestamps to ISO strings.
@@ -71,9 +71,11 @@ export function useMockData() {
     const [documentiTipi, setDocumentiTipi] = useState<DocumentoTipoDef[]>([]);
     const [timeSlotsDef, setTimeSlotsDef] = useState<TimeSlotDef[]>([]);
     const [listiniDef, setListiniDef] = useState<ListinoDef[]>([]);
-    const [relazioni, setRelazioni] = useState<RelazioneDef[]>([]);
+    const [listini, setListini] = useState<Listino[]>([]);
     const [promemoria, setPromemoria] = useState<Promemoria[]>([]);
     const [durate, setDurate] = useState<Durata[]>([]);
+    // FIX: Add state and CRUD for Relazioni feature.
+    const [relazioni, setRelazioni] = useState<RelazioneDef[]>([]);
 
 
     useEffect(() => {
@@ -110,9 +112,11 @@ export function useMockData() {
         const unsubDocumentiTipi = createSubscription('documentiTipi', setDocumentiTipi, 'nome');
         const unsubTimeSlotsDef = createSubscription('timeSlotsDef', setTimeSlotsDef, 'valoreInMinuti');
         const unsubListiniDef = createSubscription('listiniDef', setListiniDef, 'tipo');
-        const unsubRelazioni = createSubscription('relazioni', setRelazioni, 'nome');
+        const unsubListini = createSubscription('listini', setListini, 'laboratorioId');
         const unsubPromemoria = createSubscription('promemoria', setPromemoria, 'dataScadenza');
         const unsubDurate = createSubscription('durate', setDurate, 'nome');
+        // FIX: Add subscription for Relazioni.
+        const unsubRelazioni = createSubscription('relazioni', setRelazioni, 'nome');
 
         
         const configRef = doc(db, 'configurazione', 'main');
@@ -146,9 +150,11 @@ export function useMockData() {
             unsubDocumentiTipi();
             unsubTimeSlotsDef();
             unsubListiniDef();
-            unsubRelazioni();
+            unsubListini();
             unsubPromemoria();
             unsubDurate();
+            // FIX: Add cleanup for Relazioni subscription.
+            unsubRelazioni();
         };
     }, []);
 
@@ -336,7 +342,7 @@ export function useMockData() {
         const { id, ...data } = updatedLab;
         updateDocument('laboratori', id, data);
     }, [updateDocument]);
-    const deleteLaboratorio = useCallback((labId: string) => deleteDocument('laboratori', labId), [deleteDocument]);
+    // The deleteLaboratorio function is moved after Iscrizioni CRUD to handle cascading deletes correctly.
 
     const addLaboratorioTipo = useCallback((tipo: Omit<LaboratorioTipoDef, 'id'>) => addDocument('laboratoriTipi', tipo), [addDocument]);
     const updateLaboratorioTipo = useCallback((updatedTipo: LaboratorioTipoDef) => {
@@ -483,6 +489,42 @@ export function useMockData() {
         await deleteDocument('iscrizioni', iscId);
     }, [deleteDocument, deletePromemoriaByIscrizioneId, genitori, updateGenitore]);
 
+    // Laboratori CRUD - Delete with cascade
+    const deleteLaboratorio = useCallback(async (labId: string) => {
+        if (!labId) {
+            console.error("Attempted to delete a laboratory with a missing ID.");
+            alert("Operazione non riuscita: ID del laboratorio non valido.");
+            return;
+        }
+
+        // The confirmation is now handled here for better data integrity messaging.
+        if(!window.confirm('Sei sicuro di voler eliminare questo laboratorio? Verranno eliminate anche tutte le iscrizioni, i listini e i promemoria associati in modo irreversibile.')) {
+            return;
+        }
+        
+        try {
+            // 1. Find and delete all associated Iscrizioni
+            // This will also trigger their own cascade deletes for promemoria and movimenti
+            const iscrizioniQuery = query(collection(db, 'iscrizioni'), where('laboratorioId', '==', labId));
+            const iscrizioniSnapshot = await getDocs(iscrizioniQuery);
+            const iscrizioneDeletionPromises = iscrizioniSnapshot.docs.map(doc => deleteIscrizione(doc.id));
+            await Promise.all(iscrizioneDeletionPromises);
+            
+            // 2. Find and delete all associated Listini
+            const listiniQuery = query(collection(db, 'listini'), where('laboratorioId', '==', labId));
+            const listiniSnapshot = await getDocs(listiniQuery);
+            const listinoDeletionPromises = listiniSnapshot.docs.map(doc => deleteDocument('listini', doc.id));
+            await Promise.all(listinoDeletionPromises);
+
+            // 3. Finally, delete the Laboratorio itself
+            await deleteDocument('laboratori', labId);
+        
+        } catch (error) {
+            console.error(`Errore durante l'eliminazione del laboratorio e dei dati associati (ID: ${labId}): `, error);
+            alert(`Impossibile eliminare il laboratorio. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla la console per i dettagli.`);
+        }
+    }, [deleteIscrizione, deleteDocument]);
+
 
     // FIX: Add CRUD functions for finance movements
     const addMovimento = useCallback((mov: Omit<MovimentoFinance, 'id'>) => addDocument('movimenti', mov), [addDocument]);
@@ -532,6 +574,15 @@ export function useMockData() {
         updateDocument('listiniDef', id, data);
     }, [updateDocument]);
     const deleteListinoDef = useCallback((defId: string) => deleteDocument('listiniDef', defId), [deleteDocument]);
+    
+    // FIX: Add CRUD functions for the new Listini feature.
+    // Listini CRUD
+    const addListino = useCallback((list: Omit<Listino, 'id'>) => addDocument('listini', list), [addDocument]);
+    const updateListino = useCallback((updatedList: Listino) => {
+        const { id, ...data } = updatedList;
+        updateDocument('listini', id, data);
+    }, [updateDocument]);
+    const deleteListino = useCallback((listId: string) => deleteDocument('listini', listId), [deleteDocument]);
 
     // FIX: Add CRUD functions for the legacy Durate micro-app.
     // Durate CRUD
@@ -541,29 +592,21 @@ export function useMockData() {
         updateDocument('durate', id, data);
     }, [updateDocument]);
     const deleteDurata = useCallback((durId: string) => deleteDocument('durate', durId), [deleteDocument]);
+    
+    // FIX: Add CRUD and generic update for Relazioni feature.
+    const updateDocumentForRelation = useCallback(async (collectionName: string, docData: { id: string, [key: string]: any }) => {
+        const { id, ...data } = docData;
+        // Add a timestamp to the related document for sorting/tracking purposes
+        const dataWithTimestamp = { ...data, lastModified: new Date().toISOString() };
+        await updateDocument(collectionName, id, dataWithTimestamp);
+    }, [updateDocument]);
 
-    // Relazioni CRUD
     const addRelazione = useCallback((rel: Omit<RelazioneDef, 'id'>) => addDocument('relazioni', rel), [addDocument]);
     const updateRelazione = useCallback((updatedRel: RelazioneDef) => {
         const { id, ...data } = updatedRel;
         updateDocument('relazioni', id, data);
     }, [updateDocument]);
     const deleteRelazione = useCallback((relId: string) => deleteDocument('relazioni', relId), [deleteDocument]);
-
-    const updateDocumentForRelation = useCallback(async (collectionName: string, item: any) => {
-        const { id, ...data } = item;
-        if (!id) {
-            console.error(`ID mancante per l'aggiornamento nella collezione ${collectionName}`);
-            return;
-        }
-        
-        const collectionsWithTimestamp = ['genitori', 'figli', 'fornitoriAnagrafica', 'sedi', 'attivitaAnagrafica', 'materiali'];
-        const dataToUpdate = collectionsWithTimestamp.includes(collectionName)
-            ? { ...data, lastModified: new Date().toISOString() }
-            : data;
-            
-        await updateDocument(collectionName, id, dataToUpdate);
-    }, [updateDocument]);
 
 
     return {
@@ -589,9 +632,10 @@ export function useMockData() {
         documentiTipi, addDocumentoTipo, updateDocumentoTipo, deleteDocumentoTipo,
         timeSlotsDef, addTimeSlotDef, updateTimeSlotDef, deleteTimeSlotDef,
         listiniDef, addListinoDef, updateListinoDef, deleteListinoDef,
-        relazioni, addRelazione, updateRelazione, deleteRelazione,
-        updateDocumentForRelation,
+        listini, addListino, updateListino, deleteListino,
         promemoria, addPromemoria, updatePromemoria,
         durate, addDurata, updateDurata, deleteDurata,
+        relazioni, addRelazione, updateRelazione, deleteRelazione,
+        updateDocumentForRelation,
     };
 }

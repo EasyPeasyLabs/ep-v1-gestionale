@@ -7,16 +7,6 @@ import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
 import { Iscrizione, Cliente, ClienteTipo, Laboratorio, IscrizioneStato, FiglioAnagrafica, TimeSlot, ClienteFamiglia, GenitoreAnagrafica, LaboratorioStato, ListinoDef } from '../../types';
 import { EMPTY_ISCRIZIONE, ISCRIZIONE_STATO_OPTIONS } from '../../constants';
 
-const Step: FC<{ title: string; stepNumber: number; isActive: boolean; children: React.ReactNode }> = ({ title, stepNumber, isActive, children }) => (
-    <div className={`${isActive ? 'block' : 'hidden'}`}>
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
-            <span className="bg-blue-600 text-white rounded-full h-8 w-8 inline-flex items-center justify-center mr-3">{stepNumber}</span>
-            {title}
-        </h3>
-        <div className="pl-11">{children}</div>
-    </div>
-);
-
 type IscrizioneFormProps = {
     iscrizione: Omit<Iscrizione, 'id' | 'codice'>,
     genitori: GenitoreAnagrafica[],
@@ -28,7 +18,6 @@ type IscrizioneFormProps = {
 };
 
 const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFigli, laboratori, listiniDef, onSave, onCancel }) => {
-    const [step, setStep] = useState(1);
     const [formData, setFormData] = useState(iscrizione);
 
     const selectedGenitore = useMemo(() => genitori.find(g => g.id === formData.clienteId), [genitori, formData.clienteId]);
@@ -48,9 +37,22 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFi
         return tuttiFigli.filter(figlio => figliIds.includes(figlio.id));
     }, [selectedGenitore, tuttiFigli]);
     
+    // Auto-select time slots when listino is chosen
+    useEffect(() => {
+        if (selectedLaboratorio && selectedListino) {
+            const numIncontri = selectedListino.numeroIncontri || 0;
+            const incontriSelezionati = selectedLaboratorio.timeSlots
+                .slice(0, numIncontri)
+                .map(ts => ts.id);
+            
+            setFormData(prev => ({...prev, timeSlotIds: incontriSelezionati}));
+        }
+    }, [selectedLaboratorio, selectedListino]);
+    
+    // Recalculate total price
     useEffect(() => {
         if (selectedListino) {
-            const importo = (selectedListino.prezzo || 0) * (formData.figliIds.length || 1);
+            const importo = (selectedListino.prezzo || 0) * (formData.figliIds.length || 0);
             setFormData(prev => ({ ...prev, importo }));
         } else {
             setFormData(prev => ({ ...prev, importo: 0 }));
@@ -59,102 +61,118 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFi
 
     const handleSave = () => {
         if (!formData.clienteId || !formData.laboratorioId || !formData.listinoDefId || formData.figliIds.length === 0 || formData.timeSlotIds.length === 0) {
-            alert("Completa tutti i passaggi prima di salvare.");
+            alert("Completa tutti i campi prima di salvare.");
             return;
         }
         onSave(formData);
     };
 
+    const isStep2Disabled = !formData.clienteId;
+    const isStep3Disabled = isStep2Disabled || formData.figliIds.length === 0;
+    const isStep4Disabled = isStep3Disabled || !formData.laboratorioId;
+
     return (
-        <div className="space-y-6">
-            <Step title="Seleziona Famiglia (Genitore)" stepNumber={1} isActive={true}>
-                <Select id="clienteId" name="clienteId" label="" value={formData.clienteId} onChange={e => {
-                    setFormData({ ...EMPTY_ISCRIZIONE, clienteId: e.target.value });
-                    setStep(e.target.value ? 2 : 1);
-                }} required>
-                    <option value="">Seleziona una famiglia...</option>
-                    {genitori.map(g => <option key={g.id} value={g.id}>{g.cognome} {g.nome}</option>)}
-                </Select>
-            </Step>
-
-            <Step title="Seleziona Figli" stepNumber={2} isActive={step >= 2}>
-                <div className="space-y-2 p-3 border rounded-md dark:border-gray-600">
-                    {figliAssociati.length > 0 ? figliAssociati.map(figlio => (
-                        <label key={figlio.id} className="flex items-center">
-                            <input
-                                type="checkbox"
-                                checked={formData.figliIds.includes(figlio.id)}
-                                onChange={() => {
-                                    const newFigliIds = formData.figliIds.includes(figlio.id)
-                                        ? formData.figliIds.filter(id => id !== figlio.id)
-                                        : [...formData.figliIds, figlio.id];
-                                    setFormData(prev => ({ ...prev, figliIds: newFigliIds }));
-                                }}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="ml-3 text-sm">{figlio.nome} ({figlio.eta})</span>
-                        </label>
-                    )) : <p className="text-sm text-gray-500">Nessun figlio associato. Usa la micro-app 'Relazioni' per collegare figli e genitori.</p>}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Left Column: Form Fields */}
+            <div className="md:col-span-2 space-y-6">
+                <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">1. Seleziona Famiglia</h3>
+                     <Select id="clienteId" name="clienteId" label="" value={formData.clienteId} onChange={e => setFormData({ ...EMPTY_ISCRIZIONE, clienteId: e.target.value })} required>
+                        <option value="">Seleziona una famiglia...</option>
+                        {genitori.map(g => <option key={g.id} value={g.id}>{g.cognome} {g.nome}</option>)}
+                    </Select>
                 </div>
-            </Step>
 
-             <Step title="Seleziona Laboratorio" stepNumber={3} isActive={step >= 2 && formData.figliIds.length > 0}>
-                <Select id="laboratorioId" name="laboratorioId" label="" value={formData.laboratorioId} onChange={e => {
-                    setFormData(prev => ({...prev, laboratorioId: e.target.value, timeSlotIds: [], listinoDefId: ''}));
-                    setStep(e.target.value ? 4 : 3);
-                }} required>
-                    <option value="">Seleziona un laboratorio...</option>
-                    {laboratoriDisponibili.map(l => <option key={l.id} value={l.id}>{l.codice}</option>)}
-                </Select>
-            </Step>
-
-            <Step title="Seleziona Listino" stepNumber={4} isActive={step >= 4}>
-                <Select id="listinoDefId" name="listinoDefId" label="" value={formData.listinoDefId} onChange={e => {
-                    setFormData(prev => ({...prev, listinoDefId: e.target.value }));
-                    setStep(e.target.value ? 5 : 4);
-                }} required>
-                    <option value="">Seleziona un listino...</option>
-                    {listiniDef.map(l => <option key={l.id} value={l.id}>{l.tipo} ({l.prezzo.toFixed(2)}€)</option>)}
-                </Select>
-            </Step>
-            
-            <Step title="Seleziona Incontri" stepNumber={5} isActive={step >= 5}>
-                 <div className="space-y-2 p-3 border rounded-md dark:border-gray-600 max-h-48 overflow-y-auto">
-                    {selectedLaboratorio?.timeSlots?.length > 0 ? selectedLaboratorio.timeSlots.map((ts: TimeSlot) => (
-                        <label key={ts.id} className="flex items-center">
-                            <input
-                                type="checkbox"
-                                checked={formData.timeSlotIds.includes(ts.id)}
-                                onChange={() => {
-                                    const newTimeSlotIds = formData.timeSlotIds.includes(ts.id)
-                                        ? formData.timeSlotIds.filter(id => id !== ts.id)
-                                        : [...formData.timeSlotIds, ts.id];
-                                    setFormData(prev => ({ ...prev, timeSlotIds: newTimeSlotIds }));
-                                }}
-                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="ml-3 text-sm">Incontro #{ts.ordine} - {new Date(ts.data).toLocaleDateString('it-IT')}</span>
-                        </label>
-                    )) : <p className="text-sm text-gray-500">Nessun incontro definito per questo laboratorio.</p>}
-                 </div>
-                 <Button size="sm" variant="secondary" type="button" onClick={() => setFormData(prev => ({...prev, timeSlotIds: selectedLaboratorio?.timeSlots.map(ts => ts.id) || []}))} className="mt-2">Seleziona tutti</Button>
-            </Step>
-
-            <Step title="Riepilogo e Quota" stepNumber={6} isActive={step >= 5 && formData.listinoDefId !== ''}>
-                <div className="p-4 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 space-y-2">
-                    <p><strong>Cliente:</strong> {selectedGenitore ? `${selectedGenitore.cognome} ${selectedGenitore.nome}`: 'N/D'}</p>
-                    <p><strong>Figli Selezionati:</strong> {formData.figliIds.length}</p>
-                    <p><strong>Laboratorio:</strong> {selectedLaboratorio?.codice || 'N/D'}</p>
-                    <p><strong>Listino:</strong> {selectedListino?.tipo || 'N/D'}</p>
-                    <p className="text-lg font-bold mt-2">Totale Quota: {formData.importo.toFixed(2)}€</p>
+                <div className={isStep2Disabled ? 'opacity-50' : ''}>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">2. Seleziona Figli</h3>
+                    <div className="space-y-2 p-3 border rounded-md dark:border-gray-600 max-h-48 overflow-y-auto">
+                        {!selectedGenitore ? <p className="text-sm text-gray-500 p-4 text-center">Seleziona prima una famiglia.</p> :
+                         figliAssociati.length > 0 ? figliAssociati.map(figlio => (
+                            <label key={figlio.id} className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    id={`figlio-${figlio.id}`}
+                                    checked={formData.figliIds.includes(figlio.id)}
+                                    onChange={() => {
+                                        const newFigliIds = formData.figliIds.includes(figlio.id)
+                                            ? formData.figliIds.filter(id => id !== figlio.id)
+                                            : [...formData.figliIds, figlio.id];
+                                        setFormData(prev => ({ ...prev, figliIds: newFigliIds }));
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="ml-3 text-sm">{figlio.nome} ({figlio.eta})</span>
+                            </label>
+                        )) : <p className="text-sm text-gray-500">Nessun figlio associato.</p>}
+                    </div>
                 </div>
-            </Step>
 
-            <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
-                <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
-                <Button type="button" variant="primary" onClick={handleSave} disabled={step < 6 || formData.timeSlotIds.length === 0}>
-                    Crea Iscrizione
-                </Button>
+                <div className={isStep3Disabled ? 'opacity-50' : ''}>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">3. Seleziona Laboratorio</h3>
+                    <div className="space-y-2 p-3 border rounded-md dark:border-gray-600 max-h-48 overflow-y-auto">
+                         {laboratoriDisponibili.map(lab => (
+                            <label key={lab.id} className="flex items-center p-2 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="laboratorioId"
+                                    value={lab.id}
+                                    checked={formData.laboratorioId === lab.id}
+                                    onChange={e => setFormData(prev => ({...prev, laboratorioId: e.target.value, timeSlotIds: [], listinoDefId: ''}))}
+                                    className="h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    disabled={isStep3Disabled}
+                                />
+                                <span className="ml-3 text-sm font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{lab.codice}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                <div className={isStep4Disabled ? 'opacity-50' : ''}>
+                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">4. Seleziona Abbonamento</h3>
+                     <Select id="listinoDefId" name="listinoDefId" label="" value={formData.listinoDefId} onChange={e => setFormData(prev => ({...prev, listinoDefId: e.target.value }))} required disabled={isStep4Disabled}>
+                        <option value="">Seleziona un abbonamento...</option>
+                        {listiniDef.map(l => <option key={l.id} value={l.id}>{l.tipo} ({l.numeroIncontri} incontri) - {l.prezzo.toFixed(2)}€</option>)}
+                    </Select>
+                </div>
+            </div>
+
+            {/* Right Column: Summary */}
+            <div className="md:col-span-1">
+                 <div className="sticky top-6 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 shadow-md">
+                    <h3 className="text-xl font-semibold border-b pb-2 dark:border-gray-600 mb-4">Riepilogo Iscrizione</h3>
+                    <div className="space-y-3 text-sm">
+                        <p><strong>Genitore:</strong> {selectedGenitore ? `${selectedGenitore.cognome} ${selectedGenitore.nome}` : <span className="text-gray-500">...</span>}</p>
+                        <p><strong>Figli Selezionati:</strong> {formData.figliIds.length > 0 ? formData.figliIds.length : <span className="text-gray-500">...</span>}</p>
+                        <p><strong>Laboratorio:</strong> {selectedLaboratorio?.codice ? <span className="font-mono bg-gray-200 dark:bg-gray-700 px-1.5 py-0.5 rounded">{selectedLaboratorio.codice}</span> : <span className="text-gray-500">...</span>}</p>
+                        <p><strong>Abbonamento:</strong> {selectedListino?.tipo || <span className="text-gray-500">...</span>}</p>
+                        <p><strong>Incontri Inclusi:</strong> {formData.timeSlotIds.length > 0 ? formData.timeSlotIds.length : <span className="text-gray-500">...</span>}</p>
+                        
+                        {formData.timeSlotIds.length > 0 && selectedLaboratorio && (
+                            <div className="text-xs max-h-24 overflow-y-auto bg-white dark:bg-gray-700 p-2 rounded border dark:border-gray-600">
+                                {selectedLaboratorio.timeSlots
+                                    .filter(ts => formData.timeSlotIds.includes(ts.id))
+                                    .map(ts => <div key={ts.id}>• {new Date(`${ts.data}T00:00:00`).toLocaleDateString('it-IT')}</div>)
+                                }
+                            </div>
+                        )}
+
+                        <div className="!mt-6 pt-4 border-t dark:border-gray-600">
+                            <p className="text-xl font-bold">Totale: {formData.importo.toFixed(2)}€</p>
+                        </div>
+                    </div>
+                     <div className="mt-6">
+                         <Button 
+                            type="button" 
+                            variant="primary" 
+                            onClick={handleSave}
+                            className="w-full"
+                            disabled={!formData.clienteId || !formData.laboratorioId || !formData.listinoDefId || formData.figliIds.length === 0 || formData.timeSlotIds.length === 0}
+                        >
+                            Crea Iscrizione
+                        </Button>
+                         <Button type="button" variant="secondary" onClick={onCancel} className="w-full mt-2">Annulla</Button>
+                    </div>
+                </div>
             </div>
         </div>
     );
