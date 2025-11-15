@@ -2,7 +2,7 @@ import {
     RegimeFiscale, ClienteClasse, ClienteTipo, ClienteStato, FornitoreTipo, 
     AttivitaStato, MaterialeUbicazione, PropostaStato, 
     // FIX: Import new enums and types for Laboratori, Durate, Listini, Iscrizioni
-    LaboratorioStato, TimeSlotStato, DurataTipo, IscrizioneStato, TimeSlot, Iscrizione,
+    LaboratorioStato, TimeSlotStato, IscrizioneStato, TimeSlot, Iscrizione,
     // FIX: Add Finance types
     TipoMovimento, CentroDiCosto, Imputazione, ImputazioneGenerale, ImputazioneCommerciale, ImputazioneOperativa, MovimentoFinance,
 // FIX: Add Documenti types
@@ -12,7 +12,11 @@ import {
 // Add new types for Anagrafiche
     TimeSlotDef, ListinoDef, LaboratorioTipoDef,
 // Add new types for Relazioni
-    RelazioneTipo, RelazioneDef
+    RelazioneTipo, RelazioneDef,
+// FIX: Import new Promemoria types
+    Promemoria, PromemoriaStato,
+// FIX: Add Durata types for the legacy Durate micro-app.
+    Durata, DurataTipo
 } from './types';
 
 export const REGIME_FISCALE_OPTIONS = Object.values(RegimeFiscale);
@@ -34,7 +38,7 @@ export const EMPTY_FIGLIO_ANAGRAFICA = { id: '', nome: '', eta: '' };
 export const EMPTY_FORNITORE_ANAGRAFICA = { id: '', ragioneSociale: '', partitaIva: '', indirizzo: { ...EMPTY_INDIRIZZO }, telefono: '', email: '', referente: '' };
 export const EMPTY_DITTA = { ragioneSociale: '', partitaIva: '', indirizzo: { ...EMPTY_INDIRIZZO }, telefono: '', email: '', referente: '' };
 export const EMPTY_SEDE_ANAGRAFICA = { id: '', fornitoreId: '', nome: '', indirizzo: { ...EMPTY_INDIRIZZO }, capienzaMassima: 0, fasciaEta: '', costoNoloOra: 0, colore: '#A0AEC0' };
-export const EMPTY_ATTIVITA_ANAGRAFICA = { id: '', nome: '', fasciaEta: '', materiali: [] };
+export const EMPTY_ATTIVITA_ANAGRAFICA = { id: '', nome: '', fasciaEta: '', materialiIds: [] };
 export const EMPTY_ATTIVITA = { id: '', stato: AttivitaStato.PIANIFICATA, tipo: '', titolo: '', materiali: [], rating: 0 };
 export const EMPTY_MATERIALE = { id: '', nome: '', descrizione: '', unitaMisura: 'pz', quantita: 0, prezzoAbituale: 0, ubicazione: MaterialeUbicazione.HOME };
 export const EMPTY_SERVIZIO_PROPOSTA = { id: `new_${Date.now()}`, descrizione: '', quantita: 1, prezzoUnitario: 0 };
@@ -59,14 +63,7 @@ export const LABORATORIO_STATO_OPTIONS = Object.values(LaboratorioStato);
 export const TIME_SLOT_STATO_OPTIONS = Object.values(TimeSlotStato);
 export const DURATA_LABORATORIO_OPTIONS = ['OpenDay', 'Mensile', 'Bimestrale', 'Trimestrale', 'Evento', 'Scolastico', 'Campus'];
 export const EMPTY_TIMESLOT: Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'> = { data: new Date().toISOString().split('T')[0], stato: TimeSlotStato.PROGRAMMATO, iscritti: 0 };
-export const EMPTY_LABORATORIO = { id: '', codice: '', sedeId: '', stato: LaboratorioStato.PROGRAMMATO, dataInizio: '', dataFine: '', costoAttivita: 0, costoLogistica: 0, timeSlots: [] };
-
-// Durate Constants
-export const DURATA_TIPO_OPTIONS = Object.values(DurataTipo);
-export const EMPTY_DURATA = { id: '', nome: '', tipo: DurataTipo.INCONTRI, valore: 1 };
-
-// Listini Constants
-export const EMPTY_LISTINO = { id: '', laboratorioId: '', listinoBase: 0, profittoPercentuale: 30 };
+export const EMPTY_LABORATORIO = { id: '', codice: '', sedeId: '', tipoId: '', stato: LaboratorioStato.PROGRAMMATO, dataInizio: '', dataFine: '', costoAttivita: 0, costoLogistica: 0, timeSlots: [] };
 
 // Iscrizioni Constants
 export const ISCRIZIONE_STATO_OPTIONS = Object.values(IscrizioneStato);
@@ -75,10 +72,20 @@ export const EMPTY_ISCRIZIONE: Omit<Iscrizione, 'id' | 'codice'> = {
     laboratorioId: '', 
     figliIds: [], 
     timeSlotIds: [], 
-    listinoId: '', 
+    listinoDefId: '', 
     stato: IscrizioneStato.PROMEMORIA, 
     importo: 0,
     dataCreazione: new Date().toISOString().split('T')[0]
+};
+
+// FIX: Add constants for Promemoria
+export const PROMEMORIA_STATO_OPTIONS = Object.values(PromemoriaStato);
+export const EMPTY_PROMEMORIA: Omit<Promemoria, 'id'> = {
+    iscrizioneId: '',
+    genitoreId: '',
+    laboratorioCodice: '',
+    dataScadenza: '',
+    stato: PromemoriaStato.ATTIVO,
 };
 
 // FIX: Add constants for Finance
@@ -133,6 +140,14 @@ export const EMPTY_INTERAZIONE: Omit<InterazioneCRM, 'id' | 'clienteId'> = {
 };
 
 // Anagrafiche Definizioni
+// FIX: Add constants for the legacy Durate micro-app.
+export const DURATA_TIPO_OPTIONS = Object.values(DurataTipo);
+export const EMPTY_DURATA: Omit<Durata, 'id'> = {
+    nome: '',
+    tipo: DurataTipo.SETTIMANE,
+    valore: 4,
+};
+
 export const EMPTY_TIMESLOT_DEF: Omit<TimeSlotDef, 'id'> = {
     nome: '',
     valoreInMinuti: 60,
@@ -146,6 +161,8 @@ export const EMPTY_LISTINO_DEF: Omit<ListinoDef, 'id'> = {
 export const EMPTY_LABORATORIO_TIPO_DEF: Omit<LaboratorioTipoDef, 'id'> = {
     tipo: '',
     codice: '',
+    // FIX: Replaced `durataId` with `numeroTimeSlots`.
+    numeroTimeSlots: 4,
 };
 
 export const EMPTY_DOCUMENTO_TIPO_DEF: Omit<DocumentoTipoDef, 'id'> = {

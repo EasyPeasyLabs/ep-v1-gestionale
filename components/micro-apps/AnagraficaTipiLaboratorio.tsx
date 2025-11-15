@@ -15,9 +15,10 @@ const TipoLabForm: React.FC<{
 }> = ({ tipoLab, onSave, onCancel }) => {
     const [formData, setFormData] = useState(tipoLab);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        const valueToSet = e.target.type === 'number' ? parseInt(value, 10) || 1 : value;
+        setFormData(prev => ({ ...prev, [name]: valueToSet }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -39,6 +40,16 @@ const TipoLabForm: React.FC<{
                     maxLength={2}
                     pattern="[a-zA-Z0-9]{2}"
                     title="Inserire 2 caratteri alfanumerici (lettere o numeri)."
+                />
+                <Input 
+                    id="numeroTimeSlots" 
+                    name="numeroTimeSlots" 
+                    label="Numero di Incontri (settimane)" 
+                    type="number"
+                    min="1"
+                    value={formData.numeroTimeSlots}
+                    onChange={handleChange} 
+                    required 
                 />
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
@@ -75,7 +86,7 @@ export const AnagraficaTipiLaboratorio: React.FC = () => {
     };
 
     const handleDelete = (item: LaboratorioTipoDef) => {
-        if (laboratori.some(lab => lab.tipo === item.tipo)) {
+        if (laboratori.some(lab => lab.tipoId === item.id)) {
             alert(`Impossibile eliminare il tipo "${item.tipo}" perché è utilizzato in uno o più laboratori.`);
             return;
         }
@@ -95,22 +106,26 @@ export const AnagraficaTipiLaboratorio: React.FC = () => {
                         <tr>
                             <th scope="col" className="px-6 py-3">Tipo</th>
                             <th scope="col" className="px-6 py-3">Codice</th>
+                            <th scope="col" className="px-6 py-3">Numero Incontri</th>
                             <th scope="col" className="px-6 py-3 text-right">Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {laboratoriTipi.map(item => (
-                            <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{item.tipo}</th>
-                                <td className="px-6 py-4 font-mono">{item.codice}</td>
-                                <td className="px-6 py-4 text-right space-x-2">
-                                    <button onClick={() => handleOpenModal(item)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
-                                    <button onClick={() => handleDelete(item)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
-                                </td>
-                            </tr>
-                        ))}
+                        {laboratoriTipi.map(item => {
+                            return (
+                                <tr key={item.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
+                                    <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{item.tipo}</th>
+                                    <td className="px-6 py-4 font-mono">{item.codice}</td>
+                                    <td className="px-6 py-4 text-center">{item.numeroTimeSlots}</td>
+                                    <td className="px-6 py-4 text-right space-x-2">
+                                        <button onClick={() => handleOpenModal(item)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
+                                        <button onClick={() => handleDelete(item)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                    </td>
+                                </tr>
+                            )
+                        })}
                         {laboratoriTipi.length === 0 && (
-                             <tr><td colSpan={3} className="text-center py-8 text-gray-500">Nessun tipo di laboratorio trovato.</td></tr>
+                             <tr><td colSpan={4} className="text-center py-8 text-gray-500">Nessun tipo di laboratorio trovato.</td></tr>
                         )}
                     </tbody>
                 </table>

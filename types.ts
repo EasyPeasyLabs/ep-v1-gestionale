@@ -89,6 +89,9 @@ export interface GenitoreAnagrafica {
     telefono: string;
     email: string;
     lastModified?: string;
+    figliIds?: string[];
+    // FIX: Add iscrizioniIds to link parents to their enrollments for tracking.
+    iscrizioniIds?: string[];
 }
 
 export interface Figlio {
@@ -131,7 +134,7 @@ export interface AttivitaAnagrafica {
     id: string;
     nome: string;
     fasciaEta: string;
-    materiali: string[];
+    materialiIds: string[];
     lastModified?: string;
 }
 
@@ -199,6 +202,8 @@ export interface LaboratorioTipoDef {
     id: string;
     tipo: string;
     codice: string;
+    // FIX: Replaced `durataId` with `numeroTimeSlots` to simplify the model.
+    numeroTimeSlots: number;
 }
 
 export interface Attivita {
@@ -225,6 +230,7 @@ export interface Materiale {
     quantita: number;
     prezzoAbituale: number;
     ubicazione: MaterialeUbicazione;
+    lastModified?: string;
 }
 
 // --- COMMERCIALE ---
@@ -285,36 +291,14 @@ export interface Laboratorio {
     id: string;
     codice: string;
     sedeId: string;
-    // FIX: Added optional 'tipo' property to link laboratori to their type definition.
-    tipo?: string;
+    // FIX: Changed 'tipo' to 'tipoId' to store a reference to the type definition.
+    tipoId: string;
     stato: LaboratorioStato;
     dataInizio: string; // YYYY-MM-DD
     dataFine: string; // YYYY-MM-DD
     costoAttivita: number;
     costoLogistica: number;
     timeSlots: TimeSlot[];
-}
-
-// --- DURATE ---
-export enum DurataTipo {
-    INCONTRI = "Incontri",
-    SETTIMANE = "Settimane",
-    MESI = "Mesi",
-}
-
-export interface Durata {
-    id: string;
-    nome: string;
-    tipo: DurataTipo;
-    valore: number;
-}
-
-// --- LISTINI ---
-export interface Listino {
-    id: string;
-    laboratorioId: string;
-    listinoBase: number;
-    profittoPercentuale: number;
 }
 
 // --- ISCRIZIONI ---
@@ -327,14 +311,30 @@ export enum IscrizioneStato {
 export interface Iscrizione {
     id: string;
     codice: string;
-    clienteId: string;
+    clienteId: string; // This is now a GenitoreAnagrafica ID
     laboratorioId: string;
     figliIds: string[];
     timeSlotIds: string[];
-    listinoId: string;
+    listinoDefId: string;
     stato: IscrizioneStato;
     importo: number;
     dataCreazione: string; // YYYY-MM-DD
+}
+
+// --- PROMEMORIA ---
+export enum PromemoriaStato {
+    ATTIVO = "Attivo",
+    GESTITO = "Gestito",
+    ANNULLATO = "Annullato",
+}
+
+export interface Promemoria {
+    id: string;
+    iscrizioneId: string;
+    genitoreId: string;
+    laboratorioCodice: string;
+    dataScadenza: string; // YYYY-MM-DD
+    stato: PromemoriaStato;
 }
 
 // --- FINANCE ---
@@ -378,6 +378,7 @@ export interface MovimentoFinance {
     importo: number;
     centroDiCosto: CentroDiCosto;
     imputazione: Imputazione;
+    iscrizioneId?: string;
 }
 
 // FIX: Add types for CRM feature
@@ -429,6 +430,20 @@ export interface Documento {
 }
 
 // --- ANAGRAFICHE / DEFINIZIONI ---
+
+// FIX: Added Durata types to support the legacy Durate micro-app.
+export enum DurataTipo {
+    SETTIMANE = "Settimane",
+    MESI = "Mesi",
+    INCONTRI = "Incontri",
+}
+
+export interface Durata {
+    id: string;
+    nome: string; // e.g., "Trimestrale"
+    tipo: DurataTipo; // Mesi
+    valore: number; // 3
+}
 
 export interface TimeSlotDef {
     id: string;

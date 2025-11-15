@@ -4,7 +4,7 @@ import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
-import { Iscrizione, Cliente, ClienteTipo, Laboratorio, Listino, IscrizioneStato, FiglioAnagrafica, TimeSlot, ClienteFamiglia, GenitoreAnagrafica } from '../../types';
+import { Iscrizione, Cliente, ClienteTipo, Laboratorio, IscrizioneStato, FiglioAnagrafica, TimeSlot, ClienteFamiglia, GenitoreAnagrafica, LaboratorioStato, ListinoDef } from '../../types';
 import { EMPTY_ISCRIZIONE, ISCRIZIONE_STATO_OPTIONS } from '../../constants';
 
 const Step: FC<{ title: string; stepNumber: number; isActive: boolean; children: React.ReactNode }> = ({ title, stepNumber, isActive, children }) => (
@@ -22,44 +22,43 @@ type IscrizioneFormProps = {
     genitori: GenitoreAnagrafica[],
     tuttiFigli: FiglioAnagrafica[],
     laboratori: Laboratorio[],
-    listini: Listino[],
+    listiniDef: ListinoDef[],
     onSave: (isc: Omit<Iscrizione, 'id' | 'codice'>) => void,
     onCancel: () => void,
 };
 
-const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFigli, laboratori, listini, onSave, onCancel }) => {
+const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFigli, laboratori, listiniDef, onSave, onCancel }) => {
     const [step, setStep] = useState(1);
     const [formData, setFormData] = useState(iscrizione);
 
     const selectedGenitore = useMemo(() => genitori.find(g => g.id === formData.clienteId), [genitori, formData.clienteId]);
     const selectedLaboratorio = useMemo(() => laboratori.find(l => l.id === formData.laboratorioId), [laboratori, formData.laboratorioId]);
+    const selectedListino = useMemo(() => listiniDef.find(l => l.id === formData.listinoDefId), [listiniDef, formData.listinoDefId]);
     
+    const laboratoriDisponibili = useMemo(() => {
+        return laboratori.filter(l => 
+            (l.stato === LaboratorioStato.ATTIVO || l.stato === LaboratorioStato.PROGRAMMATO)
+        );
+    }, [laboratori]);
+
     const figliAssociati = useMemo(() => {
         if (!selectedGenitore) return [];
-        
-        // La relazione 'Genitori-Figli' aggiunge dinamicamente il campo 'figliIds' al documento del genitore.
-        // Accediamo a questo campo in modo dinamico.
-        const figliIds = (selectedGenitore as any).figliIds as string[];
-
-        if (!Array.isArray(figliIds)) {
-            return [];
-        }
-
+        const figliIds = selectedGenitore.figliIds;
+        if (!Array.isArray(figliIds)) return [];
         return tuttiFigli.filter(figlio => figliIds.includes(figlio.id));
     }, [selectedGenitore, tuttiFigli]);
     
     useEffect(() => {
-        if (selectedLaboratorio) {
-            const listinoAssociato = listini.find(li => li.laboratorioId === selectedLaboratorio.id);
-            if (listinoAssociato) {
-                const importo = (listinoAssociato.listinoBase || 0) * (formData.figliIds.length || 1);
-                setFormData(prev => ({ ...prev, listinoId: listinoAssociato.id, importo }));
-            }
+        if (selectedListino) {
+            const importo = (selectedListino.prezzo || 0) * (formData.figliIds.length || 1);
+            setFormData(prev => ({ ...prev, importo }));
+        } else {
+            setFormData(prev => ({ ...prev, importo: 0 }));
         }
-    }, [selectedLaboratorio, formData.figliIds, listini]);
+    }, [selectedListino, formData.figliIds.length]);
 
     const handleSave = () => {
-        if (!formData.clienteId || !formData.laboratorioId || formData.figliIds.length === 0 || formData.timeSlotIds.length === 0) {
+        if (!formData.clienteId || !formData.laboratorioId || !formData.listinoDefId || formData.figliIds.length === 0 || formData.timeSlotIds.length === 0) {
             alert("Completa tutti i passaggi prima di salvare.");
             return;
         }
@@ -95,21 +94,31 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFi
                             />
                             <span className="ml-3 text-sm">{figlio.nome} ({figlio.eta})</span>
                         </label>
-                    )) : <p className="text-sm text-gray-500">Nessun figlio associato a questo genitore. Associa i figli tramite la micro-app 'Genitori-Figli'.</p>}
+                    )) : <p className="text-sm text-gray-500">Nessun figlio associato. Usa la micro-app 'Relazioni' per collegare figli e genitori.</p>}
                 </div>
             </Step>
 
              <Step title="Seleziona Laboratorio" stepNumber={3} isActive={step >= 2 && formData.figliIds.length > 0}>
                 <Select id="laboratorioId" name="laboratorioId" label="" value={formData.laboratorioId} onChange={e => {
-                    setFormData(prev => ({...prev, laboratorioId: e.target.value, timeSlotIds: []}));
+                    setFormData(prev => ({...prev, laboratorioId: e.target.value, timeSlotIds: [], listinoDefId: ''}));
                     setStep(e.target.value ? 4 : 3);
                 }} required>
                     <option value="">Seleziona un laboratorio...</option>
-                    {laboratori.filter(l => l.stato === 'Attivo' || l.stato === 'Programmato').map(l => <option key={l.id} value={l.id}>{l.codice}</option>)}
+                    {laboratoriDisponibili.map(l => <option key={l.id} value={l.id}>{l.codice}</option>)}
+                </Select>
+            </Step>
+
+            <Step title="Seleziona Listino" stepNumber={4} isActive={step >= 4}>
+                <Select id="listinoDefId" name="listinoDefId" label="" value={formData.listinoDefId} onChange={e => {
+                    setFormData(prev => ({...prev, listinoDefId: e.target.value }));
+                    setStep(e.target.value ? 5 : 4);
+                }} required>
+                    <option value="">Seleziona un listino...</option>
+                    {listiniDef.map(l => <option key={l.id} value={l.id}>{l.tipo} ({l.prezzo.toFixed(2)}€)</option>)}
                 </Select>
             </Step>
             
-            <Step title="Seleziona Incontri" stepNumber={4} isActive={step >= 4}>
+            <Step title="Seleziona Incontri" stepNumber={5} isActive={step >= 5}>
                  <div className="space-y-2 p-3 border rounded-md dark:border-gray-600 max-h-48 overflow-y-auto">
                     {selectedLaboratorio?.timeSlots?.length > 0 ? selectedLaboratorio.timeSlots.map((ts: TimeSlot) => (
                         <label key={ts.id} className="flex items-center">
@@ -131,19 +140,19 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFi
                  <Button size="sm" variant="secondary" type="button" onClick={() => setFormData(prev => ({...prev, timeSlotIds: selectedLaboratorio?.timeSlots.map(ts => ts.id) || []}))} className="mt-2">Seleziona tutti</Button>
             </Step>
 
-            <Step title="Riepilogo e Quota" stepNumber={5} isActive={step >= 4 && formData.laboratorioId !== ''}>
+            <Step title="Riepilogo e Quota" stepNumber={6} isActive={step >= 5 && formData.listinoDefId !== ''}>
                 <div className="p-4 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 space-y-2">
                     <p><strong>Cliente:</strong> {selectedGenitore ? `${selectedGenitore.cognome} ${selectedGenitore.nome}`: 'N/D'}</p>
                     <p><strong>Figli Selezionati:</strong> {formData.figliIds.length}</p>
                     <p><strong>Laboratorio:</strong> {selectedLaboratorio?.codice || 'N/D'}</p>
-                    <p><strong>Incontri Selezionati:</strong> {formData.timeSlotIds.length}</p>
+                    <p><strong>Listino:</strong> {selectedListino?.tipo || 'N/D'}</p>
                     <p className="text-lg font-bold mt-2">Totale Quota: {formData.importo.toFixed(2)}€</p>
                 </div>
             </Step>
 
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
                 <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
-                <Button type="button" variant="primary" onClick={handleSave} disabled={step < 4 || formData.timeSlotIds.length === 0}>
+                <Button type="button" variant="primary" onClick={handleSave} disabled={step < 6 || formData.timeSlotIds.length === 0}>
                     Crea Iscrizione
                 </Button>
             </div>
@@ -151,9 +160,35 @@ const IscrizioneForm: FC<IscrizioneFormProps> = ({ iscrizione, genitori, tuttiFi
     );
 };
 
+const IscrizioneEditForm: FC<{ iscrizione: Iscrizione; onSave: (isc: Iscrizione) => void; onCancel: () => void; }> = ({ iscrizione, onSave, onCancel }) => {
+    const [stato, setStato] = useState(iscrizione.stato);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ ...iscrizione, stato });
+    };
+
+    return (
+        <form onSubmit={handleSubmit}>
+            <p className="mb-4">Modifica lo stato dell'iscrizione <strong>{iscrizione.codice}</strong>.</p>
+            <Select
+                id="stato"
+                label="Stato Iscrizione"
+                options={ISCRIZIONE_STATO_OPTIONS}
+                value={stato}
+                onChange={e => setStato(e.target.value as IscrizioneStato)}
+            />
+            <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
+                <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
+                <Button type="submit" variant="primary">Salva Modifica</Button>
+            </div>
+        </form>
+    )
+}
+
 
 export const Iscrizioni: React.FC = () => {
-    const { iscrizioni, addIscrizione, updateIscrizione, deleteIscrizione, clienti, laboratori, listini, figli: tuttiFigli, genitori } = useMockData();
+    const { iscrizioni, addIscrizione, updateIscrizione, deleteIscrizione, clienti, laboratori, listiniDef, figli: tuttiFigli, genitori } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingIscrizione, setEditingIscrizione] = useState<Iscrizione | null>(null);
 
@@ -167,17 +202,17 @@ export const Iscrizioni: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (isc: Omit<Iscrizione, 'id' | 'codice'>) => {
-        if (editingIscrizione) { // Se stiamo modificando
-            updateIscrizione({ ...editingIscrizione, ...isc });
-        } else { // Se stiamo creando
-            addIscrizione(isc);
+    const handleSave = (isc: Iscrizione | Omit<Iscrizione, 'id' | 'codice'>) => {
+        if ('id' in isc && isc.id) {
+             updateIscrizione(isc as Iscrizione);
+        } else {
+            addIscrizione(isc as Omit<Iscrizione, 'id' | 'codice'>);
         }
         handleCloseModal();
     };
     
     const handleDelete = (id: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questa iscrizione? L'operazione è irreversibile.")) {
+        if (window.confirm("Sei sicuro di voler eliminare questa iscrizione? L'operazione è irreversibile e rimuoverà anche eventuali promemoria e movimenti finanziari collegati.")) {
             deleteIscrizione(id);
         }
     };
@@ -185,12 +220,9 @@ export const Iscrizioni: React.FC = () => {
     const getLabCodice = (labId: string) => laboratori.find(l => l.id === labId)?.codice || 'N/A';
     
     const getClienteNome = (clienteId: string) => {
-        // Logica nuova: clienteId è l'ID di un genitore
         const genitore = genitori.find(g => g.id === clienteId);
-        if (genitore) {
-            return `${genitore.cognome} ${genitore.nome}`;
-        }
-        // Fallback per vecchie iscrizioni create con l'anagrafica Clienti
+        if (genitore) return `${genitore.cognome} ${genitore.nome}`;
+        
         const c = clienti.find(c => c.id === clienteId);
         if (!c) return 'N/A';
         return c.tipo === ClienteTipo.FAMIGLIA ? `Fam. ${(c as ClienteFamiglia).dati.genitore1.cognome}` : c.dati.ragioneSociale;
@@ -241,8 +273,8 @@ export const Iscrizioni: React.FC = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right font-semibold">{isc.importo.toFixed(2)}€</td>
                                 <td className="px-6 py-4 text-right space-x-2">
-                                    {/* <button onClick={() => handleOpenModal(isc)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button> */}
-                                    <button onClick={() => handleDelete(isc.id)} className="text-red-600 hover:text-red-800 disabled:text-gray-400" disabled={!isc.id}><TrashIcon /></button>
+                                    <button onClick={() => handleOpenModal(isc)} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
+                                    <button onClick={() => handleDelete(isc.id)} className="text-red-600 hover:text-red-800" disabled={!isc.id}><TrashIcon /></button>
                                 </td>
                             </tr>
                         ))}
@@ -251,16 +283,20 @@ export const Iscrizioni: React.FC = () => {
             </div>
 
             {isModalOpen && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingIscrizione ? "Modifica Iscrizione (non disponibile)" : "Nuova Iscrizione"}>
-                    <IscrizioneForm
-                        iscrizione={editingIscrizione || EMPTY_ISCRIZIONE}
-                        genitori={genitori}
-                        tuttiFigli={tuttiFigli}
-                        laboratori={laboratori}
-                        listini={listini}
-                        onSave={handleSave}
-                        onCancel={handleCloseModal}
-                    />
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingIscrizione ? "Modifica Stato Iscrizione" : "Nuova Iscrizione"}>
+                    {editingIscrizione ? (
+                        <IscrizioneEditForm iscrizione={editingIscrizione} onSave={handleSave as (isc: Iscrizione) => void} onCancel={handleCloseModal} />
+                    ) : (
+                        <IscrizioneForm
+                            iscrizione={EMPTY_ISCRIZIONE}
+                            genitori={genitori}
+                            tuttiFigli={tuttiFigli}
+                            laboratori={laboratori}
+                            listiniDef={listiniDef}
+                            onSave={handleSave}
+                            onCancel={handleCloseModal}
+                        />
+                    )}
                 </Modal>
             )}
         </div>

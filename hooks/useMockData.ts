@@ -13,10 +13,12 @@ import {
     getDoc,
     setDoc,
     getDocs,
-    limit
+    limit,
+    where
 } from "firebase/firestore";
 // FIX: Import new types for Laboratori, Durate, Listini, Iscrizioni, CRM, and LaboratorioTipoDef
-import type { Cliente, Fornitore, SedeAnagrafica, Attivita, Materiale, PropostaCommerciale, AttivitaTipoDef, ConfigurazioneAzienda, GenitoreAnagrafica, FiglioAnagrafica, FornitoreAnagrafica, AttivitaAnagrafica, Laboratorio, LaboratorioTipoDef, TimeSlot, Durata, Listino, Iscrizione, MovimentoFinance, InterazioneCRM, Documento, DocumentoTipoDef, TimeSlotDef, ListinoDef, RelazioneDef } from '../types';
+import type { Cliente, Fornitore, SedeAnagrafica, Attivita, Materiale, PropostaCommerciale, AttivitaTipoDef, ConfigurazioneAzienda, GenitoreAnagrafica, FiglioAnagrafica, FornitoreAnagrafica, AttivitaAnagrafica, Laboratorio, LaboratorioTipoDef, TimeSlot, Iscrizione, MovimentoFinance, InterazioneCRM, Documento, DocumentoTipoDef, TimeSlotDef, ListinoDef, RelazioneDef, Promemoria, Durata } from '../types';
+import { IscrizioneStato, PromemoriaStato, TipoMovimento, CentroDiCosto, ImputazioneOperativa } from '../types';
 
 // Helper function to recursively convert Firestore Timestamps to ISO strings.
 // This prevents "circular structure" errors when using JSON.stringify on the data.
@@ -60,24 +62,18 @@ export function useMockData() {
     const [materiali, setMateriali] = useState<Materiale[]>([]);
     const [proposte, setProposte] = useState<PropostaCommerciale[]>([]);
     const [configurazione, setConfigurazione] = useState<ConfigurazioneAzienda | null>(null);
-    // FIX: Add state for new collections
     const [laboratori, setLaboratori] = useState<Laboratorio[]>([]);
-    // FIX: Add state for laboratoriTipi collection
     const [laboratoriTipi, setLaboratoriTipi] = useState<LaboratorioTipoDef[]>([]);
-    const [durate, setDurate] = useState<Durata[]>([]);
-    const [listini, setListini] = useState<Listino[]>([]);
     const [iscrizioni, setIscrizioni] = useState<Iscrizione[]>([]);
-    // FIX: Add state for finance movements
     const [movimenti, setMovimenti] = useState<MovimentoFinance[]>([]);
-    // FIX: Add state for CRM interazioni
     const [interazioni, setInterazioni] = useState<InterazioneCRM[]>([]);
-    // FIX: Add state for documenti
     const [documenti, setDocumenti] = useState<Documento[]>([]);
     const [documentiTipi, setDocumentiTipi] = useState<DocumentoTipoDef[]>([]);
-    // Add state for new anagrafiche definitions
     const [timeSlotsDef, setTimeSlotsDef] = useState<TimeSlotDef[]>([]);
     const [listiniDef, setListiniDef] = useState<ListinoDef[]>([]);
     const [relazioni, setRelazioni] = useState<RelazioneDef[]>([]);
+    const [promemoria, setPromemoria] = useState<Promemoria[]>([]);
+    const [durate, setDurate] = useState<Durata[]>([]);
 
 
     useEffect(() => {
@@ -86,9 +82,6 @@ export function useMockData() {
             const q = orderField ? query(collRef, orderBy(orderField, 'asc')) : query(collRef);
             
             const unsubscribe = onSnapshot(q, (snapshot) => {
-                // FIX: The snapshot from a collection query should be a QuerySnapshot, but TypeScript
-                // was incorrectly inferring it as a DocumentSnapshot. Added a type guard to check for
-                // the `docs` property to resolve the type error.
                 if ('docs' in snapshot) {
                     const data = snapshot.docs.map(d => ({ id: d.id, ...convertTimestamps(d.data()) }));
                     setter(data);
@@ -106,26 +99,20 @@ export function useMockData() {
         const unsubAttivitaAnagrafica = createSubscription('attivitaAnagrafica', setAttivitaAnagrafica, 'lastModified');
         const unsubAttivita = createSubscription('attivita', setAttivita);
         const unsubAttivitaTipi = createSubscription('attivitaTipi', setAttivitaTipi, 'nome');
-        const unsubMateriali = createSubscription('materiali', setMateriali);
+        const unsubMateriali = createSubscription('materiali', setMateriali, 'lastModified');
         const unsubProposte = createSubscription('proposte', setProposte, 'dataEmissione');
-        // FIX: Add subscriptions for new collections
         const unsubLaboratori = createSubscription('laboratori', setLaboratori, 'codice');
-        // FIX: Add subscription for laboratoriTipi collection
         const unsubLaboratoriTipi = createSubscription('laboratoriTipi', setLaboratoriTipi, 'tipo');
-        const unsubDurate = createSubscription('durate', setDurate, 'nome');
-        const unsubListini = createSubscription('listini', setListini);
         const unsubIscrizioni = createSubscription('iscrizioni', setIscrizioni, 'codice');
-        // FIX: Add subscription for finance movements
         const unsubMovimenti = createSubscription('movimenti', setMovimenti, 'data');
-        // FIX: Add subscription for CRM interazioni
         const unsubInterazioni = createSubscription('interazioni', setInterazioni, 'data');
-        // FIX: Add subscription for documenti
         const unsubDocumenti = createSubscription('documenti', setDocumenti, 'dataCreazione');
         const unsubDocumentiTipi = createSubscription('documentiTipi', setDocumentiTipi, 'nome');
-        // Add subscriptions for new anagrafiche definitions
         const unsubTimeSlotsDef = createSubscription('timeSlotsDef', setTimeSlotsDef, 'valoreInMinuti');
         const unsubListiniDef = createSubscription('listiniDef', setListiniDef, 'tipo');
         const unsubRelazioni = createSubscription('relazioni', setRelazioni, 'nome');
+        const unsubPromemoria = createSubscription('promemoria', setPromemoria, 'dataScadenza');
+        const unsubDurate = createSubscription('durate', setDurate, 'nome');
 
         
         const configRef = doc(db, 'configurazione', 'main');
@@ -150,40 +137,49 @@ export function useMockData() {
             unsubMateriali();
             unsubProposte();
             unsubConfig();
-            // FIX: Add cleanup for new subscriptions
             unsubLaboratori();
-            // FIX: Add cleanup for laboratoriTipi subscription
             unsubLaboratoriTipi();
-            unsubDurate();
-            unsubListini();
             unsubIscrizioni();
-            // FIX: Add cleanup for finance subscription
             unsubMovimenti();
-            // FIX: Add cleanup for CRM subscription
             unsubInterazioni();
-            // FIX: Add cleanup for documenti subscription
             unsubDocumenti();
             unsubDocumentiTipi();
-            // Add cleanup for new anagrafiche definitions
             unsubTimeSlotsDef();
             unsubListiniDef();
             unsubRelazioni();
+            unsubPromemoria();
+            unsubDurate();
         };
     }, []);
 
     // Generic CRUD helpers
     const addDocument = useCallback(async (collectionName: string, data: object) => {
-        await addDoc(collection(db, collectionName), data);
+        try {
+            const docRef = await addDoc(collection(db, collectionName), data);
+            return docRef.id;
+        } catch (error) {
+            console.error(`Errore durante l'aggiunta del documento a '${collectionName}': `, error);
+            alert(`Impossibile aggiungere l'elemento. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla la console per i dettagli.`);
+            return null;
+        }
     }, []);
 
     const updateDocument = useCallback(async (collectionName: string, id: string, data: object) => {
-        const docRef = doc(db, collectionName, id);
-        await updateDoc(docRef, data);
+        if (!id) {
+            console.error(`Attempted to update a document in '${collectionName}' with a missing ID.`);
+            alert("Operazione non riuscita: ID del documento non valido.");
+            return;
+        }
+        try {
+            const docRef = doc(db, collectionName, id);
+            await updateDoc(docRef, data);
+        } catch (error) {
+            console.error(`Errore durante l'aggiornamento del documento in '${collectionName}' (ID: ${id}): `, error);
+            alert(`Impossibile aggiornare l'elemento. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla la console per i dettagli.`);
+        }
     }, []);
 
     const deleteDocument = useCallback(async (collectionName: string, id: string) => {
-        // BUG FIX: Added a guard to prevent Firebase errors when trying to delete a document with an empty ID.
-        // This can happen in race conditions where the UI tries to delete an item before its ID is synced from Firestore.
         if (!id) {
             console.error(`Attempted to delete a document from '${collectionName}' with a missing ID.`);
             alert("Operazione non riuscita: ID del documento non valido.");
@@ -193,7 +189,7 @@ export function useMockData() {
             await deleteDoc(doc(db, collectionName, id));
         } catch (error) {
             console.error("Errore durante l'eliminazione del documento: ", error);
-            alert(`Impossibile eliminare l'elemento. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla le regole di sicurezza di Firestore o la console per maggiori dettagli.`);
+            alert(`Impossibile eliminare l'elemento. Causa: ${error instanceof Error ? error.message : 'Errore sconosciuto'}. Controlla la console per i dettagli.`);
         }
     }, []);
 
@@ -207,7 +203,7 @@ export function useMockData() {
     // Genitori CRUD
     const addGenitore = useCallback((genitore: Omit<GenitoreAnagrafica, 'id'>) => {
         const genitoreWithTimestamp = { ...genitore, lastModified: new Date().toISOString() };
-        addDocument('genitori', genitoreWithTimestamp);
+        return addDocument('genitori', genitoreWithTimestamp);
     }, [addDocument]);
     
     const updateGenitore = useCallback((updatedGenitore: GenitoreAnagrafica) => {
@@ -221,7 +217,7 @@ export function useMockData() {
     // Figli CRUD
     const addFiglio = useCallback((figlio: Omit<FiglioAnagrafica, 'id'>) => {
         const figlioWithTimestamp = { ...figlio, lastModified: new Date().toISOString() };
-        addDocument('figli', figlioWithTimestamp);
+        return addDocument('figli', figlioWithTimestamp);
     }, [addDocument]);
     
     const updateFiglio = useCallback((updatedFiglio: FiglioAnagrafica) => {
@@ -315,10 +311,14 @@ export function useMockData() {
     const deleteAttivitaTipo = useCallback((tipoId: string) => deleteDocument('attivitaTipi', tipoId), [deleteDocument]);
 
     // Materiali CRUD
-    const addMateriale = useCallback((mat: Omit<Materiale, 'id'>) => addDocument('materiali', mat), [addDocument]);
+    const addMateriale = useCallback((mat: Omit<Materiale, 'id'>) => {
+        const matWithTimestamp = { ...mat, lastModified: new Date().toISOString() };
+        return addDocument('materiali', matWithTimestamp);
+    }, [addDocument]);
     const updateMateriale = useCallback((updatedMat: Materiale) => {
         const { id, ...data } = updatedMat;
-        updateDocument('materiali', id, data);
+        const dataWithTimestamp = { ...data, lastModified: new Date().toISOString() };
+        updateDocument('materiali', id, dataWithTimestamp);
     }, [updateDocument]);
     const deleteMateriale = useCallback((matId: string) => deleteDocument('materiali', matId), [deleteDocument]);
 
@@ -330,7 +330,6 @@ export function useMockData() {
     }, [updateDocument]);
     const deleteProposta = useCallback((propId: string) => deleteDocument('proposte', propId), [deleteDocument]);
 
-    // FIX: Add CRUD functions for new collections
     // Laboratori CRUD
     const addLaboratorio = useCallback((lab: Omit<Laboratorio, 'id'>) => addDocument('laboratori', lab), [addDocument]);
     const updateLaboratorio = useCallback((updatedLab: Laboratorio) => {
@@ -339,7 +338,6 @@ export function useMockData() {
     }, [updateDocument]);
     const deleteLaboratorio = useCallback((labId: string) => deleteDocument('laboratori', labId), [deleteDocument]);
 
-    // FIX: Add CRUD functions for laboratoriTipi
     const addLaboratorioTipo = useCallback((tipo: Omit<LaboratorioTipoDef, 'id'>) => addDocument('laboratoriTipi', tipo), [addDocument]);
     const updateLaboratorioTipo = useCallback((updatedTipo: LaboratorioTipoDef) => {
         const { id, ...data } = updatedTipo;
@@ -347,7 +345,6 @@ export function useMockData() {
     }, [updateDocument]);
     const deleteLaboratorioTipo = useCallback((tipoId: string) => deleteDocument('laboratoriTipi', tipoId), [deleteDocument]);
 
-    // TimeSlots are managed within a Laboratorio document
     const addTimeSlot = useCallback(async (labId: string, ts: Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => {
         const labDocRef = doc(db, 'laboratori', labId);
         const labDoc = await getDoc(labDocRef);
@@ -384,23 +381,21 @@ export function useMockData() {
             await updateDoc(labDocRef, { timeSlots: updatedSlots });
         }
     }, []);
-
-    // Durate CRUD
-    const addDurata = useCallback((dur: Omit<Durata, 'id'>) => addDocument('durate', dur), [addDocument]);
-    const updateDurata = useCallback((updatedDur: Durata) => {
-        const { id, ...data } = updatedDur;
-        updateDocument('durate', id, data);
-    }, [updateDocument]);
-    const deleteDurata = useCallback((durId: string) => deleteDocument('durate', durId), [deleteDocument]);
-
-    // Listini CRUD
-    const addListino = useCallback((list: Omit<Listino, 'id'>) => addDocument('listini', list), [addDocument]);
-    const updateListino = useCallback((updatedList: Listino) => {
-        const { id, ...data } = updatedList;
-        updateDocument('listini', id, data);
-    }, [updateDocument]);
-    const deleteListino = useCallback((listId: string) => deleteDocument('listini', listId), [deleteDocument]);
     
+    // Promemoria CRUD
+    const addPromemoria = useCallback((p: Omit<Promemoria, 'id'>) => addDocument('promemoria', p), [addDocument]);
+    const updatePromemoria = useCallback((updatedP: Promemoria) => {
+        const { id, ...data } = updatedP;
+        updateDocument('promemoria', id, data);
+    }, [updateDocument]);
+    const deletePromemoriaByIscrizioneId = useCallback(async (iscrizioneId: string) => {
+        const q = query(collection(db, 'promemoria'), where('iscrizioneId', '==', iscrizioneId));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach(async (doc) => {
+            await deleteDocument('promemoria', doc.id);
+        });
+    }, [deleteDocument]);
+
     // Iscrizioni CRUD
     const addIscrizione = useCallback(async (isc: Omit<Iscrizione, 'id' | 'codice'>) => {
         const collRef = collection(db, 'iscrizioni');
@@ -413,14 +408,81 @@ export function useMockData() {
         }
         const newCodice = `ISC-${String(nextCodiceNum).padStart(3, '0')}`;
         
-        await addDocument('iscrizioni', {...isc, codice: newCodice});
-    }, [addDocument]);
+        const newIscrizioneId = await addDocument('iscrizioni', {...isc, codice: newCodice});
+        
+        if (newIscrizioneId) {
+            const lab = laboratori.find(l => l.id === isc.laboratorioId);
+            if (lab && lab.timeSlots.length > 0) {
+                const lastTimeSlot = [...lab.timeSlots].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())[0];
+                const scadenzaDate = new Date(lastTimeSlot.data);
+                
+                const newPromemoria: Omit<Promemoria, 'id'> = {
+                    iscrizioneId: newIscrizioneId,
+                    genitoreId: isc.clienteId,
+                    laboratorioCodice: lab.codice,
+                    dataScadenza: scadenzaDate.toISOString().split('T')[0],
+                    stato: PromemoriaStato.ATTIVO
+                };
+                await addPromemoria(newPromemoria);
+            }
 
-    const updateIscrizione = useCallback((updatedIsc: Iscrizione) => {
+            const genitore = genitori.find(g => g.id === isc.clienteId);
+            if (genitore) {
+                const updatedIscrizioniIds = [...(genitore.iscrizioniIds || []), newIscrizioneId];
+                await updateGenitore({ ...genitore, iscrizioniIds: updatedIscrizioniIds });
+            }
+        }
+    }, [addDocument, laboratori, genitori, addPromemoria, updateGenitore]);
+
+    const updateIscrizione = useCallback(async (updatedIsc: Iscrizione) => {
         const { id, ...data } = updatedIsc;
-        updateDocument('iscrizioni', id, data);
-    }, [updateDocument]);
-    const deleteIscrizione = useCallback((iscId: string) => deleteDocument('iscrizioni', iscId), [deleteDocument]);
+        await updateDocument('iscrizioni', id, data);
+
+        if (updatedIsc.stato === IscrizioneStato.PAGATO) {
+            const q = query(collection(db, 'movimenti'), where('iscrizioneId', '==', id));
+            const querySnapshot = await getDocs(q);
+            
+            if (querySnapshot.empty) {
+                const genitore = genitori.find(g => g.id === updatedIsc.clienteId);
+                const lab = laboratori.find(l => l.id === updatedIsc.laboratorioId);
+                const descrizione = `Pagamento Iscrizione ${updatedIsc.codice} - ${genitore?.cognome || 'N/A'} - Lab: ${lab?.codice || 'N/A'}`;
+
+                const newMovimento: Omit<MovimentoFinance, 'id'> = {
+                    data: new Date().toISOString().split('T')[0],
+                    descrizione: descrizione,
+                    tipo: TipoMovimento.ENTRATA,
+                    importo: updatedIsc.importo,
+                    centroDiCosto: CentroDiCosto.OPERATIVO,
+                    imputazione: ImputazioneOperativa.LABORATORIO,
+                    iscrizioneId: id
+                };
+                await addDocument('movimenti', newMovimento);
+            }
+        }
+    }, [updateDocument, addDocument, genitori, laboratori]);
+
+    const deleteIscrizione = useCallback(async (iscId: string) => {
+        const iscrizioneDoc = await getDoc(doc(db, 'iscrizioni', iscId));
+        if (!iscrizioneDoc.exists()) return;
+        const iscrizioneData = iscrizioneDoc.data() as Iscrizione;
+    
+        await deletePromemoriaByIscrizioneId(iscId);
+
+        const qMov = query(collection(db, 'movimenti'), where('iscrizioneId', '==', iscId));
+        const movSnapshot = await getDocs(qMov);
+        movSnapshot.forEach(async (movDoc) => {
+            await deleteDocument('movimenti', movDoc.id);
+        });
+    
+        const genitore = genitori.find(g => g.id === iscrizioneData.clienteId);
+        if (genitore && genitore.iscrizioniIds) {
+            const updatedIscrizioniIds = genitore.iscrizioniIds.filter(id => id !== iscId);
+            await updateGenitore({ ...genitore, iscrizioniIds: updatedIscrizioniIds });
+        }
+    
+        await deleteDocument('iscrizioni', iscId);
+    }, [deleteDocument, deletePromemoriaByIscrizioneId, genitori, updateGenitore]);
+
 
     // FIX: Add CRUD functions for finance movements
     const addMovimento = useCallback((mov: Omit<MovimentoFinance, 'id'>) => addDocument('movimenti', mov), [addDocument]);
@@ -471,6 +533,15 @@ export function useMockData() {
     }, [updateDocument]);
     const deleteListinoDef = useCallback((defId: string) => deleteDocument('listiniDef', defId), [deleteDocument]);
 
+    // FIX: Add CRUD functions for the legacy Durate micro-app.
+    // Durate CRUD
+    const addDurata = useCallback((dur: Omit<Durata, 'id'>) => addDocument('durate', dur), [addDocument]);
+    const updateDurata = useCallback((updatedDur: Durata) => {
+        const { id, ...data } = updatedDur;
+        updateDocument('durate', id, data);
+    }, [updateDocument]);
+    const deleteDurata = useCallback((durId: string) => deleteDocument('durate', durId), [deleteDocument]);
+
     // Relazioni CRUD
     const addRelazione = useCallback((rel: Omit<RelazioneDef, 'id'>) => addDocument('relazioni', rel), [addDocument]);
     const updateRelazione = useCallback((updatedRel: RelazioneDef) => {
@@ -486,7 +557,7 @@ export function useMockData() {
             return;
         }
         
-        const collectionsWithTimestamp = ['genitori', 'figli', 'fornitoriAnagrafica', 'sedi', 'attivitaAnagrafica'];
+        const collectionsWithTimestamp = ['genitori', 'figli', 'fornitoriAnagrafica', 'sedi', 'attivitaAnagrafica', 'materiali'];
         const dataToUpdate = collectionsWithTimestamp.includes(collectionName)
             ? { ...data, lastModified: new Date().toISOString() }
             : data;
@@ -508,26 +579,19 @@ export function useMockData() {
         materiali, addMateriale, updateMateriale, deleteMateriale,
         proposte, addProposta, updateProposta, deleteProposta,
         configurazione, updateConfigurazione,
-        // FIX: Export new state and functions
         laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio,
-        // FIX: Export laboratoriTipi state and functions
         laboratoriTipi, addLaboratorioTipo, updateLaboratorioTipo, deleteLaboratorioTipo,
         addTimeSlot, updateTimeSlot, deleteTimeSlot,
-        durate, addDurata, updateDurata, deleteDurata,
-        listini, addListino, updateListino, deleteListino,
         iscrizioni, addIscrizione, updateIscrizione, deleteIscrizione,
-        // FIX: Export finance state and functions
         movimenti, addMovimento, updateMovimento, deleteMovimento,
-        // FIX: Export CRM state and functions
         interazioni, addInterazione, updateInterazione, deleteInterazione,
-        // FIX: Export documenti state and functions
         documenti, addDocumento, updateDocumento, deleteDocumento,
         documentiTipi, addDocumentoTipo, updateDocumentoTipo, deleteDocumentoTipo,
-        // Export new anagrafiche definitions
         timeSlotsDef, addTimeSlotDef, updateTimeSlotDef, deleteTimeSlotDef,
         listiniDef, addListinoDef, updateListinoDef, deleteListinoDef,
-        // Export relazioni
         relazioni, addRelazione, updateRelazione, deleteRelazione,
-        updateDocumentForRelation
+        updateDocumentForRelation,
+        promemoria, addPromemoria, updatePromemoria,
+        durate, addDurata, updateDurata, deleteDurata,
     };
 }

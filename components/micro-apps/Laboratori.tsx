@@ -5,25 +5,93 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon, CalendarIcon } from '../icons/Icons';
-import { Laboratorio, SedeAnagrafica, TimeSlot, TimeSlotStato, LaboratorioStato } from '../../types';
-import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS, LABORATORIO_STATO_OPTIONS, DURATA_LABORATORIO_OPTIONS } from '../../constants';
+import { Laboratorio, SedeAnagrafica, TimeSlot, TimeSlotStato, LaboratorioStato, LaboratorioTipoDef } from '../../types';
+import { EMPTY_LABORATORIO, GIORNI_SETTIMANA, EMPTY_TIMESLOT, TIME_SLOT_STATO_OPTIONS, LABORATORIO_STATO_OPTIONS } from '../../constants';
 
-// Helper to generate a code
 const generateCode = (sede: SedeAnagrafica | undefined, giorno: string, ora: string): string => {
     if (!sede || !giorno || !ora) return '';
     const nomeSede = sede.nome.replace(/\s/g, '').substring(0, 3).toUpperCase();
-    return `${nomeSede}.${giorno}.${ora.replace(':', '')}`;
+    const giornoCode = giorno.substring(0, 3).toUpperCase();
+    return `${nomeSede}.${giornoCode}.${ora.replace(':', '')}`;
 };
 
-type TimeSlotFormProps = {
-    timeSlot: TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>,
-    onSave: (ts: TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => void,
-    onCancel: () => void,
-};
+const LaboratorioForm: FC<{
+    laboratorio: Laboratorio | Omit<Laboratorio, 'id'>,
+    sedi: SedeAnagrafica[],
+    tipiLab: LaboratorioTipoDef[],
+    onSave: (lab: Laboratorio | Omit<Laboratorio, 'id'>) => void,
+    onCancel: () => void
+}> = ({ laboratorio, sedi, tipiLab, onSave, onCancel }) => {
+    const [formData, setFormData] = useState(laboratorio);
+    const [ora, setOra] = useState('10:00');
 
-// --- FORM TIME SLOT ---
-const TimeSlotForm: FC<TimeSlotFormProps> = ({ timeSlot, onSave, onCancel }) => {
-    const [formData, setFormData] = useState(timeSlot);
+    const dataInizioDate = useMemo(() => {
+        if (!formData.dataInizio) return null;
+        const [year, month, day] = formData.dataInizio.split('-').map(Number);
+        return new Date(year, month - 1, day);
+    }, [formData.dataInizio]);
+
+    const giornoSettimana = useMemo(() => {
+        if (!dataInizioDate) return GIORNI_SETTIMANA[0];
+        const dayIndex = (dataInizioDate.getDay() + 6) % 7; // 0=Lunedì, ..., 6=Domenica
+        return GIORNI_SETTIMANA[dayIndex];
+    }, [dataInizioDate]);
+
+    useEffect(() => {
+        const selectedSede = sedi.find(s => s.id === formData.sedeId);
+        const newCode = generateCode(selectedSede, giornoSettimana, ora);
+        setFormData(prev => ({ ...prev, codice: newCode }));
+    }, [formData.sedeId, giornoSettimana, ora, sedi]);
+
+    useEffect(() => {
+        if ('id' in formData && formData.id) return;
+
+        const calculateDatesAndSlots = () => {
+            if (!dataInizioDate || !formData.tipoId) {
+                setFormData(prev => ({ ...prev, timeSlots: [], dataFine: '' }));
+                return;
+            }
+
+            const tipoLab = tipiLab.find(t => t.id === formData.tipoId);
+            if (!tipoLab) {
+                 setFormData(prev => ({ ...prev, timeSlots: [], dataFine: '' }));
+                return;
+            }
+            
+            const numSlots = tipoLab.numeroTimeSlots || 0;
+
+            const newSlots: TimeSlot[] = [];
+            let lastDate = new Date(dataInizioDate);
+
+            for (let i = 0; i < numSlots; i++) {
+                const slotDate = new Date(dataInizioDate);
+                slotDate.setDate(slotDate.getDate() + (i * 7));
+                
+                const slotYear = slotDate.getFullYear();
+                const slotMonth = String(slotDate.getMonth() + 1).padStart(2, '0');
+                const slotDay = String(slotDate.getDate()).padStart(2, '0');
+                const formattedDate = `${slotYear}-${slotMonth}-${slotDay}`;
+
+                newSlots.push({
+                    ...EMPTY_TIMESLOT,
+                    id: `new_${Date.now()}_${i}`,
+                    laboratorioId: 'id' in formData ? formData.id : '',
+                    ordine: i + 1,
+                    data: formattedDate,
+                });
+                lastDate = slotDate;
+            }
+            
+            const finalYear = lastDate.getFullYear();
+            const finalMonth = String(lastDate.getMonth() + 1).padStart(2, '0');
+            const finalDay = String(lastDate.getDate()).padStart(2, '0');
+            const formattedFinalDate = `${finalYear}-${finalMonth}-${finalDay}`;
+
+            setFormData(prev => ({ ...prev, timeSlots: newSlots, dataFine: formattedFinalDate }));
+        };
+        calculateDatesAndSlots();
+
+    }, [formData.dataInizio, formData.tipoId, tipiLab, dataInizioDate]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -35,317 +103,41 @@ const TimeSlotForm: FC<TimeSlotFormProps> = ({ timeSlot, onSave, onCancel }) => 
         e.preventDefault();
         onSave(formData);
     };
-
+    
     return (
         <form onSubmit={handleSubmit}>
              <div className="space-y-4">
-                <Input id="data" name="data" label="Data" type="date" value={formData.data} onChange={handleChange} required />
-                <Select id="stato" name="stato" label="Stato" options={TIME_SLOT_STATO_OPTIONS} value={formData.stato} onChange={handleChange} required />
-                <Input id="iscritti" name="iscritti" label="Iscritti" type="number" value={formData.iscritti} onChange={handleChange} />
-                {'id' in formData && <Input id="partecipanti" name="partecipanti" label="Partecipanti Effettivi" type="number" value={formData.partecipanti || ''} onChange={handleChange} />}
-            </div>
-            <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
-                 <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
-                 <Button type="submit" variant="primary">Salva Incontro</Button>
-            </div>
-        </form>
-    )
-}
-
-type TimeSlotManagerProps = {
-    laboratorio: Laboratorio,
-    onClose: () => void,
-    addTimeSlot: (labId: string, ts: Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => void,
-    updateTimeSlot: (labId: string, ts: TimeSlot) => void,
-    deleteTimeSlot: (labId: string, tsId: string) => void,
-};
-
-
-// --- MANAGER TIME SLOT ---
-const TimeSlotManager: FC<TimeSlotManagerProps> = ({ laboratorio, onClose, addTimeSlot, updateTimeSlot, deleteTimeSlot }) => {
-    const [isSlotModalOpen, setIsSlotModalOpen] = useState(false);
-    const [editingSlot, setEditingSlot] = useState<TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'> | null>(null);
-
-    const handleSaveSlot = (slot: TimeSlot | Omit<TimeSlot, 'id' | 'laboratorioId' | 'ordine'>) => {
-        if ('id' in slot) {
-            updateTimeSlot(laboratorio.id, slot);
-        } else {
-            addTimeSlot(laboratorio.id, slot);
-        }
-        setIsSlotModalOpen(false);
-        setEditingSlot(null);
-    };
-    
-    const handleDeleteSlot = (slotId: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questo incontro?")) {
-            deleteTimeSlot(laboratorio.id, slotId);
-        }
-    }
-
-    const getStatoBadgeColor = (stato: TimeSlotStato) => {
-        switch (stato) {
-            case TimeSlotStato.CONFERMATO: return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-            case TimeSlotStato.PROGRAMMATO: return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
-            case TimeSlotStato.ANTICIPATO: case TimeSlotStato.POSTICIPATO: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
-            case TimeSlotStato.ANNULLATO: return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
-            default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
-        }
-    };
-    
-    return (
-        <Modal isOpen={true} onClose={onClose} title={`Gestione Incontri: ${laboratorio.codice}`}>
-            <div className="space-y-6">
-                <div className="flex justify-end">
-                    <Button onClick={() => { setEditingSlot({ ...EMPTY_TIMESLOT }); setIsSlotModalOpen(true); }} icon={<PlusIcon />}>
-                        Aggiungi Incontro
-                    </Button>
-                </div>
-
-                <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg overflow-x-auto">
-                     <table className="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                            <tr>
-                                <th scope="col" className="px-6 py-3">#</th>
-                                <th scope="col" className="px-6 py-3">Data</th>
-                                <th scope="col" className="px-6 py-3">Stato</th>
-                                <th scope="col" className="px-6 py-3">Iscritti</th>
-                                <th scope="col" className="px-6 py-3">Partecipanti</th>
-                                <th scope="col" className="px-6 py-3 text-right">Azioni</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {laboratorio.timeSlots.sort((a: TimeSlot,b: TimeSlot) => a.ordine - b.ordine).map((ts: TimeSlot) => (
-                                <tr key={ts.id} className="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                    <td className="px-6 py-4">{ts.ordine}</td>
-                                    <td className="px-6 py-4 font-semibold">{new Date(ts.data).toLocaleDateString('it-IT')}</td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(ts.stato)}`}>{ts.stato}</span>
-                                    </td>
-                                    <td className="px-6 py-4">{ts.iscritti}</td>
-                                    <td className="px-6 py-4">{ts.partecipanti ?? '-'}</td>
-                                    <td className="px-6 py-4 text-right space-x-2">
-                                        <button onClick={() => { setEditingSlot(ts); setIsSlotModalOpen(true); }} className="text-blue-600 hover:text-blue-800"><PencilIcon /></button>
-                                        <button onClick={() => handleDeleteSlot(ts.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
-                                    </td>
-                                </tr>
-                            ))}
-                            {laboratorio.timeSlots.length === 0 && (
-                                <tr><td colSpan={6} className="text-center py-6 text-gray-500">Nessun incontro programmato.</td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-             {isSlotModalOpen && editingSlot && (
-                <Modal 
-                    isOpen={isSlotModalOpen} 
-                    onClose={() => setIsSlotModalOpen(false)} 
-                    title={'id' in editingSlot ? 'Modifica Incontro' : 'Nuovo Incontro'}
-                >
-                    <TimeSlotForm timeSlot={editingSlot} onSave={handleSaveSlot} onCancel={() => setIsSlotModalOpen(false)} />
-                </Modal>
-            )}
-        </Modal>
-    );
-};
-
-const DURATION_MAP: { [key: string]: number | 'manual' } = {
-    'OpenDay': 1,
-    'Mensile': 4,
-    'Bimestrale': 8,
-    'Trimestrale': 12,
-    'Evento': 'manual',
-    'Scolastico': 'manual',
-    'Campus': 'manual'
-};
-
-const MANUAL_DURATION_KEYS = ['Evento', 'Scolastico', 'Campus'];
-
-type LaboratorioFormProps = {
-    laboratorio: Laboratorio,
-    sedi: SedeAnagrafica[],
-    onSave: (lab: Laboratorio) => void,
-    onCancel: () => void
-};
-
-// --- FORM LABORATORIO ---
-const LaboratorioForm: FC<LaboratorioFormProps> = ({ laboratorio, sedi, onSave, onCancel }) => {
-    const [formData, setFormData] = useState<Laboratorio>(laboratorio);
-    const [giorno, setGiorno] = useState(GIORNI_SETTIMANA[0]);
-    const [ora, setOra] = useState('10:00');
-    const [durationOption, setDurationOption] = useState('Mensile');
-    const [manualSlotCount, setManualSlotCount] = useState(0);
-
-    useEffect(() => {
-        // Popola lo stato del form quando si modifica un laboratorio esistente
-        if (laboratorio.id) {
-            // 1. Analizza 'codice' per impostare 'giorno' e 'ora'
-            const codeParts = laboratorio.codice.split('.');
-            if (codeParts.length === 3) {
-                const parsedGiorno = codeParts[1];
-                const parsedOraRaw = codeParts[2];
-                if (parsedOraRaw && parsedOraRaw.length === 4) {
-                    const parsedOra = `${parsedOraRaw.substring(0, 2)}:${parsedOraRaw.substring(2, 4)}`;
-                    if (GIORNI_SETTIMANA.includes(parsedGiorno)) {
-                        setGiorno(parsedGiorno);
-                    }
-                    setOra(parsedOra);
-                }
-            }
-    
-            // 2. Determina l'opzione di durata dal numero di time slot
-            const numSlots = laboratorio.timeSlots.length;
-            const matchingDurationKey = Object.keys(DURATION_MAP).find(key => 
-                DURATION_MAP[key as keyof typeof DURATION_MAP] === numSlots
-            );
-    
-            if (matchingDurationKey) {
-                setDurationOption(matchingDurationKey);
-            } else if (numSlots > 0) {
-                // Se nessuna durata fissa corrisponde, si presume un inserimento manuale
-                setDurationOption('Evento'); // Predefinito su 'Evento'
-                setManualSlotCount(numSlots);
-            }
-        }
-    }, [laboratorio]);
-
-
-    useEffect(() => {
-        const selectedSede = sedi.find(s => s.id === formData.sedeId);
-        const newCode = generateCode(selectedSede, giorno, ora);
-        setFormData((prev: Laboratorio) => ({ ...prev, codice: newCode }));
-    }, [formData.sedeId, giorno, ora, sedi]);
-
-    // Calcola automaticamente dataFine e genera i timeSlot
-    useEffect(() => {
-        if (formData.id) return; // Eseguire solo per nuovi laboratori
-
-        const calculateDatesAndSlots = () => {
-            if (!formData.dataInizio) {
-                setFormData((prev: Laboratorio) => ({ ...prev, timeSlots: [], dataFine: '' }));
-                return;
-            };
-            
-            // Parse date string to avoid timezone issues.
-            // "YYYY-MM-DD" from input is treated as a local date.
-            const parts = formData.dataInizio.split('-');
-            const year = parseInt(parts[0], 10);
-            const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
-            const day = parseInt(parts[2], 10);
-            const startDate = new Date(year, month, day);
-
-            let numSlots = 0;
-            const durationValue = DURATION_MAP[durationOption as keyof typeof DURATION_MAP];
-
-            if (typeof durationValue === 'number') {
-                numSlots = durationValue;
-            } else { // 'manual'
-                numSlots = manualSlotCount > 0 ? manualSlotCount : 0;
-            }
-
-            if (numSlots <= 0) {
-                setFormData((prev: Laboratorio) => ({ ...prev, timeSlots: [], dataFine: '' }));
-                return;
-            }
-
-            const newSlots: TimeSlot[] = [];
-            for (let i = 0; i < numSlots; i++) {
-                const slotDate = new Date(startDate);
-                slotDate.setDate(slotDate.getDate() + (i * 7)); // 1 a settimana
-                
-                // Format date back to "YYYY-MM-DD" string without timezone conversion
-                const slotYear = slotDate.getFullYear();
-                const slotMonth = String(slotDate.getMonth() + 1).padStart(2, '0');
-                const slotDay = String(slotDate.getDate()).padStart(2, '0');
-
-                newSlots.push({
-                    ...EMPTY_TIMESLOT,
-                    id: `new_${Date.now()}_${i}`,
-                    laboratorioId: formData.id,
-                    ordine: i + 1,
-                    data: `${slotYear}-${slotMonth}-${slotDay}`,
-                });
-            }
-
-            const finalDate = newSlots.length > 0 ? newSlots[newSlots.length - 1].data : '';
-
-            setFormData((prev: Laboratorio) => ({
-                ...prev,
-                timeSlots: newSlots,
-                dataFine: finalDate
-            }));
-        };
-
-        calculateDatesAndSlots();
-    }, [formData.id, formData.dataInizio, durationOption, manualSlotCount]);
-
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        const valueToSet = e.target.type === 'number' ? parseFloat(value) || 0 : value;
-        setFormData((prev: Laboratorio) => ({ ...prev, [name]: valueToSet }));
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave(formData);
-    };
-
-    return (
-        <form onSubmit={handleSubmit}>
-            <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Select id="stato" name="stato" label="Stato" options={LABORATORIO_STATO_OPTIONS} value={formData.stato} onChange={handleChange} disabled={!formData.id} />
-                </div>
-
-                <hr className="my-6 dark:border-gray-600"/>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">Codifica Laboratorio</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-md dark:border-gray-600">
+                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli Principali</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-md dark:border-gray-600">
+                    <Select id="tipoId" name="tipoId" label="Tipo Lab" value={formData.tipoId} onChange={handleChange} required>
+                        <option value="">Seleziona...</option>
+                        {tipiLab.map(t => <option key={t.id} value={t.id}>{t.tipo}</option>)}
+                    </Select>
                      <Select id="sedeId" name="sedeId" label="Sede" value={formData.sedeId} onChange={handleChange} required>
                         <option value="">Seleziona...</option>
                         {sedi.map(s => <option key={s.id} value={s.id}>{s.nome} ({s.indirizzo.citta})</option>)}
                      </Select>
-                     <Select id="giorno" name="giorno" label="Giorno" value={giorno} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setGiorno(e.target.value)} required>
-                        {GIORNI_SETTIMANA.map(g => <option key={g} value={g}>{g}</option>)}
-                     </Select>
-                     <Input id="ora" name="ora" label="Orario (HH:MM)" value={ora} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOra(e.target.value)} required />
-                     <Input id="codice" name="codice" label="Codice Generato" value={formData.codice} readOnly />
-                </div>
-                
-                <hr className="my-6 dark:border-gray-600"/>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli e Costi</h3>
-                
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Durata Predefinita</label>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                         {DURATA_LABORATORIO_OPTIONS.map(key => (
-                             <label key={key} className={`flex items-center p-3 rounded-md border cursor-pointer transition-colors ${durationOption === key ? 'bg-blue-100 dark:bg-blue-900 border-blue-500' : 'bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600'}`}>
-                                 <input
-                                     type="radio"
-                                     name="durationOption"
-                                     value={key}
-                                     checked={durationOption === key}
-                                     onChange={() => setDurationOption(key)}
-                                     className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                                 />
-                                 <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-100">{key}</span>
-                             </label>
-                         ))}
-                    </div>
-                </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     {MANUAL_DURATION_KEYS.includes(durationOption) && (
-                         <Input id="manualSlotCount" name="manualSlotCount" label={`Numero di Incontri (${durationOption})`} type="number" value={manualSlotCount} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setManualSlotCount(parseInt(e.target.value) || 0)} min="1" />
-                    )}
+                     <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required/>
+                     <Input id="ora" name="ora" label="Orario Inizio (HH:MM)" value={ora} onChange={e => setOra(e.target.value)} required />
                  </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input id="dataInizio" name="dataInizio" label="Data Inizio" type="date" value={formData.dataInizio} onChange={handleChange} required/>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 border rounded-md dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50">
+                    <Input id="giorno" name="giorno" label="Giorno" value={giornoSettimana} readOnly />
                     <Input id="dataFine" name="dataFine" label="Data Fine (calcolata)" type="date" value={formData.dataFine} readOnly />
+                    <Input id="codice" name="codice" label="Codice Generato" value={formData.codice} readOnly />
+                 </div>
+                 
+                 <hr className="my-4 dark:border-gray-700" />
+                 <h3 className="text-lg font-medium text-gray-900 dark:text-white">Dettagli e Costi</h3>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Input id="costoAttivita" name="costoAttivita" label="Costo Attività (€)" type="number" step="0.01" value={formData.costoAttivita} onChange={handleChange} />
                     <Input id="costoLogistica" name="costoLogistica" label="Costo Logistica (€)" type="number" step="0.01" value={formData.costoLogistica} onChange={handleChange} />
+                    {'id' in formData && formData.id && (
+                        <Select id="stato" name="stato" label="Stato" options={LABORATORIO_STATO_OPTIONS} value={formData.stato} onChange={handleChange} />
+                    )}
                  </div>
+                 <p className="text-sm text-gray-500">Verranno generati <strong>{formData.timeSlots.length}</strong> incontri settimanali.</p>
+
             </div>
             <div className="pt-5 mt-5 border-t dark:border-gray-700 flex justify-end gap-3">
                  <Button type="button" variant="secondary" onClick={onCancel}>Annulla</Button>
@@ -353,41 +145,17 @@ const LaboratorioForm: FC<LaboratorioFormProps> = ({ laboratorio, sedi, onSave, 
             </div>
         </form>
     );
-};
+}
 
-// --- COMPONENTE PRINCIPALE ---
 export const Laboratori: React.FC = () => {
-    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, sedi, addTimeSlot, updateTimeSlot, deleteTimeSlot } = useMockData();
+    const { laboratori, addLaboratorio, updateLaboratorio, deleteLaboratorio, sedi, laboratoriTipi } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | null>(null);
-    const [selectedLabForSlots, setSelectedLabForSlots] = useState<Laboratorio | null>(null);
+    const [editingLaboratorio, setEditingLaboratorio] = useState<Laboratorio | Omit<Laboratorio, 'id'> | null>(null);
 
-    const sedeColorMap = useMemo(() => {
-        const map = new Map<string, string>();
-        sedi.forEach(sede => {
-            if (sede.colore) {
-                map.set(sede.id, sede.colore);
-            }
-        });
-        return map;
-    }, [sedi]);
-
-    useEffect(() => {
-        if (selectedLabForSlots) {
-            const updatedLab = laboratori.find(lab => lab.id === selectedLabForSlots.id);
-            if (updatedLab) {
-                if (JSON.stringify(updatedLab) !== JSON.stringify(selectedLabForSlots)) {
-                    setSelectedLabForSlots(updatedLab);
-                }
-            } else {
-                setSelectedLabForSlots(null);
-            }
-        }
-    }, [laboratori, selectedLabForSlots]);
-
-
+    const sedeColorMap = useMemo(() => new Map(sedi.map(s => [s.id, s.colore])), [sedi]);
+    
     const handleOpenModal = (lab?: Laboratorio) => {
-        setEditingLaboratorio(lab || { ...EMPTY_LABORATORIO, id: '' });
+        setEditingLaboratorio(lab || EMPTY_LABORATORIO);
         setIsModalOpen(true);
     };
 
@@ -396,12 +164,11 @@ export const Laboratori: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (lab: Laboratorio) => {
-        if (lab.id) {
-            updateLaboratorio(lab);
+    const handleSave = (lab: Laboratorio | Omit<Laboratorio, 'id'>) => {
+        if ('id' in lab && lab.id) {
+            updateLaboratorio(lab as Laboratorio);
         } else {
-            const { id, ...newLab } = lab;
-            addLaboratorio(newLab);
+            addLaboratorio(lab as Omit<Laboratorio, 'id'>);
         }
         handleCloseModal();
     };
@@ -411,23 +178,14 @@ export const Laboratori: React.FC = () => {
             deleteLaboratorio(labId);
         }
     }
-
-    const handleConfirmLab = (lab: Laboratorio) => {
-        if (window.confirm(`Confermare l'attivazione del laboratorio "${lab.codice}"? Lo stato passerà a "Attivo".`)) {
-            updateLaboratorio({ ...lab, stato: LaboratorioStato.ATTIVO });
-        }
-    };
-
-    const getSedeName = (sedeId: string) => {
-        return sedi.find(s => s.id === sedeId)?.nome || 'Sede non trovata';
-    }
     
+    const getSedeName = (sedeId: string) => sedi.find(s => s.id === sedeId)?.nome || 'N/D';
     const getStatoBadgeColor = (stato: LaboratorioStato) => {
         switch (stato) {
             case LaboratorioStato.ATTIVO: return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
             case LaboratorioStato.PROGRAMMATO: return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
             case LaboratorioStato.IN_PAUSA: return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
-            default: return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+            default: return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
         }
     };
 
@@ -435,13 +193,13 @@ export const Laboratori: React.FC = () => {
         <div className="p-4 md:p-8">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold">Gestione Laboratori</h1>
-                <Button onClick={() => handleOpenModal()} icon={<PlusIcon />} disabled={sedi.length === 0}>
+                <Button onClick={() => handleOpenModal()} icon={<PlusIcon />} disabled={sedi.length === 0 || laboratoriTipi.length === 0}>
                     Nuovo Laboratorio
                 </Button>
             </div>
-             {sedi.length === 0 && (
+             {(sedi.length === 0 || laboratoriTipi.length === 0) && (
                 <div className="bg-yellow-50 dark:bg-yellow-900/50 border-l-4 border-yellow-400 p-4 rounded-md">
-                    <p className="text-yellow-800 dark:text-yellow-200">Per aggiungere un laboratorio, devi prima creare almeno una Sede.</p>
+                    <p className="text-yellow-800 dark:text-yellow-200">Per aggiungere un laboratorio, devi prima creare almeno una Sede e un Tipo Lab nelle Anagrafiche.</p>
                 </div>
             )}
 
@@ -454,78 +212,36 @@ export const Laboratori: React.FC = () => {
                             <th scope="col" className="px-6 py-3">Sede</th>
                             <th scope="col" className="px-6 py-3">Periodo</th>
                             <th scope="col" className="px-6 py-3">Incontri</th>
-                            <th scope="col" className="px-6 py-3">Costi</th>
                             <th scope="col" className="px-6 py-3 text-right">Azioni</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {laboratori.map((lab: Laboratorio) => {
-                            const coloreSede = sedeColorMap.get(lab.sedeId) || '#A0AEC0';
-                            return (
-                                <tr key={lab.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600" style={{borderLeft: `5px solid ${coloreSede}`}}>
-                                    <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
-                                        <span className="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{lab.codice}</span>
-                                    </th>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(lab.stato)}`}>{lab.stato}</span>
-                                    </td>
-                                    <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
-                                    <td className="px-6 py-4 flex items-center gap-2">
-                                        <span>{lab.dataInizio} / {lab.dataFine}</span>
-                                        {lab.stato === LaboratorioStato.PROGRAMMATO && (
-                                            <button onClick={() => handleConfirmLab(lab)} className="text-xs bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-2 rounded-full">
-                                                ✓
-                                            </button>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4">{lab.timeSlots.length}</td>
-                                    <td className="px-6 py-4 text-xs">
-                                        <div>Att: {lab.costoAttivita.toFixed(2)}€</div>
-                                        <div>Log: {lab.costoLogistica.toFixed(2)}€</div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right space-x-2">
-                                        <button onClick={() => setSelectedLabForSlots(lab)} className="text-gray-500 hover:text-blue-600"><CalendarIcon /></button>
-                                        <button 
-                                            onClick={() => handleOpenModal(lab)} 
-                                            className="text-blue-600 hover:text-blue-800"
-                                            title="Modifica Laboratorio"
-                                        >
-                                            <PencilIcon />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(lab.id)}
-                                            className="text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:cursor-not-allowed"
-                                            disabled={!lab.id}
-                                        >
-                                            <TrashIcon />
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
+                        {laboratori.map((lab: Laboratorio) => (
+                            <tr key={lab.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600" style={{borderLeft: `5px solid ${sedeColorMap.get(lab.sedeId) || '#A0AEC0'}`}}>
+                                <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">
+                                    <span className="font-mono bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">{lab.codice}</span>
+                                </th>
+                                <td className="px-6 py-4"><span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatoBadgeColor(lab.stato)}`}>{lab.stato}</span></td>
+                                <td className="px-6 py-4">{getSedeName(lab.sedeId)}</td>
+                                <td className="px-6 py-4 text-xs">{new Date(lab.dataInizio).toLocaleDateString('it-IT')} - {new Date(lab.dataFine).toLocaleDateString('it-IT')}</td>
+                                <td className="px-6 py-4">{lab.timeSlots.length}</td>
+                                <td className="px-6 py-4 text-right space-x-2">
+                                    <button onClick={() => handleOpenModal(lab)} className="text-blue-600 hover:text-blue-800" title="Modifica Laboratorio"><PencilIcon /></button>
+                                    <button onClick={() => handleDelete(lab.id)} className="text-red-600 hover:text-red-800"><TrashIcon /></button>
+                                </td>
+                            </tr>
+                        ))}
                          {laboratori.length === 0 && (
-                             <tr>
-                                 <td colSpan={7} className="text-center py-8 text-gray-500">Nessun laboratorio trovato.</td>
-                             </tr>
+                             <tr><td colSpan={6} className="text-center py-8 text-gray-500">Nessun laboratorio trovato.</td></tr>
                          )}
                     </tbody>
                 </table>
             </div>
 
             {isModalOpen && editingLaboratorio && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingLaboratorio.id ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
-                    <LaboratorioForm laboratorio={editingLaboratorio} sedi={sedi} onSave={handleSave} onCancel={handleCloseModal} />
+                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={('id' in editingLaboratorio && editingLaboratorio.id) ? 'Modifica Laboratorio' : 'Nuovo Laboratorio'}>
+                    <LaboratorioForm laboratorio={editingLaboratorio} sedi={sedi} tipiLab={laboratoriTipi} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
-            )}
-
-            {selectedLabForSlots && (
-                <TimeSlotManager 
-                    laboratorio={selectedLabForSlots} 
-                    onClose={() => setSelectedLabForSlots(null)}
-                    addTimeSlot={addTimeSlot}
-                    updateTimeSlot={updateTimeSlot}
-                    deleteTimeSlot={deleteTimeSlot}
-                />
             )}
         </div>
     );

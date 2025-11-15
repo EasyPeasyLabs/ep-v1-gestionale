@@ -5,7 +5,6 @@ import { Iscrizioni } from './Iscrizioni';
 export const Flussi: React.FC = () => {
     const tabs = [
         { label: 'Iscrizioni', content: <Iscrizioni /> },
-        // Altri futuri flussi (es. Ordini, Fatturazione) andranno qui
     ];
 
     return (

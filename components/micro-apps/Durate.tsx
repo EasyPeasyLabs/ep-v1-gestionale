@@ -9,8 +9,10 @@ import { Durata } from '../../types';
 import { EMPTY_DURATA, DURATA_TIPO_OPTIONS } from '../../constants';
 
 const DurataForm: React.FC<{
-    durata: Durata,
-    onSave: (dur: Durata) => void,
+    // FIX: Allow `durata` prop to be a new object without an ID.
+    durata: Durata | Omit<Durata, 'id'>,
+    // FIX: Update onSave to handle both new and existing objects.
+    onSave: (dur: Durata | Omit<Durata, 'id'>) => void,
     onCancel: () => void
 }> = ({ durata, onSave, onCancel }) => {
     const [formData, setFormData] = useState(durata);
@@ -47,9 +49,11 @@ const DurataForm: React.FC<{
 export const Durate: React.FC = () => {
     const { durate, addDurata, updateDurata, deleteDurata } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingDurata, setEditingDurata] = useState<Durata | null>(null);
+    // FIX: Update state to allow for new objects without an ID.
+    const [editingDurata, setEditingDurata] = useState<Durata | Omit<Durata, 'id'> | null>(null);
 
     const handleOpenModal = (dur?: Durata) => {
+        // FIX: Now { ...EMPTY_DURATA } is a valid state.
         setEditingDurata(dur || { ...EMPTY_DURATA });
         setIsModalOpen(true);
     };
@@ -59,12 +63,12 @@ export const Durate: React.FC = () => {
         setIsModalOpen(false);
     };
 
-    const handleSave = (dur: Durata) => {
-        if (dur.id) {
-            updateDurata(dur);
+    // FIX: Update save handler to correctly distinguish between add and update operations.
+    const handleSave = (dur: Durata | Omit<Durata, 'id'>) => {
+        if ('id' in dur && dur.id) {
+            updateDurata(dur as Durata);
         } else {
-            const { id, ...newDur } = dur;
-            addDurata(newDur);
+            addDurata(dur as Omit<Durata, 'id'>);
         }
         handleCloseModal();
     };
@@ -112,7 +116,12 @@ export const Durate: React.FC = () => {
             </div>
 
             {isModalOpen && editingDurata && (
-                <Modal isOpen={isModalOpen} onClose={handleCloseModal} title={editingDurata.id ? 'Modifica Durata' : 'Nuova Durata'}>
+                <Modal 
+                    isOpen={isModalOpen} 
+                    onClose={handleCloseModal} 
+                    // FIX: Use type guard to check for 'id' property before accessing it.
+                    title={('id' in editingDurata && editingDurata.id) ? 'Modifica Durata' : 'Nuova Durata'}
+                >
                     <DurataForm durata={editingDurata} onSave={handleSave} onCancel={handleCloseModal} />
                 </Modal>
             )}

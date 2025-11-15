@@ -2,12 +2,10 @@
 
 import React from 'react';
 import { Tabs } from '../ui/Tabs';
-import { AnagraficaGenitori } from './AnagraficaGenitori';
-import { AnagraficaFigli } from './AnagraficaFigli';
+import { AnagraficaFamiglie } from './AnagraficaFamiglie';
 import { AnagraficaFornitori } from './AnagraficaFornitori';
 import { AnagraficaSedi } from './AnagraficaSedi';
-import { AnagraficaAttivita } from './AnagraficaAttivita';
-import { Materiali } from './Materiali';
+import { AnagraficaDistinteBase } from './AnagraficaDistinteBase';
 import { AnagraficaDocumenti } from './AnagraficaDocumenti';
 import { AnagraficaTimeSlots } from './AnagraficaTimeSlots';
 import { AnagraficaListini } from './AnagraficaListini';
@@ -15,12 +13,10 @@ import { AnagraficaTipiLaboratorio } from './AnagraficaTipiLaboratorio';
 
 export const Anagrafiche: React.FC = () => {
     const tabs = [
-        { label: 'Genitori', content: <AnagraficaGenitori /> },
-        { label: 'Figli', content: <AnagraficaFigli /> },
+        { label: 'Famiglie', content: <AnagraficaFamiglie /> },
         { label: 'Fornitori', content: <AnagraficaFornitori /> },
         { label: 'Sedi', content: <AnagraficaSedi /> },
-        { label: 'Attività', content: <AnagraficaAttivita /> },
-        { label: 'Materiali', content: <Materiali /> },
+        { label: 'Distinte Base', content: <AnagraficaDistinteBase /> },
         { label: 'Time Slot', content: <AnagraficaTimeSlots /> },
         { label: 'Tipi Lab', content: <AnagraficaTipiLaboratorio /> },
         { label: 'Listini', content: <AnagraficaListini /> },

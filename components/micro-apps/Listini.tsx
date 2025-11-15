@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, FC } from 'react';
 import { useMockData } from '../../hooks/useMockData';
 import { Button } from '../ui/Button';
@@ -6,19 +5,19 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { PlusIcon, PencilIcon, TrashIcon } from '../icons/Icons';
-// FIX: Imported SedeAnagrafica as Sede to match component's internal usage.
-import { Listino, Laboratorio, SedeAnagrafica as Sede } from '../../types';
+import { Listino, Laboratorio, SedeAnagrafica as Sede, ListinoDef } from '../../types';
 import { EMPTY_LISTINO } from '../../constants';
 
 type ListinoFormProps = {
     listino: Listino,
     laboratori: Laboratorio[],
     sedi: Sede[],
+    listiniDef: ListinoDef[],
     onSave: (l: Listino) => void,
     onCancel: () => void,
 };
 
-const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, onSave, onCancel }) => {
+const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, listiniDef, onSave, onCancel }) => {
     const [formData, setFormData] = useState(listino);
 
     const selectedLab = useMemo(() => laboratori.find(l => l.id === formData.laboratorioId), [formData.laboratorioId, laboratori]);
@@ -37,8 +36,19 @@ const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, onSave, 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        const valueToSet = e.target.type === 'number' ? parseFloat(value) || 0 : value;
-        setFormData(prev => ({ ...prev, [name]: valueToSet }));
+        
+        if (name === 'listinoDefId') {
+            const selectedDef = listiniDef.find(def => def.id === value);
+            const newPrice = selectedDef ? selectedDef.prezzo : 0;
+            setFormData(prev => ({
+                ...prev,
+                listinoDefId: value,
+                listinoBase: newPrice
+            }));
+        } else {
+            const valueToSet = e.target.type === 'number' ? parseFloat(value) || 0 : value;
+            setFormData(prev => ({ ...prev, [name]: valueToSet }));
+        }
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -53,7 +63,26 @@ const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, onSave, 
                     <option value="">Seleziona un laboratorio...</option>
                     {laboratori.map(l => <option key={l.id} value={l.id}>{l.codice}</option>)}
                 </Select>
-                <Input id="listinoBase" name="listinoBase" label="Listino Base (€)" type="number" step="0.01" value={formData.listinoBase} onChange={handleChange} required />
+                <Select
+                    id="listinoDefId"
+                    name="listinoDefId"
+                    label="Tipo Listino (da Anagrafica)"
+                    value={formData.listinoDefId}
+                    onChange={handleChange}
+                    required
+                >
+                    <option value="">Seleziona un tipo di listino...</option>
+                    {listiniDef.map(def => <option key={def.id} value={def.id}>{def.tipo} ({def.prezzo.toFixed(2)}€)</option>)}
+                </Select>
+                 <Input
+                    id="listinoBase"
+                    name="listinoBase"
+                    label="Prezzo Base (da Anagrafica)"
+                    type="number"
+                    step="0.01"
+                    value={formData.listinoBase}
+                    readOnly
+                />
                 
                 <div className="p-4 border rounded-md dark:border-gray-600 space-y-2">
                     <h3 className="font-semibold">Analisi Costi e Profitti</h3>
@@ -81,8 +110,7 @@ const ListinoForm: FC<ListinoFormProps> = ({ listino, laboratori, sedi, onSave, 
 };
 
 export const Listini: React.FC = () => {
-    // FIX: Fetched 'sedi' collection directly, as the denormalized model is no longer used.
-    const { listini, addListino, updateListino, deleteListino, laboratori, sedi } = useMockData();
+    const { listini, addListino, updateListino, deleteListino, laboratori, sedi, listiniDef } = useMockData();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingListino, setEditingListino] = useState<Listino | null>(null);
 
@@ -167,6 +195,7 @@ export const Listini: React.FC = () => {
                         // Se stiamo modificando, passiamo tutti i lab; se nuovo, solo quelli senza listino
                         laboratori={editingListino.id ? laboratori : laboratoriDisponibili}
                         sedi={sedi}
+                        listiniDef={listiniDef}
                         onSave={handleSave}
                         onCancel={handleCloseModal}
                     />
