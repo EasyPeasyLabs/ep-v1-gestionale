@@ -150,17 +150,10 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
             )}
         </div>
         <div className="relative" ref={dropdownRef}>
-            <div className="flex items-center">
-                <img
-                  src={user.photoURL || './lemon_logo_150px.png'}
-                  alt="User Avatar"
-                  className="w-9 h-9 rounded-full object-cover"
-                />
-                <button onClick={() => setDropdownOpen(!dropdownOpen)} className="ml-2 flex items-center text-sm font-medium text-slate-600 hover:text-slate-900">
-                    <span className="truncate max-w-24 md:max-w-none">{user.email}</span>
-                    <ChevronDownIcon />
-                </button>
-            </div>
+            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900">
+                <span className="truncate max-w-24 md:max-w-none">{user.email}</span>
+                <ChevronDownIcon />
+            </button>
              {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5 animate-fade-in-down">
                     <button 

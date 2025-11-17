@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { ScheduledClass, ScheduledClassInput, Supplier } from '../types';
 import { getScheduledClasses, addScheduledClass, updateScheduledClass, deleteScheduledClass } from '../services/calendarService';
@@ -202,8 +201,8 @@ const Calendar: React.FC = () => {
                                         <p className="text-xs mt-1" style={{ color: textColor, opacity: 0.9 }}>{item.locationName}</p>
                                         <p className="text-xs" style={{ color: textColor, opacity: 0.7 }}>{item.supplierName}</p>
                                         <div className="absolute top-1 right-1 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleOpenModal(item)} className="p-1 rounded-full bg-white/50 hover:bg-white text-slate-700"><PencilIcon/></button>
-                                            <button onClick={() => handleDeleteClass(item.id)} className="p-1 rounded-full bg-white/50 hover:bg-white text-red-500"><TrashIcon/></button>
+                                            <button onClick={() => handleOpenModal(item)} className="p-1 rounded-full bg-white/50 hover:bg-white text-slate-700 btn-edit-icon" aria-label="Modifica lezione"><PencilIcon/></button>
+                                            <button onClick={() => handleDeleteClass(item.id)} className="p-1 rounded-full bg-white/50 hover:bg-white text-red-500 btn-delete-icon" aria-label="Elimina lezione"><TrashIcon/></button>
                                         </div>
                                     </div>
                                     );

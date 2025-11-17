@@ -331,7 +331,7 @@ const Finance: React.FC = () => {
                                             {t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€
                                         </td>
                                         <td className="p-4">
-                                            <button onClick={() => handleDeleteTransaction(t.id)} className="text-red-500 hover:text-red-700 p-1"><TrashIcon/></button>
+                                            <button onClick={() => handleDeleteTransaction(t.id)} className="p-1 btn-delete-icon" aria-label={`Elimina transazione ${t.description}`}><TrashIcon/></button>
                                         </td>
                                     </tr>
                                 ))}

@@ -149,7 +149,7 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
         <div className="bg-white p-6 rounded-lg shadow-md animate-fade-in">
             <div className="flex justify-between items-start">
                 <button onClick={onBack} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm mb-4">&larr; Torna alla lista</button>
-                 <button onClick={() => onEdit(client)} className="text-slate-500 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100">
+                 <button onClick={() => onEdit(client)} className="p-2 rounded-full hover:bg-slate-100 btn-edit-icon" aria-label="Modifica cliente">
                     <PencilIcon />
                 </button>
             </div>
@@ -401,7 +401,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                         {children.map((child) => (
                             <div key={child.id} className="flex items-center justify-between p-2 mt-2 bg-slate-50 rounded-md">
                                 <p className="text-sm">{child.name} - {child.age}</p>
-                                <button type="button" onClick={() => handleRemoveChild(child.id)} className="text-red-500 hover:text-red-700">
+                                <button type="button" onClick={() => handleRemoveChild(child.id)} className="btn-delete-icon" aria-label={`Rimuovi ${child.name}`}>
                                     <TrashIcon />
                                 </button>
                             </div>
@@ -415,7 +415,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                                 <label className="block text-sm font-medium text-slate-700">Età</label>
                                 <input type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder="Es. 3 anni" className="mt-1 block w-full input"/>
                             </div>
-                            <button type="button" onClick={handleAddChild} className="bg-indigo-500 text-white p-2 rounded-md hover:bg-indigo-600"><PlusIcon/></button>
+                            <button type="button" onClick={handleAddChild} className="btn-primary h-10 w-10 !p-0"><PlusIcon/></button>
                         </div>
                     </div>
                 )}
@@ -521,11 +521,11 @@ const Clients: React.FC = () => {
               <p className="mt-1 text-slate-500">Gestisci le anagrafiche di genitori e clienti istituzionali.</p>
             </div>
              <div className="flex items-center space-x-2">
-                <button onClick={() => setIsImportModalOpen(true)} className="flex items-center bg-white text-slate-700 px-4 py-2 rounded-lg shadow-sm border border-slate-300 hover:bg-slate-50 transition-colors">
+                <button onClick={() => setIsImportModalOpen(true)} className="btn-default">
                     <UploadIcon />
                     <span className="ml-2">Importa CSV</span>
                 </button>
-                <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
+                <button onClick={() => handleOpenModal()} className="btn-primary">
                     <PlusIcon />
                     <span className="ml-2">Aggiungi Cliente</span>
                 </button>
@@ -602,10 +602,10 @@ const Clients: React.FC = () => {
                             <button onClick={() => setSelectedClient(client)} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm">
                                 Dettagli
                             </button>
-                            <button onClick={() => handleOpenModal(client)} className="text-slate-500 hover:text-slate-700">
+                            <button onClick={() => handleOpenModal(client)} className="btn-edit-icon" aria-label="Modifica cliente">
                                 <PencilIcon />
                             </button>
-                            <button onClick={() => handleDeleteClient(client.id)} className="text-red-500 hover:text-red-700">
+                            <button onClick={() => handleDeleteClient(client.id)} className="btn-delete-icon" aria-label="Elimina cliente">
                                 <TrashIcon />
                             </button>
                         </div>

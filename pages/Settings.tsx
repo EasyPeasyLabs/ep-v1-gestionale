@@ -164,11 +164,11 @@ const Settings: React.FC = () => {
                         </div>
                          <div>
                             <label className="block text-slate-500">Email</label>
-                            <input type="email" value={info.email} onChange={(e) => setInfo({...info, email: e.target.value})} className="w-full p-2 mt-1 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                            <input type="email" value={info.email} onChange={(e) => setInfo({...info, email: e.target.value})} className="w-full input mt-1" />
                         </div>
                          <div>
                             <label className="block text-slate-500">Telefono</label>
-                            <input type="text" value={info.phone} onChange={(e) => setInfo({...info, phone: e.target.value})} className="w-full p-2 mt-1 border border-slate-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500" />
+                            <input type="text" value={info.phone} onChange={(e) => setInfo({...info, phone: e.target.value})} className="w-full input mt-1" />
                         </div>
                         <div className="pt-4 flex justify-end">
                             <button onClick={handleSaveInfo} className="btn-primary">Salva Modifiche</button>
@@ -193,8 +193,8 @@ const Settings: React.FC = () => {
                                 <p className="text-sm text-slate-500">{sub.lessons} lezioni / {sub.durationInDays} giorni - {sub.price}€</p>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <button onClick={() => handleOpenSubModal(sub)} className="text-slate-500 hover:text-indigo-600"><PencilIcon/></button>
-                                <button onClick={() => handleDeleteSub(sub.id)} className="text-red-500 hover:text-red-700"><TrashIcon/></button>
+                                <button onClick={() => handleOpenSubModal(sub)} className="btn-edit-icon" aria-label={`Modifica pacchetto ${sub.name}`}><PencilIcon/></button>
+                                <button onClick={() => handleDeleteSub(sub.id)} className="btn-delete-icon" aria-label={`Elimina pacchetto ${sub.name}`}><TrashIcon/></button>
                             </div>
                         </div>
                     ))}

@@ -201,8 +201,8 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                                 </div>
                             </div>
                             <div className="flex items-center space-x-2">
-                                <button type="button" onClick={() => handleEditLocation(loc)} className="text-slate-500 hover:text-indigo-600"><PencilIcon/></button>
-                                <button type="button" onClick={() => handleRemoveLocation(loc.id)} className="text-red-500 hover:text-red-700"><TrashIcon/></button>
+                                <button type="button" onClick={() => handleEditLocation(loc)} className="btn-edit-icon" aria-label={`Modifica sede ${loc.name}`}><PencilIcon/></button>
+                                <button type="button" onClick={() => handleRemoveLocation(loc.id)} className="btn-delete-icon" aria-label={`Elimina sede ${loc.name}`}><TrashIcon/></button>
                             </div>
                         </div>
                     )) : <p className="text-sm text-slate-400 text-center py-4">Nessuna sede operativa aggiunta.</p>}
@@ -305,11 +305,11 @@ const Suppliers: React.FC = () => {
               <p className="mt-1 text-slate-500">Gestisci i fornitori e le loro sedi.</p>
             </div>
              <div className="flex items-center space-x-2">
-                 <button onClick={() => setIsImportModalOpen(true)} className="flex items-center bg-white text-slate-700 px-4 py-2 rounded-lg shadow-sm border border-slate-300 hover:bg-slate-50 transition-colors">
+                 <button onClick={() => setIsImportModalOpen(true)} className="btn-default">
                     <UploadIcon />
                     <span className="ml-2">Importa CSV</span>
                 </button>
-                <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
+                <button onClick={() => handleOpenModal()} className="btn-primary">
                     <PlusIcon />
                     <span className="ml-2">Aggiungi Fornitore</span>
                 </button>
@@ -365,10 +365,10 @@ const Suppliers: React.FC = () => {
                             </div>
                         </div>
                         <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end items-center space-x-3">
-                             <button onClick={() => handleOpenModal(supplier)} className="text-slate-500 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100">
+                             <button onClick={() => handleOpenModal(supplier)} className="p-2 rounded-full hover:bg-slate-100 btn-edit-icon" aria-label={`Modifica fornitore ${supplier.companyName}`}>
                                 <PencilIcon />
                             </button>
-                            <button onClick={() => handleDeleteSupplier(supplier.id)} className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-50">
+                            <button onClick={() => handleDeleteSupplier(supplier.id)} className="p-2 rounded-full hover:bg-red-50 btn-delete-icon" aria-label={`Elimina fornitore ${supplier.companyName}`}>
                                 <TrashIcon />
                             </button>
                         </div>

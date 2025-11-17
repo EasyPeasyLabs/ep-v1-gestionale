@@ -100,8 +100,8 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
                     {error && <p className="text-sm text-red-600 text-center mt-3">{error}</p>}
                     
                     <div className="mt-6 flex justify-end space-x-3">
-                        <button type="button" onClick={onClose} className="bg-white py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50">Annulla</button>
-                        <button type="button" onClick={handleImportClick} disabled={isImporting || !file} className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400">
+                        <button type="button" onClick={onClose} className="btn-default">Annulla</button>
+                        <button type="button" onClick={handleImportClick} disabled={isImporting || !file} className="btn-primary">
                             {isImporting ? <Spinner /> : 'Importa'}
                         </button>
                     </div>
@@ -130,7 +130,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
                         </div>
                     )}
                     <div className="mt-6 text-center">
-                        <button type="button" onClick={onClose} className="bg-indigo-600 text-white py-2 px-6 rounded-md shadow-sm text-sm font-medium hover:bg-indigo-700">Chiudi</button>
+                        <button type="button" onClick={onClose} className="btn-primary">Chiudi</button>
                     </div>
                 </div>
             )}
