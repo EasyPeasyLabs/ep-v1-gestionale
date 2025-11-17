@@ -131,6 +131,8 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onMenuClick }) =>
             <SearchIcon />
           </div>
           <input
+            id="header-search"
+            name="header-search"
             type="text"
             placeholder="Cerca..."
             className="block w-full bg-gray-100 border border-transparent rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:bg-white focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500"

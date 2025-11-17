@@ -236,13 +236,12 @@ const ChildFormModal: React.FC<{
     const [name, setName] = useState(child?.name || '');
     const [age, setAge] = useState(child?.age || '');
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSave = () => {
         onSave({ id: child?.id || Date.now().toString(), name, age });
     };
 
     return (
-        <form onSubmit={handleSubmit}>
+        <div>
             <h2 className="text-xl font-bold mb-4">{child ? 'Modifica Dati Figlio' : 'Aggiungi Figlio'}</h2>
             <div className="space-y-4">
                 <div className="md-input-group">
@@ -256,9 +255,9 @@ const ChildFormModal: React.FC<{
             </div>
             <div className="mt-6 flex justify-end space-x-3">
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
+                <button type="button" onClick={handleSave} className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>
-        </form>
+        </div>
     );
 };
 
@@ -661,3 +660,4 @@ const Clients: React.FC = () => {
 };
 
 export default Clients;
+
