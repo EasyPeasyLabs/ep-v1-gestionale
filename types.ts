@@ -83,6 +83,7 @@ export interface Location {
     capacity: number; // Capienza
     rentalCost: number; // Costo nolo
     distance: number; // Distanza in km
+    color: string; // Colore esadecimale per il calendario
 }
 
 export interface CompanyInfo {
@@ -111,6 +112,7 @@ export interface ScheduledClass {
     locationId: string;
     supplierName: string; // Denormalizzato per UI
     locationName: string; // Denormalizzato per UI
+    locationColor?: string; // Denormalizzato per UI
 }
 
 

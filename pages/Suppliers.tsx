@@ -20,6 +20,7 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     const [capacity, setCapacity] = useState(location?.capacity || 0);
     const [rentalCost, setRentalCost] = useState(location?.rentalCost || 0);
     const [distance, setDistance] = useState(location?.distance || 0);
+    const [color, setColor] = useState(location?.color || '#a855f7'); // default purple
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -29,6 +30,7 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
             capacity: Number(capacity),
             rentalCost: Number(rentalCost),
             distance: Number(distance),
+            color,
         });
     };
 
@@ -36,9 +38,15 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
         <form onSubmit={handleSubmit}>
             <h3 className="text-lg font-bold mb-4">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Nome Sede</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full input"/>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700">Nome Sede</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full input"/>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-slate-700">Colore Calendario</label>
+                        <input type="color" value={color} onChange={e => setColor(e.target.value)} className="mt-1 block w-full h-10 rounded-md border-slate-300"/>
+                    </div>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-700">Indirizzo</label>
@@ -185,9 +193,12 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                     <div className="mt-2 space-y-2">
                     {locations.length > 0 ? locations.map((loc) => (
                         <div key={loc.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-md">
-                            <div>
-                                <p className="text-sm font-medium">{loc.name}</p>
-                                <p className="text-xs text-slate-500">{loc.address}, {loc.city}</p>
+                            <div className="flex items-center">
+                                <span className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: loc.color }}></span>
+                                <div>
+                                    <p className="text-sm font-medium">{loc.name}</p>
+                                    <p className="text-xs text-slate-500">{loc.address}, {loc.city}</p>
+                                </div>
                             </div>
                             <div className="flex items-center space-x-2">
                                 <button type="button" onClick={() => handleEditLocation(loc)} className="text-slate-500 hover:text-indigo-600"><PencilIcon/></button>
@@ -344,7 +355,10 @@ const Suppliers: React.FC = () => {
                                 <h4 className="font-semibold text-sm">Sedi Operative ({supplier.locations.length})</h4>
                                 <ul className="text-xs text-slate-500 mt-2 space-y-1">
                                 {supplier.locations.slice(0, 3).map(loc => (
-                                    <li key={loc.id}>{loc.name} - {loc.address}, {loc.city}</li>
+                                    <li key={loc.id} className="flex items-center">
+                                        <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: loc.color }}></span>
+                                        {loc.name} - {loc.address}, {loc.city}
+                                    </li>
                                 ))}
                                 {supplier.locations.length > 3 && <li className="text-xs text-slate-400">...e altre {supplier.locations.length - 3}.</li>}
                                 </ul>

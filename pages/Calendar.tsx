@@ -52,7 +52,8 @@ const ClassForm: React.FC<{
             dayOfWeek: dayOfWeek as ScheduledClass['dayOfWeek'],
             startTime, endTime, supplierId, locationId,
             supplierName: supplier.companyName,
-            locationName: location.name
+            locationName: location.name,
+            locationColor: location.color, // Salva il colore della sede
         };
 
         if (classItem?.id) {
@@ -157,6 +158,16 @@ const Calendar: React.FC = () => {
         }
     };
 
+    // Funzione per determinare se il testo deve essere chiaro o scuro in base al colore di sfondo
+    const getTextColorForBg = (bgColor?: string) => {
+        if (!bgColor) return '#1e293b'; // slate-800
+        const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
+        const r = parseInt(color.substring(0, 2), 16); // hexToR
+        const g = parseInt(color.substring(2, 4), 16); // hexToG
+        const b = parseInt(color.substring(4, 6), 16); // hexToB
+        return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#1e293b' : '#ffffff';
+    };
+
 
     return (
         <div>
@@ -176,20 +187,27 @@ const Calendar: React.FC = () => {
                  error ? <p className="text-center text-red-500 py-8">{error}</p> :
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                     {daysOfWeek.map(day => (
-                        <div key={day} className="bg-white p-4 rounded-lg shadow-md">
+                        <div key={day} className="bg-white p-4 rounded-lg shadow-md min-h-[200px]">
                             <h2 className="text-center font-bold text-indigo-600 border-b pb-2 mb-4">{day}</h2>
                             <div className="space-y-3">
-                                {classes.filter(c => c.dayOfWeek === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => (
-                                    <div key={item.id} className="bg-indigo-50 p-3 rounded-lg relative group">
-                                        <p className="font-semibold text-sm text-indigo-800">{item.startTime} - {item.endTime}</p>
-                                        <p className="text-xs text-slate-600 mt-1">{item.locationName}</p>
-                                        <p className="text-xs text-slate-400">{item.supplierName}</p>
+                                {classes.filter(c => c.dayOfWeek === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => {
+                                    const textColor = getTextColorForBg(item.locationColor);
+                                    return (
+                                    <div 
+                                        key={item.id} 
+                                        className="p-3 rounded-lg relative group shadow"
+                                        style={{ backgroundColor: item.locationColor || '#f1f5f9' }}
+                                    >
+                                        <p className="font-semibold text-sm" style={{ color: textColor }}>{item.startTime} - {item.endTime}</p>
+                                        <p className="text-xs mt-1" style={{ color: textColor, opacity: 0.9 }}>{item.locationName}</p>
+                                        <p className="text-xs" style={{ color: textColor, opacity: 0.7 }}>{item.supplierName}</p>
                                         <div className="absolute top-1 right-1 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleOpenModal(item)} className="p-1 rounded-full bg-white/50 hover:bg-white"><PencilIcon/></button>
+                                            <button onClick={() => handleOpenModal(item)} className="p-1 rounded-full bg-white/50 hover:bg-white text-slate-700"><PencilIcon/></button>
                                             <button onClick={() => handleDeleteClass(item.id)} className="p-1 rounded-full bg-white/50 hover:bg-white text-red-500"><TrashIcon/></button>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     ))}
