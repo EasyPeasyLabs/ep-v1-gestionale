@@ -195,14 +195,17 @@ const Suppliers: React.FC = () => {
             if ('id' in supplierData) {
                 const { id, ...dataToUpdate } = supplierData;
                 await updateSupplier(id, dataToUpdate);
+                alert('Fornitore aggiornato con successo!');
             } else {
                 await addSupplier(supplierData as SupplierInput);
+                alert('Fornitore aggiunto con successo!');
             }
             handleCloseModal();
             fetchSuppliers();
         } catch (err) {
             console.error("Errore nel salvataggio del fornitore:", err);
             setError("Salvataggio fallito.");
+            alert('Errore: salvataggio fallito. Controlla la console per i dettagli.');
         }
     };
 

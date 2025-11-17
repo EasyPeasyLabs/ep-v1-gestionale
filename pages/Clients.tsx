@@ -227,6 +227,41 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
     );
 };
 
+const ChildFormModal: React.FC<{
+    child?: Child;
+    onSave: (child: Child) => void;
+    onCancel: () => void;
+}> = ({ child, onSave, onCancel }) => {
+    const [name, setName] = useState(child?.name || '');
+    const [age, setAge] = useState(child?.age || '');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ id: child?.id || Date.now().toString(), name, age });
+    };
+
+    return (
+        <form onSubmit={handleSubmit}>
+            <h2 className="text-xl font-bold mb-4">{child ? 'Modifica Dati Figlio' : 'Aggiungi Figlio'}</h2>
+            <div className="space-y-4">
+                <div className="md-input-group">
+                    <input id="childName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
+                    <label htmlFor="childName" className="md-input-label">Nome Figlio</label>
+                </div>
+                <div className="md-input-group">
+                    <input id="childAge" type="text" value={age} onChange={e => setAge(e.target.value)} required className="md-input" placeholder=" " />
+                    <label htmlFor="childAge" className="md-input-label">Età (es. 3 anni)</label>
+                </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
+            </div>
+        </form>
+    );
+};
+
+
 const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: ClientInput | Client) => void; onCancel: () => void; }> = ({ client, onSave, onCancel }) => {
     const [clientType, setClientType] = useState<ClientType | null>(client?.clientType || null);
     const [email, setEmail] = useState('');
@@ -239,10 +274,11 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
     const [lastName, setLastName] = useState('');
     const [taxCode, setTaxCode] = useState('');
     const [children, setChildren] = useState<Child[]>([]);
-    const [newChildName, setNewChildName] = useState('');
-    const [newChildAge, setNewChildAge] = useState('');
     const [companyName, setCompanyName] = useState('');
     const [vatNumber, setVatNumber] = useState('');
+
+    const [isChildModalOpen, setIsChildModalOpen] = useState(false);
+    const [editingChild, setEditingChild] = useState<Child | null>(null);
 
     useEffect(() => {
         if (client) {
@@ -257,11 +293,22 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
         }
     }, [client]);
 
-    const handleAddChild = () => {
-        if (newChildName && newChildAge) {
-            setChildren([...children, { id: Date.now().toString(), name: newChildName, age: newChildAge }]);
-            setNewChildName(''); setNewChildAge('');
+    const handleSaveChild = (child: Child) => {
+        const existingIndex = children.findIndex(c => c.id === child.id);
+        if (existingIndex > -1) {
+            const updatedChildren = [...children];
+            updatedChildren[existingIndex] = child;
+            setChildren(updatedChildren);
+        } else {
+            setChildren([...children, child]);
         }
+        setIsChildModalOpen(false);
+        setEditingChild(null);
+    };
+
+    const handleEditChild = (child: Child) => {
+        setEditingChild(child);
+        setIsChildModalOpen(true);
     };
 
     const handleRemoveChild = (id: string) => {
@@ -330,18 +377,21 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 
                  {clientType === ClientType.Parent && (
                     <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
-                        <h3 className="text-md font-semibold">Figli</h3>
-                        {children.map((child) => (
+                         <div className="flex justify-between items-center">
+                            <h3 className="text-md font-semibold">Figli</h3>
+                            <button type="button" onClick={() => { setEditingChild(null); setIsChildModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm">
+                                <PlusIcon/> <span className="ml-1">Aggiungi Figlio</span>
+                            </button>
+                        </div>
+                        {children.length > 0 ? children.map((child) => (
                             <div key={child.id} className="flex items-center justify-between p-2 mt-2 bg-gray-50 rounded-md">
                                 <p className="text-sm">{child.name} - {child.age}</p>
-                                <button type="button" onClick={() => handleRemoveChild(child.id)} className="md-icon-btn delete" aria-label={`Rimuovi ${child.name}`}><TrashIcon /></button>
+                                <div>
+                                    <button type="button" onClick={() => handleEditChild(child)} className="md-icon-btn edit" aria-label={`Modifica ${child.name}`}><PencilIcon /></button>
+                                    <button type="button" onClick={() => handleRemoveChild(child.id)} className="md-icon-btn delete" aria-label={`Rimuovi ${child.name}`}><TrashIcon /></button>
+                                </div>
                             </div>
-                        ))}
-                        <div className="flex items-end space-x-2 mt-3">
-                            <div className="flex-grow md-input-group"><input id="newChildName" type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder=" " className="md-input"/><label htmlFor="newChildName" className="md-input-label">Nome Figlio</label></div>
-                            <div className="flex-grow md-input-group"><input id="newChildAge" type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder=" " className="md-input"/><label htmlFor="newChildAge" className="md-input-label">Età (es. 3 anni)</label></div>
-                            <button type="button" onClick={handleAddChild} className="md-btn md-btn-raised md-btn-primary h-10 w-10 !p-0"><PlusIcon/></button>
-                        </div>
+                        )) : <p className="text-sm text-center py-4" style={{color: 'var(--md-text-secondary)'}}>Nessun figlio aggiunto.</p>}
                     </div>
                 )}
             </div>
@@ -349,6 +399,11 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>
+            {isChildModalOpen && (
+                <Modal onClose={() => setIsChildModalOpen(false)}>
+                    <ChildFormModal child={editingChild} onSave={handleSaveChild} onCancel={() => setIsChildModalOpen(false)} />
+                </Modal>
+            )}
         </form>
     );
 };

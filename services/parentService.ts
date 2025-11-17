@@ -1,6 +1,6 @@
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
-import { Client, ClientInput, ParentClient } from '../types';
+import { Client, ClientInput } from '../types';
 
 const clientCollectionRef = collection(db, 'clients');
 

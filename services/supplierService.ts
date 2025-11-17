@@ -32,7 +32,8 @@ export const addSupplier = async (supplier: SupplierInput): Promise<string> => {
 
 export const updateSupplier = async (id: string, supplier: Partial<SupplierInput>): Promise<void> => {
     const supplierDoc = doc(db, 'suppliers', id);
-    await updateDoc(supplierDoc, supplier);
+    // Assicurati che i dati inviati siano un oggetto "pulito"
+    await updateDoc(supplierDoc, { ...supplier });
 };
 
 export const deleteSupplier = async (id: string): Promise<void> => {

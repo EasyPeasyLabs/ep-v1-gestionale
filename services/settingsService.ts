@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput } from '../types';
