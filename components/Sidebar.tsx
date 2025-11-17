@@ -49,9 +49,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user }) 
       <div className="p-4 border-t border-slate-200">
         <div className="flex items-center">
             <img 
-              src="/logo.png" 
-              alt="EP v.1 Logo" 
-              className="w-10 h-10 object-contain"
+              src={user.photoURL || './lemon_logo_150px.png'}
+              alt="User Avatar" 
+              className="w-10 h-10 rounded-full object-cover"
             />
             <div className="ml-3 overflow-hidden">
                 <p className="font-semibold text-sm text-slate-700 truncate">{user.email}</p>
