@@ -30,22 +30,35 @@ const ClassForm: React.FC<{
             setLoading(true);
             const data = await getSuppliers();
             setSuppliers(data);
-            if (data.length > 0 && !supplierId) {
-                setSupplierId(data[0].id);
-                if (data[0].locations.length > 0 && !locationId) {
-                    setLocationId(data[0].locations[0].id);
+            // Se si sta creando una nuova lezione, imposta un fornitore e una sede di default
+            if (!classItem?.id && data.length > 0) {
+                const firstSupplier = data[0];
+                setSupplierId(firstSupplier.id);
+                if (firstSupplier.locations.length > 0) {
+                    setLocationId(firstSupplier.locations[0].id);
                 }
             }
             setLoading(false);
         };
         fetchSuppliersData();
-    }, [supplierId, locationId]);
+    }, [classItem]); // Si esegue quando il componente si monta o quando classItem cambia
+
+    const handleSupplierChange = (newSupplierId: string) => {
+        setSupplierId(newSupplierId);
+        const newSupplier = suppliers.find(s => s.id === newSupplierId);
+        // Seleziona automaticamente la prima sede del nuovo fornitore
+        if (newSupplier && newSupplier.locations.length > 0) {
+            setLocationId(newSupplier.locations[0].id);
+        } else {
+            setLocationId('');
+        }
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const supplier = suppliers.find(s => s.id === supplierId);
         const location = supplier?.locations.find(l => l.id === locationId);
-        if (!supplier || !location) return;
+        if (!supplier || !location) return; // Blocco di sicurezza, non dovrebbe più accadere
 
         const classData = {
             dayOfWeek: dayOfWeek as ScheduledClass['dayOfWeek'], startTime, endTime, supplierId, locationId,
@@ -73,7 +86,7 @@ const ClassForm: React.FC<{
                     <div className="md-input-group"><input id="end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="end" className="md-input-label !top-0 !text-xs !text-gray-500">Orario Fine</label></div>
                 </div>
                  <div className="md-input-group">
-                    <select id="supplier" value={supplierId} onChange={e => {setSupplierId(e.target.value); setLocationId('');}} required className="md-input">
+                    <select id="supplier" value={supplierId} onChange={e => handleSupplierChange(e.target.value)} required className="md-input">
                         {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.companyName}</option>)}
                     </select>
                     <label htmlFor="supplier" className="md-input-label !top-0 !text-xs !text-gray-500">Fornitore</label>
