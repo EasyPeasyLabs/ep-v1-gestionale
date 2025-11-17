@@ -196,6 +196,15 @@ export interface Quote {
     status: DocumentStatus;
 }
 
+// --- Notifiche ---
+export interface Notification {
+  id: string; 
+  type: 'expiry' | 'low_lessons';
+  message: string;
+  clientId: string;
+  date: string; // ISO string
+}
+
 
 // --- Tipi di Input per Firestore (senza 'id') ---
 export type ParentClientInput = Omit<ParentClient, 'id'>;

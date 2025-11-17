@@ -3,11 +3,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { Page } from '../App';
+import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient } from '../types';
+import { getAllEnrollments } from '../services/enrollmentService';
+import { getClients } from '../services/parentService';
+
 import SearchIcon from './icons/SearchIcon';
 import BellIcon from './icons/BellIcon';
 import ChevronDownIcon from './icons/ChevronDownIcon';
 import LogoutIcon from './icons/LogoutIcon';
 import ProfileIcon from './icons/ProfileIcon';
+import NotificationsDropdown from './NotificationsDropdown';
 
 
 interface HeaderProps {
@@ -17,7 +22,12 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
+    const [notificationsOpen, setNotificationsOpen] = useState(false);
+    const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [loadingNotifications, setLoadingNotifications] = useState(true);
+
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const notificationsRef = useRef<HTMLDivElement>(null);
 
     const handleLogout = async () => {
         try {
@@ -32,11 +42,79 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setDropdownOpen(false);
             }
+            if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+                setNotificationsOpen(false);
+            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => {
             document.removeEventListener("mousedown", handleClickOutside);
         };
+    }, []);
+
+    useEffect(() => {
+        const generateNotifications = async () => {
+            setLoadingNotifications(true);
+            try {
+                const [enrollments, clients] = await Promise.all([
+                    getAllEnrollments(),
+                    getClients()
+                ]);
+
+                const clientMap = new Map<string, string>();
+                clients.forEach(c => {
+                    if (c.clientType === ClientType.Parent) {
+                        clientMap.set(c.id, `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}`);
+                    } else {
+                        clientMap.set(c.id, (c as InstitutionalClient).companyName);
+                    }
+                });
+
+                const newNotifications: Notification[] = [];
+                const today = new Date();
+                today.setHours(0, 0, 0, 0); // Normalize to start of day
+                const sevenDaysFromNow = new Date(today);
+                sevenDaysFromNow.setDate(today.getDate() + 7);
+
+                enrollments.forEach(enr => {
+                    if (enr.status !== EnrollmentStatus.Active) return;
+                    const parentName = clientMap.get(enr.clientId) || 'Cliente';
+
+                    // Check for expiring enrollments
+                    const endDate = new Date(enr.endDate);
+                    if (endDate >= today && endDate <= sevenDaysFromNow) {
+                        const diffTime = endDate.getTime() - today.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        newNotifications.push({
+                            id: enr.id,
+                            type: 'expiry',
+                            message: `L'iscrizione di ${enr.childName} (${parentName}) scade tra ${diffDays} giorni.`,
+                            clientId: enr.clientId,
+                            date: new Date().toISOString(),
+                        });
+                    }
+
+                    // Check for low lessons
+                    if (enr.lessonsRemaining > 0 && enr.lessonsRemaining <= 2) {
+                        newNotifications.push({
+                            id: `${enr.id}-lessons`, // Make ID unique
+                            type: 'low_lessons',
+                            message: `Restano solo ${enr.lessonsRemaining} lezioni per ${enr.childName} (${parentName}).`,
+                            clientId: enr.clientId,
+                            date: new Date().toISOString(),
+                        });
+                    }
+                });
+                
+                setNotifications(newNotifications);
+            } catch (error) {
+                console.error("Failed to fetch data for notifications:", error);
+            } finally {
+                setLoadingNotifications(false);
+            }
+        };
+
+        generateNotifications();
     }, []);
 
 
@@ -53,9 +131,24 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
         />
       </div>
       <div className="flex items-center space-x-4">
-        <button className="p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            <BellIcon />
-        </button>
+        <div className="relative" ref={notificationsRef}>
+            <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="relative p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <BellIcon />
+                 {!loadingNotifications && notifications.length > 0 && (
+                    <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-red-500 rounded-full">{notifications.length}</span>
+                )}
+            </button>
+             {notificationsOpen && (
+                <NotificationsDropdown
+                    notifications={notifications}
+                    loading={loadingNotifications}
+                    onNotificationClick={() => {
+                        setCurrentPage('Clients');
+                        setNotificationsOpen(false);
+                    }}
+                />
+            )}
+        </div>
         <div className="relative" ref={dropdownRef}>
             <div className="flex items-center">
                 <img 
