@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
 import { getEnrollmentsForClient, addEnrollment } from '../services/enrollmentService';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getScheduledClasses } from '../services/calendarService';
+import { addTransaction } from '../services/financeService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -18,7 +19,7 @@ import { importClientsFromCSV } from '../services/importService';
 
 const EnrollmentForm: React.FC<{
     parent: ParentClient;
-    onSave: (enrollment: EnrollmentInput) => void;
+    onSave: (enrollment: EnrollmentInput, subType: SubscriptionType, child: Child) => void;
     onCancel: () => void;
 }> = ({ parent, onSave, onCancel }) => {
     const [childId, setChildId] = useState('');
@@ -70,7 +71,7 @@ const EnrollmentForm: React.FC<{
             endDate: endDate.toISOString(),
             status: EnrollmentStatus.Active,
         };
-        onSave(newEnrollment);
+        onSave(newEnrollment, selectedSub, selectedChild);
     };
 
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
@@ -125,8 +126,20 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
         fetchEnrollments();
     }, [fetchEnrollments]);
 
-    const handleSaveEnrollment = async (enrollment: EnrollmentInput) => {
-        await addEnrollment(enrollment);
+    const handleSaveEnrollment = async (enrollment: EnrollmentInput, subType: SubscriptionType, child: Child) => {
+        const newEnrollmentId = await addEnrollment(enrollment);
+
+        // Crea automaticamente la transazione finanziaria
+        await addTransaction({
+            date: new Date().toISOString(),
+            description: `Iscrizione ${child.name} - Pacchetto ${subType.name}`,
+            amount: subType.price,
+            type: TransactionType.Income,
+            category: TransactionCategory.Sales,
+            paymentMethod: PaymentMethod.Other, // O chiedere all'utente
+            relatedDocumentId: newEnrollmentId,
+        });
+
         setIsEnrollModalOpen(false);
         fetchEnrollments();
     };

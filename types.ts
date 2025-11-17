@@ -94,7 +94,6 @@ export interface CompanyInfo {
     phone: string;
 }
 
-// Nuove interfacce per listino e calendario
 export interface SubscriptionType {
     id: string;
     name: string;
@@ -115,6 +114,88 @@ export interface ScheduledClass {
 }
 
 
+// --- Finanza ---
+
+export enum TransactionType {
+    Income = 'income',
+    Expense = 'expense',
+}
+
+export enum TransactionCategory {
+    // Income
+    Sales = 'Vendite Abbonamenti',
+    OtherIncome = 'Altre Entrate',
+    // Expense
+    Rent = 'Nolo Sedi',
+    Materials = 'Materiali Didattici',
+    Marketing = 'Marketing',
+    Fuel = 'Carburante',
+    Transport = 'Trasporti',
+    Taxes = 'Imposte e Tasse',
+    Admin = 'Costi Amministrativi',
+    Training = 'Formazione',
+    OtherExpense = 'Altre Spese',
+}
+
+export enum PaymentMethod {
+    BankTransfer = 'Bonifico Bancario',
+    CreditCard = 'Carta di Credito',
+    Cash = 'Contanti',
+    PayPal = 'PayPal',
+    Other = 'Altro',
+}
+
+export interface Transaction {
+    id: string;
+    date: string; // ISO String
+    description: string;
+    amount: number;
+    type: TransactionType;
+    category: TransactionCategory;
+    paymentMethod: PaymentMethod;
+    relatedDocumentId?: string; // Es. id iscrizione o fattura
+}
+
+export enum DocumentStatus {
+    Draft = 'Bozza',
+    Sent = 'Inviato',
+    Paid = 'Pagato',
+    Overdue = 'Scaduto',
+    Cancelled = 'Annullato',
+}
+
+export interface DocumentItem {
+    description: string;
+    quantity: number;
+    price: number;
+}
+
+export interface Invoice {
+    id: string;
+    invoiceNumber: string;
+    clientId: string;
+    clientName: string; // Denormalizzato
+    issueDate: string; // ISO String
+    dueDate: string; // ISO String
+    items: DocumentItem[];
+    totalAmount: number;
+    status: DocumentStatus;
+}
+
+export interface Quote {
+    id: string;
+    quoteNumber: string;
+    clientId: string;
+    clientName: string; // Denormalizzato
+    issueDate: string; // ISO String
+    expiryDate: string; // ISO String
+    items: DocumentItem[];
+    totalAmount: number;
+    status: DocumentStatus;
+}
+
+
+// --- Tipi di Input per Firestore (senza 'id') ---
 export type ParentClientInput = Omit<ParentClient, 'id'>;
 export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
 export type ClientInput = ParentClientInput | InstitutionalClientInput;
@@ -124,3 +205,7 @@ export type LocationInput = Omit<Location, 'id'>;
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
 export type ScheduledClassInput = Omit<ScheduledClass, 'id'>;
 export type EnrollmentInput = Omit<Enrollment, 'id'>;
+
+export type TransactionInput = Omit<Transaction, 'id'>;
+export type InvoiceInput = Omit<Invoice, 'id'>;
+export type QuoteInput = Omit<Quote, 'id'>;
