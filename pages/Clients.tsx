@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, SubscriptionStatus, ParentClient, InstitutionalClient } from '../types';
+import { Client, ClientInput, ClientType, SubscriptionStatus, ParentClient, InstitutionalClient, Child } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
@@ -44,26 +44,14 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void }> = ({ client
                         </div>
                     </div>
                     <div className="mt-6">
-                        <h3 className="text-lg font-semibold text-slate-700">Figli e Iscrizioni</h3>
-                        {client.children.length > 0 ? client.children.map(child => {
-                            const subscription = client.subscriptions.find(s => s.id === child.subscriptionId);
-                            return (
+                        <h3 className="text-lg font-semibold text-slate-700">Figli Iscritti</h3>
+                        {client.children.length > 0 ? client.children.map(child => (
                                 <div key={child.id} className="mt-4 p-4 border border-slate-200 rounded-lg">
-                                    <div className="flex justify-between items-center">
-                                        <div>
-                                            <p className="font-semibold">{child.name}, {child.age}</p>
-                                            <p className="text-sm text-slate-500">{subscription?.packageName}</p>
-                                        </div>
-                                        {subscription && (
-                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(subscription.status)}`}>
-                                                {subscription.status}
-                                            </span>
-                                        )}
-                                    </div>
+                                    <p className="font-semibold">{child.name}, {child.age}</p>
                                 </div>
-                            );
-                        }) : (
-                        <p className="text-slate-500 text-sm mt-4">Nessun figlio iscritto per questo genitore.</p>
+                            ))
+                         : (
+                        <p className="text-slate-500 text-sm mt-4">Nessun figlio registrato per questo genitore.</p>
                         )}
                     </div>
                 </>
@@ -101,6 +89,9 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [taxCode, setTaxCode] = useState('');
+    const [children, setChildren] = useState<Child[]>([]);
+    const [newChildName, setNewChildName] = useState('');
+    const [newChildAge, setNewChildAge] = useState('');
     
     // Institutional fields
     const [companyName, setCompanyName] = useState('');
@@ -118,12 +109,25 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 setFirstName(client.firstName);
                 setLastName(client.lastName);
                 setTaxCode(client.taxCode);
+                setChildren(client.children || []);
             } else {
                 setCompanyName(client.companyName);
                 setVatNumber(client.vatNumber);
             }
         }
     }, [client]);
+
+    const handleAddChild = () => {
+        if (newChildName && newChildAge) {
+            setChildren([...children, { id: Date.now().toString(), name: newChildName, age: newChildAge }]);
+            setNewChildName('');
+            setNewChildAge('');
+        }
+    };
+
+    const handleRemoveChild = (id: string) => {
+        setChildren(children.filter(child => child.id !== id));
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -141,7 +145,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 lastName,
                 taxCode,
                 avatarUrl: (client as ParentClient)?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`,
-                children: (client as ParentClient)?.children || [],
+                children: children,
                 subscriptions: (client as ParentClient)?.subscriptions || [],
             };
         } else if (clientType === ClientType.Institutional) {
@@ -244,6 +248,31 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                     <label className="block text-sm font-medium text-slate-700">Provincia</label>
                     <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
                 </div>
+                
+                 {clientType === ClientType.Parent && (
+                    <div className="pt-4 border-t mt-4">
+                        <h3 className="text-md font-semibold text-slate-700">Figli</h3>
+                        {children.map((child) => (
+                            <div key={child.id} className="flex items-center justify-between p-2 mt-2 bg-slate-50 rounded-md">
+                                <p className="text-sm">{child.name} - {child.age}</p>
+                                <button type="button" onClick={() => handleRemoveChild(child.id)} className="text-red-500 hover:text-red-700">
+                                    <TrashIcon />
+                                </button>
+                            </div>
+                        ))}
+                        <div className="flex items-end space-x-2 mt-3">
+                            <div className="flex-grow">
+                                <label className="block text-sm font-medium text-slate-700">Nome Figlio</label>
+                                <input type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder="Nome" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"/>
+                            </div>
+                            <div className="flex-grow">
+                                <label className="block text-sm font-medium text-slate-700">Età</label>
+                                <input type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder="Es. 3 anni" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"/>
+                            </div>
+                            <button type="button" onClick={handleAddChild} className="bg-indigo-500 text-white p-2 rounded-md hover:bg-indigo-600"><PlusIcon/></button>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
                 <button type="button" onClick={onCancel} className="bg-white py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
@@ -353,7 +382,7 @@ const Clients: React.FC = () => {
         </div>
 
         {isModalOpen && (
-            <Modal onClose={handleCloseModal}>
+            <Modal onClose={handleCloseModal} size="xl">
                 <ClientForm client={editingClient} onSave={handleSaveClient} onCancel={handleCloseModal} />
             </Modal>
         )}
@@ -390,7 +419,7 @@ const Clients: React.FC = () => {
                   <th className="p-4">Nome / Ragione Sociale</th>
                   <th className="p-4">Tipo</th>
                   <th className="p-4">Contatti</th>
-                  <th className="p-4">Stato</th>
+                  <th className="p-4">Figli</th>
                   <th className="p-4">Azioni</th>
                 </tr>
               </thead>
@@ -414,16 +443,8 @@ const Clients: React.FC = () => {
                       <div>{client.email}</div>
                       <div>{client.phone}</div>
                     </td>
-                    <td className="p-4">
-                        {client.clientType === ClientType.Parent && (
-                            <div className="flex items-center space-x-2">
-                               {client.subscriptions.map(sub => (
-                                 <span key={sub.id} className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(sub.status)}`}>
-                                   {sub.packageName.substring(0,1)}
-                                 </span>
-                               ))}
-                            </div>
-                        )}
+                    <td className="p-4 text-sm text-slate-600">
+                        {client.clientType === ClientType.Parent ? client.children.length : 'N/A'}
                     </td>
                     <td className="p-4">
                         <div className="flex items-center space-x-4">

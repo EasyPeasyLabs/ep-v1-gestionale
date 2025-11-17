@@ -1,6 +1,6 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Client, ClientType, ParentClientInput, InstitutionalClientInput, SupplierInput } from '../types';
+import { Client, ClientType, ParentClientInput, InstitutionalClientInput, SupplierInput, Supplier } from '../types';
 import { ImportResult } from '../components/ImportModal';
 
 // Helper per leggere il contenuto del file come testo
@@ -164,11 +164,11 @@ export const importSuppliersFromCSV = async (file: File): Promise<ImportResult> 
 
     const supplierCollectionRef = collection(db, 'suppliers');
     const existingSuppliersSnapshot = await getDocs(supplierCollectionRef);
-    const existingSuppliersMap = new Map<string, string>(); // name -> docId
+    const existingSuppliersMap = new Map<string, string>(); // companyName -> docId
     existingSuppliersSnapshot.docs.forEach(doc => {
-        const supplierData = doc.data() as SupplierInput;
-        if (supplierData.name) {
-            existingSuppliersMap.set(supplierData.name.toLowerCase(), doc.id);
+        const supplierData = doc.data() as Supplier;
+        if (supplierData.companyName) {
+            existingSuppliersMap.set(supplierData.companyName.toLowerCase(), doc.id);
         }
     });
 
@@ -178,15 +178,19 @@ export const importSuppliersFromCSV = async (file: File): Promise<ImportResult> 
         const row = data[i];
         const rowNum = i + 2;
 
-        if (!row.name || !row.contactPerson || !row.email || !row.phone) {
-             result.errors.push({ row: rowNum, message: 'Tutti i campi (name, contactPerson, email, phone) sono obbligatori.' });
+        if (!row.companyName || !row.vatNumber || !row.email || !row.phone) {
+             result.errors.push({ row: rowNum, message: 'I campi companyName, vatNumber, email, phone sono obbligatori.' });
             continue;
         }
 
-        const supplierName = row.name.toLowerCase();
+        const supplierName = row.companyName.toLowerCase();
         const supplierData: SupplierInput = {
-            name: row.name,
-            contactPerson: row.contactPerson,
+            companyName: row.companyName,
+            vatNumber: row.vatNumber,
+            address: row.address || '',
+            zipCode: row.zipCode || '',
+            city: row.city || '',
+            province: row.province || '',
             email: row.email,
             phone: row.phone,
             locations: []

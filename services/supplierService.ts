@@ -1,4 +1,3 @@
-
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Supplier, SupplierInput } from '../types';
@@ -9,8 +8,12 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
     const data = doc.data();
     return {
         id: doc.id,
-        name: data.name,
-        contactPerson: data.contactPerson,
+        companyName: data.companyName,
+        vatNumber: data.vatNumber,
+        address: data.address,
+        zipCode: data.zipCode,
+        city: data.city,
+        province: data.province,
         email: data.email,
         phone: data.phone,
         locations: data.locations || [],

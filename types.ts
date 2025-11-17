@@ -1,9 +1,7 @@
-
 export interface Child {
-  id: string;
+  id: string; // ID temporaneo per la UI, generato al momento della creazione
   name: string;
   age: string; // Età in formato testo, es: "3 anni", "18 mesi"
-  subscriptionId: string;
 }
 
 export enum SubscriptionStatus {
@@ -28,7 +26,7 @@ export enum ClientType {
 }
 
 interface ClientBase {
-  id: string;
+  id:string;
   clientType: ClientType;
   address: string;
   zipCode: string; // CAP
@@ -60,18 +58,27 @@ export type Client = ParentClient | InstitutionalClient;
 
 export interface Supplier {
   id: string;
-  name: string;
-  contactPerson: string;
+  companyName: string; // Ragione Sociale
+  vatNumber: string; // Partita IVA
+  address: string;
+  zipCode: string;
+  city: string;
+  province: string;
   email: string;
   phone: string;
   locations: Location[];
 }
 
 export interface Location {
-    id: string;
+    id: string; // ID temporaneo per la UI o da Firestore
+    name: string; // Nome Sede
     address: string;
+    zipCode: string;
     city: string;
-    capacity: number;
+    province: string;
+    capacity: number; // Capienza
+    rentalCost: number; // Costo nolo
+    distance: number; // Distanza in km
 }
 
 export interface CompanyInfo {
@@ -89,3 +96,4 @@ export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
 export type ClientInput = ParentClientInput | InstitutionalClientInput;
 
 export type SupplierInput = Omit<Supplier, 'id'>;
+export type LocationInput = Omit<Location, 'id'>;
