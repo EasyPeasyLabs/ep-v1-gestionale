@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -7,11 +8,26 @@ import Clients from './pages/Clients';
 import Suppliers from './pages/Suppliers';
 import Finance from './pages/Finance';
 import Settings from './pages/Settings';
+import LoginPage from './pages/LoginPage';
+import FullScreenSpinner from './components/FullScreenSpinner';
 
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
+  const [user, setUser] = useState<User | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const auth = getAuth();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoadingAuth(false);
+    });
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, [auth]);
+
 
   const renderContent = () => {
     switch (currentPage) {
@@ -30,11 +46,23 @@ const App: React.FC = () => {
     }
   };
 
+  if (loadingAuth) {
+    return <FullScreenSpinner />;
+  }
+  
+  if (!user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="flex h-screen bg-slate-100 text-slate-800">
-      <Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} />
+      <Sidebar 
+        user={user}
+        currentPage={currentPage} 
+        setCurrentPage={setCurrentPage} 
+      />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header />
+        <Header user={user} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100 p-4 md:p-6 lg:p-8">
           {renderContent()}
         </main>

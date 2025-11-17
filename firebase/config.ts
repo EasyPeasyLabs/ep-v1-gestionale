@@ -1,5 +1,7 @@
+
 import { initializeApp } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -14,8 +16,10 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Esporta l'istanza di Firestore per usarla nel resto dell'app
+// Esporta le istanze dei servizi Firebase per usarle nel resto dell'app
 export const db = getFirestore(app);
+export const auth = getAuth(app);
+
 
 // Per migliorare la robustezza, abilitiamo la persistenza offline.
 // Questo permette all'app di funzionare anche senza connessione (usando dati in cache)

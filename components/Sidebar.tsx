@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Page } from '../App';
+import { User } from 'firebase/auth';
 import DashboardIcon from './icons/DashboardIcon';
 import ClientsIcon from './icons/ClientsIcon';
 import SuppliersIcon from './icons/SuppliersIcon';
@@ -10,9 +11,10 @@ import SettingsIcon from './icons/SettingsIcon';
 interface SidebarProps {
   currentPage: Page;
   setCurrentPage: (page: Page) => void;
+  user: User;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user }) => {
   const navItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { page: 'Clients', label: 'Clienti', icon: <ClientsIcon /> },
@@ -42,9 +44,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
       </ul>
       <div className="p-4 border-t border-slate-200">
         <div className="flex items-center">
-            <img src="https://i.pravatar.cc/150?u=ilaria" alt="Ilaria Tavani" className="w-10 h-10 rounded-full"/>
-            <div className="ml-3">
-                <p className="font-semibold text-sm text-slate-700">Ilaria Tavani</p>
+            <img src={`https://i.pravatar.cc/150?u=${user.uid}`} alt={user.email || 'User Avatar'} className="w-10 h-10 rounded-full"/>
+            <div className="ml-3 overflow-hidden">
+                <p className="font-semibold text-sm text-slate-700 truncate">{user.email}</p>
                 <p className="text-xs text-slate-500">Amministratore</p>
             </div>
         </div>
