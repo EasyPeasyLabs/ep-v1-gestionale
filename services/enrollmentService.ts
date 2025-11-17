@@ -14,6 +14,12 @@ export const getEnrollmentsForClient = async (clientId: string): Promise<Enrollm
     return snapshot.docs.map(docToEnrollment);
 };
 
+export const getAllEnrollments = async (): Promise<Enrollment[]> => {
+    const snapshot = await getDocs(enrollmentCollectionRef);
+    return snapshot.docs.map(docToEnrollment);
+};
+
+
 export const addEnrollment = async (enrollment: EnrollmentInput): Promise<string> => {
     const docRef = await addDoc(enrollmentCollectionRef, enrollment);
     return docRef.id;

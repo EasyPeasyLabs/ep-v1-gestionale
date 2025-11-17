@@ -1,12 +1,32 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod } from '../types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment } from '../types';
 import { getTransactions, addTransaction, deleteTransaction } from '../services/financeService';
+import { getAllEnrollments } from '../services/enrollmentService';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
 
 type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes';
+
+const StatCard: React.FC<{ title: string; value: string; color: string; }> = ({ title, value, color }) => (
+  <div className={`bg-white p-4 rounded-lg shadow-md border-l-4 ${color}`}>
+    <h3 className="text-sm font-medium text-slate-500">{title}</h3>
+    <p className="text-2xl font-semibold text-slate-800 mt-1">{value}</p>
+  </div>
+);
+
+const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+    <div className="bg-white p-6 rounded-lg shadow-md">
+        <h3 className="text-lg font-semibold text-slate-700 mb-4">{title}</h3>
+        <div className="h-64">
+            {children}
+        </div>
+    </div>
+);
+
 
 const TransactionForm: React.FC<{
     onSave: (transaction: TransactionInput) => void;
@@ -88,17 +108,25 @@ const TransactionForm: React.FC<{
 const Finance: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('overview');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    
+    // Chart refs
+    const monthlyChartRef = useRef<HTMLCanvasElement>(null);
+    const enrollmentsChartRef = useRef<HTMLCanvasElement>(null);
+    const expensesDoughnutRef = useRef<HTMLCanvasElement>(null);
 
-    const fetchTransactions = useCallback(async () => {
+
+    const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await getTransactions();
-            setTransactions(data);
+            const [transactionsData, enrollmentsData] = await Promise.all([getTransactions(), getAllEnrollments()]);
+            setTransactions(transactionsData);
+            setEnrollments(enrollmentsData);
         } catch (err) {
-            setError("Impossibile caricare le transazioni.");
+            setError("Impossibile caricare i dati finanziari.");
             console.error(err);
         } finally {
             setLoading(false);
@@ -106,82 +134,178 @@ const Finance: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        fetchTransactions();
-    }, [fetchTransactions]);
+        fetchAllData();
+    }, [fetchAllData]);
 
     const handleSaveTransaction = async (transaction: TransactionInput) => {
         await addTransaction(transaction);
         setIsModalOpen(false);
-        fetchTransactions();
+        fetchAllData();
     };
     
     const handleDeleteTransaction = async (id: string) => {
         if(window.confirm("Sei sicuro di voler eliminare questa transazione?")) {
             await deleteTransaction(id);
-            fetchTransactions();
+            fetchAllData();
         }
     };
+    
+    // --- METRICS CALCULATION ---
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
 
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    // FIX: Add explicit type for accumulator in reduce to help type inference.
     const monthlyIncome = transactions
         .filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear)
-        .reduce((sum: number, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + t.amount, 0);
 
-    // FIX: Add explicit type for accumulator in reduce to help type inference.
     const monthlyExpense = transactions
         .filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear)
-        .reduce((sum: number, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + t.amount, 0);
         
-    // FIX: Add explicit type for accumulator in reduce to help type inference. This resolves the error on the next line.
-    const expenseByCategory = transactions
-        .filter(t => t.type === TransactionType.Expense)
-        .reduce((acc: Record<TransactionCategory, number>, t) => {
-            acc[t.category] = (acc[t.category] || 0) + t.amount;
-            return acc;
-        }, {} as Record<TransactionCategory, number>);
+    const annualIncome = transactions
+        .filter(t => t.type === TransactionType.Income && new Date(t.date).getFullYear() === currentYear)
+        .reduce((sum, t) => sum + t.amount, 0);
+    
+    const annualExpense = transactions
+        .filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear)
+        .reduce((sum, t) => sum + t.amount, 0);
 
-    // FIX: Add explicit types for accumulator and value in reduce to help type inference.
-    const totalExpense = Object.values(expenseByCategory).reduce((sum: number, amount: number) => sum + amount, 0);
+    // Regime Forfettario Calculation
+    const COEFFICIENTE_REDDITIVITA = 0.78;
+    const ALIQUOTA_INPS = 0.2623;
+    const ALIQUOTA_IMPOSTA = 0.05;
+
+    const imponibileLordo = annualIncome * COEFFICIENTE_REDDITIVITA;
+    const contributiInpsStimati = imponibileLordo * ALIQUOTA_INPS;
+    const imponibileNetto = imponibileLordo - contributiInpsStimati;
+    const impostaSostitutivaStimata = imponibileNetto > 0 ? imponibileNetto * ALIQUOTA_IMPOSTA : 0;
+    const utileNettoPrevisto = annualIncome - annualExpense - contributiInpsStimati - impostaSostitutivaStimata;
+
+
+    // Chart Data Preparation
+    useEffect(() => {
+        const last6Months = [...Array(6)].map((_, i) => {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            return { month: d.getMonth(), year: d.getFullYear() };
+        }).reverse();
+
+        const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' }));
+
+        const monthlyIncomeData = last6Months.map(d => 
+            transactions
+                .filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year)
+                .reduce((sum, t) => sum + t.amount, 0)
+        );
+        const monthlyExpenseData = last6Months.map(d => 
+            transactions
+                .filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year)
+                .reduce((sum, t) => sum + t.amount, 0)
+        );
+        const monthlyEnrollmentsData = last6Months.map(d => 
+            enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length
+        );
+
+        const expenseByCategory = transactions
+            .filter(t => t.type === TransactionType.Expense)
+            .reduce((acc, t) => {
+                acc[t.category] = (acc[t.category] || 0) + t.amount;
+                return acc;
+            }, {} as Record<string, number>);
+
+        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart;
+
+        if (monthlyChartRef.current) {
+            monthlyChart = new Chart(monthlyChartRef.current, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Entrate', data: monthlyIncomeData, backgroundColor: '#34d399', },
+                        { label: 'Uscite', data: monthlyExpenseData, backgroundColor: '#f87171', }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+        if (enrollmentsChartRef.current) {
+            enrollmentsChart = new Chart(enrollmentsChartRef.current, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: '#6366f1', tension: 0.1, fill: false }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+        if (expensesDoughnutRef.current) {
+             expensesDoughnut = new Chart(expensesDoughnutRef.current, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(expenseByCategory),
+                    datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        return () => {
+            if (monthlyChart) monthlyChart.destroy();
+            if (enrollmentsChart) enrollmentsChart.destroy();
+            if (expensesDoughnut) expensesDoughnut.destroy();
+        };
+
+    }, [transactions, enrollments]);
+
 
     const renderContent = () => {
         switch (activeTab) {
             case 'overview':
                 return (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-green-50 p-6 rounded-lg">
-                                <h3 className="text-sm font-medium text-green-700">Entrate (Mese)</h3>
-                                <p className="text-3xl font-semibold text-green-800 mt-2">{monthlyIncome.toFixed(2)}€</p>
-                            </div>
-                            <div className="bg-red-50 p-6 rounded-lg">
-                                <h3 className="text-sm font-medium text-red-700">Uscite (Mese)</h3>
-                                <p className="text-3xl font-semibold text-red-800 mt-2">{monthlyExpense.toFixed(2)}€</p>
-                            </div>
-                            <div className="bg-indigo-50 p-6 rounded-lg">
-                                <h3 className="text-sm font-medium text-indigo-700">Saldo (Mese)</h3>
-                                <p className="text-3xl font-semibold text-indigo-800 mt-2">{(monthlyIncome - monthlyExpense).toFixed(2)}€</p>
-                            </div>
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <StatCard title="Entrate (Mese)" value={`${monthlyIncome.toFixed(2)}€`} color="border-green-500" />
+                            <StatCard title="Uscite (Mese)" value={`${monthlyExpense.toFixed(2)}€`} color="border-red-500" />
+                            <StatCard title="Utile Lordo (Mese)" value={`${(monthlyIncome - monthlyExpense).toFixed(2)}€`} color="border-indigo-500" />
+                            <StatCard title="Allievi Totali" value={enrollments.length.toString()} color="border-sky-500" />
                         </div>
-                         <div className="bg-white p-6 rounded-lg shadow-md">
-                            <h3 className="font-semibold text-slate-700 mb-4">Spese per Categoria</h3>
-                            <div className="space-y-3">
-                                {/* FIX: Refactor sort to avoid destructuring in callback parameters, which was confusing the type checker. */}
-                                {Object.entries(expenseByCategory).sort((a, b) => b[1] - a[1]).map(([category, amount]) => (
-                                    <div key={category}>
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className="text-slate-600">{category}</span>
-                                            <span className="font-medium text-slate-800">{amount.toFixed(2)}€</span>
-                                        </div>
-                                        <div className="w-full bg-slate-200 rounded-full h-2">
-                                            <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${(amount / totalExpense) * 100}%` }}></div>
-                                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <ChartCard title="Andamento Mensile (Entrate vs Uscite)"><canvas ref={monthlyChartRef}></canvas></ChartCard>
+                            <ChartCard title="Trend Iscrizioni Allievi"><canvas ref={enrollmentsChartRef}></canvas></ChartCard>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-md">
+                                <h3 className="text-lg font-semibold text-slate-700">Proiezione Fiscale (Regime Forfettario)</h3>
+                                <p className="text-sm text-slate-500 mb-4">Stima basata sul fatturato dell'anno in corso.</p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
+                                    <div className="bg-slate-50 p-3 rounded-md">
+                                        <p className="text-xs text-slate-500">Fatturato Annuo</p>
+                                        <p className="font-bold text-lg text-slate-800">{annualIncome.toFixed(2)}€</p>
                                     </div>
-                                ))}
+                                     <div className="bg-slate-50 p-3 rounded-md">
+                                        <p className="text-xs text-slate-500">Imponibile (78%)</p>
+                                        <p className="font-bold text-lg text-slate-800">{imponibileLordo.toFixed(2)}€</p>
+                                    </div>
+                                    <div className="bg-red-50 p-3 rounded-md">
+                                        <p className="text-xs text-red-600">Contributi INPS (stima)</p>
+                                        <p className="font-bold text-lg text-red-800">{contributiInpsStimati.toFixed(2)}€</p>
+                                    </div>
+                                     <div className="bg-red-50 p-3 rounded-md">
+                                        <p className="text-xs text-red-600">Imposta (5%) (stima)</p>
+                                        <p className="font-bold text-lg text-red-800">{impostaSostitutivaStimata.toFixed(2)}€</p>
+                                    </div>
+                                     <div className="bg-green-50 p-3 rounded-md col-span-2 md:col-span-1">
+                                        <p className="text-xs text-green-600">Utile Netto Previsto</p>
+                                        <p className="font-bold text-lg text-green-800">{utileNettoPrevisto.toFixed(2)}€</p>
+                                    </div>
+                                </div>
                             </div>
+                            <ChartCard title="Ripartizione Costi"><canvas ref={expensesDoughnutRef}></canvas></ChartCard>
                         </div>
+
                     </div>
                 );
             case 'transactions':
