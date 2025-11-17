@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';
@@ -119,7 +118,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
 
 
   return (
-    <header className="h-16 bg-white shadow-sm flex-shrink-0 flex items-center justify-between px-4 md:px-6 lg:px-8 border-b border-slate-200">
+    <header className="h-16 bg-white shadow-sm flex-shrink-0 flex items-center justify-between px-4 md:px-6 lg:px-8 border-b" style={{ backgroundColor: 'var(--md-bg-card)', borderColor: 'var(--md-divider)'}}>
       <div className="relative w-full max-w-xs">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <SearchIcon />
@@ -127,15 +126,15 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
         <input
           type="text"
           placeholder="Cerca..."
-          className="block w-full bg-slate-100 border border-transparent rounded-md py-2 pl-10 pr-3 text-sm placeholder-slate-400 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+          className="block w-full bg-gray-100 border border-transparent rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:bg-white focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500"
         />
       </div>
       <div className="flex items-center space-x-4">
         <div className="relative" ref={notificationsRef}>
-            <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="relative p-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="md-icon-btn relative">
                 <BellIcon />
                  {!loadingNotifications && notifications.length > 0 && (
-                    <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-xs font-bold text-white bg-red-500 rounded-full">{notifications.length}</span>
+                    <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-xs font-bold text-white rounded-full" style={{backgroundColor: 'var(--md-red)'}}>{notifications.length}</span>
                 )}
             </button>
              {notificationsOpen && (
@@ -150,25 +149,27 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
             )}
         </div>
         <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900">
+            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center text-sm font-medium" style={{ color: 'var(--md-text-secondary)'}}>
                 <span className="truncate max-w-24 md:max-w-none">{user.email}</span>
                 <ChevronDownIcon />
             </button>
              {dropdownOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5 animate-fade-in-down">
+                <div className="absolute right-0 mt-2 w-48 rounded-md py-1 z-20 md-card animate-fade-in-down">
                     <button 
                         onClick={() => {
                           setCurrentPage('Profile');
                           setDropdownOpen(false);
                         }}
-                        className="w-full flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
+                        className="w-full flex items-center px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        style={{ color: 'var(--md-text-primary)'}}
                     >
                         <ProfileIcon />
                         <span className="ml-2">Il mio Profilo</span>
                     </button>
                     <button 
                         onClick={handleLogout} 
-                        className="w-full flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
+                        className="w-full flex items-center px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                         style={{ color: 'var(--md-text-primary)'}}
                     >
                         <LogoutIcon />
                         <span className="ml-2">Logout</span>

@@ -80,28 +80,28 @@ const EnrollmentForm: React.FC<{
         <form onSubmit={handleSubmit}>
             <h2 className="text-xl font-bold mb-4">Nuova Iscrizione</h2>
             <div className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Figlio</label>
-                    <select value={childId} onChange={e => setChildId(e.target.value)} required className="mt-1 block w-full input">
+                <div className="md-input-group">
+                    <select id="child" value={childId} onChange={e => setChildId(e.target.value)} required className="md-input">
                         {parent.children.map(child => <option key={child.id} value={child.id}>{child.name}</option>)}
                     </select>
+                    <label htmlFor="child" className="md-input-label !top-0 !text-xs !text-gray-500">Figlio</label>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Pacchetto Abbonamento</label>
-                    <select value={subscriptionTypeId} onChange={e => setSubscriptionTypeId(e.target.value)} required className="mt-1 block w-full input">
+                <div className="md-input-group">
+                    <select id="sub-type" value={subscriptionTypeId} onChange={e => setSubscriptionTypeId(e.target.value)} required className="md-input">
                         {subscriptionTypes.map(sub => <option key={sub.id} value={sub.id}>{sub.name} ({sub.lessons} lezioni, {sub.price}€)</option>)}
                     </select>
+                    <label htmlFor="sub-type" className="md-input-label !top-0 !text-xs !text-gray-500">Pacchetto Abbonamento</label>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Lezione</label>
-                    <select value={scheduledClassId} onChange={e => setScheduledClassId(e.target.value)} required className="mt-1 block w-full input">
+                <div className="md-input-group">
+                    <select id="class" value={scheduledClassId} onChange={e => setScheduledClassId(e.target.value)} required className="md-input">
                        {scheduledClasses.map(c => <option key={c.id} value={c.id}>{c.dayOfWeek} {c.startTime}-{c.endTime} @ {c.locationName}</option>)}
                     </select>
+                    <label htmlFor="class" className="md-input-label !top-0 !text-xs !text-gray-500">Lezione</label>
                 </div>
             </div>
              <div className="mt-6 flex justify-end space-x-3">
-                <button type="button" onClick={onCancel} className="btn-secondary">Annulla</button>
-                <button type="submit" className="btn-primary">Iscrivi</button>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green">Iscrivi</button>
             </div>
         </form>
     );
@@ -128,84 +128,79 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
 
     const handleSaveEnrollment = async (enrollment: EnrollmentInput, subType: SubscriptionType, child: Child) => {
         const newEnrollmentId = await addEnrollment(enrollment);
-
-        // Crea automaticamente la transazione finanziaria
         await addTransaction({
             date: new Date().toISOString(),
             description: `Iscrizione ${child.name} - Pacchetto ${subType.name}`,
             amount: subType.price,
             type: TransactionType.Income,
             category: TransactionCategory.Sales,
-            paymentMethod: PaymentMethod.Other, // O chiedere all'utente
+            paymentMethod: PaymentMethod.Other,
             relatedDocumentId: newEnrollmentId,
         });
-
         setIsEnrollModalOpen(false);
         fetchEnrollments();
     };
 
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md animate-fade-in">
+        <div className="md-card p-6 animate-fade-in">
             <div className="flex justify-between items-start">
-                <button onClick={onBack} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm mb-4">&larr; Torna alla lista</button>
-                 <button onClick={() => onEdit(client)} className="p-2 rounded-full hover:bg-slate-100 btn-edit-icon" aria-label="Modifica cliente">
+                <button onClick={onBack} className="text-sm font-medium mb-4" style={{ color: 'var(--md-primary)'}}>&larr; Torna alla lista</button>
+                 <button onClick={() => onEdit(client)} className="md-icon-btn edit" aria-label="Modifica cliente">
                     <PencilIcon />
                 </button>
             </div>
             {client.clientType === ClientType.Parent ? (
-                // Parent Detail View
                 <>
                     <div className="flex items-start">
                         <img src={client.avatarUrl} alt={`${client.firstName} ${client.lastName}`} className="w-24 h-24 rounded-full mr-6"/>
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-800">{client.firstName} {client.lastName}</h2>
-                            <p className="text-slate-500">{client.email} | {client.phone}</p>
-                            <p className="text-slate-500 text-sm mt-1">CF: {client.taxCode}</p>
+                            <h2 className="text-2xl font-bold">{client.firstName} {client.lastName}</h2>
+                            <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
+                            <p className="text-sm mt-1" style={{ color: 'var(--md-text-secondary)'}}>CF: {client.taxCode}</p>
                         </div>
                     </div>
                     <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <h3 className="text-lg font-semibold text-slate-700">Figli</h3>
+                            <h3 className="text-lg font-semibold">Figli</h3>
                             {client.children.length > 0 ? client.children.map(child => (
-                                    <div key={child.id} className="mt-2 p-3 border border-slate-200 rounded-lg">
+                                    <div key={child.id} className="mt-2 p-3 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
                                         <p className="font-semibold">{child.name}, {child.age}</p>
                                     </div>
                                 ))
                              : (
-                            <p className="text-slate-500 text-sm mt-4">Nessun figlio registrato.</p>
+                            <p className="text-sm mt-4" style={{ color: 'var(--md-text-secondary)'}}>Nessun figlio registrato.</p>
                             )}
                         </div>
                         <div>
                              <div className="flex justify-between items-center">
-                                <h3 className="text-lg font-semibold text-slate-700">Iscrizioni</h3>
-                                <button onClick={() => setIsEnrollModalOpen(true)} className="btn-primary-outline text-sm">
+                                <h3 className="text-lg font-semibold">Iscrizioni</h3>
+                                <button onClick={() => setIsEnrollModalOpen(true)} className="md-btn md-btn-flat md-btn-primary text-sm">
                                     <PlusIcon/> <span className="ml-1">Iscrivi</span>
                                 </button>
                              </div>
                               {loading ? <div className="mt-4"><Spinner/></div> :
                                 enrollments.length > 0 ? enrollments.map(enr => (
-                                    <div key={enr.id} className="mt-2 p-3 border border-slate-200 rounded-lg">
+                                    <div key={enr.id} className="mt-2 p-3 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
                                         <p className="font-semibold">{enr.childName} - {enr.subscriptionName}</p>
-                                        <p className="text-sm text-slate-500">Lezioni Rimanenti: {enr.lessonsRemaining}/{enr.lessonsTotal}</p>
-                                        <p className="text-xs text-slate-400">Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
+                                        <p className="text-sm" style={{ color: 'var(--md-text-secondary)'}}>Lezioni Rimanenti: {enr.lessonsRemaining}/{enr.lessonsTotal}</p>
+                                        <p className="text-xs" style={{ color: 'var(--md-text-secondary)'}}>Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
                                     </div>
                                 ))
                              : (
-                            <p className="text-slate-500 text-sm mt-4">Nessuna iscrizione attiva.</p>
+                            <p className="text-sm mt-4" style={{ color: 'var(--md-text-secondary)'}}>Nessuna iscrizione attiva.</p>
                             )}
                         </div>
                     </div>
                 </>
             ) : (
-                // Institutional Detail View
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">{client.companyName}</h2>
-                    <p className="text-slate-500">{client.email} | {client.phone}</p>
-                    <p className="text-slate-500 text-sm mt-1">P.IVA: {client.vatNumber}</p>
+                    <h2 className="text-2xl font-bold">{client.companyName}</h2>
+                    <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
+                    <p className="text-sm mt-1" style={{ color: 'var(--md-text-secondary)'}}>P.IVA: {client.vatNumber}</p>
                     <div className="mt-6">
-                        <h3 className="text-lg font-semibold text-slate-700">Dettagli Contratto</h3>
-                        <div className="mt-4 p-4 border border-slate-200 rounded-lg">
+                        <h3 className="text-lg font-semibold">Dettagli Contratto</h3>
+                        <div className="mt-4 p-4 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
                             <p>Numero Bambini: <span className="font-medium">{client.numberOfChildren}</span></p>
                             <p>Fascia d'età: <span className="font-medium">{client.ageRange}</span></p>
                         </div>
@@ -223,43 +218,30 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
 
 const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: ClientInput | Client) => void; onCancel: () => void; }> = ({ client, onSave, onCancel }) => {
     const [clientType, setClientType] = useState<ClientType | null>(client?.clientType || null);
-
-    // Common fields
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [address, setAddress] = useState('');
     const [zipCode, setZipCode] = useState('');
     const [city, setCity] = useState('');
     const [province, setProvince] = useState('');
-
-    // Parent fields
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [taxCode, setTaxCode] = useState('');
     const [children, setChildren] = useState<Child[]>([]);
     const [newChildName, setNewChildName] = useState('');
     const [newChildAge, setNewChildAge] = useState('');
-    
-    // Institutional fields
     const [companyName, setCompanyName] = useState('');
     const [vatNumber, setVatNumber] = useState('');
 
     useEffect(() => {
         if (client) {
-            setEmail(client.email);
-            setPhone(client.phone);
-            setAddress(client.address);
-            setZipCode(client.zipCode);
-            setCity(client.city);
-            setProvince(client.province);
+            setEmail(client.email); setPhone(client.phone); setAddress(client.address);
+            setZipCode(client.zipCode); setCity(client.city); setProvince(client.province);
             if (client.clientType === ClientType.Parent) {
-                setFirstName(client.firstName);
-                setLastName(client.lastName);
-                setTaxCode(client.taxCode);
-                setChildren(client.children || []);
+                setFirstName(client.firstName); setLastName(client.lastName);
+                setTaxCode(client.taxCode); setChildren(client.children || []);
             } else {
-                setCompanyName(client.companyName);
-                setVatNumber(client.vatNumber);
+                setCompanyName(client.companyName); setVatNumber(client.vatNumber);
             }
         }
     }, [client]);
@@ -267,8 +249,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
     const handleAddChild = () => {
         if (newChildName && newChildAge) {
             setChildren([...children, { id: Date.now().toString(), name: newChildName, age: newChildAge }]);
-            setNewChildName('');
-            setNewChildAge('');
+            setNewChildName(''); setNewChildAge('');
         }
     };
 
@@ -278,40 +259,16 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        const baseData = { address, zipCode, city, province, email, phone };
         let clientData: ClientInput | Omit<ParentClient, 'id'> | Omit<InstitutionalClient, 'id'>;
-
-        const baseData = {
-            address, zipCode, city, province, email, phone,
-        };
-
         if (clientType === ClientType.Parent) {
-            clientData = {
-                ...baseData,
-                clientType: ClientType.Parent,
-                firstName,
-                lastName,
-                taxCode,
-                avatarUrl: (client as ParentClient)?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`,
-                children: children,
-            };
+            clientData = { ...baseData, clientType, firstName, lastName, taxCode, avatarUrl: (client as ParentClient)?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`, children };
         } else if (clientType === ClientType.Institutional) {
-            clientData = {
-                ...baseData,
-                clientType: ClientType.Institutional,
-                companyName,
-                vatNumber,
-                numberOfChildren: (client as InstitutionalClient)?.numberOfChildren || 0,
-                ageRange: (client as InstitutionalClient)?.ageRange || '',
-            };
-        } else {
-            return; // Should not happen
-        }
+            clientData = { ...baseData, clientType, companyName, vatNumber, numberOfChildren: (client as InstitutionalClient)?.numberOfChildren || 0, ageRange: (client as InstitutionalClient)?.ageRange || '' };
+        } else { return; }
 
-        if (client?.id) {
-            onSave({ ...clientData, id: client.id } as Client);
-        } else {
-            onSave(clientData as ClientInput);
-        }
+        if (client?.id) { onSave({ ...clientData, id: client.id } as Client); } 
+        else { onSave(clientData as ClientInput); }
     };
     
     if (!clientType) {
@@ -319,13 +276,11 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
              <div>
                 <h2 className="text-xl font-bold mb-6 text-center">Seleziona Tipo Cliente</h2>
                 <div className="flex justify-center space-x-4">
-                    <button onClick={() => setClientType(ClientType.Parent)} className="flex flex-col items-center justify-center p-6 border rounded-lg w-40 h-40 hover:bg-indigo-50 hover:border-indigo-500 transition-colors">
-                        <ClientsIcon/>
-                        <span className="mt-2 font-medium">Genitore</span>
+                    <button onClick={() => setClientType(ClientType.Parent)} className="flex flex-col items-center justify-center p-6 border rounded-lg w-40 h-40 hover:bg-indigo-50 transition-colors" style={{borderColor: 'var(--md-divider)'}}>
+                        <ClientsIcon/> <span className="mt-2 font-medium">Genitore</span>
                     </button>
-                    <button onClick={() => setClientType(ClientType.Institutional)} className="flex flex-col items-center justify-center p-6 border rounded-lg w-40 h-40 hover:bg-indigo-50 hover:border-indigo-500 transition-colors">
-                       <SuppliersIcon />
-                        <span className="mt-2 font-medium">Istituzionale</span>
+                    <button onClick={() => setClientType(ClientType.Institutional)} className="flex flex-col items-center justify-center p-6 border rounded-lg w-40 h-40 hover:bg-indigo-50 transition-colors" style={{borderColor: 'var(--md-divider)'}}>
+                       <SuppliersIcon /> <span className="mt-2 font-medium">Istituzionale</span>
                     </button>
                 </div>
             </div>
@@ -334,99 +289,54 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
 
     return (
         <form onSubmit={handleSubmit} className="animate-fade-in">
-            <h2 className="text-xl font-bold mb-4">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span className="text-indigo-600">{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
+            <h2 className="text-xl font-bold mb-4">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span style={{color: 'var(--md-primary)'}}>{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
             <div className="space-y-3">
                 {clientType === ClientType.Parent ? (
                     <>
-                        <div className="grid grid-cols-2 gap-3">
-                           <div>
-                                <label className="block text-sm font-medium text-slate-700">Nome</label>
-                                <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="mt-1 block w-full input"/>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700">Cognome</label>
-                                <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="mt-1 block w-full input"/>
-                            </div>
+                        <div className="grid grid-cols-2 gap-4">
+                           <div className="md-input-group"><input id="firstName" type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="firstName" className="md-input-label">Nome</label></div>
+                           <div className="md-input-group"><input id="lastName" type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="lastName" className="md-input-label">Cognome</label></div>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">Codice Fiscale</label>
-                            <input type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="mt-1 block w-full input"/>
-                        </div>
+                        <div className="md-input-group"><input id="taxCode" type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="taxCode" className="md-input-label">Codice Fiscale</label></div>
                     </>
                 ) : (
                      <>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">Ragione Sociale</label>
-                            <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="mt-1 block w-full input"/>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">P.IVA / Codice Fiscale</label>
-                            <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="mt-1 block w-full input"/>
-                        </div>
+                        <div className="md-input-group"><input id="companyName" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="companyName" className="md-input-label">Ragione Sociale</label></div>
+                        <div className="md-input-group"><input id="vatNumber" type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="vatNumber" className="md-input-label">P.IVA / Codice Fiscale</label></div>
                     </>
                 )}
-                 <hr className="my-4"/>
-                <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Telefono</label>
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
+                 <hr className="my-4" style={{borderColor: 'var(--md-divider)'}}/>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="md-input-group"><input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="email" className="md-input-label">Email</label></div>
+                    <div className="md-input-group"><input id="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="phone" className="md-input-label">Telefono</label></div>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Indirizzo</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} required className="mt-1 block w-full input"/>
+                <div className="md-input-group"><input id="address" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="address" className="md-input-label">Indirizzo</label></div>
+                 <div className="grid grid-cols-3 gap-4">
+                    <div className="md-input-group"><input id="zipCode" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="zipCode" className="md-input-label">CAP</label></div>
+                    <div className="col-span-2 md-input-group"><input id="city" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="city" className="md-input-label">Città</label></div>
                 </div>
-                 <div className="grid grid-cols-3 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">CAP</label>
-                        <input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                     <div className="col-span-2">
-                        <label className="block text-sm font-medium text-slate-700">Città</label>
-                        <input type="text" value={city} onChange={e => setCity(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                </div>
-                 <div>
-                    <label className="block text-sm font-medium text-slate-700">Provincia</label>
-                    <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full input"/>
-                </div>
+                 <div className="md-input-group"><input id="province" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="province" className="md-input-label">Provincia</label></div>
                 
                  {clientType === ClientType.Parent && (
-                    <div className="pt-4 border-t mt-4">
-                        <h3 className="text-md font-semibold text-slate-700">Figli</h3>
+                    <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
+                        <h3 className="text-md font-semibold">Figli</h3>
                         {children.map((child) => (
-                            <div key={child.id} className="flex items-center justify-between p-2 mt-2 bg-slate-50 rounded-md">
+                            <div key={child.id} className="flex items-center justify-between p-2 mt-2 bg-gray-50 rounded-md">
                                 <p className="text-sm">{child.name} - {child.age}</p>
-                                <button type="button" onClick={() => handleRemoveChild(child.id)} className="btn-delete-icon" aria-label={`Rimuovi ${child.name}`}>
-                                    <TrashIcon />
-                                </button>
+                                <button type="button" onClick={() => handleRemoveChild(child.id)} className="md-icon-btn delete" aria-label={`Rimuovi ${child.name}`}><TrashIcon /></button>
                             </div>
                         ))}
                         <div className="flex items-end space-x-2 mt-3">
-                            <div className="flex-grow">
-                                <label className="block text-sm font-medium text-slate-700">Nome Figlio</label>
-                                <input type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder="Nome" className="mt-1 block w-full input"/>
-                            </div>
-                            <div className="flex-grow">
-                                <label className="block text-sm font-medium text-slate-700">Età</label>
-                                <input type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder="Es. 3 anni" className="mt-1 block w-full input"/>
-                            </div>
-                            <button type="button" onClick={handleAddChild} className="btn-primary h-10 w-10 !p-0"><PlusIcon/></button>
+                            <div className="flex-grow md-input-group"><input id="newChildName" type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder=" " className="md-input"/><label htmlFor="newChildName" className="md-input-label">Nome Figlio</label></div>
+                            <div className="flex-grow md-input-group"><input id="newChildAge" type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder=" " className="md-input"/><label htmlFor="newChildAge" className="md-input-label">Età (es. 3 anni)</label></div>
+                            <button type="button" onClick={handleAddChild} className="md-btn md-btn-raised md-btn-primary h-10 w-10 !p-0"><PlusIcon/></button>
                         </div>
                     </div>
                 )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-                <button type="button" onClick={onCancel} className="btn-secondary">
-                    Annulla
-                </button>
-                <button type="submit" className="btn-primary">
-                    Salva
-                </button>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>
         </form>
     );
@@ -472,7 +382,7 @@ const Clients: React.FC = () => {
   
   const handleBackToList = () => {
     setSelectedClient(null);
-    fetchClients(); // Ricarica i clienti in caso di modifiche (es. iscrizioni)
+    fetchClients();
   };
 
 
@@ -505,7 +415,7 @@ const Clients: React.FC = () => {
 
   const handleImport = async (file: File) => {
     const result = await importClientsFromCSV(file);
-    fetchClients(); // Refresh the list after import
+    fetchClients();
     return result;
   };
 
@@ -517,15 +427,15 @@ const Clients: React.FC = () => {
     <div>
         <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-slate-800">Clienti</h1>
-              <p className="mt-1 text-slate-500">Gestisci le anagrafiche di genitori e clienti istituzionali.</p>
+              <h1 className="text-3xl font-bold">Clienti</h1>
+              <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci le anagrafiche di genitori e clienti istituzionali.</p>
             </div>
              <div className="flex items-center space-x-2">
-                <button onClick={() => setIsImportModalOpen(true)} className="btn-default">
+                <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
                     <UploadIcon />
                     <span className="ml-2">Importa CSV</span>
                 </button>
-                <button onClick={() => handleOpenModal()} className="btn-primary">
+                <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
                     <span className="ml-2">Aggiungi Cliente</span>
                 </button>
@@ -554,60 +464,50 @@ const Clients: React.FC = () => {
         )}
 
 
-        <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
+        <div className="mt-8 md-card p-6">
           <div className="relative mb-4">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <SearchIcon />
-              </div>
-              <input type="text" placeholder="Cerca cliente..." className="block w-full max-w-sm bg-slate-50 border border-slate-200 rounded-md py-2 pl-10 pr-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
+              <input type="text" placeholder="Cerca cliente..." className="block w-full max-w-sm bg-gray-50 border rounded-md py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-1" style={{borderColor: 'var(--md-divider)'}}/>
           </div>
           <div className="overflow-x-auto">
             {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> : 
              error ? <p className="text-center text-red-500 py-8">{error}</p> :
             <table className="w-full text-left">
               <thead>
-                <tr className="border-b border-slate-200 text-sm text-slate-500">
-                  <th className="p-4">Nome / Ragione Sociale</th>
-                  <th className="p-4">Tipo</th>
-                  <th className="p-4">Contatti</th>
-                  <th className="p-4">Figli</th>
-                  <th className="p-4">Azioni</th>
+                <tr className="border-b" style={{ borderColor: 'var(--md-divider)'}}>
+                  <th className="p-4 font-medium" style={{ color: 'var(--md-text-secondary)'}}>Nome / Ragione Sociale</th>
+                  <th className="p-4 font-medium" style={{ color: 'var(--md-text-secondary)'}}>Tipo</th>
+                  <th className="p-4 font-medium" style={{ color: 'var(--md-text-secondary)'}}>Contatti</th>
+                  <th className="p-4 font-medium" style={{ color: 'var(--md-text-secondary)'}}>Figli</th>
+                  <th className="p-4 font-medium" style={{ color: 'var(--md-text-secondary)'}}>Azioni</th>
                 </tr>
               </thead>
               <tbody>
                 {clients.map(client => (
-                  <tr key={client.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <tr key={client.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--md-divider)'}}>
                     <td className="p-4">
                       <div className="flex items-center">
                         {client.clientType === ClientType.Parent && <img src={client.avatarUrl} alt={client.firstName} className="w-10 h-10 rounded-full mr-3"/>}
-                        <span className="font-medium text-slate-800">
-                            {client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}
-                        </span>
+                        <span className="font-medium">{client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}</span>
                       </div>
                     </td>
-                     <td className="p-4 text-sm">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${client.clientType === ClientType.Parent ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
+                     <td className="p-4">
+                        <span className={`md-badge ${client.clientType === ClientType.Parent ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
                             {client.clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}
                         </span>
                      </td>
-                    <td className="p-4 text-sm text-slate-600">
+                    <td className="p-4 text-sm" style={{ color: 'var(--md-text-secondary)'}}>
                       <div>{client.email}</div>
                       <div>{client.phone}</div>
                     </td>
-                    <td className="p-4 text-sm text-slate-600">
+                    <td className="p-4 text-sm" style={{ color: 'var(--md-text-secondary)'}}>
                         {client.clientType === ClientType.Parent ? client.children.length : 'N/A'}
                     </td>
                     <td className="p-4">
-                        <div className="flex items-center space-x-4">
-                            <button onClick={() => setSelectedClient(client)} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm">
-                                Dettagli
-                            </button>
-                            <button onClick={() => handleOpenModal(client)} className="btn-edit-icon" aria-label="Modifica cliente">
-                                <PencilIcon />
-                            </button>
-                            <button onClick={() => handleDeleteClient(client.id)} className="btn-delete-icon" aria-label="Elimina cliente">
-                                <TrashIcon />
-                            </button>
+                        <div className="flex items-center space-x-2">
+                            <button onClick={() => setSelectedClient(client)} className="md-btn md-btn-flat md-btn-primary text-sm">Dettagli</button>
+                            <button onClick={() => handleOpenModal(client)} className="md-icon-btn edit" aria-label="Modifica cliente"><PencilIcon /></button>
+                            <button onClick={() => handleDeleteClient(client.id)} className="md-icon-btn delete" aria-label="Elimina cliente"><TrashIcon /></button>
                         </div>
                     </td>
                   </tr>

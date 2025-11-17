@@ -24,8 +24,8 @@ const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
       onClick={onClose}
     >
       <div 
-        className={`bg-white rounded-lg shadow-xl p-6 w-full m-4 ${sizeClasses[size]} flex flex-col max-h-[90vh]`}
-        onClick={e => e.stopPropagation()} // Impedisce la chiusura del modale cliccando al suo interno
+        className={`md-card p-6 w-full m-4 ${sizeClasses[size]} flex flex-col max-h-[90vh]`}
+        onClick={e => e.stopPropagation()}
       >
         {children}
       </div>

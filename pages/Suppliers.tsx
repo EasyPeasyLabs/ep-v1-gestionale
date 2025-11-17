@@ -25,12 +25,8 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave({
-            id: location?.id || Date.now().toString(),
-            name, address, zipCode, city, province,
-            capacity: Number(capacity),
-            rentalCost: Number(rentalCost),
-            distance: Number(distance),
-            color,
+            id: location?.id || Date.now().toString(), name, address, zipCode, city, province,
+            capacity: Number(capacity), rentalCost: Number(rentalCost), distance: Number(distance), color,
         });
     };
 
@@ -38,52 +34,25 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
         <form onSubmit={handleSubmit}>
             <h3 className="text-lg font-bold mb-4">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-slate-700">Nome Sede</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Colore Calendario</label>
-                        <input type="color" value={color} onChange={e => setColor(e.target.value)} className="mt-1 block w-full h-10 rounded-md border-slate-300"/>
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                    <div className="md:col-span-2 md-input-group"><input id="locName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locName" className="md-input-label">Nome Sede</label></div>
+                    <div><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10 rounded-md border" style={{borderColor: 'var(--md-divider)'}}/></div>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Indirizzo</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} required className="mt-1 block w-full input"/>
+                <div className="md-input-group"><input id="locAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locAddr" className="md-input-label">Indirizzo</label></div>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="md-input-group"><input id="locZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locZip" className="md-input-label">CAP</label></div>
+                    <div className="col-span-2 md-input-group"><input id="locCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locCity" className="md-input-label">Città</label></div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">CAP</label>
-                        <input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                    <div className="col-span-2">
-                        <label className="block text-sm font-medium text-slate-700">Città</label>
-                        <input type="text" value={city} onChange={e => setCity(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Provincia</label>
-                    <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full input"/>
-                </div>
-                 <div className="grid grid-cols-3 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Capienza</label>
-                        <input type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} required className="mt-1 block w-full input"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Nolo (€)</label>
-                        <input type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="mt-1 block w-full input"/>
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Distanza (km)</label>
-                        <input type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="mt-1 block w-full input"/>
-                    </div>
+                <div className="md-input-group"><input id="locProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locProv" className="md-input-label">Provincia</label></div>
+                 <div className="grid grid-cols-3 gap-4">
+                    <div className="md-input-group"><input id="locCap" type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCap" className="md-input-label">Capienza</label></div>
+                    <div className="md-input-group"><input id="locCost" type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCost" className="md-input-label">Nolo (€)</label></div>
+                    <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
                 </div>
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-                <button type="button" onClick={onCancel} className="btn-secondary">Annulla</button>
-                <button type="submit" className="btn-primary">Salva Sede</button>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Sede</button>
             </div>
         </form>
     );
@@ -100,42 +69,25 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
     const [email, setEmail] = useState(supplier?.email || '');
     const [phone, setPhone] = useState(supplier?.phone || '');
     const [locations, setLocations] = useState<Location[]>(supplier?.locations || []);
-
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
     const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
     const handleSaveLocation = (location: Location) => {
         const existingIndex = locations.findIndex(l => l.id === location.id);
         if (existingIndex > -1) {
-            const updatedLocations = [...locations];
-            updatedLocations[existingIndex] = location;
-            setLocations(updatedLocations);
-        } else {
-            setLocations([...locations, location]);
-        }
-        setIsLocationModalOpen(false);
-        setEditingLocation(null);
+            const updatedLocations = [...locations]; updatedLocations[existingIndex] = location; setLocations(updatedLocations);
+        } else { setLocations([...locations, location]); }
+        setIsLocationModalOpen(false); setEditingLocation(null);
     };
     
-    const handleEditLocation = (location: Location) => {
-        setEditingLocation(location);
-        setIsLocationModalOpen(true);
-    };
-
-    const handleRemoveLocation = (id: string) => {
-        setLocations(locations.filter(l => l.id !== id));
-    };
+    const handleEditLocation = (location: Location) => { setEditingLocation(location); setIsLocationModalOpen(true); };
+    const handleRemoveLocation = (id: string) => { setLocations(locations.filter(l => l.id !== id)); };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const supplierData = {
-            companyName, vatNumber, address, zipCode, city, province, email, phone, locations,
-        };
-        if (supplier?.id) {
-            onSave({ ...supplierData, id: supplier.id });
-        } else {
-            onSave(supplierData as SupplierInput);
-        }
+        const supplierData = { companyName, vatNumber, address, zipCode, city, province, email, phone, locations };
+        if (supplier?.id) { onSave({ ...supplierData, id: supplier.id }); } 
+        else { onSave(supplierData as SupplierInput); }
     };
 
     return (
@@ -143,76 +95,51 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <h2 className="text-xl font-bold mb-4">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
             <div className="flex-1 overflow-y-auto pr-4 -mr-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Ragione Sociale</label>
-                        <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Partita IVA</label>
-                        <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="md-input-group"><input id="supName" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supName" className="md-input-label">Ragione Sociale</label></div>
+                    <div className="md-input-group"><input id="supVat" type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supVat" className="md-input-label">Partita IVA</label></div>
                 </div>
-                 <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Telefono</label>
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="md-input-group"><input id="supEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supEmail" className="md-input-label">Email</label></div>
+                    <div className="md-input-group"><input id="supPhone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supPhone" className="md-input-label">Telefono</label></div>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Indirizzo Sede Legale</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} required className="mt-1 block w-full input"/>
+                <div className="md-input-group"><input id="supAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supAddr" className="md-input-label">Indirizzo Sede Legale</label></div>
+                 <div className="grid grid-cols-3 gap-4">
+                    <div className="md-input-group"><input id="supZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supZip" className="md-input-label">CAP</label></div>
+                    <div className="col-span-2 md-input-group"><input id="supCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supCity" className="md-input-label">Città</label></div>
                 </div>
-                 <div className="grid grid-cols-3 gap-3">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">CAP</label>
-                        <input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                     <div className="col-span-2">
-                        <label className="block text-sm font-medium text-slate-700">Città</label>
-                        <input type="text" value={city} onChange={e => setCity(e.target.value)} required className="mt-1 block w-full input"/>
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Provincia</label>
-                    <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full input"/>
-                </div>
+                <div className="md-input-group"><input id="supProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supProv" className="md-input-label">Provincia</label></div>
                 
-                 <div className="pt-4 border-t mt-4">
+                 <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
                     <div className="flex justify-between items-center">
-                        <h3 className="text-md font-semibold text-slate-700">Sedi Operative</h3>
-                         <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="btn-primary-outline text-sm">
-                            <PlusIcon/>
-                            <span className="ml-1">Aggiungi Sede</span>
+                        <h3 className="text-md font-semibold">Sedi Operative</h3>
+                         <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm">
+                            <PlusIcon/> <span className="ml-1">Aggiungi Sede</span>
                         </button>
                     </div>
                     <div className="mt-2 space-y-2">
                     {locations.length > 0 ? locations.map((loc) => (
-                        <div key={loc.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-md">
+                        <div key={loc.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
                             <div className="flex items-center">
                                 <span className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: loc.color }}></span>
                                 <div>
                                     <p className="text-sm font-medium">{loc.name}</p>
-                                    <p className="text-xs text-slate-500">{loc.address}, {loc.city}</p>
+                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{loc.address}, {loc.city}</p>
                                 </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                                <button type="button" onClick={() => handleEditLocation(loc)} className="btn-edit-icon" aria-label={`Modifica sede ${loc.name}`}><PencilIcon/></button>
-                                <button type="button" onClick={() => handleRemoveLocation(loc.id)} className="btn-delete-icon" aria-label={`Elimina sede ${loc.name}`}><TrashIcon/></button>
+                            <div className="flex items-center space-x-1">
+                                <button type="button" onClick={() => handleEditLocation(loc)} className="md-icon-btn edit" aria-label={`Modifica sede ${loc.name}`}><PencilIcon/></button>
+                                <button type="button" onClick={() => handleRemoveLocation(loc.id)} className="md-icon-btn delete" aria-label={`Elimina sede ${loc.name}`}><TrashIcon/></button>
                             </div>
                         </div>
-                    )) : <p className="text-sm text-slate-400 text-center py-4">Nessuna sede operativa aggiunta.</p>}
+                    )) : <p className="text-sm text-center py-4" style={{color: 'var(--md-text-secondary)'}}>Nessuna sede operativa aggiunta.</p>}
                     </div>
                 </div>
 
             </div>
-             <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
-                <button type="button" onClick={onCancel} className="btn-secondary">Annulla</button>
-                <button type="submit" className="btn-primary">Salva Fornitore</button>
+             <div className="mt-6 pt-4 border-t flex justify-end space-x-3" style={{borderColor: 'var(--md-divider)'}}>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Fornitore</button>
             </div>
         </form>
 
@@ -292,7 +219,7 @@ const Suppliers: React.FC = () => {
 
      const handleImport = async (file: File) => {
         const result = await importSuppliersFromCSV(file);
-        fetchSuppliers(); // Refresh the list after import
+        fetchSuppliers();
         return result;
     };
 
@@ -301,15 +228,15 @@ const Suppliers: React.FC = () => {
     <div>
         <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-slate-800">Fornitori</h1>
-              <p className="mt-1 text-slate-500">Gestisci i fornitori e le loro sedi.</p>
+              <h1 className="text-3xl font-bold">Fornitori</h1>
+              <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci i fornitori e le loro sedi.</p>
             </div>
              <div className="flex items-center space-x-2">
-                 <button onClick={() => setIsImportModalOpen(true)} className="btn-default">
+                 <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
                     <UploadIcon />
                     <span className="ml-2">Importa CSV</span>
                 </button>
-                <button onClick={() => handleOpenModal()} className="btn-primary">
+                <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
                     <span className="ml-2">Aggiungi Fornitore</span>
                 </button>
@@ -342,35 +269,31 @@ const Suppliers: React.FC = () => {
              error ? <p className="text-center text-red-500 py-8">{error}</p> :
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {suppliers.map(supplier => (
-                    <div key={supplier.id} className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow flex flex-col">
+                    <div key={supplier.id} className="md-card p-6 flex flex-col">
                         <div className="flex-1">
-                            <h2 className="text-lg font-bold text-slate-800">{supplier.companyName}</h2>
-                            <p className="text-sm text-slate-500 mt-1">P.IVA: {supplier.vatNumber}</p>
-                            <div className="mt-4 text-sm text-slate-600 space-y-1">
+                            <h2 className="text-lg font-bold">{supplier.companyName}</h2>
+                            <p className="text-sm mt-1" style={{color: 'var(--md-text-secondary)'}}>P.IVA: {supplier.vatNumber}</p>
+                            <div className="mt-4 text-sm space-y-1" style={{color: 'var(--md-text-secondary)'}}>
                                 <p><strong>Email:</strong> {supplier.email}</p>
                                 <p><strong>Tel:</strong> {supplier.phone}</p>
                                 <p><strong>Sede:</strong> {supplier.address}, {supplier.city} ({supplier.province})</p>
                             </div>
-                            <div className="mt-4 pt-4 border-t border-slate-200">
+                            <div className="mt-4 pt-4 border-t" style={{borderColor: 'var(--md-divider)'}}>
                                 <h4 className="font-semibold text-sm">Sedi Operative ({supplier.locations.length})</h4>
-                                <ul className="text-xs text-slate-500 mt-2 space-y-1">
+                                <ul className="text-xs mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
                                 {supplier.locations.slice(0, 3).map(loc => (
                                     <li key={loc.id} className="flex items-center">
                                         <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: loc.color }}></span>
                                         {loc.name} - {loc.address}, {loc.city}
                                     </li>
                                 ))}
-                                {supplier.locations.length > 3 && <li className="text-xs text-slate-400">...e altre {supplier.locations.length - 3}.</li>}
+                                {supplier.locations.length > 3 && <li className="text-xs text-gray-400">...e altre {supplier.locations.length - 3}.</li>}
                                 </ul>
                             </div>
                         </div>
-                        <div className="mt-4 pt-4 border-t border-slate-200 flex justify-end items-center space-x-3">
-                             <button onClick={() => handleOpenModal(supplier)} className="p-2 rounded-full hover:bg-slate-100 btn-edit-icon" aria-label={`Modifica fornitore ${supplier.companyName}`}>
-                                <PencilIcon />
-                            </button>
-                            <button onClick={() => handleDeleteSupplier(supplier.id)} className="p-2 rounded-full hover:bg-red-50 btn-delete-icon" aria-label={`Elimina fornitore ${supplier.companyName}`}>
-                                <TrashIcon />
-                            </button>
+                        <div className="mt-4 pt-4 border-t flex justify-end items-center space-x-2" style={{borderColor: 'var(--md-divider)'}}>
+                             <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit" aria-label={`Modifica fornitore ${supplier.companyName}`}><PencilIcon /></button>
+                             <button onClick={() => handleDeleteSupplier(supplier.id)} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
                         </div>
                     </div>
                 ))}

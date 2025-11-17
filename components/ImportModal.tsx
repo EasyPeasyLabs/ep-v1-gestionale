@@ -66,33 +66,33 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
     return (
         <Modal onClose={onClose}>
             <div className="text-center">
-                <h2 className="text-xl font-bold text-slate-800" id="modal-title">Importa {entityName} da CSV</h2>
+                <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da CSV</h2>
             </div>
             {!result ? (
                 <div className="mt-4">
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-md">
-                        <h3 className="font-semibold text-sm text-slate-700">Istruzioni</h3>
-                        <ul className="list-disc list-inside text-sm text-slate-600 mt-2 space-y-1">
+                    <div className="p-4 bg-gray-50 border rounded-md" style={{borderColor: 'var(--md-divider)'}}>
+                        <h3 className="font-semibold text-sm">Istruzioni</h3>
+                        <ul className="list-disc list-inside text-sm mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
                             {instructions.map((inst, index) => <li key={index}>{inst}</li>)}
                         </ul>
-                         <button onClick={handleDownloadTemplate} className="text-sm font-medium text-indigo-600 hover:text-indigo-800 mt-3">
+                         <button onClick={handleDownloadTemplate} className="text-sm font-medium mt-3" style={{color: 'var(--md-primary)'}}>
                             Scarica template
                         </button>
                     </div>
 
                     <div className="mt-4">
-                        <label htmlFor="file-upload" className="block text-sm font-medium text-slate-700">Seleziona file CSV</label>
-                        <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-md">
+                        <label htmlFor="file-upload" className="block text-sm font-medium">Seleziona file CSV</label>
+                        <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md" style={{borderColor: 'var(--md-divider)'}}>
                             <div className="space-y-1 text-center">
                                 <UploadIcon />
-                                <div className="flex text-sm text-slate-600">
-                                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                                <div className="flex text-sm" style={{color: 'var(--md-text-secondary)'}}>
+                                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium focus-within:outline-none" style={{color: 'var(--md-primary)'}}>
                                         <span>Carica un file</span>
                                         <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".csv" onChange={handleFileChange} />
                                     </label>
                                     <p className="pl-1">o trascinalo qui</p>
                                 </div>
-                                {file && <p className="text-xs text-slate-500">{file.name}</p>}
+                                {file && <p className="text-xs">{file.name}</p>}
                             </div>
                         </div>
                     </div>
@@ -100,15 +100,15 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
                     {error && <p className="text-sm text-red-600 text-center mt-3">{error}</p>}
                     
                     <div className="mt-6 flex justify-end space-x-3">
-                        <button type="button" onClick={onClose} className="btn-default">Annulla</button>
-                        <button type="button" onClick={handleImportClick} disabled={isImporting || !file} className="btn-primary">
+                        <button type="button" onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                        <button type="button" onClick={handleImportClick} disabled={isImporting || !file} className="md-btn md-btn-raised md-btn-primary">
                             {isImporting ? <Spinner /> : 'Importa'}
                         </button>
                     </div>
                 </div>
             ) : (
                 <div className="mt-4">
-                    <h3 className="font-semibold text-lg text-slate-800 text-center">Riepilogo Importazione</h3>
+                    <h3 className="font-semibold text-lg text-center">Riepilogo Importazione</h3>
                     <div className="mt-4 grid grid-cols-2 gap-4 text-center">
                         <div className="bg-green-50 p-3 rounded-md">
                             <p className="text-2xl font-bold text-green-700">{result.created}</p>
@@ -130,7 +130,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
                         </div>
                     )}
                     <div className="mt-6 text-center">
-                        <button type="button" onClick={onClose} className="btn-primary">Chiudi</button>
+                        <button type="button" onClick={onClose} className="md-btn md-btn-raised md-btn-primary">Chiudi</button>
                     </div>
                 </div>
             )}

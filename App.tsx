@@ -61,7 +61,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-800">
+    <div className="flex h-screen" style={{ backgroundColor: 'var(--md-bg-light)', color: 'var(--md-text-primary)'}}>
       <Sidebar 
         user={user}
         currentPage={currentPage} 
@@ -69,7 +69,7 @@ const App: React.FC = () => {
       />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header user={user} setCurrentPage={setCurrentPage} />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100 p-4 md:p-6 lg:p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
           {renderContent()}
         </main>
       </div>
