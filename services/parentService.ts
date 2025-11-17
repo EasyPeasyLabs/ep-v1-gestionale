@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Client, ClientInput, ParentClient } from '../types';
@@ -6,11 +7,12 @@ const clientCollectionRef = collection(db, 'clients');
 
 const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
     const data = doc.data();
-    const baseClient = { id: doc.id, ...data };
+    // FIX: Add 'any' type to baseClient to resolve property access errors on an object with a dynamic shape from Firestore.
+    const baseClient: any = { id: doc.id, ...data };
     
     // Assicura che `children` sia sempre un array, anche se non presente in Firestore
     if (baseClient.clientType === 'Parent' && !baseClient.children) {
-        (baseClient as ParentClient).children = [];
+        baseClient.children = [];
     }
     
     return baseClient as Client;

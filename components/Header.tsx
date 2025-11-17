@@ -59,9 +59,9 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
         <div className="relative" ref={dropdownRef}>
             <div className="flex items-center">
                 <img 
-                  src={user.photoURL || `https://i.pravatar.cc/150?u=${user.uid}`} 
-                  alt={user.email || 'User Avatar'} 
-                  className="w-9 h-9 rounded-full object-cover"
+                  src="/logo.png" 
+                  alt="EP v.1 Logo" 
+                  className="w-9 h-9 object-contain"
                 />
                 <button onClick={() => setDropdownOpen(!dropdownOpen)} className="ml-2 flex items-center text-sm font-medium text-slate-600 hover:text-slate-900">
                     <span className="truncate max-w-24 md:max-w-none">{user.email}</span>

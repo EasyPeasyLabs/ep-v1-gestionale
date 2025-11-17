@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { ScheduledClass, ScheduledClassInput, Supplier } from '../types';
 import { getScheduledClasses, addScheduledClass, updateScheduledClass, deleteScheduledClass } from '../services/calendarService';
@@ -69,7 +70,8 @@ const ClassForm: React.FC<{
             <div className="space-y-4">
                  <div>
                     <label className="block text-sm font-medium text-slate-700">Giorno della Settimana</label>
-                    <select value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value)} className="mt-1 block w-full input">
+                    {/* FIX: Cast e.target.value to the specific string literal union type required by the state setter. */}
+                    <select value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value as ScheduledClass['dayOfWeek'])} className="mt-1 block w-full input">
                         {['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'].map(day => <option key={day} value={day}>{day}</option>)}
                     </select>
                 </div>
