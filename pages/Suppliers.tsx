@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
@@ -94,7 +93,12 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
     return (
         <>
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <h2 className="text-xl font-bold mb-4">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
+                <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm flex-shrink-0">
+                    <PlusIcon/> <span className="ml-1 hidden sm:inline">Aggiungi Sede</span>
+                </button>
+            </div>
             <div className="flex-1 overflow-y-auto pr-4 -mr-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="supName" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supName" className="md-input-label">Ragione Sociale</label></div>
@@ -112,12 +116,7 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                 <div className="md-input-group"><input id="supProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supProv" className="md-input-label">Provincia</label></div>
                 
                  <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
-                    <div className="flex justify-between items-center">
-                        <h3 className="text-md font-semibold">Sedi Operative</h3>
-                         <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm">
-                            <PlusIcon/> <span className="ml-1">Aggiungi</span>
-                        </button>
-                    </div>
+                    <h3 className="text-md font-semibold">Sedi Operative</h3>
                     <div className="mt-2 space-y-2">
                     {locations.length > 0 ? locations.map((loc) => (
                         <div key={loc.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
