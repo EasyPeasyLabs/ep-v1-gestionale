@@ -30,21 +30,28 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user }) 
       </div>
       <ul className="flex-1 px-4 py-6">
         {navItems.map((item) => (
-          <li key={item.page}>
-            <button
-              onClick={() => setCurrentPage(item.page)}
-              className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-left text-slate-600 font-medium transition-all duration-200 ease-in-out
-                ${currentPage === item.page ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-slate-100 hover:text-slate-800'}`}
-            >
-              <span className="mr-3">{item.icon}</span>
-              {item.label}
-            </button>
-          </li>
+          // Exclude 'Profile' from the main navigation
+          item.page !== 'Profile' && (
+            <li key={item.page}>
+              <button
+                onClick={() => setCurrentPage(item.page)}
+                className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-left text-slate-600 font-medium transition-all duration-200 ease-in-out
+                  ${currentPage === item.page ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-slate-100 hover:text-slate-800'}`}
+              >
+                <span className="mr-3">{item.icon}</span>
+                {item.label}
+              </button>
+            </li>
+          )
         ))}
       </ul>
       <div className="p-4 border-t border-slate-200">
         <div className="flex items-center">
-            <img src={`https://i.pravatar.cc/150?u=${user.uid}`} alt={user.email || 'User Avatar'} className="w-10 h-10 rounded-full"/>
+            <img 
+              src={user.photoURL || `https://i.pravatar.cc/150?u=${user.uid}`} 
+              alt={user.email || 'User Avatar'} 
+              className="w-10 h-10 rounded-full object-cover"
+            />
             <div className="ml-3 overflow-hidden">
                 <p className="font-semibold text-sm text-slate-700 truncate">{user.email}</p>
                 <p className="text-xs text-slate-500">Amministratore</p>

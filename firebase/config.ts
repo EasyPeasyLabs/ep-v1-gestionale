@@ -2,13 +2,14 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyDON9vmJzNvYH7Eqw3c2KlpgOjr3ToIJhM",
   authDomain: "ep-gestionale-v1.firebaseapp.com",
   projectId: "ep-gestionale-v1",
-  storageBucket: "ep-gestionale-v1.firebasestorage.app",
+  storageBucket: "ep-gestionale-v1.appspot.com",
   messagingSenderId: "332612800443",
   appId: "1:332612800443:web:d5d434d38a78020dd57e9e"
 };
@@ -19,6 +20,7 @@ const app = initializeApp(firebaseConfig);
 // Esporta le istanze dei servizi Firebase per usarle nel resto dell'app
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 
 
 // Per migliorare la robustezza, abilitiamo la persistenza offline.

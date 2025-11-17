@@ -2,17 +2,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';
+import { Page } from '../App';
 import SearchIcon from './icons/SearchIcon';
 import BellIcon from './icons/BellIcon';
 import ChevronDownIcon from './icons/ChevronDownIcon';
 import LogoutIcon from './icons/LogoutIcon';
+import ProfileIcon from './icons/ProfileIcon';
 
 
 interface HeaderProps {
     user: User;
+    setCurrentPage: (page: Page) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user }) => {
+const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +58,11 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
         </button>
         <div className="relative" ref={dropdownRef}>
             <div className="flex items-center">
-                <img src={`https://i.pravatar.cc/150?u=${user.uid}`} alt={user.email || 'User Avatar'} className="w-9 h-9 rounded-full"/>
+                <img 
+                  src={user.photoURL || `https://i.pravatar.cc/150?u=${user.uid}`} 
+                  alt={user.email || 'User Avatar'} 
+                  className="w-9 h-9 rounded-full object-cover"
+                />
                 <button onClick={() => setDropdownOpen(!dropdownOpen)} className="ml-2 flex items-center text-sm font-medium text-slate-600 hover:text-slate-900">
                     <span className="truncate max-w-24 md:max-w-none">{user.email}</span>
                     <ChevronDownIcon />
@@ -63,6 +70,16 @@ const Header: React.FC<HeaderProps> = ({ user }) => {
             </div>
              {dropdownOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 ring-1 ring-black ring-opacity-5 animate-fade-in-down">
+                    <button 
+                        onClick={() => {
+                          setCurrentPage('Profile');
+                          setDropdownOpen(false);
+                        }}
+                        className="w-full flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition-colors"
+                    >
+                        <ProfileIcon />
+                        <span className="ml-2">Il mio Profilo</span>
+                    </button>
                     <button 
                         onClick={handleLogout} 
                         className="w-full flex items-center px-4 py-2 text-sm text-slate-700 hover:bg-slate-100 hover:text-indigo-600 transition-colors"

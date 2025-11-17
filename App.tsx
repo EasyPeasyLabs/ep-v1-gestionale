@@ -8,10 +8,11 @@ import Clients from './pages/Clients';
 import Suppliers from './pages/Suppliers';
 import Finance from './pages/Finance';
 import Settings from './pages/Settings';
+import Profile from './pages/Profile';
 import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -30,6 +31,7 @@ const App: React.FC = () => {
 
 
   const renderContent = () => {
+    if (!user) return null; // Should not happen if user is logged in
     switch (currentPage) {
       case 'Dashboard':
         return <Dashboard />;
@@ -41,6 +43,8 @@ const App: React.FC = () => {
         return <Finance />;
       case 'Settings':
         return <Settings />;
+      case 'Profile':
+        return <Profile user={user} />;
       default:
         return <Dashboard />;
     }
@@ -62,7 +66,7 @@ const App: React.FC = () => {
         setCurrentPage={setCurrentPage} 
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={user} />
+        <Header user={user} setCurrentPage={setCurrentPage} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-100 p-4 md:p-6 lg:p-8">
           {renderContent()}
         </main>
