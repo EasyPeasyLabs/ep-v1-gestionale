@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, ClientInput, ClientType, SubscriptionStatus, ParentClient, InstitutionalClient } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
@@ -10,6 +9,10 @@ import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
 import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
+import UploadIcon from '../components/icons/UploadIcon';
+import ImportModal from '../components/ImportModal';
+import { importClientsFromCSV } from '../services/importService';
+
 
 const getStatusBadge = (status: SubscriptionStatus) => {
   switch (status) {
@@ -262,6 +265,7 @@ const Clients: React.FC = () => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -318,6 +322,12 @@ const Clients: React.FC = () => {
     }
   };
 
+  const handleImport = async (file: File) => {
+    const result = await importClientsFromCSV(file);
+    fetchClients(); // Refresh the list after import
+    return result;
+  };
+
 
   if (selectedClient) {
     return <ClientDetail client={selectedClient} onBack={() => setSelectedClient(null)} />;
@@ -330,10 +340,16 @@ const Clients: React.FC = () => {
               <h1 className="text-3xl font-bold text-slate-800">Clienti</h1>
               <p className="mt-1 text-slate-500">Gestisci le anagrafiche di genitori e clienti istituzionali.</p>
             </div>
-            <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
-                <PlusIcon />
-                <span className="ml-2">Aggiungi Cliente</span>
-            </button>
+             <div className="flex items-center space-x-2">
+                <button onClick={() => setIsImportModalOpen(true)} className="flex items-center bg-white text-slate-700 px-4 py-2 rounded-lg shadow-sm border border-slate-300 hover:bg-slate-50 transition-colors">
+                    <UploadIcon />
+                    <span className="ml-2">Importa CSV</span>
+                </button>
+                <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
+                    <PlusIcon />
+                    <span className="ml-2">Aggiungi Cliente</span>
+                </button>
+            </div>
         </div>
 
         {isModalOpen && (
@@ -341,6 +357,22 @@ const Clients: React.FC = () => {
                 <ClientForm client={editingClient} onSave={handleSaveClient} onCancel={handleCloseModal} />
             </Modal>
         )}
+        
+        {isImportModalOpen && (
+            <ImportModal 
+                entityName="Clienti"
+                templateCsvContent={'type,email,firstName,lastName,taxCode,companyName,vatNumber,phone,address,zipCode,city,province\nparent,mario.rossi@email.com,Mario,Rossi,RSSMRA80A01H501U,,,,0123456789,"Via Roma 1","20100","Milano",MI\ninstitutional,info@asiloarcobaleno.it,,,,Asilo Arcobaleno,12345678901,0987654321,"Viale Garibaldi 5","00100","Roma",RM'}
+                instructions={[
+                    'La prima riga deve contenere le intestazioni delle colonne.',
+                    'Il separatore dei campi deve essere la virgola (,).',
+                    'Il campo "email" è la chiave unica per l\'aggiornamento.',
+                    'Il campo "type" deve essere "parent" o "institutional".'
+                ]}
+                onClose={() => setIsImportModalOpen(false)}
+                onImport={handleImport}
+            />
+        )}
+
 
         <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
           <div className="relative mb-4">

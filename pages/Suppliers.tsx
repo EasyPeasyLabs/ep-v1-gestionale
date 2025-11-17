@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Supplier, SupplierInput } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
@@ -7,6 +6,10 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
+import UploadIcon from '../components/icons/UploadIcon';
+import ImportModal from '../components/ImportModal';
+import { importSuppliersFromCSV } from '../services/importService';
+
 
 const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: SupplierInput | Supplier) => void; onCancel: () => void; }> = ({ supplier, onSave, onCancel }) => {
     const [name, setName] = useState(supplier?.name || '');
@@ -70,6 +73,8 @@ const Suppliers: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
 
     const fetchSuppliers = useCallback(async () => {
         try {
@@ -126,6 +131,12 @@ const Suppliers: React.FC = () => {
         }
     };
 
+     const handleImport = async (file: File) => {
+        const result = await importSuppliersFromCSV(file);
+        fetchSuppliers(); // Refresh the list after import
+        return result;
+    };
+
 
   return (
     <div>
@@ -134,10 +145,16 @@ const Suppliers: React.FC = () => {
               <h1 className="text-3xl font-bold text-slate-800">Fornitori</h1>
               <p className="mt-1 text-slate-500">Gestisci i fornitori e le loro sedi.</p>
             </div>
-             <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
-                <PlusIcon />
-                <span className="ml-2">Aggiungi Fornitore</span>
-            </button>
+             <div className="flex items-center space-x-2">
+                 <button onClick={() => setIsImportModalOpen(true)} className="flex items-center bg-white text-slate-700 px-4 py-2 rounded-lg shadow-sm border border-slate-300 hover:bg-slate-50 transition-colors">
+                    <UploadIcon />
+                    <span className="ml-2">Importa CSV</span>
+                </button>
+                <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
+                    <PlusIcon />
+                    <span className="ml-2">Aggiungi Fornitore</span>
+                </button>
+            </div>
         </div>
         
         {isModalOpen && (
@@ -145,6 +162,21 @@ const Suppliers: React.FC = () => {
                 <SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={handleCloseModal} />
             </Modal>
         )}
+
+        {isImportModalOpen && (
+            <ImportModal 
+                entityName="Fornitori"
+                templateCsvContent={'name,contactPerson,email,phone\nSpazio Bimbi SRL,Laura Verdi,info@spaziobimbi.it,029876543'}
+                instructions={[
+                    'La prima riga deve contenere le intestazioni: name, contactPerson, email, phone.',
+                    'Il separatore dei campi deve essere la virgola (,).',
+                    'Il campo "name" è la chiave unica per l\'aggiornamento dei record esistenti.'
+                ]}
+                onClose={() => setIsImportModalOpen(false)}
+                onImport={handleImport}
+            />
+        )}
+
 
         <div className="mt-8">
             {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
