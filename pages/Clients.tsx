@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
@@ -152,15 +153,15 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
             </div>
             {client.clientType === ClientType.Parent ? (
                 <>
-                    <div className="flex items-start">
-                        <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-indigo-100" style={{ minWidth: '6rem' }}>
+                    <div className="flex flex-col sm:flex-row items-start">
+                        <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-indigo-100 mb-4 sm:mb-0" style={{ minWidth: '6rem' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" style={{ color: '#311B92' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
                         </div>
                         <div>
                             <h2 className="text-2xl font-bold">{client.firstName} {client.lastName}</h2>
-                            <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
+                            <p style={{ color: 'var(--md-text-secondary)'}} className="break-all">{client.email} | {client.phone}</p>
                             <p className="text-sm mt-1" style={{ color: 'var(--md-text-secondary)'}}>CF: {client.taxCode}</p>
                         </div>
                     </div>
@@ -198,15 +199,15 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                     </div>
                 </>
             ) : (
-                <div className="flex items-start">
-                     <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-amber-100" style={{ minWidth: '6rem' }}>
+                <div className="flex flex-col sm:flex-row items-start">
+                     <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-amber-100 mb-4 sm:mb-0" style={{ minWidth: '6rem' }}>
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" style={{ color: '#E65100' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                         </svg>
                     </div>
                     <div>
                         <h2 className="text-2xl font-bold">{client.companyName}</h2>
-                        <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
+                        <p style={{ color: 'var(--md-text-secondary)'}} className="break-all">{client.email} | {client.phone}</p>
                         <p className="text-sm mt-1" style={{ color: 'var(--md-text-secondary)'}}>P.IVA: {client.vatNumber}</p>
                         <div className="mt-6">
                             <h3 className="text-lg font-semibold">Dettagli Contratto</h3>
@@ -351,7 +352,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
             <div className="space-y-3">
                 {clientType === ClientType.Parent ? (
                     <>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                            <div className="md-input-group"><input id="firstName" type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="firstName" className="md-input-label">Nome</label></div>
                            <div className="md-input-group"><input id="lastName" type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="lastName" className="md-input-label">Cognome</label></div>
                         </div>
@@ -364,12 +365,12 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                     </>
                 )}
                  <hr className="my-4" style={{borderColor: 'var(--md-divider)'}}/>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="email" className="md-input-label">Email</label></div>
                     <div className="md-input-group"><input id="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="phone" className="md-input-label">Telefono</label></div>
                 </div>
                 <div className="md-input-group"><input id="address" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="address" className="md-input-label">Indirizzo</label></div>
-                 <div className="grid grid-cols-3 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="md-input-group"><input id="zipCode" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="zipCode" className="md-input-label">CAP</label></div>
                     <div className="col-span-2 md-input-group"><input id="city" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="city" className="md-input-label">Città</label></div>
                 </div>
@@ -496,19 +497,19 @@ const Clients: React.FC = () => {
 
   return (
     <div>
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap gap-4 justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold">Clienti</h1>
               <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci le anagrafiche di genitori e clienti istituzionali.</p>
             </div>
-             <div className="flex items-center space-x-2">
+             <div className="flex items-center space-x-2 flex-wrap">
                 <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
                     <UploadIcon />
-                    <span className="ml-2">Importa Excel</span>
+                    <span className="ml-2">Importa</span>
                 </button>
                 <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
-                    <span className="ml-2">Aggiungi Cliente</span>
+                    <span className="ml-2">Aggiungi</span>
                 </button>
             </div>
         </div>
@@ -538,14 +539,61 @@ const Clients: React.FC = () => {
         )}
 
 
-        <div className="mt-8 md-card p-6">
-          <div className="relative mb-4">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-              <input type="text" placeholder="Cerca cliente..." className="block w-full max-w-sm bg-gray-50 border rounded-md py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-1" style={{borderColor: 'var(--md-divider)'}}/>
+        <div className="mt-8 md-card p-0 md:p-6">
+          <div className="p-4 md:p-0">
+              <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
+                  <input type="text" placeholder="Cerca cliente..." className="block w-full sm:max-w-sm bg-gray-50 border rounded-md py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-1" style={{borderColor: 'var(--md-divider)'}}/>
+              </div>
           </div>
-          <div className="overflow-x-auto">
-            {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> : 
-             error ? <p className="text-center text-red-500 py-8">{error}</p> :
+          {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> : 
+           error ? <p className="text-center text-red-500 py-8">{error}</p> :
+           <>
+           {/* Mobile View - Cards */}
+           <div className="md:hidden mt-4 space-y-4 px-4 pb-4">
+              {clients.map(client => (
+                <div key={client.id} className="md-card p-4">
+                   <div className="flex items-start justify-between">
+                      <div className="flex items-start">
+                        {client.clientType === ClientType.Parent ? (
+                              <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-indigo-100" style={{minWidth: '2.5rem'}}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#311B92'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                  </svg>
+                              </div>
+                           ) : (
+                              <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-amber-100" style={{minWidth: '2.5rem'}}>
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#E65100'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                  </svg>
+                              </div>
+                           )}
+                           <div>
+                              <p className="font-medium">{client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}</p>
+                              <span className={`text-xs md-badge mt-1 ${client.clientType === ClientType.Parent ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
+                                {client.clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}
+                              </span>
+                           </div>
+                        </div>
+                         <div className="flex items-center space-x-1">
+                            <button onClick={() => handleOpenModal(client)} className="md-icon-btn edit" aria-label="Modifica cliente"><PencilIcon /></button>
+                            <button onClick={() => handleDeleteClient(client.id)} className="md-icon-btn delete" aria-label="Elimina cliente"><TrashIcon /></button>
+                        </div>
+                   </div>
+                   <div className="mt-3 pt-3 border-t text-sm space-y-1" style={{ borderColor: 'var(--md-divider)', color: 'var(--md-text-secondary)'}}>
+                       <p className="truncate"><strong>Email:</strong> {client.email}</p>
+                       <p><strong>Tel:</strong> {client.phone}</p>
+                       {client.clientType === ClientType.Parent && <p><strong>Figli:</strong> {client.children.length}</p>}
+                   </div>
+                   <div className="mt-3 text-right">
+                       <button onClick={() => setSelectedClient(client)} className="md-btn md-btn-flat md-btn-primary text-sm">Vedi Dettagli</button>
+                   </div>
+                </div>
+              ))}
+           </div>
+          
+           {/* Desktop View - Table */}
+           <div className="overflow-x-auto hidden md:block mt-4">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b" style={{ borderColor: 'var(--md-divider)'}}>
@@ -600,8 +648,9 @@ const Clients: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
+           </>
             }
-          </div>
         </div>
     </div>
   );

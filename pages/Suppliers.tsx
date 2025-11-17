@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
@@ -39,12 +40,12 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
                     <div><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10 rounded-md border" style={{borderColor: 'var(--md-divider)'}}/></div>
                 </div>
                 <div className="md-input-group"><input id="locAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locAddr" className="md-input-label">Indirizzo</label></div>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="md-input-group"><input id="locZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locZip" className="md-input-label">CAP</label></div>
                     <div className="col-span-2 md-input-group"><input id="locCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locCity" className="md-input-label">Città</label></div>
                 </div>
                 <div className="md-input-group"><input id="locProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locProv" className="md-input-label">Provincia</label></div>
-                 <div className="grid grid-cols-3 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="md-input-group"><input id="locCap" type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCap" className="md-input-label">Capienza</label></div>
                     <div className="md-input-group"><input id="locCost" type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCost" className="md-input-label">Nolo (€)</label></div>
                     <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
@@ -95,16 +96,16 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <h2 className="text-xl font-bold mb-4">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
             <div className="flex-1 overflow-y-auto pr-4 -mr-4 space-y-3">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="supName" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supName" className="md-input-label">Ragione Sociale</label></div>
                     <div className="md-input-group"><input id="supVat" type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supVat" className="md-input-label">Partita IVA</label></div>
                 </div>
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="supEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supEmail" className="md-input-label">Email</label></div>
                     <div className="md-input-group"><input id="supPhone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supPhone" className="md-input-label">Telefono</label></div>
                 </div>
                 <div className="md-input-group"><input id="supAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supAddr" className="md-input-label">Indirizzo Sede Legale</label></div>
-                 <div className="grid grid-cols-3 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="md-input-group"><input id="supZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supZip" className="md-input-label">CAP</label></div>
                     <div className="col-span-2 md-input-group"><input id="supCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supCity" className="md-input-label">Città</label></div>
                 </div>
@@ -114,7 +115,7 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                     <div className="flex justify-between items-center">
                         <h3 className="text-md font-semibold">Sedi Operative</h3>
                          <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm">
-                            <PlusIcon/> <span className="ml-1">Aggiungi Sede</span>
+                            <PlusIcon/> <span className="ml-1">Aggiungi</span>
                         </button>
                     </div>
                     <div className="mt-2 space-y-2">
@@ -230,19 +231,19 @@ const Suppliers: React.FC = () => {
 
   return (
     <div>
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap gap-4 justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold">Fornitori</h1>
               <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci i fornitori e le loro sedi.</p>
             </div>
-             <div className="flex items-center space-x-2">
+             <div className="flex items-center space-x-2 flex-wrap">
                  <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
                     <UploadIcon />
-                    <span className="ml-2">Importa Excel</span>
+                    <span className="ml-2">Importa</span>
                 </button>
                 <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
-                    <span className="ml-2">Aggiungi Fornitore</span>
+                    <span className="ml-2">Aggiungi</span>
                 </button>
             </div>
         </div>
@@ -280,7 +281,7 @@ const Suppliers: React.FC = () => {
                             <h2 className="text-lg font-bold">{supplier.companyName}</h2>
                             <p className="text-sm mt-1" style={{color: 'var(--md-text-secondary)'}}>P.IVA: {supplier.vatNumber}</p>
                             <div className="mt-4 text-sm space-y-1" style={{color: 'var(--md-text-secondary)'}}>
-                                <p><strong>Email:</strong> {supplier.email}</p>
+                                <p className="truncate"><strong>Email:</strong> {supplier.email}</p>
                                 <p><strong>Tel:</strong> {supplier.phone}</p>
                                 <p><strong>Sede:</strong> {supplier.address}, {supplier.city} ({supplier.province})</p>
                             </div>

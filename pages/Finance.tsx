@@ -53,11 +53,11 @@ const TransactionForm: React.FC<{
             <h2 className="text-xl font-bold mb-4">Nuova Transazione</h2>
             <div className="space-y-4">
                 <div className="md-input-group"><input id="desc" type="text" value={description} onChange={e => setDescription(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="desc" className="md-input-label">Descrizione</label></div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="amount" type="number" step="0.01" value={amount} onChange={e => setAmount(Number(e.target.value))} required min="0" className="md-input" placeholder=" "/><label htmlFor="amount" className="md-input-label">Importo (€)</label></div>
                     <div className="md-input-group"><input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="date" className="md-input-label">Data</label></div>
                 </div>
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group">
                         <select id="type" value={type} onChange={e => setType(e.target.value as TransactionType)} className="md-input">
                             <option value={TransactionType.Income}>Entrata</option>
@@ -183,8 +183,27 @@ const Finance: React.FC = () => {
                 </div>
             );
             case 'transactions': return (
-                <div className="md-card p-6">
-                    <table className="w-full text-left">
+                <div className="md-card p-0 md:p-6">
+                    {/* Mobile View */}
+                    <div className="md:hidden space-y-3 p-4">
+                        {transactions.map(t => (
+                            <div key={t.id} className="md-card p-4">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-semibold">{t.description}</p>
+                                        <p className="text-sm" style={{color: 'var(--md-text-secondary)'}}>{t.category}</p>
+                                        <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{new Date(t.date).toLocaleDateString()}</p>
+                                    </div>
+                                    <p className={`font-bold text-lg ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</p>
+                                </div>
+                                <div className="text-right mt-2">
+                                     <button onClick={() => handleDeleteTransaction(t.id)} className="md-icon-btn delete" aria-label={`Elimina transazione ${t.description}`}><TrashIcon/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    {/* Desktop View */}
+                    <table className="w-full text-left hidden md:table">
                         <thead>
                             <tr className="border-b" style={{borderColor: 'var(--md-divider)'}}>
                                 <th className="p-4 font-medium" style={{color: 'var(--md-text-secondary)'}}>Data</th>
@@ -219,24 +238,24 @@ const Finance: React.FC = () => {
     
   return (
     <div>
-        <div className="flex justify-between items-center">
+        <div className="flex flex-wrap gap-4 justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold">Finanza</h1>
               <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Monitora costi, ricavi, fatture e pagamenti.</p>
             </div>
             {activeTab === 'transactions' && (
              <button onClick={() => setIsModalOpen(true)} className="md-btn md-btn-raised md-btn-green">
-                <PlusIcon /> <span className="ml-2">Aggiungi Transazione</span>
+                <PlusIcon /> <span className="ml-2">Aggiungi</span>
             </button>
             )}
         </div>
 
         <div className="mt-6 border-b" style={{borderColor: 'var(--md-divider)'}}>
-            <nav className="-mb-px flex space-x-6">
-                <button onClick={() => setActiveTab('overview')} className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
-                <button onClick={() => setActiveTab('transactions')} className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'transactions' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Transazioni</button>
-                <button onClick={() => setActiveTab('invoices')} className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'invoices' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Fatture</button>
-                <button onClick={() => setActiveTab('quotes')} className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'quotes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Preventivi</button>
+            <nav className="-mb-px flex space-x-6 overflow-x-auto">
+                <button onClick={() => setActiveTab('overview')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
+                <button onClick={() => setActiveTab('transactions')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'transactions' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Transazioni</button>
+                <button onClick={() => setActiveTab('invoices')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'invoices' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Fatture</button>
+                <button onClick={() => setActiveTab('quotes')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'quotes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Preventivi</button>
             </nav>
         </div>
         

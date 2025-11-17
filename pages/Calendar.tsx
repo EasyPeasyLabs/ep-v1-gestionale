@@ -137,7 +137,7 @@ const Calendar: React.FC = () => {
 
     return (
         <div>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap gap-4 justify-between items-center">
                 <div>
                   <h1 className="text-3xl font-bold">Calendario Lezioni</h1>
                   <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Programma le lezioni settimanali.</p>
@@ -150,7 +150,7 @@ const Calendar: React.FC = () => {
             <div className="mt-8">
                  {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
                  error ? <p className="text-center text-red-500 py-8">{error}</p> :
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
+                 <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-7 md:gap-4">
                     {daysOfWeek.map(day => (
                         <div key={day} className="bg-white p-4 rounded-lg shadow-md min-h-[200px]" style={{backgroundColor: 'var(--md-bg-card)'}}>
                             <h2 className="text-center font-bold border-b pb-2 mb-4" style={{color: 'var(--md-primary)', borderColor: 'var(--md-divider)'}}>{day}</h2>

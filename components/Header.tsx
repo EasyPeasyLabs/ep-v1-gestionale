@@ -13,14 +13,16 @@ import ChevronDownIcon from './icons/ChevronDownIcon';
 import LogoutIcon from './icons/LogoutIcon';
 import ProfileIcon from './icons/ProfileIcon';
 import NotificationsDropdown from './NotificationsDropdown';
+import MenuIcon from './icons/MenuIcon';
 
 
 interface HeaderProps {
     user: User;
     setCurrentPage: (page: Page) => void;
+    onMenuClick: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
+const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onMenuClick }) => {
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -120,19 +122,24 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
 
   return (
     <header className="h-16 bg-white shadow-sm flex-shrink-0 flex items-center justify-between px-4 md:px-6 lg:px-8 border-b" style={{ backgroundColor: 'var(--md-bg-card)', borderColor: 'var(--md-divider)'}}>
-      <div className="relative w-full max-w-xs">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-          <SearchIcon />
+      <div className="flex items-center">
+        <button onClick={onMenuClick} className="md:hidden mr-4 md-icon-btn" aria-label="Apri menu">
+          <MenuIcon />
+        </button>
+        <div className="relative hidden md:block w-full max-w-xs">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <SearchIcon />
+          </div>
+          <input
+            type="text"
+            placeholder="Cerca..."
+            className="block w-full bg-gray-100 border border-transparent rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:bg-white focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500"
+          />
         </div>
-        <input
-          type="text"
-          placeholder="Cerca..."
-          className="block w-full bg-gray-100 border border-transparent rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:bg-white focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500"
-        />
       </div>
-      <div className="flex items-center space-x-4">
+      <div className="flex items-center space-x-2 md:space-x-4">
         <div className="relative" ref={notificationsRef}>
-            <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="md-icon-btn relative">
+            <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="md-icon-btn relative" aria-label="Apri notifiche">
                 <BellIcon />
                  {!loadingNotifications && notifications.length > 0 && (
                     <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-xs font-bold text-white rounded-full" style={{backgroundColor: 'var(--md-red)'}}>{notifications.length}</span>
@@ -150,8 +157,8 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage }) => {
             )}
         </div>
         <div className="relative" ref={dropdownRef}>
-            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center text-sm font-medium" style={{ color: 'var(--md-text-secondary)'}}>
-                <span className="truncate max-w-24 md:max-w-none">{user.email}</span>
+            <button onClick={() => setDropdownOpen(!dropdownOpen)} className="flex items-center text-sm font-medium" style={{ color: 'var(--md-text-secondary)'}} aria-haspopup="true" aria-expanded={dropdownOpen}>
+                <span className="truncate max-w-[100px] md:max-w-none">{user.email}</span>
                 <ChevronDownIcon />
             </button>
              {dropdownOpen && (

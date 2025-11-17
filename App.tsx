@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const auth = getAuth();
 
   useEffect(() => {
@@ -67,9 +68,11 @@ const App: React.FC = () => {
         user={user}
         currentPage={currentPage} 
         setCurrentPage={setCurrentPage} 
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={user} setCurrentPage={setCurrentPage} />
+        <Header user={user} setCurrentPage={setCurrentPage} onMenuClick={() => setIsSidebarOpen(true)} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
           {renderContent()}
         </main>
