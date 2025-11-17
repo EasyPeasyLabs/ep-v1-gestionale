@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
@@ -9,7 +8,7 @@ import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
-import { importSuppliersFromCSV } from '../services/importService';
+import { importSuppliersFromExcel } from '../services/importService';
 
 
 const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Location) => void; onCancel: () => void; }> = ({ location, onSave, onCancel }) => {
@@ -219,7 +218,7 @@ const Suppliers: React.FC = () => {
     };
 
      const handleImport = async (file: File) => {
-        const result = await importSuppliersFromCSV(file);
+        const result = await importSuppliersFromExcel(file);
         fetchSuppliers();
         return result;
     };
@@ -235,7 +234,7 @@ const Suppliers: React.FC = () => {
              <div className="flex items-center space-x-2">
                  <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
                     <UploadIcon />
-                    <span className="ml-2">Importa CSV</span>
+                    <span className="ml-2">Importa Excel</span>
                 </button>
                 <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
@@ -253,11 +252,13 @@ const Suppliers: React.FC = () => {
         {isImportModalOpen && (
             <ImportModal 
                 entityName="Fornitori"
-                templateCsvContent={'companyName,vatNumber,address,zipCode,city,province,email,phone\nSpazio Bimbi SRL,12345678901,"Via dei Giardini 10","20121","Milano","MI",info@spaziobimbi.it,029876543'}
+                templateHeaders={[
+                    'companyName', 'vatNumber', 'address', 'zipCode', 
+                    'city', 'province', 'email', 'phone'
+                ]}
                 instructions={[
-                    'La prima riga deve contenere le intestazioni richieste.',
-                    'Il separatore dei campi deve essere la virgola (,).',
-                    'Il campo "companyName" è la chiave unica per l\'aggiornamento.'
+                    'La prima riga del primo foglio di lavoro deve contenere le intestazioni.',
+                    'Il campo "companyName" è la chiave unica per l\'aggiornamento di record esistenti.',
                 ]}
                 onClose={() => setIsImportModalOpen(false)}
                 onImport={handleImport}

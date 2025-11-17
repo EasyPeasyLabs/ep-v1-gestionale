@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
@@ -16,7 +15,7 @@ import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
-import { importClientsFromCSV } from '../services/importService';
+import { importClientsFromExcel } from '../services/importService';
 
 const EnrollmentForm: React.FC<{
     parent: ParentClient;
@@ -415,7 +414,7 @@ const Clients: React.FC = () => {
   };
 
   const handleImport = async (file: File) => {
-    const result = await importClientsFromCSV(file);
+    const result = await importClientsFromExcel(file);
     fetchClients();
     return result;
   };
@@ -434,7 +433,7 @@ const Clients: React.FC = () => {
              <div className="flex items-center space-x-2">
                 <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
                     <UploadIcon />
-                    <span className="ml-2">Importa CSV</span>
+                    <span className="ml-2">Importa Excel</span>
                 </button>
                 <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
@@ -452,12 +451,15 @@ const Clients: React.FC = () => {
         {isImportModalOpen && (
             <ImportModal 
                 entityName="Clienti"
-                templateCsvContent={'type,email,firstName,lastName,taxCode,companyName,vatNumber,phone,address,zipCode,city,province\nparent,mario.rossi@email.com,Mario,Rossi,RSSMRA80A01H501U,,,,0123456789,"Via Roma 1","20100","Milano",MI\ninstitutional,info@asiloarcobaleno.it,,,,Asilo Arcobaleno,12345678901,0987654321,"Viale Garibaldi 5","00100","Roma",RM'}
+                templateHeaders={[
+                    'type', 'email', 'firstName', 'lastName', 'taxCode', 
+                    'companyName', 'vatNumber', 'phone', 'address', 
+                    'zipCode', 'city', 'province'
+                ]}
                 instructions={[
-                    'La prima riga deve contenere le intestazioni delle colonne.',
-                    'Il separatore dei campi deve essere la virgola (,).',
-                    'Il campo "email" è la chiave unica per l\'aggiornamento.',
-                    'Il campo "type" deve essere "parent" o "institutional".'
+                    'La prima riga del primo foglio deve contenere le intestazioni delle colonne.',
+                    'Il campo "email" è la chiave unica per l\'aggiornamento di record esistenti.',
+                    'Il campo "type" deve essere "parent" o "institutional". Compila i campi relativi al tipo scelto.'
                 ]}
                 onClose={() => setIsImportModalOpen(false)}
                 onImport={handleImport}

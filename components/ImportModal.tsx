@@ -1,5 +1,5 @@
-
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
+import * as XLSX from 'xlsx';
 import Modal from './Modal';
 import Spinner from './Spinner';
 import UploadIcon from './icons/UploadIcon';
@@ -12,13 +12,13 @@ export interface ImportResult {
 
 interface ImportModalProps {
     entityName: string;
-    templateCsvContent: string;
+    templateHeaders: string[];
     instructions: string[];
     onClose: () => void;
     onImport: (file: File) => Promise<ImportResult>;
 }
 
-const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvContent, instructions, onClose, onImport }) => {
+const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateHeaders, instructions, onClose, onImport }) => {
     const [file, setFile] = useState<File | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [result, setResult] = useState<ImportResult | null>(null);
@@ -34,7 +34,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
 
     const handleImportClick = async () => {
         if (!file) {
-            setError('Per favore, seleziona un file CSV.');
+            setError('Per favore, seleziona un file Excel.');
             return;
         }
 
@@ -54,20 +54,18 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
     };
 
     const handleDownloadTemplate = () => {
-        const blob = new Blob([templateCsvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `${entityName.toLowerCase()}_template.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        // Crea un worksheet con solo le intestazioni
+        const ws = XLSX.utils.json_to_sheet([{}], { header: templateHeaders });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Template");
+        // Scrive il file e avvia il download
+        XLSX.writeFile(wb, `${entityName.toLowerCase()}_template.xlsx`);
     };
 
     return (
         <Modal onClose={onClose}>
             <div className="text-center">
-                <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da CSV</h2>
+                <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da Excel</h2>
             </div>
             {!result ? (
                 <div className="mt-4">
@@ -82,14 +80,14 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateCsvConten
                     </div>
 
                     <div className="mt-4">
-                        <label htmlFor="file-upload" className="block text-sm font-medium">Seleziona file CSV</label>
+                        <label htmlFor="file-upload" className="block text-sm font-medium">Seleziona file Excel (.xlsx, .xls)</label>
                         <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md" style={{borderColor: 'var(--md-divider)'}}>
                             <div className="space-y-1 text-center">
                                 <UploadIcon />
                                 <div className="flex text-sm" style={{color: 'var(--md-text-secondary)'}}>
                                     <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium focus-within:outline-none" style={{color: 'var(--md-primary)'}}>
                                         <span>Carica un file</span>
-                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".csv" onChange={handleFileChange} />
+                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" onChange={handleFileChange} />
                                     </label>
                                     <p className="pl-1">o trascinalo qui</p>
                                 </div>

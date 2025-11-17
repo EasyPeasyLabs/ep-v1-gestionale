@@ -1,67 +1,47 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
 import { db } from '../firebase/config';
 import { Client, ClientType, ParentClientInput, InstitutionalClientInput, SupplierInput, Supplier } from '../types';
 import { ImportResult } from '../components/ImportModal';
 
-// Helper per leggere il contenuto del file come testo
-const readFileAsText = (file: File): Promise<string> => {
+// Helper per leggere il contenuto del file come ArrayBuffer per xlsx
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
         reader.onerror = reject;
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
     });
 };
 
+// Helper per analizzare il contenuto di un file Excel
+const parseExcel = async (file: File): Promise<Record<string, any>[]> => {
+    const buffer = await readFileAsArrayBuffer(file);
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    // header: 1 dice a SheetJS di trattare la prima riga come intestazioni
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    
+    if (data.length < 2) return []; // Se non ci sono dati oltre all'intestazione
 
-// Helper per analizzare il contenuto CSV in un array di oggetti
-const parseCSV = (content: string): { headers: string[], data: Record<string, string>[] } => {
-    const lines = content.replace(/\r/g, '').split('\n').filter(line => line.trim() !== '');
-    if (lines.length < 1) return { headers: [], data: [] };
+    const headers = data[0] as string[];
+    const rows = data.slice(1);
 
-    // Auto-detect delimiter (comma vs semicolon)
-    const firstLine = lines[0];
-    const commaCount = (firstLine.match(/,/g) || []).length;
-    const semicolonCount = (firstLine.match(/;/g) || []).length;
-    const delimiter = semicolonCount > commaCount ? ';' : ',';
-
-
-    // Regex per gestire correttamente i campi quotati che possono contenere il delimitatore
-    const parseLine = (line: string) => {
-        const values = [];
-        let current = '';
-        let inQuotes = false;
-        for (const char of line) {
-            if (char === '"') {
-                inQuotes = !inQuotes;
-            } else if (char === delimiter && !inQuotes) {
-                values.push(current.trim());
-                current = '';
-            } else {
-                current += char;
-            }
-        }
-        values.push(current.trim());
-        return values;
-    };
-
-    const headers = parseLine(lines[0]);
-    const data = lines.slice(1).map(line => {
-        const values = parseLine(line);
-        const entry: Record<string, string> = {};
+    return rows.map(rowArray => {
+        const row = rowArray as any[];
+        const obj: Record<string, any> = {};
         headers.forEach((header, index) => {
-            entry[header] = values[index];
+            obj[header] = row[index];
         });
-        return entry;
+        return obj;
     });
-    return { headers, data };
 };
 
 
-export const importClientsFromCSV = async (file: File): Promise<ImportResult> => {
+export const importClientsFromExcel = async (file: File): Promise<ImportResult> => {
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
-    const content = await readFileAsText(file);
-    const { data } = parseCSV(content);
+    const data = await parseExcel(file);
 
     if (data.length === 0) {
         result.errors.push({ row: 0, message: 'File vuoto o non valido.' });
@@ -85,60 +65,60 @@ export const importClientsFromCSV = async (file: File): Promise<ImportResult> =>
         const rowNum = i + 2; // +1 for header, +1 for 0-index
 
         if (!row.email || !row.type) {
-            result.errors.push({ row: rowNum, message: 'I campi "email" e "type" sono obbligatori.' });
+            result.errors.push({ row: rowNum, message: 'Le colonne "email" e "type" sono obbligatorie.' });
             continue;
         }
 
-        const clientEmail = row.email.toLowerCase();
+        const clientEmail = String(row.email).toLowerCase();
         let clientData: ParentClientInput | InstitutionalClientInput;
 
         try {
             if (row.type === 'parent') {
                 if (!row.firstName || !row.lastName || !row.taxCode) {
-                     result.errors.push({ row: rowNum, message: 'Per tipo "parent", i campi "firstName", "lastName" e "taxCode" sono obbligatori.' });
+                     result.errors.push({ row: rowNum, message: 'Per tipo "parent", le colonne "firstName", "lastName" e "taxCode" sono obbligatorie.' });
                     continue;
                 }
                 clientData = {
                     clientType: ClientType.Parent,
-                    email: row.email,
-                    phone: row.phone || '',
-                    address: row.address || '',
-                    zipCode: row.zipCode || '',
-                    city: row.city || '',
-                    province: row.province || '',
-                    firstName: row.firstName,
-                    lastName: row.lastName,
-                    taxCode: row.taxCode,
+                    email: String(row.email),
+                    phone: String(row.phone || ''),
+                    address: String(row.address || ''),
+                    zipCode: String(row.zipCode || ''),
+                    city: String(row.city || ''),
+                    province: String(row.province || ''),
+                    firstName: String(row.firstName),
+                    lastName: String(row.lastName),
+                    taxCode: String(row.taxCode),
                     avatarUrl: `https://i.pravatar.cc/150?u=${row.email}`,
                     children: [],
                 };
             } else if (row.type === 'institutional') {
                  if (!row.companyName || !row.vatNumber) {
-                    result.errors.push({ row: rowNum, message: 'Per tipo "institutional", i campi "companyName" e "vatNumber" sono obbligatori.' });
+                    result.errors.push({ row: rowNum, message: 'Per tipo "institutional", le colonne "companyName" e "vatNumber" sono obbligatorie.' });
                     continue;
                 }
                 clientData = {
                     clientType: ClientType.Institutional,
-                    email: row.email,
-                    phone: row.phone || '',
-                    address: row.address || '',
-                    zipCode: row.zipCode || '',
-                    city: row.city || '',
-                    province: row.province || '',
-                    companyName: row.companyName,
-                    vatNumber: row.vatNumber,
+                    email: String(row.email),
+                    phone: String(row.phone || ''),
+                    address: String(row.address || ''),
+                    zipCode: String(row.zipCode || ''),
+                    city: String(row.city || ''),
+                    province: String(row.province || ''),
+                    companyName: String(row.companyName),
+                    vatNumber: String(row.vatNumber),
                     numberOfChildren: 0,
                     ageRange: '',
                 };
             } else {
-                result.errors.push({ row: rowNum, message: 'Il campo "type" deve essere "parent" o "institutional".' });
+                result.errors.push({ row: rowNum, message: 'Il valore nella colonna "type" deve essere "parent" o "institutional".' });
                 continue;
             }
 
             const existingId = existingClientsMap.get(clientEmail);
             if (existingId) {
                 const docRef = doc(db, 'clients', existingId);
-                batch.update(docRef, clientData);
+                batch.update(docRef, clientData as any);
                 result.updated++;
             } else {
                 const docRef = doc(clientCollectionRef);
@@ -158,10 +138,9 @@ export const importClientsFromCSV = async (file: File): Promise<ImportResult> =>
 };
 
 
-export const importSuppliersFromCSV = async (file: File): Promise<ImportResult> => {
+export const importSuppliersFromExcel = async (file: File): Promise<ImportResult> => {
     const result: ImportResult = { created: 0, updated: 0, errors: [] };
-    const content = await readFileAsText(file);
-    const { data } = parseCSV(content);
+    const data = await parseExcel(file);
 
     if (data.length === 0) {
         result.errors.push({ row: 0, message: 'File vuoto o non valido.' });
@@ -185,27 +164,27 @@ export const importSuppliersFromCSV = async (file: File): Promise<ImportResult> 
         const rowNum = i + 2;
 
         if (!row.companyName || !row.vatNumber || !row.email || !row.phone) {
-             result.errors.push({ row: rowNum, message: 'I campi companyName, vatNumber, email, phone sono obbligatori.' });
+             result.errors.push({ row: rowNum, message: 'Le colonne companyName, vatNumber, email, phone sono obbligatorie.' });
             continue;
         }
 
-        const supplierName = row.companyName.toLowerCase();
+        const supplierName = String(row.companyName).toLowerCase();
         const supplierData: SupplierInput = {
-            companyName: row.companyName,
-            vatNumber: row.vatNumber,
-            address: row.address || '',
-            zipCode: row.zipCode || '',
-            city: row.city || '',
-            province: row.province || '',
-            email: row.email,
-            phone: row.phone,
+            companyName: String(row.companyName),
+            vatNumber: String(row.vatNumber),
+            address: String(row.address || ''),
+            zipCode: String(row.zipCode || ''),
+            city: String(row.city || ''),
+            province: String(row.province || ''),
+            email: String(row.email),
+            phone: String(row.phone),
             locations: []
         };
 
         const existingId = existingSuppliersMap.get(supplierName);
         if (existingId) {
             const docRef = doc(db, 'suppliers', existingId);
-            batch.update(docRef, supplierData);
+            batch.update(docRef, supplierData as any);
             result.updated++;
         } else {
             const docRef = doc(supplierCollectionRef);
