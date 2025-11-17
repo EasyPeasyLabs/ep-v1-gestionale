@@ -348,7 +348,14 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
 
     return (
         <form onSubmit={handleSubmit} className="animate-fade-in">
-            <h2 className="text-xl font-bold mb-4">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span style={{color: 'var(--md-primary)'}}>{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span style={{color: 'var(--md-primary)'}}>{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
+                {clientType === ClientType.Parent && (
+                     <button type="button" onClick={() => { setEditingChild(null); setIsChildModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm flex-shrink-0">
+                        <PlusIcon/> <span className="ml-1 hidden sm:inline">Aggiungi Figlio</span>
+                    </button>
+                )}
+            </div>
             <div className="space-y-3">
                 {clientType === ClientType.Parent ? (
                     <>
@@ -380,9 +387,6 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                     <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
                          <div className="flex justify-between items-center">
                             <h3 className="text-md font-semibold">Figli</h3>
-                            <button type="button" onClick={() => { setEditingChild(null); setIsChildModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm">
-                                <PlusIcon/> <span className="ml-1">Aggiungi Figlio</span>
-                            </button>
                         </div>
                         {children.length > 0 ? children.map((child) => (
                             <div key={child.id} className="flex items-center justify-between p-2 mt-2 bg-gray-50 rounded-md">
