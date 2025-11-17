@@ -4,20 +4,25 @@ export interface Child {
   age: string; // Età in formato testo, es: "3 anni", "18 mesi"
 }
 
-export enum SubscriptionStatus {
+export enum EnrollmentStatus {
   Active = 'Active',
-  Inactive = 'Inactive',
+  Completed = 'Completed',
   Expired = 'Expired',
 }
 
-export interface Subscription {
+export interface Enrollment {
   id: string;
-  packageName: string;
+  clientId: string;
+  childId: string;
+  childName: string; // Denormalizzato per una visualizzazione più semplice
+  subscriptionTypeId: string;
+  subscriptionName: string; // Denormalizzato
+  scheduledClassId: string;
   lessonsTotal: number;
   lessonsRemaining: number;
-  startDate: string;
-  endDate: string;
-  status: SubscriptionStatus;
+  startDate: string; // ISO String
+  endDate: string; // ISO String
+  status: EnrollmentStatus;
 }
 
 export enum ClientType {
@@ -43,7 +48,6 @@ export interface ParentClient extends ClientBase {
   taxCode: string; // Codice Fiscale
   avatarUrl: string;
   children: Child[];
-  subscriptions: Subscription[];
 }
 
 export interface InstitutionalClient extends ClientBase {
@@ -90,6 +94,26 @@ export interface CompanyInfo {
     phone: string;
 }
 
+// Nuove interfacce per listino e calendario
+export interface SubscriptionType {
+    id: string;
+    name: string;
+    price: number;
+    lessons: number;
+    durationInDays: number; // Es. 30 per mensile, 90 per trimestrale
+}
+
+export interface ScheduledClass {
+    id: string;
+    dayOfWeek: 'Lunedì' | 'Martedì' | 'Mercoledì' | 'Giovedì' | 'Venerdì' | 'Sabato' | 'Domenica';
+    startTime: string; // Formato HH:mm
+    endTime: string; // Formato HH:mm
+    supplierId: string;
+    locationId: string;
+    supplierName: string; // Denormalizzato per UI
+    locationName: string; // Denormalizzato per UI
+}
+
 
 export type ParentClientInput = Omit<ParentClient, 'id'>;
 export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
@@ -97,3 +121,6 @@ export type ClientInput = ParentClientInput | InstitutionalClientInput;
 
 export type SupplierInput = Omit<Supplier, 'id'>;
 export type LocationInput = Omit<Location, 'id'>;
+export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
+export type ScheduledClassInput = Omit<ScheduledClass, 'id'>;
+export type EnrollmentInput = Omit<Enrollment, 'id'>;

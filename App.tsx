@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import Sidebar from './components/Sidebar';
@@ -11,8 +10,9 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
+import Calendar from './pages/Calendar';
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'Finance' | 'Settings' | 'Profile';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -39,6 +39,8 @@ const App: React.FC = () => {
         return <Clients />;
       case 'Suppliers':
         return <Suppliers />;
+      case 'Calendar':
+        return <Calendar />;
       case 'Finance':
         return <Finance />;
       case 'Settings':

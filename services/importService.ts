@@ -104,7 +104,6 @@ export const importClientsFromCSV = async (file: File): Promise<ImportResult> =>
                     taxCode: row.taxCode,
                     avatarUrl: `https://i.pravatar.cc/150?u=${row.email}`,
                     children: [],
-                    subscriptions: [],
                 };
             } else if (row.type === 'institutional') {
                  if (!row.companyName || !row.vatNumber) {

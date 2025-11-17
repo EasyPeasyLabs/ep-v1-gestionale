@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, SubscriptionStatus, ParentClient, InstitutionalClient, Child } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
+import { getEnrollmentsForClient, addEnrollment } from '../services/enrollmentService';
+import { getSubscriptionTypes } from '../services/settingsService';
+import { getScheduledClasses } from '../services/calendarService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -13,24 +16,130 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importClientsFromCSV } from '../services/importService';
 
+const EnrollmentForm: React.FC<{
+    parent: ParentClient;
+    onSave: (enrollment: EnrollmentInput) => void;
+    onCancel: () => void;
+}> = ({ parent, onSave, onCancel }) => {
+    const [childId, setChildId] = useState('');
+    const [subscriptionTypeId, setSubscriptionTypeId] = useState('');
+    const [scheduledClassId, setScheduledClassId] = useState('');
 
-const getStatusBadge = (status: SubscriptionStatus) => {
-  switch (status) {
-    case SubscriptionStatus.Active:
-      return 'bg-green-100 text-green-800';
-    case SubscriptionStatus.Expired:
-      return 'bg-red-100 text-red-800';
-    case SubscriptionStatus.Inactive:
-      return 'bg-yellow-100 text-yellow-800';
-    default:
-      return 'bg-slate-100 text-slate-800';
-  }
+    const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
+    const [scheduledClasses, setScheduledClasses] = useState<ScheduledClass[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            const [subs, classes] = await Promise.all([
+                getSubscriptionTypes(),
+                getScheduledClasses()
+            ]);
+            setSubscriptionTypes(subs);
+            setScheduledClasses(classes);
+            if (parent.children.length > 0) setChildId(parent.children[0].id);
+            if (subs.length > 0) setSubscriptionTypeId(subs[0].id);
+            if (classes.length > 0) setScheduledClassId(classes[0].id);
+            setLoading(false);
+        };
+        fetchData();
+    }, [parent.children]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const selectedChild = parent.children.find(c => c.id === childId);
+        const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+        
+        if (!selectedChild || !selectedSub) return;
+        
+        const startDate = new Date();
+        const endDate = new Date();
+        endDate.setDate(startDate.getDate() + selectedSub.durationInDays);
+
+        const newEnrollment: EnrollmentInput = {
+            clientId: parent.id,
+            childId,
+            childName: selectedChild.name,
+            subscriptionTypeId,
+            subscriptionName: selectedSub.name,
+            scheduledClassId,
+            lessonsTotal: selectedSub.lessons,
+            lessonsRemaining: selectedSub.lessons,
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            status: EnrollmentStatus.Active,
+        };
+        onSave(newEnrollment);
+    };
+
+    if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
+
+    return (
+        <form onSubmit={handleSubmit}>
+            <h2 className="text-xl font-bold mb-4">Nuova Iscrizione</h2>
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-700">Figlio</label>
+                    <select value={childId} onChange={e => setChildId(e.target.value)} required className="mt-1 block w-full input">
+                        {parent.children.map(child => <option key={child.id} value={child.id}>{child.name}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700">Pacchetto Abbonamento</label>
+                    <select value={subscriptionTypeId} onChange={e => setSubscriptionTypeId(e.target.value)} required className="mt-1 block w-full input">
+                        {subscriptionTypes.map(sub => <option key={sub.id} value={sub.id}>{sub.name} ({sub.lessons} lezioni, {sub.price}€)</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700">Lezione</label>
+                    <select value={scheduledClassId} onChange={e => setScheduledClassId(e.target.value)} required className="mt-1 block w-full input">
+                       {scheduledClasses.map(c => <option key={c.id} value={c.id}>{c.dayOfWeek} {c.startTime}-{c.endTime} @ {c.locationName}</option>)}
+                    </select>
+                </div>
+            </div>
+             <div className="mt-6 flex justify-end space-x-3">
+                <button type="button" onClick={onCancel} className="btn-secondary">Annulla</button>
+                <button type="submit" className="btn-primary">Iscrivi</button>
+            </div>
+        </form>
+    );
 };
 
-const ClientDetail: React.FC<{ client: Client; onBack: () => void }> = ({ client, onBack }) => {
+
+const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (client: Client) => void; }> = ({ client, onBack, onEdit }) => {
+    const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+    
+    const fetchEnrollments = useCallback(async () => {
+        if(client.clientType === ClientType.Parent) {
+            setLoading(true);
+            const data = await getEnrollmentsForClient(client.id);
+            setEnrollments(data);
+            setLoading(false);
+        }
+    }, [client.id, client.clientType]);
+
+    useEffect(() => {
+        fetchEnrollments();
+    }, [fetchEnrollments]);
+
+    const handleSaveEnrollment = async (enrollment: EnrollmentInput) => {
+        await addEnrollment(enrollment);
+        setIsEnrollModalOpen(false);
+        fetchEnrollments();
+    };
+
+
     return (
         <div className="bg-white p-6 rounded-lg shadow-md animate-fade-in">
-            <button onClick={onBack} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm mb-4">&larr; Torna alla lista</button>
+            <div className="flex justify-between items-start">
+                <button onClick={onBack} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm mb-4">&larr; Torna alla lista</button>
+                 <button onClick={() => onEdit(client)} className="text-slate-500 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100">
+                    <PencilIcon />
+                </button>
+            </div>
             {client.clientType === ClientType.Parent ? (
                 // Parent Detail View
                 <>
@@ -38,21 +147,41 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void }> = ({ client
                         <img src={client.avatarUrl} alt={`${client.firstName} ${client.lastName}`} className="w-24 h-24 rounded-full mr-6"/>
                         <div>
                             <h2 className="text-2xl font-bold text-slate-800">{client.firstName} {client.lastName}</h2>
-                            <p className="text-slate-500">{client.email}</p>
-                            <p className="text-slate-500">{client.phone}</p>
+                            <p className="text-slate-500">{client.email} | {client.phone}</p>
                             <p className="text-slate-500 text-sm mt-1">CF: {client.taxCode}</p>
                         </div>
                     </div>
-                    <div className="mt-6">
-                        <h3 className="text-lg font-semibold text-slate-700">Figli Iscritti</h3>
-                        {client.children.length > 0 ? client.children.map(child => (
-                                <div key={child.id} className="mt-4 p-4 border border-slate-200 rounded-lg">
-                                    <p className="font-semibold">{child.name}, {child.age}</p>
-                                </div>
-                            ))
-                         : (
-                        <p className="text-slate-500 text-sm mt-4">Nessun figlio registrato per questo genitore.</p>
-                        )}
+                    <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <h3 className="text-lg font-semibold text-slate-700">Figli</h3>
+                            {client.children.length > 0 ? client.children.map(child => (
+                                    <div key={child.id} className="mt-2 p-3 border border-slate-200 rounded-lg">
+                                        <p className="font-semibold">{child.name}, {child.age}</p>
+                                    </div>
+                                ))
+                             : (
+                            <p className="text-slate-500 text-sm mt-4">Nessun figlio registrato.</p>
+                            )}
+                        </div>
+                        <div>
+                             <div className="flex justify-between items-center">
+                                <h3 className="text-lg font-semibold text-slate-700">Iscrizioni</h3>
+                                <button onClick={() => setIsEnrollModalOpen(true)} className="btn-primary-outline text-sm">
+                                    <PlusIcon/> <span className="ml-1">Iscrivi</span>
+                                </button>
+                             </div>
+                              {loading ? <div className="mt-4"><Spinner/></div> :
+                                enrollments.length > 0 ? enrollments.map(enr => (
+                                    <div key={enr.id} className="mt-2 p-3 border border-slate-200 rounded-lg">
+                                        <p className="font-semibold">{enr.childName} - {enr.subscriptionName}</p>
+                                        <p className="text-sm text-slate-500">Lezioni Rimanenti: {enr.lessonsRemaining}/{enr.lessonsTotal}</p>
+                                        <p className="text-xs text-slate-400">Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
+                                    </div>
+                                ))
+                             : (
+                            <p className="text-slate-500 text-sm mt-4">Nessuna iscrizione attiva.</p>
+                            )}
+                        </div>
                     </div>
                 </>
             ) : (
@@ -69,6 +198,11 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void }> = ({ client
                         </div>
                     </div>
                 </div>
+            )}
+             {isEnrollModalOpen && client.clientType === ClientType.Parent && (
+                <Modal onClose={() => setIsEnrollModalOpen(false)}>
+                    <EnrollmentForm parent={client} onSave={handleSaveEnrollment} onCancel={() => setIsEnrollModalOpen(false)} />
+                </Modal>
             )}
         </div>
     );
@@ -131,7 +265,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        let clientData: ClientInput | Client;
+        let clientData: ClientInput | Omit<ParentClient, 'id'> | Omit<InstitutionalClient, 'id'>;
 
         const baseData = {
             address, zipCode, city, province, email, phone,
@@ -146,7 +280,6 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 taxCode,
                 avatarUrl: (client as ParentClient)?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`,
                 children: children,
-                subscriptions: (client as ParentClient)?.subscriptions || [],
             };
         } else if (clientType === ClientType.Institutional) {
             clientData = {
@@ -162,7 +295,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
         }
 
         if (client?.id) {
-            onSave({ ...clientData, id: client.id });
+            onSave({ ...clientData, id: client.id } as Client);
         } else {
             onSave(clientData as ClientInput);
         }
@@ -195,27 +328,27 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                         <div className="grid grid-cols-2 gap-3">
                            <div>
                                 <label className="block text-sm font-medium text-slate-700">Nome</label>
-                                <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                                <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="mt-1 block w-full input"/>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700">Cognome</label>
-                                <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                                <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="mt-1 block w-full input"/>
                             </div>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-700">Codice Fiscale</label>
-                            <input type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                            <input type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="mt-1 block w-full input"/>
                         </div>
                     </>
                 ) : (
                      <>
                         <div>
                             <label className="block text-sm font-medium text-slate-700">Ragione Sociale</label>
-                            <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                            <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="mt-1 block w-full input"/>
                         </div>
                          <div>
                             <label className="block text-sm font-medium text-slate-700">P.IVA / Codice Fiscale</label>
-                            <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                            <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="mt-1 block w-full input"/>
                         </div>
                     </>
                 )}
@@ -223,30 +356,30 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 <div className="grid grid-cols-2 gap-3">
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Email</label>
-                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full input"/>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Telefono</label>
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full input"/>
                     </div>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-slate-700">Indirizzo</label>
-                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} required className="mt-1 block w-full input"/>
                 </div>
                  <div className="grid grid-cols-3 gap-3">
                     <div>
                         <label className="block text-sm font-medium text-slate-700">CAP</label>
-                        <input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        <input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="mt-1 block w-full input"/>
                     </div>
                      <div className="col-span-2">
                         <label className="block text-sm font-medium text-slate-700">Città</label>
-                        <input type="text" value={city} onChange={e => setCity(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        <input type="text" value={city} onChange={e => setCity(e.target.value)} required className="mt-1 block w-full input"/>
                     </div>
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-slate-700">Provincia</label>
-                    <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full input"/>
                 </div>
                 
                  {clientType === ClientType.Parent && (
@@ -263,11 +396,11 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                         <div className="flex items-end space-x-2 mt-3">
                             <div className="flex-grow">
                                 <label className="block text-sm font-medium text-slate-700">Nome Figlio</label>
-                                <input type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder="Nome" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"/>
+                                <input type="text" value={newChildName} onChange={e => setNewChildName(e.target.value)} placeholder="Nome" className="mt-1 block w-full input"/>
                             </div>
                             <div className="flex-grow">
                                 <label className="block text-sm font-medium text-slate-700">Età</label>
-                                <input type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder="Es. 3 anni" className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm"/>
+                                <input type="text" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} placeholder="Es. 3 anni" className="mt-1 block w-full input"/>
                             </div>
                             <button type="button" onClick={handleAddChild} className="bg-indigo-500 text-white p-2 rounded-md hover:bg-indigo-600"><PlusIcon/></button>
                         </div>
@@ -275,10 +408,10 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                 )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
-                <button type="button" onClick={onCancel} className="bg-white py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <button type="button" onClick={onCancel} className="btn-secondary">
                     Annulla
                 </button>
-                <button type="submit" className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <button type="submit" className="btn-primary">
                     Salva
                 </button>
             </div>
@@ -323,6 +456,12 @@ const Clients: React.FC = () => {
     setEditingClient(null);
     setIsModalOpen(false);
   };
+  
+  const handleBackToList = () => {
+    setSelectedClient(null);
+    fetchClients(); // Ricarica i clienti in caso di modifiche (es. iscrizioni)
+  };
+
 
   const handleSaveClient = async (clientData: ClientInput | Client) => {
     try {
@@ -357,9 +496,8 @@ const Clients: React.FC = () => {
     return result;
   };
 
-
   if (selectedClient) {
-    return <ClientDetail client={selectedClient} onBack={() => setSelectedClient(null)} />;
+    return <ClientDetail client={selectedClient} onBack={handleBackToList} onEdit={() => handleOpenModal(selectedClient)} />;
   }
 
   return (
