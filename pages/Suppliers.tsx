@@ -193,7 +193,8 @@ const Suppliers: React.FC = () => {
     const handleSaveSupplier = async (supplierData: SupplierInput | Supplier) => {
         try {
             if ('id' in supplierData) {
-                await updateSupplier(supplierData.id, supplierData);
+                const { id, ...dataToUpdate } = supplierData;
+                await updateSupplier(id, dataToUpdate);
             } else {
                 await addSupplier(supplierData as SupplierInput);
             }

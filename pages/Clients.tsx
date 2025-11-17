@@ -389,11 +389,15 @@ const Clients: React.FC = () => {
   const handleSaveClient = async (clientData: ClientInput | Client) => {
     try {
       if ('id' in clientData) {
-        await updateClient(clientData.id, clientData);
+        const { id, ...dataToUpdate } = clientData;
+        await updateClient(id, dataToUpdate);
       } else {
         await addClient(clientData);
       }
       handleCloseModal();
+      if(selectedClient) {
+          setSelectedClient(clientData as Client);
+      }
       fetchClients();
     } catch (err) {
       console.error("Errore nel salvataggio del cliente:", err);
