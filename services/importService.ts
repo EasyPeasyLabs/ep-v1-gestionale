@@ -89,7 +89,6 @@ export const importClientsFromExcel = async (file: File): Promise<ImportResult> 
                     firstName: String(row.firstName),
                     lastName: String(row.lastName),
                     taxCode: String(row.taxCode),
-                    avatarUrl: `https://i.pravatar.cc/150?u=${row.email}`,
                     children: [],
                 };
             } else if (row.type === 'institutional') {

@@ -47,7 +47,6 @@ export interface ParentClient extends ClientBase {
   firstName: string;
   lastName: string;
   taxCode: string; // Codice Fiscale
-  avatarUrl: string;
   children: Child[];
 }
 

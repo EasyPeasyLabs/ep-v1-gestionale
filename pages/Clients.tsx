@@ -153,7 +153,11 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
             {client.clientType === ClientType.Parent ? (
                 <>
                     <div className="flex items-start">
-                        <img src={client.avatarUrl} alt={`${client.firstName} ${client.lastName}`} className="w-24 h-24 rounded-full mr-6"/>
+                        <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-indigo-100" style={{ minWidth: '6rem' }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" style={{ color: '#311B92' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                        </div>
                         <div>
                             <h2 className="text-2xl font-bold">{client.firstName} {client.lastName}</h2>
                             <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
@@ -194,15 +198,22 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                     </div>
                 </>
             ) : (
-                <div>
-                    <h2 className="text-2xl font-bold">{client.companyName}</h2>
-                    <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
-                    <p className="text-sm mt-1" style={{ color: 'var(--md-text-secondary)'}}>P.IVA: {client.vatNumber}</p>
-                    <div className="mt-6">
-                        <h3 className="text-lg font-semibold">Dettagli Contratto</h3>
-                        <div className="mt-4 p-4 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
-                            <p>Numero Bambini: <span className="font-medium">{client.numberOfChildren}</span></p>
-                            <p>Fascia d'età: <span className="font-medium">{client.ageRange}</span></p>
+                <div className="flex items-start">
+                     <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-amber-100" style={{ minWidth: '6rem' }}>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" style={{ color: '#E65100' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold">{client.companyName}</h2>
+                        <p style={{ color: 'var(--md-text-secondary)'}}>{client.email} | {client.phone}</p>
+                        <p className="text-sm mt-1" style={{ color: 'var(--md-text-secondary)'}}>P.IVA: {client.vatNumber}</p>
+                        <div className="mt-6">
+                            <h3 className="text-lg font-semibold">Dettagli Contratto</h3>
+                            <div className="mt-4 p-4 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
+                                <p>Numero Bambini: <span className="font-medium">{client.numberOfChildren}</span></p>
+                                <p>Fascia d'età: <span className="font-medium">{client.ageRange}</span></p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -260,9 +271,9 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const baseData = { address, zipCode, city, province, email, phone };
-        let clientData: ClientInput | Omit<ParentClient, 'id'> | Omit<InstitutionalClient, 'id'>;
+        let clientData: Omit<ParentClient, 'id'> | Omit<InstitutionalClient, 'id'>;
         if (clientType === ClientType.Parent) {
-            clientData = { ...baseData, clientType, firstName, lastName, taxCode, avatarUrl: (client as ParentClient)?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`, children };
+            clientData = { ...baseData, clientType, firstName, lastName, taxCode, children };
         } else if (clientType === ClientType.Institutional) {
             clientData = { ...baseData, clientType, companyName, vatNumber, numberOfChildren: (client as InstitutionalClient)?.numberOfChildren || 0, ageRange: (client as InstitutionalClient)?.ageRange || '' };
         } else { return; }
@@ -396,7 +407,8 @@ const Clients: React.FC = () => {
       }
       handleCloseModal();
       if(selectedClient) {
-          setSelectedClient(clientData as Client);
+          const reloadedClient = { ...clientData, id: selectedClient.id } as Client;
+          setSelectedClient(reloadedClient);
       }
       fetchClients();
     } catch (err) {
@@ -494,7 +506,19 @@ const Clients: React.FC = () => {
                   <tr key={client.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--md-divider)'}}>
                     <td className="p-4">
                       <div className="flex items-center">
-                        {client.clientType === ClientType.Parent && <img src={client.avatarUrl} alt={client.firstName} className="w-10 h-10 rounded-full mr-3"/>}
+                         {client.clientType === ClientType.Parent ? (
+                            <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-indigo-100" style={{minWidth: '2.5rem'}}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#311B92'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                            </div>
+                         ) : (
+                            <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-amber-100" style={{minWidth: '2.5rem'}}>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#E65100'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                            </div>
+                         )}
                         <span className="font-medium">{client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}</span>
                       </div>
                     </td>
