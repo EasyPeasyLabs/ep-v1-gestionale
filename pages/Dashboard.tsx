@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getParents } from '../services/parentService';
+import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
 
@@ -17,18 +17,18 @@ const StatCard: React.FC<{ title: string; value: string; change?: string; isPosi
 
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [parentCount, setParentCount] = useState(0);
+  const [clientCount, setClientCount] = useState(0);
   const [supplierCount, setSupplierCount] = useState(0);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [parents, suppliers] = await Promise.all([
-          getParents(),
+        const [clients, suppliers] = await Promise.all([
+          getClients(),
           getSuppliers()
         ]);
-        setParentCount(parents.length);
+        setClientCount(clients.length);
         setSupplierCount(suppliers.length);
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
@@ -52,7 +52,7 @@ const Dashboard: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
-            <StatCard title="Clienti Attivi" value={parentCount.toString()} />
+            <StatCard title="Clienti Attivi" value={clientCount.toString()} />
             <StatCard title="Lezioni Erogate (Mese)" value="N/D" />
             <StatCard title="Fornitori" value={supplierCount.toString()} />
             <StatCard title="Tasso di Rinnovo" value="N/D" />

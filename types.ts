@@ -2,7 +2,7 @@
 export interface Child {
   id: string;
   name: string;
-  age: number;
+  age: string; // Età in formato testo, es: "3 anni", "18 mesi"
   subscriptionId: string;
 }
 
@@ -22,15 +22,41 @@ export interface Subscription {
   status: SubscriptionStatus;
 }
 
-export interface Parent {
+export enum ClientType {
+  Parent = 'Parent',
+  Institutional = 'Institutional',
+}
+
+interface ClientBase {
   id: string;
-  name: string;
+  clientType: ClientType;
+  address: string;
+  zipCode: string; // CAP
+  city: string;
+  province: string;
   email: string;
   phone: string;
+}
+
+export interface ParentClient extends ClientBase {
+  clientType: ClientType.Parent;
+  firstName: string;
+  lastName: string;
+  taxCode: string; // Codice Fiscale
   avatarUrl: string;
   children: Child[];
   subscriptions: Subscription[];
 }
+
+export interface InstitutionalClient extends ClientBase {
+  clientType: ClientType.Institutional;
+  companyName: string; // Ragione Sociale
+  vatNumber: string; // Partita IVA / Codice Fiscale
+  numberOfChildren: number;
+  ageRange: string; // es. "3-5 anni"
+}
+
+export type Client = ParentClient | InstitutionalClient;
 
 export interface Supplier {
   id: string;
@@ -57,5 +83,9 @@ export interface CompanyInfo {
     phone: string;
 }
 
-export type ParentInput = Omit<Parent, 'id'>;
+
+export type ParentClientInput = Omit<ParentClient, 'id'>;
+export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
+export type ClientInput = ParentClientInput | InstitutionalClientInput;
+
 export type SupplierInput = Omit<Supplier, 'id'>;

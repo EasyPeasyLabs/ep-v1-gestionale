@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Parent, ParentInput, Child, Subscription, SubscriptionStatus } from '../types';
-import { getParents, addParent, updateParent, deleteParent } from '../services/parentService';
+import { Client, ClientInput, ClientType, SubscriptionStatus, ParentClient, InstitutionalClient } from '../types';
+import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
+import ClientsIcon from '../components/icons/ClientsIcon';
+import SuppliersIcon from '../components/icons/SuppliersIcon';
 
 const getStatusBadge = (status: SubscriptionStatus) => {
   switch (status) {
@@ -22,92 +24,222 @@ const getStatusBadge = (status: SubscriptionStatus) => {
   }
 };
 
-const ClientDetail: React.FC<{ parent: Parent; onBack: () => void }> = ({ parent, onBack }) => {
+const ClientDetail: React.FC<{ client: Client; onBack: () => void }> = ({ client, onBack }) => {
     return (
         <div className="bg-white p-6 rounded-lg shadow-md animate-fade-in">
             <button onClick={onBack} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm mb-4">&larr; Torna alla lista</button>
-            <div className="flex items-start">
-                <img src={parent.avatarUrl} alt={parent.name} className="w-24 h-24 rounded-full mr-6"/>
-                <div>
-                    <h2 className="text-2xl font-bold text-slate-800">{parent.name}</h2>
-                    <p className="text-slate-500">{parent.email}</p>
-                    <p className="text-slate-500">{parent.phone}</p>
-                </div>
-            </div>
-            
-            <div className="mt-6">
-                <h3 className="text-lg font-semibold text-slate-700">Figli e Iscrizioni</h3>
-                {parent.children.length > 0 ? parent.children.map(child => {
-                    const subscription = parent.subscriptions.find(s => s.id === child.subscriptionId);
-                    return (
-                        <div key={child.id} className="mt-4 p-4 border border-slate-200 rounded-lg">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="font-semibold">{child.name}, {child.age} anni</p>
-                                    <p className="text-sm text-slate-500">{subscription?.packageName}</p>
-                                </div>
-                                {subscription && (
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(subscription.status)}`}>
-                                        {subscription.status}
-                                    </span>
-                                )}
-                            </div>
-                            {subscription && (
-                                <div className="mt-3 text-sm">
-                                    <p>Lezioni rimanenti: <span className="font-medium">{subscription.lessonsRemaining}/{subscription.lessonsTotal}</span></p>
-                                    <div className="w-full bg-slate-200 rounded-full h-2.5 mt-1">
-                                        <div className="bg-indigo-600 h-2.5 rounded-full" style={{width: `${(subscription.lessonsRemaining/subscription.lessonsTotal)*100}%`}}></div>
-                                    </div>
-                                    <p className="text-xs text-slate-400 mt-1">Scadenza: {new Date(subscription.endDate).toLocaleDateString('it-IT')}</p>
-                                </div>
-                            )}
+            {client.clientType === ClientType.Parent ? (
+                // Parent Detail View
+                <>
+                    <div className="flex items-start">
+                        <img src={client.avatarUrl} alt={`${client.firstName} ${client.lastName}`} className="w-24 h-24 rounded-full mr-6"/>
+                        <div>
+                            <h2 className="text-2xl font-bold text-slate-800">{client.firstName} {client.lastName}</h2>
+                            <p className="text-slate-500">{client.email}</p>
+                            <p className="text-slate-500">{client.phone}</p>
+                            <p className="text-slate-500 text-sm mt-1">CF: {client.taxCode}</p>
                         </div>
-                    );
-                }) : (
-                  <p className="text-slate-500 text-sm mt-4">Nessun figlio iscritto per questo genitore.</p>
-                )}
-            </div>
+                    </div>
+                    <div className="mt-6">
+                        <h3 className="text-lg font-semibold text-slate-700">Figli e Iscrizioni</h3>
+                        {client.children.length > 0 ? client.children.map(child => {
+                            const subscription = client.subscriptions.find(s => s.id === child.subscriptionId);
+                            return (
+                                <div key={child.id} className="mt-4 p-4 border border-slate-200 rounded-lg">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="font-semibold">{child.name}, {child.age}</p>
+                                            <p className="text-sm text-slate-500">{subscription?.packageName}</p>
+                                        </div>
+                                        {subscription && (
+                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(subscription.status)}`}>
+                                                {subscription.status}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }) : (
+                        <p className="text-slate-500 text-sm mt-4">Nessun figlio iscritto per questo genitore.</p>
+                        )}
+                    </div>
+                </>
+            ) : (
+                // Institutional Detail View
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-800">{client.companyName}</h2>
+                    <p className="text-slate-500">{client.email} | {client.phone}</p>
+                    <p className="text-slate-500 text-sm mt-1">P.IVA: {client.vatNumber}</p>
+                    <div className="mt-6">
+                        <h3 className="text-lg font-semibold text-slate-700">Dettagli Contratto</h3>
+                        <div className="mt-4 p-4 border border-slate-200 rounded-lg">
+                            <p>Numero Bambini: <span className="font-medium">{client.numberOfChildren}</span></p>
+                            <p>Fascia d'età: <span className="font-medium">{client.ageRange}</span></p>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
-const ParentForm: React.FC<{ parent?: Parent | null; onSave: (parent: ParentInput | Parent) => void; onCancel: () => void; }> = ({ parent, onSave, onCancel }) => {
-    const [name, setName] = useState(parent?.name || '');
-    const [email, setEmail] = useState(parent?.email || '');
-    const [phone, setPhone] = useState(parent?.phone || '');
+const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: ClientInput | Client) => void; onCancel: () => void; }> = ({ client, onSave, onCancel }) => {
+    const [clientType, setClientType] = useState<ClientType | null>(client?.clientType || null);
+
+    // Common fields
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [address, setAddress] = useState('');
+    const [zipCode, setZipCode] = useState('');
+    const [city, setCity] = useState('');
+    const [province, setProvince] = useState('');
+
+    // Parent fields
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [taxCode, setTaxCode] = useState('');
+    
+    // Institutional fields
+    const [companyName, setCompanyName] = useState('');
+    const [vatNumber, setVatNumber] = useState('');
+
+    useEffect(() => {
+        if (client) {
+            setEmail(client.email);
+            setPhone(client.phone);
+            setAddress(client.address);
+            setZipCode(client.zipCode);
+            setCity(client.city);
+            setProvince(client.province);
+            if (client.clientType === ClientType.Parent) {
+                setFirstName(client.firstName);
+                setLastName(client.lastName);
+                setTaxCode(client.taxCode);
+            } else {
+                setCompanyName(client.companyName);
+                setVatNumber(client.vatNumber);
+            }
+        }
+    }, [client]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const parentData = {
-            name,
-            email,
-            phone,
-            avatarUrl: parent?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`,
-            children: parent?.children || [],
-            subscriptions: parent?.subscriptions || [],
+        let clientData: ClientInput | Client;
+
+        const baseData = {
+            address, zipCode, city, province, email, phone,
         };
-        if (parent?.id) {
-            onSave({ ...parentData, id: parent.id });
+
+        if (clientType === ClientType.Parent) {
+            clientData = {
+                ...baseData,
+                clientType: ClientType.Parent,
+                firstName,
+                lastName,
+                taxCode,
+                avatarUrl: (client as ParentClient)?.avatarUrl || `https://i.pravatar.cc/150?u=${email}`,
+                children: (client as ParentClient)?.children || [],
+                subscriptions: (client as ParentClient)?.subscriptions || [],
+            };
+        } else if (clientType === ClientType.Institutional) {
+            clientData = {
+                ...baseData,
+                clientType: ClientType.Institutional,
+                companyName,
+                vatNumber,
+                numberOfChildren: (client as InstitutionalClient)?.numberOfChildren || 0,
+                ageRange: (client as InstitutionalClient)?.ageRange || '',
+            };
         } else {
-            onSave(parentData);
+            return; // Should not happen
+        }
+
+        if (client?.id) {
+            onSave({ ...clientData, id: client.id });
+        } else {
+            onSave(clientData as ClientInput);
         }
     };
+    
+    if (!clientType) {
+        return (
+             <div>
+                <h2 className="text-xl font-bold mb-6 text-center">Seleziona Tipo Cliente</h2>
+                <div className="flex justify-center space-x-4">
+                    <button onClick={() => setClientType(ClientType.Parent)} className="flex flex-col items-center justify-center p-6 border rounded-lg w-40 h-40 hover:bg-indigo-50 hover:border-indigo-500 transition-colors">
+                        <ClientsIcon/>
+                        <span className="mt-2 font-medium">Genitore</span>
+                    </button>
+                    <button onClick={() => setClientType(ClientType.Institutional)} className="flex flex-col items-center justify-center p-6 border rounded-lg w-40 h-40 hover:bg-indigo-50 hover:border-indigo-500 transition-colors">
+                       <SuppliersIcon />
+                        <span className="mt-2 font-medium">Istituzionale</span>
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-bold mb-4">{parent ? 'Modifica Cliente' : 'Nuovo Cliente'}</h2>
-            <div className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Nome Completo</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+        <form onSubmit={handleSubmit} className="animate-fade-in">
+            <h2 className="text-xl font-bold mb-4">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span className="text-indigo-600">{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
+            <div className="space-y-3">
+                {clientType === ClientType.Parent ? (
+                    <>
+                        <div className="grid grid-cols-2 gap-3">
+                           <div>
+                                <label className="block text-sm font-medium text-slate-700">Nome</label>
+                                <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Cognome</label>
+                                <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700">Codice Fiscale</label>
+                            <input type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        </div>
+                    </>
+                ) : (
+                     <>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700">Ragione Sociale</label>
+                            <input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-slate-700">P.IVA / Codice Fiscale</label>
+                            <input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                        </div>
+                    </>
+                )}
+                 <hr className="my-4"/>
+                <div className="grid grid-cols-2 gap-3">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700">Email</label>
+                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700">Telefono</label>
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    </div>
                 </div>
                 <div>
-                    <label className="block text-sm font-medium text-slate-700">Email</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    <label className="block text-sm font-medium text-slate-700">Indirizzo</label>
+                    <input type="text" value={address} onChange={e => setAddress(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-slate-700">Telefono</label>
-                    <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                 <div className="grid grid-cols-3 gap-3">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700">CAP</label>
+                        <input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    </div>
+                     <div className="col-span-2">
+                        <label className="block text-sm font-medium text-slate-700">Città</label>
+                        <input type="text" value={city} onChange={e => setCity(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+                    </div>
+                </div>
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700">Provincia</label>
+                    <input type="text" value={province} onChange={e => setProvince(e.target.value)} required className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
                 </div>
             </div>
             <div className="mt-6 flex justify-end space-x-3">
@@ -124,18 +256,18 @@ const ParentForm: React.FC<{ parent?: Parent | null; onSave: (parent: ParentInpu
 
 
 const Clients: React.FC = () => {
-  const [parents, setParents] = useState<Parent[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedParent, setSelectedParent] = useState<Parent | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingParent, setEditingParent] = useState<Parent | null>(null);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
 
-  const fetchParents = useCallback(async () => {
+  const fetchClients = useCallback(async () => {
     try {
       setLoading(true);
-      const parentsData = await getParents();
-      setParents(parentsData);
+      const clientsData = await getClients();
+      setClients(clientsData);
       setError(null);
     } catch (err) {
       setError("Impossibile caricare i clienti.");
@@ -146,39 +278,39 @@ const Clients: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchParents();
-  }, [fetchParents]);
+    fetchClients();
+  }, [fetchClients]);
 
-  const handleOpenModal = (parent: Parent | null = null) => {
-    setEditingParent(parent);
+  const handleOpenModal = (client: Client | null = null) => {
+    setEditingClient(client);
     setIsModalOpen(true);
   };
 
   const handleCloseModal = () => {
-    setEditingParent(null);
+    setEditingClient(null);
     setIsModalOpen(false);
   };
 
-  const handleSaveParent = async (parentData: ParentInput | Parent) => {
+  const handleSaveClient = async (clientData: ClientInput | Client) => {
     try {
-      if ('id' in parentData) {
-        await updateParent(parentData.id, parentData);
+      if ('id' in clientData) {
+        await updateClient(clientData.id, clientData);
       } else {
-        await addParent(parentData);
+        await addClient(clientData);
       }
       handleCloseModal();
-      fetchParents();
+      fetchClients();
     } catch (err) {
       console.error("Errore nel salvataggio del cliente:", err);
       setError("Salvataggio fallito.");
     }
   };
 
-  const handleDeleteParent = async (id: string) => {
+  const handleDeleteClient = async (id: string) => {
     if (window.confirm("Sei sicuro di voler eliminare questo cliente?")) {
       try {
-        await deleteParent(id);
-        fetchParents();
+        await deleteClient(id);
+        fetchClients();
       } catch (err) {
         console.error("Errore nell'eliminazione del cliente:", err);
         setError("Eliminazione fallita.");
@@ -187,8 +319,8 @@ const Clients: React.FC = () => {
   };
 
 
-  if (selectedParent) {
-    return <ClientDetail parent={selectedParent} onBack={() => setSelectedParent(null)} />;
+  if (selectedClient) {
+    return <ClientDetail client={selectedClient} onBack={() => setSelectedClient(null)} />;
   }
 
   return (
@@ -196,7 +328,7 @@ const Clients: React.FC = () => {
         <div className="flex justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold text-slate-800">Clienti</h1>
-              <p className="mt-1 text-slate-500">Gestisci le anagrafiche di genitori e figli.</p>
+              <p className="mt-1 text-slate-500">Gestisci le anagrafiche di genitori e clienti istituzionali.</p>
             </div>
             <button onClick={() => handleOpenModal()} className="flex items-center bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-700 transition-colors">
                 <PlusIcon />
@@ -206,7 +338,7 @@ const Clients: React.FC = () => {
 
         {isModalOpen && (
             <Modal onClose={handleCloseModal}>
-                <ParentForm parent={editingParent} onSave={handleSaveParent} onCancel={handleCloseModal} />
+                <ClientForm client={editingClient} onSave={handleSaveClient} onCancel={handleCloseModal} />
             </Modal>
         )}
 
@@ -215,7 +347,7 @@ const Clients: React.FC = () => {
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <SearchIcon />
               </div>
-              <input type="text" placeholder="Cerca cliente per nome o email..." className="block w-full max-w-sm bg-slate-50 border border-slate-200 rounded-md py-2 pl-10 pr-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
+              <input type="text" placeholder="Cerca cliente..." className="block w-full max-w-sm bg-slate-50 border border-slate-200 rounded-md py-2 pl-10 pr-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"/>
           </div>
           <div className="overflow-x-auto">
             {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> : 
@@ -223,45 +355,53 @@ const Clients: React.FC = () => {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-200 text-sm text-slate-500">
-                  <th className="p-4">Nome</th>
+                  <th className="p-4">Nome / Ragione Sociale</th>
+                  <th className="p-4">Tipo</th>
                   <th className="p-4">Contatti</th>
-                  <th className="p-4">Figli Iscritti</th>
-                  <th className="p-4">Stato Iscrizioni</th>
+                  <th className="p-4">Stato</th>
                   <th className="p-4">Azioni</th>
                 </tr>
               </thead>
               <tbody>
-                {parents.map(parent => (
-                  <tr key={parent.id} className="border-b border-slate-100 hover:bg-slate-50">
+                {clients.map(client => (
+                  <tr key={client.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="p-4">
                       <div className="flex items-center">
-                        <img src={parent.avatarUrl} alt={parent.name} className="w-10 h-10 rounded-full mr-3"/>
-                        <span className="font-medium text-slate-800">{parent.name}</span>
+                        {client.clientType === ClientType.Parent && <img src={client.avatarUrl} alt={client.firstName} className="w-10 h-10 rounded-full mr-3"/>}
+                        <span className="font-medium text-slate-800">
+                            {client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}
+                        </span>
                       </div>
                     </td>
+                     <td className="p-4 text-sm">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${client.clientType === ClientType.Parent ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {client.clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}
+                        </span>
+                     </td>
                     <td className="p-4 text-sm text-slate-600">
-                      <div>{parent.email}</div>
-                      <div>{parent.phone}</div>
+                      <div>{client.email}</div>
+                      <div>{client.phone}</div>
                     </td>
-                    <td className="p-4 text-sm text-slate-600">{parent.children.length}</td>
                     <td className="p-4">
-                        <div className="flex items-center space-x-2">
-                           {parent.subscriptions.map(sub => (
-                             <span key={sub.id} className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(sub.status)}`}>
-                               {sub.packageName.substring(0,1)}
-                             </span>
-                           ))}
-                        </div>
+                        {client.clientType === ClientType.Parent && (
+                            <div className="flex items-center space-x-2">
+                               {client.subscriptions.map(sub => (
+                                 <span key={sub.id} className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusBadge(sub.status)}`}>
+                                   {sub.packageName.substring(0,1)}
+                                 </span>
+                               ))}
+                            </div>
+                        )}
                     </td>
                     <td className="p-4">
                         <div className="flex items-center space-x-4">
-                            <button onClick={() => setSelectedParent(parent)} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm">
+                            <button onClick={() => setSelectedClient(client)} className="text-indigo-600 hover:text-indigo-800 font-medium text-sm">
                                 Dettagli
                             </button>
-                            <button onClick={() => handleOpenModal(parent)} className="text-slate-500 hover:text-slate-700">
+                            <button onClick={() => handleOpenModal(client)} className="text-slate-500 hover:text-slate-700">
                                 <PencilIcon />
                             </button>
-                            <button onClick={() => handleDeleteParent(parent.id)} className="text-red-500 hover:text-red-700">
+                            <button onClick={() => handleDeleteClient(client.id)} className="text-red-500 hover:text-red-700">
                                 <TrashIcon />
                             </button>
                         </div>

@@ -1,39 +1,37 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
-import { Parent, ParentInput } from '../types';
+import { Client, ClientInput } from '../types';
 
-const parentCollectionRef = collection(db, 'parents');
+// La collezione su Firestore dovrebbe essere rinominata da 'parents' a 'clients'
+const clientCollectionRef = collection(db, 'clients');
 
-const docToParent = (doc: QueryDocumentSnapshot<DocumentData>): Parent => {
+const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
     const data = doc.data();
-    return {
-        id: doc.id,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
-        avatarUrl: data.avatarUrl,
-        children: data.children || [],
-        subscriptions: data.subscriptions || [],
-    };
+    // È necessario un cast perché Firestore non conosce i tipi unione di TypeScript.
+    // L'oggetto 'data' dovrebbe contenere il campo 'clientType' per la differenziazione.
+    return { id: doc.id, ...data } as Client;
 };
 
-export const getParents = async (): Promise<Parent[]> => {
-    const querySnapshot = await getDocs(parentCollectionRef);
-    return querySnapshot.docs.map(docToParent);
+export const getClients = async (): Promise<Client[]> => {
+    const querySnapshot = await getDocs(clientCollectionRef);
+    return querySnapshot.docs.map(docToClient);
 };
 
-export const addParent = async (parent: ParentInput): Promise<string> => {
-    const docRef = await addDoc(parentCollectionRef, parent);
+export const addClient = async (client: ClientInput): Promise<string> => {
+    const docRef = await addDoc(clientCollectionRef, client);
     return docRef.id;
 };
 
-export const updateParent = async (id: string, parent: Partial<ParentInput>): Promise<void> => {
-    const parentDoc = doc(db, 'parents', id);
-    await updateDoc(parentDoc, parent);
+export const updateClient = async (id: string, client: Partial<ClientInput>): Promise<void> => {
+    const clientDoc = doc(db, 'clients', id);
+    // Firestore non permette di passare 'undefined' nei dati di aggiornamento.
+    // Questa riga pulisce l'oggetto client da eventuali chiavi con valore undefined.
+    const updateData = Object.fromEntries(Object.entries(client).filter(([_, v]) => v !== undefined));
+    await updateDoc(clientDoc, updateData);
 };
 
-export const deleteParent = async (id: string): Promise<void> => {
-    const parentDoc = doc(db, 'parents', id);
-    await deleteDoc(parentDoc);
+export const deleteClient = async (id: string): Promise<void> => {
+    const clientDoc = doc(db, 'clients', id);
+    await deleteDoc(clientDoc);
 };
