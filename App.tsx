@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import Sidebar from './components/Sidebar';

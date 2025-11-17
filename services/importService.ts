@@ -19,7 +19,14 @@ const parseCSV = (content: string): { headers: string[], data: Record<string, st
     const lines = content.replace(/\r/g, '').split('\n').filter(line => line.trim() !== '');
     if (lines.length < 1) return { headers: [], data: [] };
 
-    // Regex per gestire correttamente i campi quotati che possono contenere virgole
+    // Auto-detect delimiter (comma vs semicolon)
+    const firstLine = lines[0];
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const delimiter = semicolonCount > commaCount ? ';' : ',';
+
+
+    // Regex per gestire correttamente i campi quotati che possono contenere il delimitatore
     const parseLine = (line: string) => {
         const values = [];
         let current = '';
@@ -27,7 +34,7 @@ const parseCSV = (content: string): { headers: string[], data: Record<string, st
         for (const char of line) {
             if (char === '"') {
                 inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
+            } else if (char === delimiter && !inQuotes) {
                 values.push(current.trim());
                 current = '';
             } else {

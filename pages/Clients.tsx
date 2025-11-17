@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
