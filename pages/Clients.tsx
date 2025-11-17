@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, ScheduledClass, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, Lesson, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
 import { getEnrollmentsForClient, addEnrollment } from '../services/enrollmentService';
 import { getSubscriptionTypes } from '../services/settingsService';
-import { getScheduledClasses } from '../services/calendarService';
+import { getLessons } from '../services/calendarService';
 import { addTransaction } from '../services/financeService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
@@ -25,10 +25,10 @@ const EnrollmentForm: React.FC<{
 }> = ({ parent, onSave, onCancel }) => {
     const [childId, setChildId] = useState('');
     const [subscriptionTypeId, setSubscriptionTypeId] = useState('');
-    const [scheduledClassId, setScheduledClassId] = useState('');
+    const [lessonId, setLessonId] = useState('');
 
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
-    const [scheduledClasses, setScheduledClasses] = useState<ScheduledClass[]>([]);
+    const [lessons, setLessons] = useState<Lesson[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -36,13 +36,13 @@ const EnrollmentForm: React.FC<{
             setLoading(true);
             const [subs, classes] = await Promise.all([
                 getSubscriptionTypes(),
-                getScheduledClasses()
+                getLessons()
             ]);
             setSubscriptionTypes(subs);
-            setScheduledClasses(classes);
+            setLessons(classes.filter(c => new Date(c.date) >= new Date()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
             if (parent.children.length > 0) setChildId(parent.children[0].id);
             if (subs.length > 0) setSubscriptionTypeId(subs[0].id);
-            if (classes.length > 0) setScheduledClassId(classes[0].id);
+            if (classes.length > 0) setLessonId(classes[0].id);
             setLoading(false);
         };
         fetchData();
@@ -65,7 +65,7 @@ const EnrollmentForm: React.FC<{
             childName: selectedChild.name,
             subscriptionTypeId,
             subscriptionName: selectedSub.name,
-            scheduledClassId,
+            lessonId,
             lessonsTotal: selectedSub.lessons,
             lessonsRemaining: selectedSub.lessons,
             startDate: startDate.toISOString(),
@@ -94,8 +94,8 @@ const EnrollmentForm: React.FC<{
                     <label htmlFor="sub-type" className="md-input-label !top-0 !text-xs !text-gray-500">Pacchetto Abbonamento</label>
                 </div>
                 <div className="md-input-group">
-                    <select id="class" value={scheduledClassId} onChange={e => setScheduledClassId(e.target.value)} required className="md-input">
-                       {scheduledClasses.map(c => <option key={c.id} value={c.id}>{c.dayOfWeek} {c.startTime}-{c.endTime} @ {c.locationName}</option>)}
+                    <select id="class" value={lessonId} onChange={e => setLessonId(e.target.value)} required className="md-input">
+                       {lessons.map(c => <option key={c.id} value={c.id}>{new Date(c.date).toLocaleDateString()} {c.startTime}-{c.endTime} @ {c.locationName}</option>)}
                     </select>
                     <label htmlFor="class" className="md-input-label !top-0 !text-xs !text-gray-500">Lezione</label>
                 </div>

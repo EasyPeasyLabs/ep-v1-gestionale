@@ -18,7 +18,7 @@ export interface Enrollment {
   childName: string; // Denormalizzato per una visualizzazione più semplice
   subscriptionTypeId: string;
   subscriptionName: string; // Denormalizzato
-  scheduledClassId: string;
+  lessonId: string;
   lessonsTotal: number;
   lessonsRemaining: number;
   startDate: string; // ISO String
@@ -103,9 +103,9 @@ export interface SubscriptionType {
     durationInDays: number; // Es. 30 per mensile, 90 per trimestrale
 }
 
-export interface ScheduledClass {
+export interface Lesson {
     id: string;
-    dayOfWeek: 'Lunedì' | 'Martedì' | 'Mercoledì' | 'Giovedì' | 'Venerdì' | 'Sabato' | 'Domenica';
+    date: string; // ISO String
     startTime: string; // Formato HH:mm
     endTime: string; // Formato HH:mm
     supplierId: string;
@@ -214,7 +214,7 @@ export type ClientInput = ParentClientInput | InstitutionalClientInput;
 export type SupplierInput = Omit<Supplier, 'id'>;
 export type LocationInput = Omit<Location, 'id'>;
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
-export type ScheduledClassInput = Omit<ScheduledClass, 'id'>;
+export type LessonInput = Omit<Lesson, 'id'>;
 export type EnrollmentInput = Omit<Enrollment, 'id'>;
 
 export type TransactionInput = Omit<Transaction, 'id'>;

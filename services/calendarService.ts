@@ -1,30 +1,40 @@
+
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
-import { ScheduledClass, ScheduledClassInput } from '../types';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch } from 'firebase/firestore';
+import { Lesson, LessonInput } from '../types';
 
-const classCollectionRef = collection(db, 'scheduledClasses');
+const lessonCollectionRef = collection(db, 'lessons');
 
-const docToClass = (doc: QueryDocumentSnapshot<DocumentData>): ScheduledClass => {
+const docToLesson = (doc: QueryDocumentSnapshot<DocumentData>): Lesson => {
     const data = doc.data();
-    return { id: doc.id, ...data } as ScheduledClass;
+    return { id: doc.id, ...data } as Lesson;
 };
 
-export const getScheduledClasses = async (): Promise<ScheduledClass[]> => {
-    const snapshot = await getDocs(classCollectionRef);
-    return snapshot.docs.map(docToClass);
+export const getLessons = async (): Promise<Lesson[]> => {
+    const snapshot = await getDocs(lessonCollectionRef);
+    return snapshot.docs.map(docToLesson);
 };
 
-export const addScheduledClass = async (classItem: ScheduledClassInput): Promise<string> => {
-    const docRef = await addDoc(classCollectionRef, classItem);
+export const addLesson = async (lessonItem: LessonInput): Promise<string> => {
+    const docRef = await addDoc(lessonCollectionRef, lessonItem);
     return docRef.id;
 };
 
-export const updateScheduledClass = async (id: string, classItem: Partial<ScheduledClassInput>): Promise<void> => {
-    const classDoc = doc(db, 'scheduledClasses', id);
-    await updateDoc(classDoc, classItem);
+export const addLessonsBatch = async (lessons: LessonInput[]): Promise<void> => {
+    const batch = writeBatch(db);
+    lessons.forEach(lesson => {
+        const lessonRef = doc(lessonCollectionRef);
+        batch.set(lessonRef, lesson);
+    });
+    await batch.commit();
 };
 
-export const deleteScheduledClass = async (id: string): Promise<void> => {
-    const classDoc = doc(db, 'scheduledClasses', id);
-    await deleteDoc(classDoc);
+export const updateLesson = async (id: string, lessonItem: Partial<LessonInput>): Promise<void> => {
+    const lessonDoc = doc(db, 'lessons', id);
+    await updateDoc(lessonDoc, lessonItem);
+};
+
+export const deleteLesson = async (id: string): Promise<void> => {
+    const lessonDoc = doc(db, 'lessons', id);
+    await deleteDoc(lessonDoc);
 };

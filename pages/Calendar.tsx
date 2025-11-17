@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { ScheduledClass, ScheduledClassInput, Supplier } from '../types';
-import { getScheduledClasses, addScheduledClass, updateScheduledClass, deleteScheduledClass } from '../services/calendarService';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Lesson, LessonInput, Supplier } from '../types';
+import { getLessons, addLesson, updateLesson, deleteLesson, addLessonsBatch } from '../services/calendarService';
 import { getSuppliers } from '../services/supplierService';
 import Modal from '../components/Modal';
 import Spinner from '../components/Spinner';
@@ -9,19 +9,25 @@ import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 
-const ClassForm: React.FC<{
-    classItem?: ScheduledClass | null;
-    onSave: (item: ScheduledClassInput | ScheduledClass) => void;
+const LessonForm: React.FC<{
+    lesson?: Lesson | null;
+    selectedDate?: Date | null;
+    onSave: (item: LessonInput | Lesson, isRecurring: boolean, recurringEndDate?: string, recurringDays?: number[]) => void;
     onCancel: () => void;
-}> = ({ classItem, onSave, onCancel }) => {
-    const [dayOfWeek, setDayOfWeek] = useState(classItem?.dayOfWeek || 'Lunedì');
-    const [startTime, setStartTime] = useState(classItem?.startTime || '09:00');
-    const [endTime, setEndTime] = useState(classItem?.endTime || '10:00');
-    const [supplierId, setSupplierId] = useState(classItem?.supplierId || '');
-    const [locationId, setLocationId] = useState(classItem?.locationId || '');
+}> = ({ lesson, selectedDate, onSave, onCancel }) => {
+    const [date, setDate] = useState(lesson?.date.split('T')[0] || selectedDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]);
+    const [startTime, setStartTime] = useState(lesson?.startTime || '09:00');
+    const [endTime, setEndTime] = useState(lesson?.endTime || '10:00');
+    const [supplierId, setSupplierId] = useState(lesson?.supplierId || '');
+    const [locationId, setLocationId] = useState(lesson?.locationId || '');
     
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
+
+    // Recurring state
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [recurringEndDate, setRecurringEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [recurringDays, setRecurringDays] = useState<number[]>([]);
 
     const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
@@ -30,8 +36,7 @@ const ClassForm: React.FC<{
             setLoading(true);
             const data = await getSuppliers();
             setSuppliers(data);
-            // Se si sta creando una nuova lezione, imposta un fornitore e una sede di default
-            if (!classItem?.id && data.length > 0) {
+            if (!lesson?.id && data.length > 0) {
                 const firstSupplier = data[0];
                 setSupplierId(firstSupplier.id);
                 if (firstSupplier.locations.length > 0) {
@@ -41,62 +46,89 @@ const ClassForm: React.FC<{
             setLoading(false);
         };
         fetchSuppliersData();
-    }, [classItem]); // Si esegue quando il componente si monta o quando classItem cambia
+    }, [lesson]);
 
     const handleSupplierChange = (newSupplierId: string) => {
         setSupplierId(newSupplierId);
         const newSupplier = suppliers.find(s => s.id === newSupplierId);
-        // Seleziona automaticamente la prima sede del nuovo fornitore
-        if (newSupplier && newSupplier.locations.length > 0) {
-            setLocationId(newSupplier.locations[0].id);
-        } else {
-            setLocationId('');
-        }
+        setLocationId(newSupplier?.locations[0]?.id || '');
+    };
+
+    const handleRecurringDayChange = (dayIndex: number) => {
+        setRecurringDays(prev => 
+            prev.includes(dayIndex) ? prev.filter(d => d !== dayIndex) : [...prev, dayIndex]
+        );
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const supplier = suppliers.find(s => s.id === supplierId);
         const location = supplier?.locations.find(l => l.id === locationId);
-        if (!supplier || !location) return; // Blocco di sicurezza, non dovrebbe più accadere
+        if (!supplier || !location) return;
 
-        const classData = {
-            dayOfWeek: dayOfWeek as ScheduledClass['dayOfWeek'], startTime, endTime, supplierId, locationId,
+        const lessonData: LessonInput = {
+            date: new Date(date).toISOString(), startTime, endTime, supplierId, locationId,
             supplierName: supplier.companyName, locationName: location.name, locationColor: location.color,
         };
 
-        if (classItem?.id) { onSave({ ...classData, id: classItem.id }); } 
-        else { onSave(classData); }
+        if (lesson?.id) {
+            onSave({ ...lessonData, id: lesson.id }, false);
+        } else {
+            onSave(lessonData, isRecurring, recurringEndDate, recurringDays);
+        }
     };
 
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
     
     return (
         <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-bold mb-4">{classItem ? 'Modifica Lezione' : 'Nuova Lezione'}</h2>
-            <div className="space-y-4">
-                 <div className="md-input-group">
-                    <select id="day" value={dayOfWeek} onChange={e => setDayOfWeek(e.target.value as ScheduledClass['dayOfWeek'])} className="md-input">
-                        {['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'].map(day => <option key={day} value={day}>{day}</option>)}
-                    </select>
-                    <label htmlFor="day" className="md-input-label !top-0 !text-xs !text-gray-500">Giorno</label>
-                </div>
-                 <div className="grid grid-cols-2 gap-4">
+            <h2 className="text-xl font-bold mb-4">{lesson ? 'Modifica Lezione' : 'Nuova Lezione'}</h2>
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                <div className="md-input-group"><input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required className="md-input"/><label htmlFor="date" className="md-input-label !top-0 !text-xs !text-gray-500">Data</label></div>
+                <div className="grid grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="md-input"/><label htmlFor="start" className="md-input-label !top-0 !text-xs !text-gray-500">Orario Inizio</label></div>
                     <div className="md-input-group"><input id="end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="end" className="md-input-label !top-0 !text-xs !text-gray-500">Orario Fine</label></div>
                 </div>
-                 <div className="md-input-group">
+                <div className="md-input-group">
                     <select id="supplier" value={supplierId} onChange={e => handleSupplierChange(e.target.value)} required className="md-input">
+                        <option value="" disabled>Seleziona un fornitore</option>
                         {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.companyName}</option>)}
                     </select>
                     <label htmlFor="supplier" className="md-input-label !top-0 !text-xs !text-gray-500">Fornitore</label>
                 </div>
-                 <div className="md-input-group">
+                <div className="md-input-group">
                     <select id="location" value={locationId} onChange={e => setLocationId(e.target.value)} required disabled={!selectedSupplier || selectedSupplier.locations.length === 0} className="md-input">
-                       {selectedSupplier?.locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name} ({loc.city})</option>)}
+                        <option value="" disabled>Seleziona una sede</option>
+                        {selectedSupplier?.locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name} ({loc.city})</option>)}
                     </select>
                     <label htmlFor="location" className="md-input-label !top-0 !text-xs !text-gray-500">Sede</label>
                 </div>
+
+                {!lesson && (
+                    <div className="pt-4 border-t" style={{ borderColor: 'var(--md-divider)'}}>
+                        <label className="flex items-center space-x-2">
+                            <input type="checkbox" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"/>
+                            <span className="font-medium">Ripeti questa lezione</span>
+                        </label>
+                        {isRecurring && (
+                            <div className="mt-4 space-y-4 animate-fade-in">
+                                <p className="text-sm" style={{color: 'var(--md-text-secondary)'}}>Crea lezioni multiple fino alla data di fine nei giorni selezionati.</p>
+                                <div className="md-input-group">
+                                    <input id="endDate" type="date" value={recurringEndDate} onChange={e => setRecurringEndDate(e.target.value)} required className="md-input"/>
+                                    <label htmlFor="endDate" className="md-input-label !top-0 !text-xs !text-gray-500">Data di fine</label>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'].map((day, index) => (
+                                        <button type="button" key={day} onClick={() => handleRecurringDayChange(index)}
+                                            className={`px-3 py-1 text-sm rounded-full border transition-colors ${recurringDays.includes(index) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-100'}`}>
+                                            {day}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
             <div className="mt-6 flex justify-end space-x-3">
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
@@ -108,44 +140,93 @@ const ClassForm: React.FC<{
 
 
 const Calendar: React.FC = () => {
-    const [classes, setClasses] = useState<ScheduledClass[]>([]);
+    const [lessons, setLessons] = useState<Lesson[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingClass, setEditingClass] = useState<ScheduledClass | null>(null);
+    const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [currentDate, setCurrentDate] = useState(new Date());
 
-    const daysOfWeek: ScheduledClass['dayOfWeek'][] = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
-
-    const fetchClasses = useCallback(async () => {
+    const fetchLessons = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await getScheduledClasses(); setClasses(data);
+            const data = await getLessons(); 
+            setLessons(data);
         } catch (err) {
             setError("Impossibile caricare il calendario."); console.error(err);
         } finally { setLoading(false); }
     }, []);
 
-    useEffect(() => { fetchClasses(); }, [fetchClasses]);
+    useEffect(() => { fetchLessons(); }, [fetchLessons]);
     
-    const handleOpenModal = (item: ScheduledClass | null = null) => { setEditingClass(item); setIsModalOpen(true); };
+    const handleOpenModal = (item: Lesson | null = null, date: Date | null = null) => { 
+        setEditingLesson(item);
+        setSelectedDate(date);
+        setIsModalOpen(true); 
+    };
 
-    const handleSaveClass = async (item: ScheduledClassInput | ScheduledClass) => {
-        if ('id' in item) { await updateScheduledClass(item.id, item); } 
-        else { await addScheduledClass(item); }
-        setIsModalOpen(false); setEditingClass(null); fetchClasses();
+    const handleSaveLesson = async (item: LessonInput | Lesson, isRecurring: boolean, recurringEndDate?: string, recurringDays?: number[]) => {
+        if (isRecurring && !('id' in item) && recurringEndDate && recurringDays?.length) {
+            const lessonsToCreate: LessonInput[] = [];
+            let currentDate = new Date(item.date);
+            const endDate = new Date(recurringEndDate);
+            endDate.setHours(23, 59, 59, 999); // Include the end date
+
+            while (currentDate <= endDate) {
+                if (recurringDays.includes(currentDate.getDay())) {
+                    lessonsToCreate.push({ ...item, date: currentDate.toISOString() });
+                }
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            if (lessonsToCreate.length > 0) {
+                await addLessonsBatch(lessonsToCreate);
+            }
+        } else if ('id' in item) { 
+            await updateLesson(item.id, item); 
+        } else { 
+            await addLesson(item); 
+        }
+        setIsModalOpen(false); setEditingLesson(null); fetchLessons();
     };
     
-    const handleDeleteClass = async (id: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questa lezione programmata?")) {
-            await deleteScheduledClass(id); fetchClasses();
+    const handleDeleteLesson = async (id: string) => {
+        if (window.confirm("Sei sicuro di voler eliminare questa lezione?")) {
+            await deleteLesson(id); 
+            fetchLessons();
+            setIsModalOpen(false);
+            setEditingLesson(null);
         }
     };
 
+    const { monthGrid, daysOfWeek } = useMemo(() => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0=Sun, 1=Mon...
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        // Adjust for Sunday being 0, we want Monday to be the start
+        const startDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
+
+        const grid: (Date | null)[] = Array(startDayIndex).fill(null);
+        for (let day = 1; day <= daysInMonth; day++) {
+            grid.push(new Date(year, month, day));
+        }
+        return {
+            monthGrid: grid,
+            daysOfWeek: ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
+        };
+    }, [currentDate]);
+
     const getTextColorForBg = (bgColor?: string) => {
-        if (!bgColor) return '#212121'; // --md-text-primary
+        if (!bgColor) return '#212121';
         const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
         const r = parseInt(color.substring(0, 2), 16), g = parseInt(color.substring(2, 4), 16), b = parseInt(color.substring(4, 6), 16);
         return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#212121' : '#ffffff';
+    };
+
+    const changeMonth = (delta: number) => {
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
     };
 
     return (
@@ -153,45 +234,57 @@ const Calendar: React.FC = () => {
             <div className="flex flex-wrap gap-4 justify-between items-center">
                 <div>
                   <h1 className="text-3xl font-bold">Calendario Lezioni</h1>
-                  <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Programma le lezioni settimanali.</p>
+                  <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Pianifica le lezioni a breve e lungo termine.</p>
                 </div>
-                <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
+                <button onClick={() => handleOpenModal(null, new Date())} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon /><span className="ml-2">Nuova Lezione</span>
                 </button>
             </div>
             
-            <div className="mt-8">
+            <div className="mt-8 md-card p-4 md:p-6">
+                <div className="flex justify-between items-center mb-4">
+                    <button onClick={() => changeMonth(-1)} className="md-icon-btn" aria-label="Mese precedente">&lt;</button>
+                    <h2 className="text-xl font-bold capitalize">{currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}</h2>
+                    <button onClick={() => changeMonth(1)} className="md-icon-btn" aria-label="Mese successivo">&gt;</button>
+                </div>
+
                  {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
                  error ? <p className="text-center text-red-500 py-8">{error}</p> :
-                 <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-7 md:gap-4">
-                    {daysOfWeek.map(day => (
-                        <div key={day} className="bg-white p-4 rounded-lg shadow-md min-h-[200px]" style={{backgroundColor: 'var(--md-bg-card)'}}>
-                            <h2 className="text-center font-bold border-b pb-2 mb-4" style={{color: 'var(--md-primary)', borderColor: 'var(--md-divider)'}}>{day}</h2>
-                            <div className="space-y-3">
-                                {classes.filter(c => c.dayOfWeek === day).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(item => {
-                                    const textColor = getTextColorForBg(item.locationColor);
-                                    return (
-                                    <div key={item.id} className="p-3 rounded-lg relative group shadow-sm" style={{ backgroundColor: item.locationColor || '#f1f5f9' }}>
-                                        <p className="font-semibold text-sm" style={{ color: textColor }}>{item.startTime} - {item.endTime}</p>
-                                        <p className="text-xs mt-1" style={{ color: textColor, opacity: 0.9 }}>{item.locationName}</p>
-                                        <p className="text-xs" style={{ color: textColor, opacity: 0.7 }}>{item.supplierName}</p>
-                                        <div className="absolute top-1 right-1 flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => handleOpenModal(item)} className="p-1 rounded-full bg-white/50 hover:bg-white md-icon-btn edit" aria-label="Modifica lezione"><PencilIcon/></button>
-                                            <button onClick={() => handleDeleteClass(item.id)} className="p-1 rounded-full bg-white/50 hover:bg-white md-icon-btn delete" aria-label="Elimina lezione"><TrashIcon/></button>
-                                        </div>
-                                    </div>
-                                    );
+                 <div className="grid grid-cols-7 gap-1">
+                     {daysOfWeek.map(day => <div key={day} className="text-center font-bold text-sm hidden md:block p-2" style={{color: 'var(--md-text-secondary)'}}>{day}</div>)}
+                     {monthGrid.map((day, index) => (
+                        <div key={index} 
+                             className={`border min-h-[120px] p-1.5 overflow-hidden flex flex-col ${day ? 'bg-white hover:bg-gray-50 cursor-pointer' : 'bg-gray-50'}`}
+                             style={{borderColor: 'var(--md-divider)'}}
+                             onClick={() => day && handleOpenModal(null, day)}>
+                             {day && (
+                                <span className={`font-semibold text-xs ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>
+                             )}
+                             <div className="mt-1 space-y-1 overflow-y-auto flex-1">
+                                {day && lessons
+                                    .filter(l => new Date(l.date).toDateString() === day.toDateString())
+                                    .sort((a,b) => a.startTime.localeCompare(b.startTime))
+                                    .map(item => {
+                                        const textColor = getTextColorForBg(item.locationColor);
+                                        return (
+                                            <div key={item.id}
+                                                 className="p-1 rounded text-[10px] leading-tight shadow-sm"
+                                                 style={{ backgroundColor: item.locationColor || '#f1f5f9', color: textColor }}
+                                                 onClick={(e) => { e.stopPropagation(); handleOpenModal(item, day); }}>
+                                                 <p className="font-bold truncate">{item.startTime} - {item.locationName}</p>
+                                            </div>
+                                        )
                                 })}
-                            </div>
+                             </div>
                         </div>
-                    ))}
+                     ))}
                  </div>
                  }
             </div>
 
             {isModalOpen && (
                 <Modal onClose={() => setIsModalOpen(false)}>
-                    <ClassForm classItem={editingClass} onSave={handleSaveClass} onCancel={() => setIsModalOpen(false)} />
+                    <LessonForm lesson={editingLesson} selectedDate={selectedDate} onSave={handleSaveLesson} onCancel={() => {setIsModalOpen(false); setEditingLesson(null);}} />
                 </Modal>
             )}
         </div>
