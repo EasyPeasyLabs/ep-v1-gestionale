@@ -1,3 +1,4 @@
+
 # Cronologia del Progetto "EP v.1"
 
 Questo file documenta la cronologia delle interazioni, delle richieste e delle modifiche apportate all'applicazione, sessione per sessione.
@@ -71,7 +72,9 @@ Rendere l'applicazione completamente responsiva e ottimizzata per dispositivi mo
 
 ### Stato del Progetto alla Fine della Sessione
 L'applicazione è ora *fully responsive*, offrendo un'esperienza utente coerente e funzionale su desktop, tablet e smartphone. La struttura del codice è stata rafforzata per essere più chiara e manutenibile, in linea con le best practice di sviluppo frontend.
+
 ---
+
 ## Sessione 3 (27 Maggio 2024)
 
 ### Obiettivo della Sessione
@@ -115,3 +118,26 @@ Evolvere il Calendario da uno strumento di visualizzazione settimanale a un sist
 
 ### Stato del Progetto alla Fine della Sessione
 Il Calendario è stato trasformato da una semplice tabella di marcia a un vero e proprio strumento di pianificazione strategica, in grado di gestire facilmente la programmazione a lungo termine richiesta dall'attività. L'applicazione è ora molto più potente e allineata alle esigenze di business di livello enterprise.
+
+---
+
+## Sessione 5 (29 Maggio 2024)
+
+### Obiettivo della Sessione
+Perfezionare la gestione finanziaria automatizzando il flusso Fatture-Transazioni e migliorando la visualizzazione dei dati economici.
+
+### Riepilogo delle Attività
+
+1.  **Richiesta Utente**: L'utente ha richiesto che le fatture in stato "Pagato" generassero automaticamente il relativo movimento economico nelle transazioni. Successivamente, ha segnalato un problema di duplicazione dei movimenti in caso di modifiche multiple allo stato della fattura. Infine, ha chiesto di aggiungere nuovi grafici per la ripartizione di ricavi e costi con visualizzazione delle percentuali.
+
+2.  **Implementazione delle Modifiche**:
+    - **Automazione Finanziaria**: È stata implementata una logica automatica in `Finance.tsx`. Quando una fattura viene salvata o aggiornata allo stato "Pagato", il sistema genera una transazione di entrata corrispondente.
+    - **Integrità dei Dati (Anti-Duplicazione)**: Per risolvere il problema dei duplicati, è stato introdotto un meccanismo rigoroso: prima di creare una nuova transazione automatica per una fattura pagata, il sistema rimuove *sempre* eventuali transazioni precedenti collegate allo stesso ID documento. Questo garantisce una relazione 1-a-1 pulita.
+    - **Nuovi Grafici**: 
+        - È stato aggiunto un grafico a ciambella "Ripartizione Ricavi" per visualizzare le fonti di entrata (Vendite vs Altre).
+        - I tooltip dei grafici sono stati potenziati per calcolare e mostrare dinamicamente la percentuale di incidenza di ogni voce (Ricavi e Costi) rispetto al totale.
+    - **Layout Finanza**: La dashboard della sezione Finanza è stata riorganizzata. La scheda "Proiezione Fiscale" è ora a tutta larghezza per maggiore chiarezza, con i due grafici di ripartizione affiancati sotto di essa.
+    - **Backend**: Aggiornato `financeService.ts` per restituire il numero di fattura generato alla creazione, permettendo di inserirlo immediatamente nella descrizione della transazione automatica.
+
+### Stato del Progetto alla Fine della Sessione
+La sezione Finanza è ora molto più robusta e informativa. L'automazione riduce il carico di lavoro manuale per l'utente e previene errori di immissione dati, mentre i nuovi grafici offrono una visione immediata della salute economica dell'attività.

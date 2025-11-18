@@ -1,3 +1,4 @@
+
 # Architettura dell'Applicazione "EP v.1"
 
 Questo documento descrive l'architettura software, le scelte tecnologiche e il modello dei dati dell'applicazione gestionale "EP v.1".
@@ -58,7 +59,8 @@ Il database NoSQL Firestore è strutturato in collection di documenti.
 - `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
 - `lessons`: Sostituisce la vecchia collection `scheduledClasses`. Contiene ogni singola lezione come un evento datato (con un campo `date` invece di `dayOfWeek`), permettendo una pianificazione flessibile. Utilizza dati denormalizzati (es. `supplierName`, `locationName`) per semplificare le query di lettura.
 - `enrollments`: Collection che lega un `clientId` e un `childId` a un `subscriptionTypeId` e a un `lessonId`, rappresentando l'associazione di un allievo a una lezione specifica e datata.
-- `transactions`: Collection per tutte le transazioni finanziarie (entrate e uscite).
+- `transactions`: Collection per tutte le transazioni finanziarie (entrate e uscite). Include un campo `relatedDocumentId` per collegare la transazione alla fattura o iscrizione che l'ha generata.
+- `invoices` & `quotes`: Collection per i documenti fiscali.
 
 ### 4.2. Firebase Authentication
 
@@ -71,12 +73,16 @@ L'applicazione è suddivisa logicamente nei seguenti moduli, che corrispondono a
 - **Dashboard**: Fornisce una vista d'insieme con statistiche chiave.
 - **Clienti**: Gestione CRUD completa dei clienti (genitori e istituzionali), inclusa la gestione dei figli e delle iscrizioni.
 - **Fornitori**: Gestione CRUD completa dei fornitori e delle loro sedi operative.
-- **Calendario**: Potente strumento di pianificazione con una vista di calendario mensile interattiva. Supporta la creazione di lezioni singole in date specifiche e la generazione automatica di lezioni ricorrenti (es. "ogni lunedì e mercoledì fino a fine anno"), offrendo piena flessibilità per la programmazione a lungo termine.
-- **Finanza**: Tracciamento delle transazioni, calcolo delle proiezioni fiscali e visualizzazione di grafici finanziari.
+- **Calendario**: Potente strumento di pianificazione con una vista di calendario mensile interattiva. Supporta la creazione di lezioni singole in date specifiche e la generazione automatica di lezioni ricorrenti.
+- **Finanza**: 
+    - Tracciamento completo di entrate e uscite.
+    - **Automazione**: Le fatture in stato "Pagato" generano automaticamente (o aggiornano) una transazione di entrata corrispondente, mantenendo una relazione 1-a-1 rigorosa per evitare duplicati.
+    - **Visualizzazione**: Dashboard finanziaria con grafici a barre (mensile), grafici a ciambella (ripartizione costi e ricavi con percentuali) e proiezioni fiscali per regime forfettario.
+    - **Documenti**: Gestione fatture e preventivi con generazione PDF.
 - **Impostazioni**: Configurazione dei dati aziendali e del listino prezzi (pacchetti abbonamento).
-- **Importazione Dati**: Funzionalità per l'import di massa di clienti e fornitori da file Excel, con logica di update basata su una chiave unica (email/ragione sociale).
+- **Importazione Dati**: Funzionalità per l'import di massa di clienti e fornitori da file Excel.
 
 ## 6. Sicurezza
 
-- **Regole di Firestore**: (Da implementare) Le regole di sicurezza di Firestore verranno configurate per garantire che solo gli utenti autenticati possano leggere e scrivere i dati. Si potranno definire regole più granulari per limitare l'accesso a specifici documenti o collection in base al ruolo dell'utente.
+- **Regole di Firestore**: Le regole di sicurezza di Firestore verranno configurate per garantire che solo gli utenti autenticati possano leggere e scrivere i dati.
 - **Autenticazione**: L'accesso all'intera applicazione è protetto da login.
