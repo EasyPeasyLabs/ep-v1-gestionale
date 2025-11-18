@@ -51,6 +51,7 @@ const Settings: React.FC = () => {
     const [info, setInfo] = useState<CompanyInfo | null>(null);
     const [subscriptions, setSubscriptions] = useState<SubscriptionType[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isSubModalOpen, setIsSubModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<SubscriptionType | null>(null);
@@ -71,11 +72,14 @@ const Settings: React.FC = () => {
     const handleSaveInfo = async () => {
         if (info) {
             try {
+                setIsSaving(true);
                 await updateCompanyInfo(info); 
                 alert("Dati aziendali salvati con successo!");
             } catch (err) {
                 console.error(err);
                 alert("Errore durante il salvataggio.");
+            } finally {
+                setIsSaving(false);
             }
         }
     };
@@ -126,13 +130,15 @@ const Settings: React.FC = () => {
                 {info && (
                     <div className="mt-4 space-y-4">
                         <div className="md-input-group"><input id="infoDenom" type="text" value={info.denomination || ''} onChange={(e) => handleInfoChange('denomination', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoDenom" className="md-input-label">Denominazione</label></div>
-                        <div className="md-input-group"><input id="infoName" type="text" value={info.name} onChange={(e) => handleInfoChange('name', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
-                        <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber} onChange={(e) => handleInfoChange('vatNumber', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA</label></div>
-                        <div className="md-input-group"><input id="infoAddr" type="text" value={info.address} onChange={(e) => handleInfoChange('address', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoAddr" className="md-input-label">Indirizzo</label></div>
-                        <div className="md-input-group"><input id="infoEmail" type="email" value={info.email} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
-                        <div className="md-input-group"><input id="infoPhone" type="text" value={info.phone} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
+                        <div className="md-input-group"><input id="infoName" type="text" value={info.name || ''} onChange={(e) => handleInfoChange('name', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
+                        <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber || ''} onChange={(e) => handleInfoChange('vatNumber', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA</label></div>
+                        <div className="md-input-group"><input id="infoAddr" type="text" value={info.address || ''} onChange={(e) => handleInfoChange('address', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoAddr" className="md-input-label">Indirizzo</label></div>
+                        <div className="md-input-group"><input id="infoEmail" type="email" value={info.email || ''} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
+                        <div className="md-input-group"><input id="infoPhone" type="text" value={info.phone || ''} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
                         <div className="pt-4 flex justify-end">
-                            <button onClick={handleSaveInfo} className="md-btn md-btn-raised md-btn-green">Salva Modifiche</button>
+                            <button onClick={handleSaveInfo} disabled={isSaving} className="md-btn md-btn-raised md-btn-green">
+                                {isSaving ? <Spinner /> : 'Salva Modifiche'}
+                            </button>
                         </div>
                     </div>
                 )}

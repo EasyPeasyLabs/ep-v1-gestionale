@@ -430,8 +430,43 @@ const Finance: React.FC = () => {
     const handleSaveDocument = async (data: InvoiceInput | QuoteInput) => {
         try {
             if (docType === 'invoice') {
-                if ('id' in data) await updateInvoice((data as any).id, data as InvoiceInput);
-                else await addInvoice(data as InvoiceInput);
+                const invData = data as InvoiceInput;
+                let savedId = '';
+                let finalInvoiceNumber = invData.invoiceNumber;
+
+                const isPaidNow = invData.status === DocumentStatus.Paid;
+                const isUpdate = 'id' in invData;
+
+                if (isUpdate) {
+                    savedId = (invData as any).id;
+                    await updateInvoice(savedId, invData);
+                } else {
+                    const result = await addInvoice(invData);
+                    savedId = result.id;
+                    finalInvoiceNumber = result.invoiceNumber;
+                }
+
+                // Logica Transazioni Robusta: Pulisci sempre prima per garantire unicità
+                // 1. Se aggiorniamo una fattura, rimuoviamo eventuali transazioni collegate esistenti.
+                // 2. Se creiamo una nuova fattura (isUpdate = false), in teoria non ce ne sono, ma delete è safe.
+                // Per sicurezza, facciamolo se è un update.
+                if (isUpdate) {
+                    await deleteTransactionByRelatedId(savedId);
+                }
+
+                // 2. Se lo stato finale è "Pagato", creiamo la transazione corretta.
+                // Questo approccio (cancella e ricrea se pagato) evita duplicati e mantiene i dati allineati.
+                if (isPaidNow) {
+                    await addTransaction({
+                        date: new Date().toISOString(), 
+                        description: `Incasso Fattura ${finalInvoiceNumber || 'PROFORMA'} - ${invData.clientName}`,
+                        amount: invData.totalAmount,
+                        type: TransactionType.Income,
+                        category: TransactionCategory.Sales,
+                        paymentMethod: invData.paymentMethod || PaymentMethod.BankTransfer,
+                        relatedDocumentId: savedId
+                    });
+                }
                 
                 // Handle Quote conversion status update
                 if (quoteToConvertId) {
@@ -445,7 +480,7 @@ const Finance: React.FC = () => {
             }
             handleCloseDocModal();
             await fetchAllData();
-            // Dispatch global event to update notifications (e.g. if an overdue invoice was edited)
+            // Dispatch global event to update notifications
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
             console.error(e);
@@ -470,7 +505,7 @@ const Finance: React.FC = () => {
             invoiceNumber: '', // Will be generated
             hasStampDuty: quote.hasStampDuty,
             notes: quote.notes || '',
-            relatedQuoteNumber: quote.quoteNumber // Aggiunto riferimento al preventivo
+            relatedQuoteNumber: quote.quoteNumber
         };
         // Open modal as Invoice with this data
         setDocType('invoice');
@@ -495,8 +530,17 @@ const Finance: React.FC = () => {
             const invoice = invoices.find(i => i.id === id);
             
             if (invoice) {
-                // Logica A: Transazione automatica se stato passa a "Pagato"
-                if (status === DocumentStatus.Paid && invoice.status !== DocumentStatus.Paid) {
+                // Logica Robusta per Transazioni:
+                // 1. Tentiamo sempre di rimuovere eventuali transazioni esistenti collegate a questa fattura.
+                // Questo garantisce che non ci siano mai duplicati, indipendentemente dallo stato precedente.
+                try {
+                    await deleteTransactionByRelatedId(id);
+                } catch (e) {
+                    console.error("Errore nella pulizia delle transazioni precedenti:", e);
+                }
+
+                // 2. Se il nuovo stato è "Pagato", creiamo la transazione.
+                if (status === DocumentStatus.Paid) {
                     try {
                         await addTransaction({
                             date: new Date().toISOString(),
@@ -512,22 +556,12 @@ const Finance: React.FC = () => {
                         alert("Attenzione: Stato aggiornato ma errore nella creazione della transazione automatica.");
                     }
                 }
-                // Logica B: Storno se stato passa da "Pagato" a "Annullato"
-                else if (status === DocumentStatus.Cancelled && invoice.status === DocumentStatus.Paid) {
-                    try {
-                        // Cerca ed elimina la transazione creata precedentemente
-                        await deleteTransactionByRelatedId(invoice.id);
-                        console.log("Transazione relativa alla fattura annullata rimossa con successo.");
-                    } catch (e) {
-                        console.error("Errore storno transazione", e);
-                        alert("Attenzione: Stato aggiornato ma errore nello storno della transazione.");
-                    }
-                }
+                // Se lo stato non è "Pagato", la transazione è stata rimossa al punto 1 e non ne viene creata una nuova.
             }
 
              setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status } : inv));
              await updateInvoiceStatus(id, status);
-             // Trigger notification update (e.g. Paid removes Overdue notification)
+             // Trigger notification update
              window.dispatchEvent(new Event('EP_DataUpdated'));
         } else {
              setQuotes(prev => prev.map(q => q.id === id ? { ...q, status } : q));

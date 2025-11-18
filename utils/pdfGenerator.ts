@@ -57,7 +57,7 @@ export const generateDocumentPDF = async (
     try {
         const logoBase64 = await loadImage('./lemon_logo_150px.png');
         if (logoBase64) {
-            // x=14, y=10, width=25, height=33
+            // x=14, y=10, width=25, height=33 (Richiesta Utente)
             docPdf.addImage(logoBase64, 'PNG', 14, 10, 25, 33);
         }
     } catch (e) {
@@ -153,12 +153,12 @@ export const generateDocumentPDF = async (
     // Costruzione righe tabella
     let tableRows: any[] = [];
 
-    // Se esiste un riferimento al documento originale, aggiungilo come prima riga
+    // Se esiste un riferimento al documento originale, aggiungilo come prima riga (speciale)
     if (type === 'Fattura' && (doc as Invoice).relatedQuoteNumber) {
         tableRows.push([{
             content: `Rif. ns. documento ${(doc as Invoice).relatedQuoteNumber}`,
             colSpan: 4,
-            styles: { fontStyle: 'italic', textColor: [80, 80, 80], fillColor: [245, 245, 245] }
+            styles: { fontStyle: 'italic', textColor: [100, 100, 100], fillColor: [248, 248, 248], halign: 'left' }
         }]);
     }
 

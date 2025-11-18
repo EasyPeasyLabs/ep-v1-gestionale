@@ -112,12 +112,12 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
     }
 };
 
-export const addInvoice = async (invoice: InvoiceInput): Promise<string> => {
+export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, invoiceNumber: string}> => {
     // Se è proforma, magari non consumiamo il numero ufficiale? 
     // Per semplicità, generiamo sempre un numero interno, ma la UI potrà visualizzare "PROFORMA"
     const invoiceNumber = invoice.invoiceNumber || await getNextDocumentNumber('invoices', 'FT', 3);
     const docRef = await addDoc(invoiceCollectionRef, { ...invoice, invoiceNumber });
-    return docRef.id;
+    return { id: docRef.id, invoiceNumber };
 };
 
 export const updateInvoiceStatus = async (id: string, status: DocumentStatus): Promise<void> => {
