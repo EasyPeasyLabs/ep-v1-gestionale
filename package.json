@@ -13,7 +13,13 @@
     "react-dom": "^19.2.0",
     "firebase": "^12.6.0",
     "chart.js": "^4.5.1",
-    "xlsx": "latest"
+    "xlsx": "latest",
+    "jspdf": "2.5.1",
+    "jspdf-autotable": "3.8.2",
+    "@firebase/auth": "^1.11.1",
+    "@firebase/app": "^0.14.6",
+    "@firebase/firestore": "^4.9.2",
+    "@firebase/storage": "^0.14.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

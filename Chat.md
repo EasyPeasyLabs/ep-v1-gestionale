@@ -94,3 +94,24 @@ Risolvere bug specifici segnalati dall'utente per migliorare l'affidabilità del
 
 ### Stato del Progetto alla Fine della Sessione
 L'applicazione è più stabile e affidabile. I bug segnalati sono stati risolti e l'esperienza utente è stata migliorata attraverso piccole correzioni di UI e logica. La sessione si conclude in preparazione per la successiva.
+
+---
+
+## Sessione 4 (28 Maggio 2024)
+
+### Obiettivo della Sessione
+Evolvere il Calendario da uno strumento di visualizzazione settimanale a un sistema di pianificazione strategica a lungo termine.
+
+### Riepilogo delle Attività
+
+1.  **Richiesta Utente**: L'utente ha evidenziato un'importante limitazione del calendario attuale: l'assenza di una data di inizio per la programmazione legava la pianificazione a una vista puramente settimanale. Questo era inadeguato per la pianificazione a medio-lungo termine (mensile, trimestrale, annuale) necessaria per gestire contratti e convenzioni. È stata richiesta una maggiore flessibilità e potenza.
+
+2.  **Implementazione delle Modifiche**: Per rispondere all'esigenza, la sezione Calendario è stata completamente riprogettata:
+    - **Riprogettazione del Modello Dati**: Il concetto di `ScheduledClass` legata a un `dayOfWeek` è stato abbandonato. È stato introdotto un nuovo modello `Lesson` con un campo `date` specifico (in formato ISO string). La collection Firestore è stata migrata da `scheduledClasses` a `lessons`.
+    - **Calendario Mensile Interattivo**: La vista statica settimanale è stata sostituita con una griglia di calendario mensile dinamica, simile a Google Calendar, con la possibilità di navigare tra i mesi.
+    - **Funzionalità di Lezioni Ricorrenti**: È stata introdotta la funzionalità più significativa: la possibilità di creare lezioni ricorrenti. Al momento della creazione, l'utente può ora definire una data di inizio, una data di fine e i giorni della settimana per la ripetizione. Il sistema, utilizzando un `writeBatch` di Firestore per efficienza, genera automaticamente tutte le singole istanze delle lezioni in quel periodo.
+    - **Aggiornamento dell'Interfaccia**: L'interfaccia utente è stata completamente rivista per supportare la nuova logica. Le lezioni appaiono come eventi nel calendario. È possibile cliccare su un giorno vuoto per creare una nuova lezione o su un evento esistente per modificarlo/eliminarlo.
+    - **Aggiornamenti Correlati**: La modifica al modello dati delle lezioni ha richiesto un aggiornamento della sezione `Clienti`, in particolare nel form di iscrizione, che ora mostra lezioni specifiche e datate invece di slot settimanali generici.
+
+### Stato del Progetto alla Fine della Sessione
+Il Calendario è stato trasformato da una semplice tabella di marcia a un vero e proprio strumento di pianificazione strategica, in grado di gestire facilmente la programmazione a lungo termine richiesta dall'attività. L'applicazione è ora molto più potente e allineata alle esigenze di business di livello enterprise.

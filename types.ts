@@ -88,7 +88,8 @@ export interface Location {
 
 export interface CompanyInfo {
     id: string;
-    name: string;
+    denomination?: string; // Denominazione (es. Brand name)
+    name: string; // Ragione Sociale
     vatNumber: string;
     address: string;
     email: string;
@@ -164,12 +165,21 @@ export enum DocumentStatus {
     Paid = 'Pagato',
     Overdue = 'Scaduto',
     Cancelled = 'Annullato',
+    Converted = 'Convertito',
 }
 
 export interface DocumentItem {
     description: string;
     quantity: number;
     price: number;
+    notes?: string; // Note specifiche per la riga
+}
+
+export interface Installment {
+    amount: number;
+    dueDate: string; // ISO String
+    description: string; // es. "Acconto", "Saldo"
+    isPaid: boolean;
 }
 
 export interface Invoice {
@@ -182,6 +192,13 @@ export interface Invoice {
     items: DocumentItem[];
     totalAmount: number;
     status: DocumentStatus;
+    isProForma: boolean;
+    sdiCode?: string; // Codice SDI Agenzia Entrate
+    paymentMethod?: PaymentMethod;
+    installments?: Installment[];
+    hasStampDuty?: boolean; // Se ha bollo virtuale > 77€
+    notes?: string; // Note generali documento (box in fondo)
+    relatedQuoteNumber?: string; // Riferimento al preventivo di origine
 }
 
 export interface Quote {
@@ -194,6 +211,10 @@ export interface Quote {
     items: DocumentItem[];
     totalAmount: number;
     status: DocumentStatus;
+    paymentMethod?: PaymentMethod;
+    installments?: Installment[]; // Piano rateale proposto
+    hasStampDuty?: boolean;
+    notes?: string; // Note generali documento (box in fondo)
 }
 
 // --- Notifiche ---

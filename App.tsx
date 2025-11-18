@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
+// FIX: Corrected Firebase import path.
+import { onAuthStateChanged, User } from '@firebase/auth';
+import { auth } from './firebase/config';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './pages/Dashboard';
@@ -20,7 +22,6 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const auth = getAuth();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -29,7 +30,7 @@ const App: React.FC = () => {
     });
     // Cleanup subscription on unmount
     return () => unsubscribe();
-  }, [auth]);
+  }, []);
 
 
   const renderContent = () => {

@@ -4,6 +4,7 @@ import { CompanyInfo, SubscriptionType, SubscriptionTypeInput } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType } from '../services/settingsService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
@@ -53,6 +54,7 @@ const Settings: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isSubModalOpen, setIsSubModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<SubscriptionType | null>(null);
+    const [subToDelete, setSubToDelete] = useState<string | null>(null);
 
     const fetchAllData = useCallback(async () => {
         try {
@@ -69,11 +71,17 @@ const Settings: React.FC = () => {
     const handleSaveInfo = async () => {
         if (info) {
             try {
-                await updateCompanyInfo(info); alert("Dati aziendali salvati con successo!");
+                await updateCompanyInfo(info); 
+                alert("Dati aziendali salvati con successo!");
             } catch (err) {
-                console.error(err); alert("Errore nel salvataggio dei dati aziendali.");
+                console.error(err);
+                alert("Errore durante il salvataggio.");
             }
         }
+    };
+
+    const handleInfoChange = (field: keyof CompanyInfo, value: string) => {
+        setInfo(prev => prev ? { ...prev, [field]: value } : null);
     };
 
     const handleOpenSubModal = (sub: SubscriptionType | null = null) => { setEditingSub(sub); setIsSubModalOpen(true); };
@@ -84,9 +92,15 @@ const Settings: React.FC = () => {
         setIsSubModalOpen(false); setEditingSub(null); fetchAllData();
     };
     
-    const handleDeleteSub = async (id: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questo pacchetto?")) {
-            await deleteSubscriptionType(id); fetchAllData();
+    const handleDeleteClick = (id: string) => {
+        setSubToDelete(id);
+    }
+
+    const handleConfirmDelete = async () => {
+        if(subToDelete) {
+            await deleteSubscriptionType(subToDelete);
+            fetchAllData();
+            setSubToDelete(null);
         }
     };
 
@@ -111,11 +125,12 @@ const Settings: React.FC = () => {
                 <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Dati Aziendali</h2>
                 {info && (
                     <div className="mt-4 space-y-4">
-                        <div className="md-input-group"><input id="infoName" type="text" value={info.name} disabled className="md-input bg-gray-100" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
-                        <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber} disabled className="md-input bg-gray-100" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA</label></div>
-                        <div className="md-input-group"><input id="infoAddr" type="text" value={info.address} disabled className="md-input bg-gray-100" placeholder=" "/><label htmlFor="infoAddr" className="md-input-label">Indirizzo</label></div>
-                        <div className="md-input-group"><input id="infoEmail" type="email" value={info.email} onChange={(e) => setInfo({...info, email: e.target.value})} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
-                        <div className="md-input-group"><input id="infoPhone" type="text" value={info.phone} onChange={(e) => setInfo({...info, phone: e.target.value})} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
+                        <div className="md-input-group"><input id="infoDenom" type="text" value={info.denomination || ''} onChange={(e) => handleInfoChange('denomination', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoDenom" className="md-input-label">Denominazione</label></div>
+                        <div className="md-input-group"><input id="infoName" type="text" value={info.name} onChange={(e) => handleInfoChange('name', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
+                        <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber} onChange={(e) => handleInfoChange('vatNumber', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA</label></div>
+                        <div className="md-input-group"><input id="infoAddr" type="text" value={info.address} onChange={(e) => handleInfoChange('address', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoAddr" className="md-input-label">Indirizzo</label></div>
+                        <div className="md-input-group"><input id="infoEmail" type="email" value={info.email} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
+                        <div className="md-input-group"><input id="infoPhone" type="text" value={info.phone} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
                         <div className="pt-4 flex justify-end">
                             <button onClick={handleSaveInfo} className="md-btn md-btn-raised md-btn-green">Salva Modifiche</button>
                         </div>
@@ -139,7 +154,7 @@ const Settings: React.FC = () => {
                             </div>
                             <div className="flex items-center space-x-1">
                                 <button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit" aria-label={`Modifica pacchetto ${sub.name}`}><PencilIcon/></button>
-                                <button onClick={() => handleDeleteSub(sub.id)} className="md-icon-btn delete" aria-label={`Elimina pacchetto ${sub.name}`}><TrashIcon/></button>
+                                <button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete" aria-label={`Elimina pacchetto ${sub.name}`}><TrashIcon/></button>
                             </div>
                         </div>
                     ))}
@@ -153,6 +168,15 @@ const Settings: React.FC = () => {
                 <SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)}/>
             </Modal>
         )}
+
+        <ConfirmModal 
+            isOpen={!!subToDelete}
+            onClose={() => setSubToDelete(null)}
+            onConfirm={handleConfirmDelete}
+            title="Elimina Pacchetto"
+            message="Sei sicuro di voler eliminare questo pacchetto abbonamento?"
+            isDangerous={true}
+        />
 
     </div>
   );

@@ -1,7 +1,8 @@
 
 import React from 'react';
 import { Page } from '../App';
-import { User } from 'firebase/auth';
+// FIX: Corrected Firebase import path.
+import { User } from '@firebase/auth';
 import DashboardIcon from './icons/DashboardIcon';
 import ClientsIcon from './icons/ClientsIcon';
 import SuppliersIcon from './icons/SuppliersIcon';

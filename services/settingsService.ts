@@ -1,11 +1,13 @@
 
 import { db } from '../firebase/config';
-import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+// FIX: Corrected Firebase import path.
+import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, query, orderBy } from '@firebase/firestore';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput } from '../types';
 
 // --- Company Info ---
 const settingsDocRef = doc(db, 'settings', 'companyInfo');
 const defaultCompanyInfo: Omit<CompanyInfo, 'id'> = {
+    denomination: 'EASY PEASY',
     name: 'ILARIA TAVANI',
     vatNumber: 'IT 09038130721',
     address: 'VIA CHIANCARO 2 N, 70010 ADELFIA (BARI)',

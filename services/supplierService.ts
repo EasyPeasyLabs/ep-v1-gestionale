@@ -1,5 +1,6 @@
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+// FIX: Corrected Firebase import path.
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
 import { Supplier, SupplierInput } from '../types';
 
 const supplierCollectionRef = collection(db, 'suppliers');

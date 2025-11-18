@@ -56,8 +56,8 @@ Il database NoSQL Firestore è strutturato in collection di documenti.
 - `settings`: Collection che contiene documenti singleton per le impostazioni globali.
   - `companyInfo` (documento): Memorizza i dati dell'azienda.
 - `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
-- `scheduledClasses`: Collection per le lezioni programmate nel calendario settimanale. Utilizza dati denormalizzati (es. `supplierName`, `locationName`) per semplificare le query di lettura.
-- `enrollments`: Collection che lega un `clientId` e un `childId` a un `subscriptionTypeId` e a una `scheduledClassId`, rappresentando un'iscrizione attiva.
+- `lessons`: Sostituisce la vecchia collection `scheduledClasses`. Contiene ogni singola lezione come un evento datato (con un campo `date` invece di `dayOfWeek`), permettendo una pianificazione flessibile. Utilizza dati denormalizzati (es. `supplierName`, `locationName`) per semplificare le query di lettura.
+- `enrollments`: Collection che lega un `clientId` e un `childId` a un `subscriptionTypeId` e a un `lessonId`, rappresentando l'associazione di un allievo a una lezione specifica e datata.
 - `transactions`: Collection per tutte le transazioni finanziarie (entrate e uscite).
 
 ### 4.2. Firebase Authentication
@@ -71,7 +71,7 @@ L'applicazione è suddivisa logicamente nei seguenti moduli, che corrispondono a
 - **Dashboard**: Fornisce una vista d'insieme con statistiche chiave.
 - **Clienti**: Gestione CRUD completa dei clienti (genitori e istituzionali), inclusa la gestione dei figli e delle iscrizioni.
 - **Fornitori**: Gestione CRUD completa dei fornitori e delle loro sedi operative.
-- **Calendario**: Visualizzazione e gestione della programmazione settimanale delle lezioni.
+- **Calendario**: Potente strumento di pianificazione con una vista di calendario mensile interattiva. Supporta la creazione di lezioni singole in date specifiche e la generazione automatica di lezioni ricorrenti (es. "ogni lunedì e mercoledì fino a fine anno"), offrendo piena flessibilità per la programmazione a lungo termine.
 - **Finanza**: Tracciamento delle transazioni, calcolo delle proiezioni fiscali e visualizzazione di grafici finanziari.
 - **Impostazioni**: Configurazione dei dati aziendali e del listino prezzi (pacchetti abbonamento).
 - **Importazione Dati**: Funzionalità per l'import di massa di clienti e fornitori da file Excel, con logica di update basata su una chiave unica (email/ragione sociale).

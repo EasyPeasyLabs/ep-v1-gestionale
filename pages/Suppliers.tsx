@@ -6,6 +6,7 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importSuppliersFromExcel } from '../services/importService';
@@ -160,6 +161,7 @@ const Suppliers: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [supplierToDelete, setSupplierToDelete] = useState<string | null>(null);
 
 
     const fetchSuppliers = useCallback(async () => {
@@ -195,28 +197,31 @@ const Suppliers: React.FC = () => {
             if ('id' in supplierData) {
                 const { id, ...dataToUpdate } = supplierData;
                 await updateSupplier(id, dataToUpdate);
-                alert('Fornitore aggiornato con successo!');
             } else {
                 await addSupplier(supplierData as SupplierInput);
-                alert('Fornitore aggiunto con successo!');
             }
             handleCloseModal();
             fetchSuppliers();
         } catch (err) {
             console.error("Errore nel salvataggio del fornitore:", err);
             setError("Salvataggio fallito.");
-            alert('Errore: salvataggio fallito. Controlla la console per i dettagli.');
         }
     };
 
-    const handleDeleteSupplier = async (id: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questo fornitore e tutte le sue sedi?")) {
+    const handleDeleteClick = (id: string) => {
+        setSupplierToDelete(id);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (supplierToDelete) {
             try {
-                await deleteSupplier(id);
+                await deleteSupplier(supplierToDelete);
                 fetchSuppliers();
             } catch (err) {
                 console.error("Errore nell'eliminazione del fornitore:", err);
                 setError("Eliminazione fallita.");
+            } finally {
+                setSupplierToDelete(null);
             }
         }
     };
@@ -299,13 +304,22 @@ const Suppliers: React.FC = () => {
                         </div>
                         <div className="mt-4 pt-4 border-t flex justify-end items-center space-x-2" style={{borderColor: 'var(--md-divider)'}}>
                              <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit" aria-label={`Modifica fornitore ${supplier.companyName}`}><PencilIcon /></button>
-                             <button onClick={() => handleDeleteSupplier(supplier.id)} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
+                             <button onClick={() => handleDeleteClick(supplier.id)} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
                         </div>
                     </div>
                 ))}
             </div>
             }
         </div>
+        
+        <ConfirmModal 
+            isOpen={!!supplierToDelete}
+            onClose={() => setSupplierToDelete(null)}
+            onConfirm={handleConfirmDelete}
+            title="Elimina Fornitore"
+            message="Sei sicuro di voler eliminare questo fornitore? Tutte le sedi associate verranno perse."
+            isDangerous={true}
+        />
     </div>
   );
 };

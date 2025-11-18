@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, Lesson, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
-import { getEnrollmentsForClient, addEnrollment } from '../services/enrollmentService';
+import { getEnrollmentsForClient, addEnrollment, deleteEnrollment } from '../services/enrollmentService';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getLessons } from '../services/calendarService';
 import { addTransaction } from '../services/financeService';
@@ -11,6 +11,7 @@ import SearchIcon from '../components/icons/SearchIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
@@ -113,13 +114,19 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(false);
     const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
+    const [enrollmentToDelete, setEnrollmentToDelete] = useState<string | null>(null);
     
-    const fetchEnrollments = useCallback(async () => {
+    const fetchEnrollments = useCallback(async (showLoading = true) => {
         if(client.clientType === ClientType.Parent) {
-            setLoading(true);
-            const data = await getEnrollmentsForClient(client.id);
-            setEnrollments(data);
-            setLoading(false);
+            if(showLoading) setLoading(true);
+            try {
+                const data = await getEnrollmentsForClient(client.id);
+                setEnrollments(data);
+            } catch (error) {
+                console.error("Error fetching enrollments:", error);
+            } finally {
+                if(showLoading) setLoading(false);
+            }
         }
     }, [client.id, client.clientType]);
 
@@ -128,20 +135,47 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
     }, [fetchEnrollments]);
 
     const handleSaveEnrollment = async (enrollment: EnrollmentInput, subType: SubscriptionType, child: Child) => {
-        const newEnrollmentId = await addEnrollment(enrollment);
-        await addTransaction({
-            date: new Date().toISOString(),
-            description: `Iscrizione ${child.name} - Pacchetto ${subType.name}`,
-            amount: subType.price,
-            type: TransactionType.Income,
-            category: TransactionCategory.Sales,
-            paymentMethod: PaymentMethod.Other,
-            relatedDocumentId: newEnrollmentId,
-        });
-        setIsEnrollModalOpen(false);
-        fetchEnrollments();
+        try {
+            const newEnrollmentId = await addEnrollment(enrollment);
+            await addTransaction({
+                date: new Date().toISOString(),
+                description: `Iscrizione ${child.name} - Pacchetto ${subType.name}`,
+                amount: subType.price,
+                type: TransactionType.Income,
+                category: TransactionCategory.Sales,
+                paymentMethod: PaymentMethod.Other,
+                relatedDocumentId: newEnrollmentId,
+            });
+            setIsEnrollModalOpen(false);
+            fetchEnrollments();
+            // Trigger update for notifications (e.g. low lessons resolved)
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (error) {
+            console.error("Errore nel salvataggio iscrizione:", error);
+        }
     };
 
+    const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        setEnrollmentToDelete(id);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (enrollmentToDelete) {
+            const id = enrollmentToDelete;
+            try {
+                // Aggiornamento ottimistico
+                setEnrollments(prev => prev.filter(enr => enr.id !== id));
+                await deleteEnrollment(id);
+                fetchEnrollments(false); // Sincronizzazione silenziosa
+                // Trigger update for notifications (if we deleted the enrollment causing the notification)
+                window.dispatchEvent(new Event('EP_DataUpdated'));
+            } catch (error) {
+                console.error("Errore durante eliminazione:", error);
+                fetchEnrollments(false); // Ripristino in caso di errore
+            }
+        }
+    };
 
     return (
         <div className="md-card p-6 animate-fade-in">
@@ -186,10 +220,20 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                              </div>
                               {loading ? <div className="mt-4"><Spinner/></div> :
                                 enrollments.length > 0 ? enrollments.map(enr => (
-                                    <div key={enr.id} className="mt-2 p-3 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
-                                        <p className="font-semibold">{enr.childName} - {enr.subscriptionName}</p>
-                                        <p className="text-sm" style={{ color: 'var(--md-text-secondary)'}}>Lezioni Rimanenti: {enr.lessonsRemaining}/{enr.lessonsTotal}</p>
-                                        <p className="text-xs" style={{ color: 'var(--md-text-secondary)'}}>Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
+                                    <div key={enr.id} className="mt-2 p-3 border rounded-lg flex justify-between items-center" style={{ borderColor: 'var(--md-divider)'}}>
+                                        <div className="flex-1">
+                                            <p className="font-semibold">{enr.childName} - {enr.subscriptionName}</p>
+                                            <p className="text-sm" style={{ color: 'var(--md-text-secondary)'}}>Lezioni Rimanenti: {enr.lessonsRemaining}/{enr.lessonsTotal}</p>
+                                            <p className="text-xs" style={{ color: 'var(--md-text-secondary)'}}>Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            onClick={(e) => handleDeleteClick(e, enr.id)} 
+                                            className="md-icon-btn delete ml-2"
+                                            aria-label="Elimina iscrizione"
+                                        >
+                                            <TrashIcon />
+                                        </button>
                                     </div>
                                 ))
                              : (
@@ -224,6 +268,15 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                     <EnrollmentForm parent={client} onSave={handleSaveEnrollment} onCancel={() => setIsEnrollModalOpen(false)} />
                 </Modal>
             )}
+
+            <ConfirmModal 
+                isOpen={!!enrollmentToDelete}
+                onClose={() => setEnrollmentToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                title="Elimina Iscrizione"
+                message="Sei sicuro di voler eliminare questa iscrizione? Questa azione non può essere annullata."
+                isDangerous={true}
+            />
         </div>
     );
 };
@@ -421,6 +474,7 @@ const Clients: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [clientToDelete, setClientToDelete] = useState<string | null>(null);
 
   const fetchClients = useCallback(async () => {
     try {
@@ -476,14 +530,20 @@ const Clients: React.FC = () => {
     }
   };
 
-  const handleDeleteClient = async (id: string) => {
-    if (window.confirm("Sei sicuro di voler eliminare questo cliente?")) {
+  const handleDeleteClick = (id: string) => {
+      setClientToDelete(id);
+  }
+
+  const handleConfirmDelete = async () => {
+    if (clientToDelete) {
       try {
-        await deleteClient(id);
+        await deleteClient(clientToDelete);
         fetchClients();
       } catch (err) {
         console.error("Errore nell'eliminazione del cliente:", err);
         setError("Eliminazione fallita.");
+      } finally {
+          setClientToDelete(null);
       }
     }
   };
@@ -580,7 +640,7 @@ const Clients: React.FC = () => {
                         </div>
                          <div className="flex items-center space-x-1">
                             <button onClick={() => handleOpenModal(client)} className="md-icon-btn edit" aria-label="Modifica cliente"><PencilIcon /></button>
-                            <button onClick={() => handleDeleteClient(client.id)} className="md-icon-btn delete" aria-label="Elimina cliente"><TrashIcon /></button>
+                            <button onClick={() => handleDeleteClick(client.id)} className="md-icon-btn delete" aria-label="Elimina cliente"><TrashIcon /></button>
                         </div>
                    </div>
                    <div className="mt-3 pt-3 border-t text-sm space-y-1" style={{ borderColor: 'var(--md-divider)', color: 'var(--md-text-secondary)'}}>
@@ -644,7 +704,7 @@ const Clients: React.FC = () => {
                         <div className="flex items-center space-x-2">
                             <button onClick={() => setSelectedClient(client)} className="md-btn md-btn-flat md-btn-primary text-sm">Dettagli</button>
                             <button onClick={() => handleOpenModal(client)} className="md-icon-btn edit" aria-label="Modifica cliente"><PencilIcon /></button>
-                            <button onClick={() => handleDeleteClient(client.id)} className="md-icon-btn delete" aria-label="Elimina cliente"><TrashIcon /></button>
+                            <button onClick={() => handleDeleteClick(client.id)} className="md-icon-btn delete" aria-label="Elimina cliente"><TrashIcon /></button>
                         </div>
                     </td>
                   </tr>
@@ -655,6 +715,15 @@ const Clients: React.FC = () => {
            </>
             }
         </div>
+
+        <ConfirmModal 
+            isOpen={!!clientToDelete}
+            onClose={() => setClientToDelete(null)}
+            onConfirm={handleConfirmDelete}
+            title="Elimina Cliente"
+            message="Sei sicuro di voler eliminare questo cliente? L'azione non può essere annullata."
+            isDangerous={true}
+        />
     </div>
   );
 };

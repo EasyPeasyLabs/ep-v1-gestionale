@@ -1,8 +1,9 @@
 
-import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage";
+// FIX: Corrected Firebase import paths.
+import { initializeApp } from "@firebase/app";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "@firebase/firestore";
+import { getAuth } from "@firebase/auth";
+import { getStorage } from "@firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {

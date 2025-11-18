@@ -1,5 +1,5 @@
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc } from '@firebase/firestore';
 import { Enrollment, EnrollmentInput } from '../types';
 
 const enrollmentCollectionRef = collection(db, 'enrollments');
@@ -23,4 +23,9 @@ export const getAllEnrollments = async (): Promise<Enrollment[]> => {
 export const addEnrollment = async (enrollment: EnrollmentInput): Promise<string> => {
     const docRef = await addDoc(enrollmentCollectionRef, enrollment);
     return docRef.id;
+};
+
+export const deleteEnrollment = async (id: string): Promise<void> => {
+    const enrollmentDoc = doc(db, 'enrollments', id);
+    await deleteDoc(enrollmentDoc);
 };

@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Lesson, LessonInput, Supplier } from '../types';
 import { getLessons, addLesson, updateLesson, deleteLesson, addLessonsBatch } from '../services/calendarService';
 import { getSuppliers } from '../services/supplierService';
 import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -147,6 +147,7 @@ const Calendar: React.FC = () => {
     const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [lessonToDelete, setLessonToDelete] = useState<string | null>(null);
 
     const fetchLessons = useCallback(async () => {
         try {
@@ -190,12 +191,16 @@ const Calendar: React.FC = () => {
         setIsModalOpen(false); setEditingLesson(null); fetchLessons();
     };
     
-    const handleDeleteLesson = async (id: string) => {
-        if (window.confirm("Sei sicuro di voler eliminare questa lezione?")) {
-            await deleteLesson(id); 
+    const handleDeleteClick = (id: string) => {
+        setLessonToDelete(id);
+        setIsModalOpen(false); // Close edit modal if open
+    };
+
+    const handleConfirmDelete = async () => {
+        if(lessonToDelete) {
+            await deleteLesson(lessonToDelete);
             fetchLessons();
-            setIsModalOpen(false);
-            setEditingLesson(null);
+            setLessonToDelete(null);
         }
     };
 
@@ -268,10 +273,11 @@ const Calendar: React.FC = () => {
                                         const textColor = getTextColorForBg(item.locationColor);
                                         return (
                                             <div key={item.id}
-                                                 className="p-1 rounded text-[10px] leading-tight shadow-sm"
+                                                 className="p-1 rounded text-[10px] leading-tight shadow-sm flex justify-between items-center group"
                                                  style={{ backgroundColor: item.locationColor || '#f1f5f9', color: textColor }}
                                                  onClick={(e) => { e.stopPropagation(); handleOpenModal(item, day); }}>
-                                                 <p className="font-bold truncate">{item.startTime} - {item.locationName}</p>
+                                                 <p className="font-bold truncate flex-1">{item.startTime} - {item.locationName}</p>
+                                                 <button onClick={(e) => {e.stopPropagation(); handleDeleteClick(item.id);}} className="opacity-0 group-hover:opacity-100 ml-1 hover:text-red-600 transition-opacity" aria-label="Elimina lezione">×</button>
                                             </div>
                                         )
                                 })}
@@ -287,6 +293,15 @@ const Calendar: React.FC = () => {
                     <LessonForm lesson={editingLesson} selectedDate={selectedDate} onSave={handleSaveLesson} onCancel={() => {setIsModalOpen(false); setEditingLesson(null);}} />
                 </Modal>
             )}
+
+            <ConfirmModal 
+                isOpen={!!lessonToDelete}
+                onClose={() => setLessonToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                title="Elimina Lezione"
+                message="Sei sicuro di voler eliminare questa lezione? L'azione non può essere annullata."
+                isDangerous={true}
+            />
         </div>
     );
 };

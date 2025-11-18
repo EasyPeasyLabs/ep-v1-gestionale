@@ -1,20 +1,21 @@
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
-import { Client, ClientInput } from '../types';
+// FIX: Corrected Firebase import path.
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
+import { Client, ClientInput, ClientType, ParentClient } from '../types';
 
 const clientCollectionRef = collection(db, 'clients');
 
 const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
-    const data = doc.data();
-    // FIX: Add 'any' type to baseClient to resolve property access errors on an object with a dynamic shape from Firestore.
-    const baseClient: any = { id: doc.id, ...data };
+    const client = { id: doc.id, ...doc.data() } as Client;
     
     // Assicura che `children` sia sempre un array, anche se non presente in Firestore
-    if (baseClient.clientType === 'Parent' && !baseClient.children) {
-        baseClient.children = [];
+    if (client.clientType === ClientType.Parent) {
+        if (!client.children) {
+            client.children = [];
+        }
     }
     
-    return baseClient as Client;
+    return client;
 };
 
 export const getClients = async (): Promise<Client[]> => {

@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>EP v.1 - Gestionale</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -156,6 +155,7 @@
       .md-icon-btn:hover:not(:disabled) { background-color: rgba(0,0,0,0.08); }
       .md-icon-btn.edit { color: var(--md-blue); }
       .md-icon-btn.delete { color: var(--md-red); }
+      .md-icon-btn.download { color: var(--md-text-secondary); }
 
       /* Badge */
       .md-badge {
@@ -191,7 +191,13 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
     "chart.js": "https://aistudiocdn.com/chart.js@^4.5.1",
-    "xlsx": "https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"
+    "xlsx": "https://cdn.jsdelivr.net/npm/xlsx/xlsx.mjs",
+    "jspdf": "https://esm.sh/jspdf@2.5.1",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2",
+    "@firebase/auth": "https://aistudiocdn.com/@firebase/auth@^1.11.1",
+    "@firebase/app": "https://aistudiocdn.com/@firebase/app@^0.14.6",
+    "@firebase/firestore": "https://aistudiocdn.com/@firebase/firestore@^4.9.2",
+    "@firebase/storage": "https://aistudiocdn.com/@firebase/storage@^0.14.0"
   }
 }
 </script>

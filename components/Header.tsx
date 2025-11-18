@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { User, signOut } from 'firebase/auth';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+// FIX: Corrected Firebase import path.
+import { User, signOut } from '@firebase/auth';
 import { auth } from '../firebase/config';
 import { Page } from '../App';
-import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient } from '../types';
+import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient, DocumentStatus } from '../types';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getClients } from '../services/parentService';
+import { getInvoices, checkAndSetOverdueInvoices } from '../services/financeService';
 
 import SearchIcon from './icons/SearchIcon';
 import BellIcon from './icons/BellIcon';
@@ -54,70 +56,101 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onMenuClick }) =>
         };
     }, []);
 
+    // Funzione per generare le notifiche, estratta per poterla richiamare
+    const fetchAndGenerateNotifications = useCallback(async () => {
+        setLoadingNotifications(true);
+        try {
+            // 1. Esegui il check delle scadenze per aggiornare il DB
+            await checkAndSetOverdueInvoices();
+
+            const [enrollments, clients, invoices] = await Promise.all([
+                getAllEnrollments(),
+                getClients(),
+                getInvoices()
+            ]);
+
+            const clientMap = new Map<string, string>();
+            clients.forEach(c => {
+                if (c.clientType === ClientType.Parent) {
+                    clientMap.set(c.id, `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}`);
+                } else {
+                    clientMap.set(c.id, (c as InstitutionalClient).companyName);
+                }
+            });
+
+            const newNotifications: Notification[] = [];
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Normalize to start of day
+            const sevenDaysFromNow = new Date(today);
+            sevenDaysFromNow.setDate(today.getDate() + 7);
+
+            // Notifiche Iscrizioni
+            enrollments.forEach(enr => {
+                if (enr.status !== EnrollmentStatus.Active) return;
+                const parentName = clientMap.get(enr.clientId) || 'Cliente';
+
+                // Check for expiring enrollments
+                const endDate = new Date(enr.endDate);
+                if (endDate >= today && endDate <= sevenDaysFromNow) {
+                    const diffTime = endDate.getTime() - today.getTime();
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    newNotifications.push({
+                        id: enr.id,
+                        type: 'expiry',
+                        message: `L'iscrizione di ${enr.childName} (${parentName}) scade tra ${diffDays} giorni.`,
+                        clientId: enr.clientId,
+                        date: new Date().toISOString(),
+                    });
+                }
+
+                // Check for low lessons
+                if (enr.lessonsRemaining > 0 && enr.lessonsRemaining <= 2) {
+                    newNotifications.push({
+                        id: `${enr.id}-lessons`, // Make ID unique
+                        type: 'low_lessons',
+                        message: `Restano solo ${enr.lessonsRemaining} lezioni per ${enr.childName} (${parentName}).`,
+                        clientId: enr.clientId,
+                        date: new Date().toISOString(),
+                    });
+                }
+            });
+
+            // Notifiche Fatture Scadute
+            invoices.forEach(inv => {
+                if (inv.status === DocumentStatus.Overdue) {
+                    newNotifications.push({
+                        id: `inv-${inv.id}`,
+                        type: 'expiry', // Usiamo 'expiry' per l'icona rossa (o clock)
+                        message: `Fattura ${inv.invoiceNumber} scaduta (${inv.totalAmount.toFixed(2)}€). Cliente: ${inv.clientName}`,
+                        clientId: inv.clientId,
+                        date: new Date().toISOString(),
+                    });
+                }
+            });
+            
+            setNotifications(newNotifications);
+        } catch (error) {
+            console.error("Failed to fetch data for notifications:", error);
+        } finally {
+            setLoadingNotifications(false);
+        }
+    }, []);
+
+    // Effect iniziale e listener per eventi globali
     useEffect(() => {
-        const generateNotifications = async () => {
-            setLoadingNotifications(true);
-            try {
-                const [enrollments, clients] = await Promise.all([
-                    getAllEnrollments(),
-                    getClients()
-                ]);
+        fetchAndGenerateNotifications();
 
-                const clientMap = new Map<string, string>();
-                clients.forEach(c => {
-                    if (c.clientType === ClientType.Parent) {
-                        clientMap.set(c.id, `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}`);
-                    } else {
-                        clientMap.set(c.id, (c as InstitutionalClient).companyName);
-                    }
-                });
-
-                const newNotifications: Notification[] = [];
-                const today = new Date();
-                today.setHours(0, 0, 0, 0); // Normalize to start of day
-                const sevenDaysFromNow = new Date(today);
-                sevenDaysFromNow.setDate(today.getDate() + 7);
-
-                enrollments.forEach(enr => {
-                    if (enr.status !== EnrollmentStatus.Active) return;
-                    const parentName = clientMap.get(enr.clientId) || 'Cliente';
-
-                    // Check for expiring enrollments
-                    const endDate = new Date(enr.endDate);
-                    if (endDate >= today && endDate <= sevenDaysFromNow) {
-                        const diffTime = endDate.getTime() - today.getTime();
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        newNotifications.push({
-                            id: enr.id,
-                            type: 'expiry',
-                            message: `L'iscrizione di ${enr.childName} (${parentName}) scade tra ${diffDays} giorni.`,
-                            clientId: enr.clientId,
-                            date: new Date().toISOString(),
-                        });
-                    }
-
-                    // Check for low lessons
-                    if (enr.lessonsRemaining > 0 && enr.lessonsRemaining <= 2) {
-                        newNotifications.push({
-                            id: `${enr.id}-lessons`, // Make ID unique
-                            type: 'low_lessons',
-                            message: `Restano solo ${enr.lessonsRemaining} lezioni per ${enr.childName} (${parentName}).`,
-                            clientId: enr.clientId,
-                            date: new Date().toISOString(),
-                        });
-                    }
-                });
-                
-                setNotifications(newNotifications);
-            } catch (error) {
-                console.error("Failed to fetch data for notifications:", error);
-            } finally {
-                setLoadingNotifications(false);
-            }
+        // Ascolta l'evento personalizzato per aggiornare le notifiche quando i dati cambiano altrove
+        const handleDataUpdate = () => {
+            fetchAndGenerateNotifications();
         };
 
-        generateNotifications();
-    }, []);
+        window.addEventListener('EP_DataUpdated', handleDataUpdate);
+
+        return () => {
+            window.removeEventListener('EP_DataUpdated', handleDataUpdate);
+        };
+    }, [fetchAndGenerateNotifications]);
 
 
   return (
@@ -152,7 +185,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onMenuClick }) =>
                     notifications={notifications}
                     loading={loadingNotifications}
                     onNotificationClick={() => {
-                        setCurrentPage('Clients');
+                        setCurrentPage('Finance'); // Porta a Finanza per le fatture scadute
                         setNotificationsOpen(false);
                     }}
                 />
