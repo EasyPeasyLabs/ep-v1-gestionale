@@ -12,7 +12,7 @@ import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import PencilIcon from '../components/icons/PencilIcon';
-import { Chart, registerables } from 'chart.js';
+import { Chart, registerables, TooltipItem } from 'chart.js';
 Chart.register(...registerables);
 
 type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes';
@@ -385,6 +385,7 @@ const Finance: React.FC = () => {
     const monthlyChartRef = useRef<HTMLCanvasElement>(null);
     const enrollmentsChartRef = useRef<HTMLCanvasElement>(null);
     const expensesDoughnutRef = useRef<HTMLCanvasElement>(null);
+    const incomeDoughnutRef = useRef<HTMLCanvasElement>(null);
 
 
     const fetchAllData = useCallback(async () => {
@@ -632,14 +633,75 @@ const Finance: React.FC = () => {
         const monthlyIncomeData = last6Months.map(d => transactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
         const monthlyExpenseData = last6Months.map(d => transactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
         const monthlyEnrollmentsData = last6Months.map(d => enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length);
-        const expenseByCategory = transactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
-        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart;
         
+        // Data for Doughnut Charts
+        const expenseByCategory = transactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+        
+        const incomeByCategory = transactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+
+
+        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart;
+        
+        // Tooltip callback for percentages
+        const percentageTooltip = {
+            callbacks: {
+                label: function(context: TooltipItem<'doughnut'>) {
+                    const dataset = context.dataset;
+                    const total = dataset.data.reduce((acc, current) => acc + (typeof current === 'number' ? current : 0), 0);
+                    const currentValue = context.raw as number;
+                    const percentage = total > 0 ? ((currentValue / total) * 100).toFixed(1) : '0';
+                    return `${context.label}: ${currentValue.toFixed(2)}€ (${percentage}%)`;
+                }
+            }
+        };
+
         if (monthlyChartRef.current) { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
         if (enrollmentsChartRef.current) { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (expensesDoughnutRef.current) { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa'] }] }, options: { responsive: true, maintainAspectRatio: false } }); }
         
-        return () => { if (monthlyChart) monthlyChart.destroy(); if (enrollmentsChart) enrollmentsChart.destroy(); if (expensesDoughnut) expensesDoughnut.destroy(); };
+        // Expense Chart
+        if (expensesDoughnutRef.current) { 
+            expensesDoughnut = new Chart(expensesDoughnutRef.current, { 
+                type: 'doughnut', 
+                data: { 
+                    labels: Object.keys(expenseByCategory), 
+                    datasets: [{ 
+                        data: Object.values(expenseByCategory), 
+                        backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa'] 
+                    }] 
+                }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { tooltip: percentageTooltip }
+                } 
+            }); 
+        }
+        
+        // Income Chart
+        if (incomeDoughnutRef.current) {
+            incomeDoughnut = new Chart(incomeDoughnutRef.current, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(incomeByCategory),
+                    datasets: [{
+                        data: Object.values(incomeByCategory),
+                        backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0'] // Green, Blue, Amber, Purple
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { tooltip: percentageTooltip }
+                }
+            });
+        }
+        
+        return () => { 
+            if (monthlyChart) monthlyChart.destroy(); 
+            if (enrollmentsChart) enrollmentsChart.destroy(); 
+            if (expensesDoughnut) expensesDoughnut.destroy(); 
+            if (incomeDoughnut) incomeDoughnut.destroy();
+        };
     }, [transactions, enrollments, activeTab]);
 
 
@@ -657,19 +719,25 @@ const Finance: React.FC = () => {
                         <ChartCard title="Andamento Mensile (Entrate vs Uscite)"><canvas ref={monthlyChartRef}></canvas></ChartCard>
                         <ChartCard title="Trend Iscrizioni Allievi"><canvas ref={enrollmentsChartRef}></canvas></ChartCard>
                     </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 md-card p-6">
+                    
+                    {/* Fiscal Projection & Breakdown Section */}
+                    <div className="grid grid-cols-1 gap-6">
+                        <div className="md-card p-6">
                             <h3 className="text-lg font-semibold">Proiezione Fiscale (Regime Forfettario)</h3>
                             <p className="text-sm mb-4" style={{color: 'var(--md-text-secondary)'}}>Stima basata sul fatturato dell'anno in corso.</p>
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-center">
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
                                 <div className="bg-gray-50 p-3 rounded-md"><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>Fatturato Annuo</p><p className="font-bold text-lg">{annualIncome.toFixed(2)}€</p></div>
                                 <div className="bg-gray-50 p-3 rounded-md"><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>Imponibile (78%)</p><p className="font-bold text-lg">{imponibileLordo.toFixed(2)}€</p></div>
-                                <div className="bg-red-50 p-3 rounded-md"><p className="text-xs text-red-600">Contributi INPS (stima)</p><p className="font-bold text-lg text-red-800">{contributiInpsStimati.toFixed(2)}€</p></div>
-                                <div className="bg-red-50 p-3 rounded-md"><p className="text-xs text-red-600">Imposta (5%) (stima)</p><p className="font-bold text-lg text-red-800">{impostaSostitutivaStimata.toFixed(2)}€</p></div>
-                                <div className="bg-green-50 p-3 rounded-md col-span-2 md:col-span-1"><p className="text-xs text-green-600">Utile Netto Previsto</p><p className="font-bold text-lg text-green-800">{utileNettoPrevisto.toFixed(2)}€</p></div>
+                                <div className="bg-red-50 p-3 rounded-md"><p className="text-xs text-red-600">INPS (stima)</p><p className="font-bold text-lg text-red-800">{contributiInpsStimati.toFixed(2)}€</p></div>
+                                <div className="bg-red-50 p-3 rounded-md"><p className="text-xs text-red-600">Imposta (stima)</p><p className="font-bold text-lg text-red-800">{impostaSostitutivaStimata.toFixed(2)}€</p></div>
+                                <div className="bg-green-50 p-3 rounded-md col-span-2 md:col-span-1"><p className="text-xs text-green-600">Utile Netto</p><p className="font-bold text-lg text-green-800">{utileNettoPrevisto.toFixed(2)}€</p></div>
                             </div>
                         </div>
-                        <ChartCard title="Ripartizione Costi"><canvas ref={expensesDoughnutRef}></canvas></ChartCard>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <ChartCard title="Ripartizione Ricavi"><canvas ref={incomeDoughnutRef}></canvas></ChartCard>
+                             <ChartCard title="Ripartizione Costi"><canvas ref={expensesDoughnutRef}></canvas></ChartCard>
+                        </div>
                     </div>
                 </div>
             );
