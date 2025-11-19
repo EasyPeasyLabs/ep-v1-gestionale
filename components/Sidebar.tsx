@@ -10,6 +10,8 @@ import FinanceIcon from './icons/FinanceIcon';
 import SettingsIcon from './icons/SettingsIcon';
 import CalendarIcon from './icons/CalendarIcon';
 import CRMIcon from './icons/CRMIcon';
+import ChecklistIcon from './icons/ChecklistIcon';
+import ClipboardIcon from './icons/ClipboardIcon';
 
 interface SidebarProps {
   currentPage: Page;
@@ -22,6 +24,8 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, isOpen, setIsOpen }) => {
   const navItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+    { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
+    { page: 'Attendance', label: 'Registro Presenze', icon: <ClipboardIcon /> },
     { page: 'Clients', label: 'Clienti', icon: <ClientsIcon /> },
     { page: 'Suppliers', label: 'Fornitori', icon: <SuppliersIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },

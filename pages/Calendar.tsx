@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Lesson, LessonInput, Supplier, Enrollment, Appointment } from '../types';
+import { Lesson, LessonInput, Supplier, Enrollment, Appointment, EnrollmentStatus } from '../types';
 import { getLessons, addLesson, updateLesson, deleteLesson } from '../services/calendarService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
@@ -182,9 +182,13 @@ const Calendar: React.FC = () => {
             }>();
 
             enrollments.forEach(enr => {
+                // Show lessons only if enrollment is ACTIVE (Paid) or PENDING (Transitory)
+                if (enr.status !== EnrollmentStatus.Active && enr.status !== EnrollmentStatus.Pending) {
+                    return;
+                }
+
                 if (enr.appointments) {
                     enr.appointments.forEach(app => {
-                        // FIX: Use enr.locationId instead of app.locationId
                         const locationId = enr.locationId;
                         const key = `${app.date}_${app.startTime}_${locationId}`;
                         const locInfo = locationMap.get(locationId);

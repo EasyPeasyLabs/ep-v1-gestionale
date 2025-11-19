@@ -9,9 +9,13 @@ import { EnrollmentStatus, Notification, ClientType, ParentClient, Institutional
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
+import { Page } from '../App';
 
-const StatCard: React.FC<{ title: string; value: string | React.ReactNode; subtext?: string }> = ({ title, value, subtext }) => (
-  <div className="md-card p-6">
+const StatCard: React.FC<{ title: string; value: string | React.ReactNode; subtext?: string; onClick?: () => void }> = ({ title, value, subtext, onClick }) => (
+  <div 
+    className={`md-card p-6 ${onClick ? 'cursor-pointer hover:shadow-lg transition-shadow' : ''}`} 
+    onClick={onClick}
+  >
     <h3 className="text-sm font-medium" style={{ color: 'var(--md-text-secondary)'}}>{title}</h3>
     <div className="text-3xl font-semibold mt-2" style={{ color: 'var(--md-text-primary)'}}>{value}</div>
     {subtext && (
@@ -35,11 +39,16 @@ interface LocationOccupancy {
     occupancyPercent: number;
 }
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+    setCurrentPage?: (page: Page) => void;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [loading, setLoading] = useState(true);
   const [clientCount, setClientCount] = useState(0);
   const [activeClientCount, setActiveClientCount] = useState(0);
   const [supplierCount, setSupplierCount] = useState(0);
+  const [activeSupplierCount, setActiveSupplierCount] = useState(0);
   const [lessonsThisMonth, setLessonsThisMonth] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
@@ -69,10 +78,15 @@ const Dashboard: React.FC = () => {
         setClientCount(clients.length);
         setSupplierCount(suppliers.length);
 
-        // 1. Calcolo Clienti Attivi
-        const activeEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active);
-        const activeClientIds = new Set(activeEnrollments.map(e => e.clientId));
+        // 1. Calcolo Clienti e Fornitori Attivi
+        // Includiamo sia Active che Pending perchè occupano posti
+        const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
+        
+        const activeClientIds = new Set(activeOrPendingEnrollments.map(e => e.clientId));
         setActiveClientCount(activeClientIds.size);
+
+        const activeSupplierIds = new Set(activeOrPendingEnrollments.map(e => e.supplierId));
+        setActiveSupplierCount(activeSupplierIds.size);
 
         // 2. Calcolo Lezioni Erogate (Mese Corrente)
         const now = new Date();
@@ -80,8 +94,9 @@ const Dashboard: React.FC = () => {
         const currentYear = now.getFullYear();
         
         let lessonsCount = 0;
-        // Conta lezioni da iscrizioni
-        enrollments.forEach(enr => {
+        // Conta lezioni da iscrizioni (solo attive per l'erogazione effettiva, o anche pending? Di solito erogate = attive)
+        // Per "lezioni erogate" contiamo quelle effettive, quindi Active.
+        enrollments.filter(e => e.status === EnrollmentStatus.Active).forEach(enr => {
             if(enr.appointments) {
                 enr.appointments.forEach(app => {
                     const d = new Date(app.date);
@@ -101,6 +116,7 @@ const Dashboard: React.FC = () => {
         setLessonsThisMonth(lessonsCount);
 
         // 3. Calcolo Occupazione Dettagliata (Saturazione)
+        // Qui contiamo anche Pending perché occupano il posto.
         const slotsMap: Record<string, LocationOccupancy> = {};
 
         suppliers.forEach(s => {
@@ -128,7 +144,7 @@ const Dashboard: React.FC = () => {
         });
 
         // Calcola occupazione per ogni slot
-        activeEnrollments.forEach(enr => {
+        activeOrPendingEnrollments.forEach(enr => {
             if(enr.appointments && enr.appointments.length > 0) {
                 // Assumiamo che le lezioni siano regolari: prendiamo il primo appuntamento per determinare giorno e ora ricorrenti
                 const firstApp = enr.appointments[0];
@@ -162,7 +178,7 @@ const Dashboard: React.FC = () => {
         setLocationOccupancy(occupancyList);
 
 
-        // 4. Calendario Settimanale
+        // 4. Calendario Settimanale (Inclusi ACTIVE e PENDING)
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); 
@@ -177,15 +193,23 @@ const Dashboard: React.FC = () => {
             currentDay.setDate(startOfWeek.getDate() + i);
             
             let dayLessonCount = 0;
-            enrollments.forEach(enr => {
+            
+            // Count from enrollments (Active AND Pending)
+            activeOrPendingEnrollments.forEach(enr => {
                 if(enr.appointments) {
                     enr.appointments.forEach(app => {
-                         if(new Date(app.date).toDateString() === currentDay.toDateString()) dayLessonCount++;
+                         if(new Date(app.date).toDateString() === currentDay.toDateString()) {
+                             dayLessonCount++;
+                         }
                     });
                 }
             });
+            
+            // Count manual lessons
             manualLessons.forEach(ml => {
-                if(new Date(ml.date).toDateString() === currentDay.toDateString()) dayLessonCount++;
+                if(new Date(ml.date).toDateString() === currentDay.toDateString()) {
+                    dayLessonCount++;
+                }
             });
 
             daysData.push({
@@ -213,7 +237,7 @@ const Dashboard: React.FC = () => {
         const sevenDaysFromNow = new Date(today);
         sevenDaysFromNow.setDate(today.getDate() + 7);
 
-        activeEnrollments.forEach(enr => {
+        activeOrPendingEnrollments.forEach(enr => {
             const parentName = clientMap.get(enr.clientId) || 'Cliente';
             const endDate = new Date(enr.endDate);
             
@@ -279,6 +303,8 @@ const Dashboard: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
             <StatCard 
                 title="Clienti" 
+                onClick={() => setCurrentPage && setCurrentPage('Enrollments')}
+                subtext="Clicca per gestire le iscrizioni"
                 value={
                     <div className="flex items-baseline">
                         <span>{clientCount}</span>
@@ -299,7 +325,17 @@ const Dashboard: React.FC = () => {
                     </div>
                 } 
             />
-            <StatCard title="Fornitori" value={supplierCount.toString()} />
+            <StatCard 
+                title="Fornitori" 
+                value={
+                    <div className="flex items-baseline">
+                        <span>{supplierCount}</span>
+                        <span className="ml-3 text-sm font-medium text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full relative -top-1">
+                            {activeSupplierCount} Attivi
+                        </span>
+                    </div>
+                } 
+            />
             <StatCard title="Tasso di Rinnovo" value="N/D" />
           </div>
 
@@ -317,7 +353,7 @@ const Dashboard: React.FC = () => {
                                 <div className={`text-xs font-medium ${isToday ? 'text-indigo-600' : 'text-gray-500'}`}>{day.dayName}</div>
                                 <div className="relative w-full flex justify-center items-end h-20">
                                     <div 
-                                        className={`w-6 rounded-t-md transition-all duration-500 ${isToday ? 'bg-indigo-500' : 'bg-indigo-200'}`}
+                                        className={`w-6 rounded-t-md transition-all duration-500 ${isToday ? 'bg-indigo-50' : 'bg-indigo-200'}`}
                                         style={{ height: `${Math.min((day.count / 10) * 100, 100)}%`, minHeight: day.count > 0 ? '10%' : '4px' }}
                                     ></div>
                                 </div>
@@ -364,7 +400,7 @@ const Dashboard: React.FC = () => {
                     ))}
                     {locationOccupancy.length === 0 && (
                             <p className="text-xs text-gray-400 italic text-center mt-4">
-                                Nessuna disponibilità configurata.
+                                Nessuna disponibilità configurata o nessuna iscrizione.
                             </p>
                     )}
                 </div>

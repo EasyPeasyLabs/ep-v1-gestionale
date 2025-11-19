@@ -6,10 +6,13 @@ export interface Child {
 }
 
 export enum EnrollmentStatus {
-  Active = 'Active',
-  Completed = 'Completed',
-  Expired = 'Expired',
+  Pending = 'Pending', // Iscritto ma non pagato (occupa posto)
+  Active = 'Active',   // Pagato e frequentante
+  Completed = 'Completed', // Terminato regolarmente o Abbandonato
+  Expired = 'Expired', // Scaduto
 }
+
+export type AppointmentStatus = 'Scheduled' | 'Present' | 'Absent' | 'Cancelled';
 
 export interface Appointment {
     lessonId: string; // ID univoco della singola lezione generata
@@ -19,6 +22,7 @@ export interface Appointment {
     locationName: string;
     locationColor?: string;
     childName?: string; // Per visualizzazione calendario
+    status?: AppointmentStatus; // Nuovo campo per tracciare presenze/assenze
 }
 
 export interface Enrollment {
@@ -28,6 +32,7 @@ export interface Enrollment {
   childName: string; // Denormalizzato per una visualizzazione più semplice
   subscriptionTypeId: string;
   subscriptionName: string; // Denormalizzato
+  price?: number; // Prezzo pattuito al momento dell'iscrizione
   
   // Nuovi campi per legare l'iscrizione alla sede (Aula)
   supplierId: string;

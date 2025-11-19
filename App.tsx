@@ -15,8 +15,10 @@ import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
 import Calendar from './pages/Calendar';
 import CRM from './pages/CRM';
+import Enrollments from './pages/Enrollments';
+import Attendance from './pages/Attendance';
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -38,7 +40,11 @@ const App: React.FC = () => {
     if (!user) return null; // Should not happen if user is logged in
     switch (currentPage) {
       case 'Dashboard':
-        return <Dashboard />;
+        return <Dashboard setCurrentPage={setCurrentPage} />;
+      case 'Enrollments':
+        return <Enrollments />;
+      case 'Attendance':
+        return <Attendance />;
       case 'Clients':
         return <Clients />;
       case 'Suppliers':
@@ -54,7 +60,7 @@ const App: React.FC = () => {
       case 'Profile':
         return <Profile user={user} />;
       default:
-        return <Dashboard />;
+        return <Dashboard setCurrentPage={setCurrentPage} />;
     }
   };
 
