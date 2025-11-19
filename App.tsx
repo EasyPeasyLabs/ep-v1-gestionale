@@ -14,8 +14,9 @@ import Profile from './pages/Profile';
 import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
 import Calendar from './pages/Calendar';
+import CRM from './pages/CRM';
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'Finance' | 'Settings' | 'Profile';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -44,6 +45,8 @@ const App: React.FC = () => {
         return <Suppliers />;
       case 'Calendar':
         return <Calendar />;
+      case 'CRM':
+        return <CRM />;
       case 'Finance':
         return <Finance />;
       case 'Settings':

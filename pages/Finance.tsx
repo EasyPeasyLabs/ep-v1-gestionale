@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment, Invoice, Quote, InvoiceInput, QuoteInput, DocumentStatus, DocumentItem, Client, ClientType, Installment } from '../types';
-import { getTransactions, addTransaction, deleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, deleteTransactionByRelatedId } from '../services/financeService';
+import { getTransactions, addTransaction, deleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, deleteTransactionByRelatedId, updateTransaction } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getClients } from '../services/parentService';
 import { getCompanyInfo } from '../services/settingsService';
@@ -17,8 +17,12 @@ Chart.register(...registerables);
 
 type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes';
 
-const StatCard: React.FC<{ title: string; value: string; color: string; }> = ({ title, value, color }) => (
-  <div className={`md-card p-4 border-l-4`} style={{borderColor: color}}>
+const StatCard: React.FC<{ title: string; value: string; color: string; onClick?: () => void }> = ({ title, value, color, onClick }) => (
+  <div 
+    className={`md-card p-4 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
+    style={{borderColor: color}}
+    onClick={onClick}
+  >
     <h3 className="text-sm font-medium" style={{color: 'var(--md-text-secondary)'}}>{title}</h3>
     <p className="text-2xl font-semibold mt-1">{value}</p>
   </div>
@@ -47,19 +51,26 @@ const ConvertIcon = () => (
 
 
 const TransactionForm: React.FC<{
-    onSave: (transaction: TransactionInput) => void;
+    initialData?: Transaction | null;
+    onSave: (transaction: TransactionInput | Transaction) => void;
     onCancel: () => void;
-}> = ({ onSave, onCancel }) => {
-    const [description, setDescription] = useState('');
-    const [amount, setAmount] = useState(0);
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [type, setType] = useState<TransactionType>(TransactionType.Expense);
-    const [category, setCategory] = useState<TransactionCategory>(TransactionCategory.OtherExpense);
-    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.BankTransfer);
+}> = ({ initialData, onSave, onCancel }) => {
+    const [description, setDescription] = useState(initialData?.description || '');
+    const [amount, setAmount] = useState(initialData?.amount || 0);
+    const [date, setDate] = useState(initialData?.date.split('T')[0] || new Date().toISOString().split('T')[0]);
+    const [type, setType] = useState<TransactionType>(initialData?.type || TransactionType.Expense);
+    const [category, setCategory] = useState<TransactionCategory>(initialData?.category || TransactionCategory.OtherExpense);
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod || PaymentMethod.BankTransfer);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        onSave({ description, amount: Number(amount), date: new Date(date).toISOString(), type, category, paymentMethod });
+        const data = { description, amount: Number(amount), date: new Date(date).toISOString(), type, category, paymentMethod };
+        
+        if (initialData) {
+            onSave({ ...data, id: initialData.id } as Transaction);
+        } else {
+            onSave(data);
+        }
     };
 
     const incomeCategories = Object.values(TransactionCategory).filter(c => [TransactionCategory.Sales, TransactionCategory.OtherIncome].includes(c));
@@ -67,7 +78,7 @@ const TransactionForm: React.FC<{
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <h2 className="text-xl font-bold mb-4 flex-shrink-0">Nuova Transazione</h2>
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">{initialData ? 'Modifica Transazione' : 'Nuova Transazione'}</h2>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group"><input id="desc" type="text" value={description} onChange={e => setDescription(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="desc" className="md-input-label">Descrizione</label></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -363,6 +374,9 @@ const DocumentForm: React.FC<{
 
 const Finance: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('overview');
+    const [transactionFilter, setTransactionFilter] = useState<'all' | TransactionType>('all');
+    const [invoiceFilter, setInvoiceFilter] = useState<'all' | DocumentStatus>('all');
+    
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -372,6 +386,7 @@ const Finance: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     
     const [isTransModalOpen, setIsTransModalOpen] = useState(false);
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     
     // Unified Document Modal
     const [isDocModalOpen, setIsDocModalOpen] = useState(false);
@@ -411,8 +426,32 @@ const Finance: React.FC = () => {
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
     // Handlers for Transactions
-    const handleSaveTransaction = async (transaction: TransactionInput) => {
-        await addTransaction(transaction); setIsTransModalOpen(false); fetchAllData();
+    const handleOpenTransModal = (transaction: Transaction | null = null) => {
+        setEditingTransaction(transaction);
+        setIsTransModalOpen(true);
+    };
+
+    const handleCloseTransModal = () => {
+        setEditingTransaction(null);
+        setIsTransModalOpen(false);
+    };
+
+    const handleSaveTransaction = async (transactionData: TransactionInput | Transaction) => {
+        try {
+            if ('id' in transactionData) {
+                // Update existing
+                const { id, ...data } = transactionData;
+                await updateTransaction(id, data);
+            } else {
+                // Add new
+                await addTransaction(transactionData); 
+            }
+            handleCloseTransModal();
+            fetchAllData();
+        } catch (error) {
+            console.error("Errore salvataggio transazione:", error);
+            alert("Errore durante il salvataggio della transazione.");
+        }
     };
 
     // Handlers for Documents (Invoices/Quotes)
@@ -704,16 +743,52 @@ const Finance: React.FC = () => {
         };
     }, [transactions, enrollments, activeTab]);
 
+    // Logic for Filtering Transactions
+    const filteredTransactions = transactions.filter(t => {
+        if (transactionFilter === 'all') return true;
+        return t.type === transactionFilter;
+    });
+
+    // Logic for Filtering Invoices
+    const filteredInvoices = invoices.filter(inv => {
+        if (invoiceFilter === 'all') return true;
+        return inv.status === invoiceFilter;
+    });
+
 
     const renderContent = () => {
         switch (activeTab) {
             case 'overview': return (
                 <div className="space-y-6 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <StatCard title="Entrate (Mese)" value={`${monthlyIncome.toFixed(2)}€`} color="var(--md-green)" />
-                        <StatCard title="Uscite (Mese)" value={`${monthlyExpense.toFixed(2)}€`} color="var(--md-red)" />
+                        <StatCard 
+                            title="Entrate (Mese)" 
+                            value={`${monthlyIncome.toFixed(2)}€`} 
+                            color="var(--md-green)" 
+                            onClick={() => {
+                                setTransactionFilter(TransactionType.Income);
+                                setActiveTab('transactions');
+                            }}
+                        />
+                        <StatCard 
+                            title="Uscite (Mese)" 
+                            value={`${monthlyExpense.toFixed(2)}€`} 
+                            color="var(--md-red)"
+                            onClick={() => {
+                                setTransactionFilter(TransactionType.Expense);
+                                setActiveTab('transactions');
+                            }}
+                        />
                         <StatCard title="Utile Lordo (Mese)" value={`${(monthlyIncome - monthlyExpense).toFixed(2)}€`} color="var(--md-primary)" />
-                        <StatCard title="Scaduti (Da Incassare)" value={`${overdueAmount.toFixed(2)}€`} color="#E65100" />
+                        <StatCard 
+                            title="Scaduti (Da Incassare)" 
+                            value={`${overdueAmount.toFixed(2)}€`} 
+                            color="#E65100" 
+                            onClick={() => {
+                                setInvoiceFilter(DocumentStatus.Overdue);
+                                setActiveTab('invoices');
+                            }}
+                        />
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <ChartCard title="Andamento Mensile (Entrate vs Uscite)"><canvas ref={monthlyChartRef}></canvas></ChartCard>
@@ -743,8 +818,30 @@ const Finance: React.FC = () => {
             );
             case 'transactions': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
-                    <div className="md:hidden space-y-3 p-4">
-                        {transactions.map(t => (
+                    {/* Filter Controls */}
+                    <div className="p-4 md:p-0 md:mb-4 flex space-x-2">
+                        <button 
+                            onClick={() => setTransactionFilter('all')} 
+                            className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Tutti
+                        </button>
+                         <button 
+                            onClick={() => setTransactionFilter(TransactionType.Income)} 
+                            className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Entrate
+                        </button>
+                         <button 
+                            onClick={() => setTransactionFilter(TransactionType.Expense)} 
+                            className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Uscite
+                        </button>
+                    </div>
+
+                    <div className="md:hidden space-y-3 p-4 pt-0">
+                        {filteredTransactions.map(t => (
                             <div key={t.id} className="md-card p-4">
                                 <div className="flex justify-between items-start">
                                     <div>
@@ -754,11 +851,13 @@ const Finance: React.FC = () => {
                                     </div>
                                     <p className={`font-bold text-lg ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</p>
                                 </div>
-                                <div className="text-right mt-2">
+                                <div className="text-right mt-2 space-x-2">
+                                     <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit" aria-label="Modifica transazione"><PencilIcon/></button>
                                      <button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete" aria-label="Elimina transazione"><TrashIcon/></button>
                                 </div>
                             </div>
                         ))}
+                         {filteredTransactions.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nessuna transazione trovata.</p>}
                     </div>
                     <table className="w-full text-left hidden md:table">
                         <thead>
@@ -771,21 +870,59 @@ const Finance: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {transactions.map(t => (
+                            {filteredTransactions.map(t => (
                                 <tr key={t.id} className="border-b hover:bg-gray-50" style={{borderColor: 'var(--md-divider)'}}>
                                     <td className="p-4 text-sm">{new Date(t.date).toLocaleDateString()}</td>
                                     <td className="p-4 font-medium">{t.description}</td>
                                     <td className="p-4 text-sm">{t.category}</td>
                                     <td className={`p-4 text-right font-semibold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</td>
-                                    <td className="p-4"><button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete"><TrashIcon/></button></td>
+                                    <td className="p-4">
+                                        <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit mr-2"><PencilIcon/></button>
+                                        <button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete"><TrashIcon/></button>
+                                    </td>
                                 </tr>
                             ))}
+                             {filteredTransactions.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-gray-500">Nessuna transazione trovata.</td></tr>}
                         </tbody>
                     </table>
                 </div>
             );
             case 'invoices': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
+                    {/* Filter controls for invoices */}
+                    <div className="p-4 md:p-0 md:mb-4 flex space-x-2 overflow-x-auto pb-2 md:pb-0">
+                         <button 
+                            onClick={() => setInvoiceFilter('all')} 
+                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Tutte
+                        </button>
+                        <button 
+                            onClick={() => setInvoiceFilter(DocumentStatus.Overdue)} 
+                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Overdue ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Scadute
+                        </button>
+                         <button 
+                            onClick={() => setInvoiceFilter(DocumentStatus.Paid)} 
+                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Paid ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Pagate
+                        </button>
+                         <button 
+                            onClick={() => setInvoiceFilter(DocumentStatus.Sent)} 
+                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Inviate
+                        </button>
+                         <button 
+                            onClick={() => setInvoiceFilter(DocumentStatus.Draft)} 
+                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Draft ? 'bg-gray-200 text-gray-800 border-gray-300' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                        >
+                            Bozze
+                        </button>
+                    </div>
+
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -799,7 +936,7 @@ const Finance: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {invoices.map(inv => (
+                                {filteredInvoices.map(inv => (
                                     <tr key={inv.id} className="border-b hover:bg-gray-50" style={{borderColor: 'var(--md-divider)'}}>
                                         <td className="p-4 font-medium">
                                             {inv.invoiceNumber} 
@@ -827,13 +964,13 @@ const Finance: React.FC = () => {
                                         </td>
                                     </tr>
                                 ))}
-                                {invoices.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna fattura presente.</td></tr>}
+                                {filteredInvoices.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna fattura trovata con questo filtro.</td></tr>}
                             </tbody>
                         </table>
                     </div>
                     {/* Mobile View Invoices */}
                     <div className="md:hidden p-4 space-y-4">
-                        {invoices.map(inv => (
+                        {filteredInvoices.map(inv => (
                             <div key={inv.id} className="border rounded-lg p-4 shadow-sm">
                                 <div className="flex justify-between mb-2">
                                     <div>
@@ -860,6 +997,7 @@ const Finance: React.FC = () => {
                                 </div>
                             </div>
                         ))}
+                         {filteredInvoices.length === 0 && <p className="text-center text-gray-500">Nessuna fattura trovata con questo filtro.</p>}
                     </div>
                 </div>
             );
@@ -960,7 +1098,7 @@ const Finance: React.FC = () => {
             </div>
             <div className="flex space-x-2">
                 {activeTab === 'transactions' && (
-                    <button onClick={() => setIsTransModalOpen(true)} className="md-btn md-btn-raised md-btn-green">
+                    <button onClick={() => handleOpenTransModal()} className="md-btn md-btn-raised md-btn-green">
                         <PlusIcon /> <span className="ml-2">Nuova Transazione</span>
                     </button>
                 )}
@@ -989,8 +1127,8 @@ const Finance: React.FC = () => {
         </div>
         
          {isTransModalOpen && (
-            <Modal onClose={() => setIsTransModalOpen(false)}>
-                <TransactionForm onSave={handleSaveTransaction} onCancel={() => setIsTransModalOpen(false)}/>
+            <Modal onClose={handleCloseTransModal}>
+                <TransactionForm initialData={editingTransaction} onSave={handleSaveTransaction} onCancel={handleCloseTransModal}/>
             </Modal>
         )}
 

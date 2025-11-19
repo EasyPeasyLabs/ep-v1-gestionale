@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, Lesson, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, Appointment, Supplier } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, Lesson, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, Appointment, Supplier, AvailabilitySlot } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
-import { getEnrollmentsForClient, addEnrollment, deleteEnrollment } from '../services/enrollmentService';
+import { getEnrollmentsForClient, addEnrollment, deleteEnrollment, getAllEnrollments } from '../services/enrollmentService';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService'; // Changed import
 import { addTransaction } from '../services/financeService';
@@ -20,6 +20,8 @@ import ImportModal from '../components/ImportModal';
 import { importClientsFromExcel } from '../services/importService';
 import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 
+const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
 const EnrollmentForm: React.FC<{
     parent: ParentClient;
     onSave: (enrollment: EnrollmentInput, subType: SubscriptionType, child: Child) => void;
@@ -29,6 +31,8 @@ const EnrollmentForm: React.FC<{
     const [subscriptionTypeId, setSubscriptionTypeId] = useState('');
     const [supplierId, setSupplierId] = useState('');
     const [locationId, setLocationId] = useState('');
+    const [startDateInput, setStartDateInput] = useState(new Date().toISOString().split('T')[0]); // Default oggi
+    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
 
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -62,10 +66,51 @@ const EnrollmentForm: React.FC<{
         const newSupplier = suppliers.find(s => s.id === newSupplierId);
         if (newSupplier && newSupplier.locations.length > 0) {
             setLocationId(newSupplier.locations[0].id);
+            setSelectedSlotIndex(null); // Reset slot on supplier/location change
         } else {
             setLocationId('');
+            setSelectedSlotIndex(null);
         }
     };
+
+    const handleLocationChange = (newLocationId: string) => {
+        setLocationId(newLocationId);
+        setSelectedSlotIndex(null);
+    };
+
+    // Helper per generare le date delle lezioni
+    const generateAppointments = (startDate: Date, slot: AvailabilitySlot, numLessons: number, locName: string, locColor: string, childName: string): Appointment[] => {
+        const appointments: Appointment[] = [];
+        let currentDate = new Date(startDate);
+        let lessonsScheduled = 0;
+
+        // Trova la prima data utile che corrisponde al giorno della settimana
+        // Attenzione: se la data di partenza è già il giorno giusto, inizia da lì, altrimenti avanza
+        while (currentDate.getDay() !== slot.dayOfWeek) {
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        // Se la data trovata è precedente alla data di input (caso limite), aggiungi 7 giorni (non dovrebbe accadere col loop sopra se partiamo da startDate)
+        if (currentDate < startDate) {
+             currentDate.setDate(currentDate.getDate() + 7);
+        }
+
+        while (lessonsScheduled < numLessons) {
+            appointments.push({
+                lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                date: currentDate.toISOString(),
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                locationName: locName,
+                locationColor: locColor,
+                childName: childName
+            });
+            // Avanza di una settimana
+            currentDate.setDate(currentDate.getDate() + 7);
+            lessonsScheduled++;
+        }
+        return appointments;
+    };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -76,9 +121,27 @@ const EnrollmentForm: React.FC<{
         
         if (!selectedChild || !selectedSub || !selectedSupplier || !selectedLocation) return;
         
-        const startDate = new Date();
-        const endDate = new Date();
-        endDate.setDate(startDate.getDate() + selectedSub.durationInDays);
+        if (selectedSlotIndex === null) {
+            alert("Per favore seleziona un orario disponibile per le lezioni.");
+            return;
+        }
+        const selectedSlot = selectedLocation.availability ? selectedLocation.availability[selectedSlotIndex] : null;
+        if (!selectedSlot) return;
+
+        // Calcolo appuntamenti usando la data selezionata dall'utente
+        const startObj = new Date(startDateInput);
+        const appointments = generateAppointments(
+            startObj, 
+            selectedSlot, 
+            selectedSub.lessons, 
+            selectedLocation.name, 
+            selectedLocation.color,
+            selectedChild.name
+        );
+        
+        // La data di inizio è la data della prima lezione effettiva (o quella impostata se coincide), la fine è l'ultima
+        const startDate = appointments.length > 0 ? appointments[0].date : startObj.toISOString();
+        const endDate = appointments.length > 0 ? appointments[appointments.length - 1].date : startObj.toISOString();
 
         const newEnrollment: EnrollmentInput = {
             clientId: parent.id,
@@ -90,23 +153,25 @@ const EnrollmentForm: React.FC<{
             supplierName: selectedSupplier.companyName,
             locationId: selectedLocation.id,
             locationName: selectedLocation.name,
-            appointments: [], // Nessuna lezione specifica selezionata all'iscrizione
+            locationColor: selectedLocation.color,
+            appointments: appointments,
             lessonsTotal: selectedSub.lessons,
-            lessonsRemaining: selectedSub.lessons, // All'inizio sono tutte disponibili
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
+            lessonsRemaining: selectedSub.lessons,
+            startDate: startDate,
+            endDate: endDate,
             status: EnrollmentStatus.Active,
         };
         onSave(newEnrollment, selectedSub, selectedChild);
     };
 
     const selectedSupplier = suppliers.find(s => s.id === supplierId);
+    const selectedLocation = selectedSupplier?.locations.find(l => l.id === locationId);
 
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <h2 className="text-xl font-bold mb-4 flex-shrink-0">Nuova Iscrizione</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[85vh]">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0 border-b pb-3">Nuova Iscrizione</h2>
             
             <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group">
@@ -131,36 +196,89 @@ const EnrollmentForm: React.FC<{
                 </div>
 
                 <div className="md-input-group">
-                    <select id="location" value={locationId} onChange={e => setLocationId(e.target.value)} required disabled={!selectedSupplier || selectedSupplier.locations.length === 0} className="md-input">
+                    <select id="location" value={locationId} onChange={e => handleLocationChange(e.target.value)} required disabled={!selectedSupplier || selectedSupplier.locations.length === 0} className="md-input">
                          {!selectedSupplier?.locations.length && <option value="">Nessuna sede disponibile</option>}
                         {selectedSupplier?.locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.city})</option>)}
                     </select>
                     <label htmlFor="location" className="md-input-label !top-0 !text-xs !text-gray-500">Sede (Aula)</label>
                 </div>
                 
+                <div className="md-input-group">
+                    <input 
+                        id="startDate" 
+                        type="date" 
+                        value={startDateInput} 
+                        onChange={e => setStartDateInput(e.target.value)} 
+                        required 
+                        className="md-input" 
+                    />
+                    <label htmlFor="startDate" className="md-input-label !top-0 !text-xs !text-gray-500">Data Inizio Iscrizione</label>
+                </div>
+
+                {selectedLocation && (
+                    <div className="mt-4">
+                         <label className="block text-sm font-medium text-gray-700 mb-2">Orari Disponibili per {selectedLocation.name}</label>
+                         <div className="space-y-2">
+                             {selectedLocation.availability && selectedLocation.availability.length > 0 ? (
+                                 selectedLocation.availability.map((slot, idx) => (
+                                     <label key={idx} className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${selectedSlotIndex === idx ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'hover:bg-gray-50 border-gray-200'}`}>
+                                         <input 
+                                             type="radio" 
+                                             name="availabilitySlot" 
+                                             value={idx} 
+                                             checked={selectedSlotIndex === idx}
+                                             onChange={() => setSelectedSlotIndex(idx)}
+                                             className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                         />
+                                         <div className="ml-3">
+                                             <span className="block text-sm font-medium text-gray-900">
+                                                 {daysOfWeekMap[slot.dayOfWeek]}
+                                             </span>
+                                             <span className="block text-sm text-gray-500">
+                                                 {slot.startTime} - {slot.endTime}
+                                             </span>
+                                         </div>
+                                     </label>
+                                 ))
+                             ) : (
+                                 <p className="text-sm text-red-500">Questa sede non ha orari definiti. Aggiungi disponibilità nella scheda Fornitori.</p>
+                             )}
+                         </div>
+                    </div>
+                )}
+                
                 <div className="bg-indigo-50 p-3 rounded-md mt-2">
                     <p className="text-xs text-indigo-800">
-                        L'iscrizione garantisce l'accesso alla sede selezionata per il numero di lezioni previsto dal pacchetto scelto.
+                        Selezionando l'orario e la data di inizio, verranno generate automaticamente le lezioni previste dal pacchetto a partire da tale data.
                     </p>
                 </div>
             </div>
 
              <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green">Iscrivi</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green" disabled={selectedSlotIndex === null}>Iscrivi</button>
             </div>
         </form>
     );
 };
 
 
-const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (client: Client) => void; }> = ({ client, onBack, onEdit }) => {
+const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (client: Client) => void; avatarColor?: string }> = ({ client, onBack, onEdit, avatarColor }) => {
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(false);
     const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
     const [enrollmentToDelete, setEnrollmentToDelete] = useState<string | null>(null);
     const [expandedEnrollmentId, setExpandedEnrollmentId] = useState<string | null>(null);
     
+    // Usa il colore passato dalle props o fallback a default
+    const displayColor = avatarColor || '#e0e7ff'; // Indigo-100 default
+    // Calcola un colore del testo leggibile
+    const isDarkColor = (color: string) => {
+        // Semplice euristica: se non è il default chiaro, assumiamo sia un colore saturo/scuro della sede
+        return color !== '#e0e7ff' && color !== '#fef3c7';
+    };
+    const textColor = isDarkColor(displayColor) ? '#ffffff' : '#311B92';
+
     const fetchEnrollments = useCallback(async (showLoading = true) => {
         if(client.clientType === ClientType.Parent) {
             if(showLoading) setLoading(true);
@@ -238,8 +356,9 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
             {client.clientType === ClientType.Parent ? (
                 <>
                     <div className="flex flex-col sm:flex-row items-start">
-                        <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center bg-indigo-100 mb-4 sm:mb-0" style={{ minWidth: '6rem' }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" style={{ color: '#311B92' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="w-24 h-24 rounded-full mr-6 flex items-center justify-center mb-4 sm:mb-0 shadow-sm border border-gray-100" 
+                             style={{ minWidth: '6rem', backgroundColor: displayColor }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" style={{ color: textColor }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                             </svg>
                         </div>
@@ -270,11 +389,11 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                              </div>
                               {loading ? <div className="mt-4"><Spinner/></div> :
                                 enrollments.length > 0 ? enrollments.map(enr => (
-                                    <div key={enr.id} className="mt-2 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
+                                    <div key={enr.id} className="mt-2 border rounded-lg shadow-sm" style={{ borderColor: 'var(--md-divider)', borderLeftWidth: '4px', borderLeftColor: enr.locationColor || '#ccc' }}>
                                         <div className="p-3 flex justify-between items-center cursor-pointer" onClick={() => toggleExpand(enr.id)}>
                                             <div className="flex-1">
                                                 <p className="font-semibold text-indigo-800">{enr.childName} - {enr.subscriptionName}</p>
-                                                <p className="text-xs text-gray-500 mt-0.5">Presso: {enr.locationName}</p>
+                                                <p className="text-xs text-gray-500 mt-0.5 font-bold" style={{ color: enr.locationColor || 'gray' }}>Presso: {enr.locationName}</p>
                                                 <div className="flex items-center text-sm text-gray-600 mt-1 space-x-4">
                                                     <span>Ingressi: {enr.lessonsTotal - enr.lessonsRemaining}/{enr.lessonsTotal}</span>
                                                     <span className={enr.lessonsRemaining <= 2 ? 'text-red-500 font-bold' : ''}>Residui: {enr.lessonsRemaining}</span>
@@ -297,20 +416,19 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                                         </div>
                                         {expandedEnrollmentId === enr.id && (
                                             <div className="px-3 pb-3 border-t bg-gray-50 rounded-b-lg" style={{ borderColor: 'var(--md-divider)'}}>
-                                                <p className="text-xs font-semibold text-gray-500 mt-2 uppercase tracking-wide">Dettagli Ingressi</p>
+                                                <p className="text-xs font-semibold text-gray-500 mt-2 uppercase tracking-wide">Lezioni Programmate</p>
                                                 {enr.appointments && enr.appointments.length > 0 ? (
-                                                    <ul className="mt-2 space-y-2">
+                                                    <ul className="mt-2 space-y-2 max-h-40 overflow-y-auto">
                                                         {enr.appointments.map((app, idx) => (
-                                                            <li key={idx} className="text-sm flex justify-between bg-white p-2 rounded shadow-sm">
-                                                                <span>{new Date(app.date).toLocaleDateString()} <span className="text-gray-500">({app.startTime})</span></span>
+                                                            <li key={idx} className="text-sm flex justify-between bg-white p-2 rounded shadow-sm border-l-2" style={{borderLeftColor: app.locationColor}}>
+                                                                <span>{new Date(app.date).toLocaleDateString()} <span className="text-gray-500">({app.startTime}-{app.endTime})</span></span>
                                                                 <span className="text-xs text-gray-400">{app.locationName}</span>
                                                             </li>
                                                         ))}
                                                     </ul>
                                                 ) : (
                                                     <p className="text-sm text-gray-500 mt-2 italic">
-                                                        Iscrizione valida per l'accesso alla sede <b>{enr.locationName}</b>.
-                                                        <br/>Monitora i crediti residui.
+                                                        Nessuna lezione programmata specificatamente.
                                                     </p>
                                                 )}
                                             </div>
@@ -356,7 +474,7 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                 onClose={() => setEnrollmentToDelete(null)}
                 onConfirm={handleConfirmDelete}
                 title="Elimina Iscrizione"
-                message="Sei sicuro di voler eliminare questa iscrizione? Questa azione non può essere annullata."
+                message="Sei sicuro di voler eliminare questa iscrizione? Tutte le lezioni programmate verranno cancellate."
                 isDangerous={true}
             />
         </div>
@@ -481,7 +599,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
     }
 
     return (
-        <form onSubmit={handleSubmit} className="animate-fade-in flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="animate-fade-in flex flex-col h-full max-h-[85vh]">
             <div className="flex flex-wrap gap-2 justify-between items-center mb-4 flex-shrink-0">
                 <h2 className="text-xl font-bold">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span style={{color: 'var(--md-primary)'}}>{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
                 {clientType === ClientType.Parent && (
@@ -552,6 +670,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
 
 const Clients: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
+  const [clientEnrollmentColors, setClientEnrollmentColors] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -565,6 +684,21 @@ const Clients: React.FC = () => {
       setLoading(true);
       const clientsData = await getClients();
       setClients(clientsData);
+      
+      // Fetch active enrollments to map colors
+      const activeEnrollments = await getAllEnrollments();
+      const colorMap = new Map<string, string>();
+      
+      // Map client ID to the color of their most recent active enrollment location
+      activeEnrollments.forEach(enr => {
+          if (enr.locationColor) {
+              // This simple logic overwrites if multiple, effectively taking the "last" one processed.
+              // For a more complex logic (e.g. primary color), we'd need more rules.
+              colorMap.set(enr.clientId, enr.locationColor);
+          }
+      });
+      setClientEnrollmentColors(colorMap);
+
       setError(null);
     } catch (err) {
       setError("Impossibile caricare i clienti.");
@@ -576,6 +710,13 @@ const Clients: React.FC = () => {
 
   useEffect(() => {
     fetchClients();
+    
+    // Re-fetch data if updated elsewhere (e.g. enrollment added)
+    const handleDataUpdate = () => {
+        fetchClients();
+    };
+    window.addEventListener('EP_DataUpdated', handleDataUpdate);
+    return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
   }, [fetchClients]);
 
   const handleOpenModal = (client: Client | null = null) => {
@@ -639,7 +780,8 @@ const Clients: React.FC = () => {
   };
 
   if (selectedClient) {
-    return <ClientDetail client={selectedClient} onBack={handleBackToList} onEdit={() => handleOpenModal(selectedClient)} />;
+    const color = clientEnrollmentColors.get(selectedClient.id);
+    return <ClientDetail client={selectedClient} onBack={handleBackToList} onEdit={() => handleOpenModal(selectedClient)} avatarColor={color} />;
   }
 
   return (
@@ -698,23 +840,29 @@ const Clients: React.FC = () => {
            <>
            {/* Mobile View - Cards */}
            <div className="md:hidden mt-4 space-y-4 px-4 pb-4">
-              {clients.map(client => (
+              {clients.map(client => {
+                  const avatarColor = clientEnrollmentColors.get(client.id) || (client.clientType === ClientType.Parent ? '#e0e7ff' : '#fef3c7');
+                  const iconColor = (client.clientType === ClientType.Parent && !clientEnrollmentColors.get(client.id)) ? '#311B92' : 
+                                    (client.clientType === ClientType.Institutional) ? '#E65100' : 
+                                    // Se c'è un colore custom, usiamo bianco per l'icona se scuro, o nero se chiaro? Semplifichiamo.
+                                    '#444';
+                  
+                  return (
                 <div key={client.id} className="md-card p-4">
                    <div className="flex items-start justify-between">
                       <div className="flex items-start">
-                        {client.clientType === ClientType.Parent ? (
-                              <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-indigo-100" style={{minWidth: '2.5rem'}}>
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#311B92'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center shadow-sm border border-gray-100" 
+                             style={{minWidth: '2.5rem', backgroundColor: avatarColor}}>
+                             {client.clientType === ClientType.Parent ? (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: iconColor}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                   </svg>
-                              </div>
-                           ) : (
-                              <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-amber-100" style={{minWidth: '2.5rem'}}>
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#E65100'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                             ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: iconColor}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                                   </svg>
-                              </div>
-                           )}
+                             )}
+                        </div>
                            <div>
                               <p className="font-medium">{client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}</p>
                               <span className={`text-xs md-badge mt-1 ${client.clientType === ClientType.Parent ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'}`}>
@@ -736,7 +884,8 @@ const Clients: React.FC = () => {
                        <button onClick={() => setSelectedClient(client)} className="md-btn md-btn-flat md-btn-primary text-sm">Vedi Dettagli</button>
                    </div>
                 </div>
-              ))}
+              );
+             })}
            </div>
           
            {/* Desktop View - Table */}
@@ -752,23 +901,27 @@ const Clients: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {clients.map(client => (
+                {clients.map(client => {
+                    const avatarColor = clientEnrollmentColors.get(client.id) || (client.clientType === ClientType.Parent ? '#e0e7ff' : '#fef3c7');
+                    const iconColor = (client.clientType === ClientType.Parent && !clientEnrollmentColors.get(client.id)) ? '#311B92' : 
+                                    (client.clientType === ClientType.Institutional) ? '#E65100' : 
+                                    '#444';
+                    return (
                   <tr key={client.id} className="border-b hover:bg-gray-50" style={{ borderColor: 'var(--md-divider)'}}>
                     <td className="p-4">
                       <div className="flex items-center">
-                         {client.clientType === ClientType.Parent ? (
-                            <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-indigo-100" style={{minWidth: '2.5rem'}}>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#311B92'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                </svg>
-                            </div>
-                         ) : (
-                            <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center bg-amber-100" style={{minWidth: '2.5rem'}}>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: '#E65100'}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                </svg>
-                            </div>
-                         )}
+                         <div className="w-10 h-10 rounded-full mr-3 flex items-center justify-center shadow-sm border border-gray-100" 
+                              style={{minWidth: '2.5rem', backgroundColor: avatarColor}}>
+                             {client.clientType === ClientType.Parent ? (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: iconColor}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                  </svg>
+                             ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" style={{color: iconColor}} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                  </svg>
+                             )}
+                         </div>
                         <span className="font-medium">{client.clientType === ClientType.Parent ? `${client.firstName} ${client.lastName}` : client.companyName}</span>
                       </div>
                     </td>
@@ -792,7 +945,7 @@ const Clients: React.FC = () => {
                         </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
             </div>

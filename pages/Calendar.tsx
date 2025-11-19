@@ -1,19 +1,19 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Lesson, LessonInput, Supplier } from '../types';
-import { getLessons, addLesson, updateLesson, deleteLesson, addLessonsBatch } from '../services/calendarService';
+import { Lesson, LessonInput, Supplier, Enrollment, Appointment } from '../types';
+import { getLessons, addLesson, updateLesson, deleteLesson } from '../services/calendarService';
+import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
-import PencilIcon from '../components/icons/PencilIcon';
-import TrashIcon from '../components/icons/TrashIcon';
+
 
 const LessonForm: React.FC<{
     lesson?: Lesson | null;
     selectedDate?: Date | null;
-    onSave: (item: LessonInput | Lesson, isRecurring: boolean, recurringEndDate?: string, recurringDays?: number[]) => void;
+    onSave: (item: LessonInput | Lesson) => void;
     onCancel: () => void;
 }> = ({ lesson, selectedDate, onSave, onCancel }) => {
     const [date, setDate] = useState(lesson?.date.split('T')[0] || selectedDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]);
@@ -24,11 +24,6 @@ const LessonForm: React.FC<{
     
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
-
-    // Recurring state
-    const [isRecurring, setIsRecurring] = useState(false);
-    const [recurringEndDate, setRecurringEndDate] = useState(new Date().toISOString().split('T')[0]);
-    const [recurringDays, setRecurringDays] = useState<number[]>([]);
 
     const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
@@ -55,12 +50,6 @@ const LessonForm: React.FC<{
         setLocationId(newSupplier?.locations[0]?.id || '');
     };
 
-    const handleRecurringDayChange = (dayIndex: number) => {
-        setRecurringDays(prev => 
-            prev.includes(dayIndex) ? prev.filter(d => d !== dayIndex) : [...prev, dayIndex]
-        );
-    };
-
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const supplier = suppliers.find(s => s.id === supplierId);
@@ -73,9 +62,9 @@ const LessonForm: React.FC<{
         };
 
         if (lesson?.id) {
-            onSave({ ...lessonData, id: lesson.id }, false);
+            onSave({ ...lessonData, id: lesson.id });
         } else {
-            onSave(lessonData, isRecurring, recurringEndDate, recurringDays);
+            onSave(lessonData);
         }
     };
 
@@ -83,7 +72,10 @@ const LessonForm: React.FC<{
     
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <h2 className="text-xl font-bold mb-4 flex-shrink-0">{lesson ? 'Modifica Lezione' : 'Nuova Lezione'}</h2>
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">{lesson ? 'Modifica Lezione Manuale' : 'Nuova Lezione Manuale'}</h2>
+            <div className="bg-yellow-50 p-3 mb-4 rounded border border-yellow-200 text-sm text-yellow-800">
+                <strong>Attenzione:</strong> Usa questa funzione solo per lezioni extra o fuori abbonamento. Le lezioni regolari vengono create automaticamente all'iscrizione del cliente.
+            </div>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group"><input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required className="md-input"/><label htmlFor="date" className="md-input-label !top-0 !text-xs !text-gray-500">Data</label></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -104,44 +96,32 @@ const LessonForm: React.FC<{
                     </select>
                     <label htmlFor="location" className="md-input-label !top-0 !text-xs !text-gray-500">Sede</label>
                 </div>
-
-                {!lesson && (
-                    <div className="pt-4 border-t" style={{ borderColor: 'var(--md-divider)'}}>
-                        <label className="flex items-center space-x-2">
-                            <input type="checkbox" checked={isRecurring} onChange={e => setIsRecurring(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"/>
-                            <span className="font-medium">Ripeti questa lezione</span>
-                        </label>
-                        {isRecurring && (
-                            <div className="mt-4 space-y-4 animate-fade-in">
-                                <p className="text-sm" style={{color: 'var(--md-text-secondary)'}}>Crea lezioni multiple fino alla data di fine nei giorni selezionati.</p>
-                                <div className="md-input-group">
-                                    <input id="endDate" type="date" value={recurringEndDate} onChange={e => setRecurringEndDate(e.target.value)} required className="md-input"/>
-                                    <label htmlFor="endDate" className="md-input-label !top-0 !text-xs !text-gray-500">Data di fine</label>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    {['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'].map((day, index) => (
-                                        <button type="button" key={day} onClick={() => handleRecurringDayChange(index)}
-                                            className={`px-3 py-1 text-sm rounded-full border transition-colors ${recurringDays.includes(index) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white hover:bg-gray-100'}`}>
-                                            {day}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
             </div>
             <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Lezione</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>
         </form>
     );
 };
 
+// Definizione unificata per evento calendario
+interface CalendarEvent {
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    title: string;
+    color: string;
+    isManual: boolean; // true se da collection 'lessons', false se da 'enrollments'
+    // Campi specifici per aggregazione
+    locationName?: string;
+    enrolledCount?: number;
+    maxCapacity?: number;
+}
 
 const Calendar: React.FC = () => {
-    const [lessons, setLessons] = useState<Lesson[]>([]);
+    const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -150,57 +130,152 @@ const Calendar: React.FC = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [lessonToDelete, setLessonToDelete] = useState<string | null>(null);
 
-    const fetchLessons = useCallback(async () => {
+    const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await getLessons(); 
-            setLessons(data);
+            // Fetch everything in parallel
+            const [manualLessons, enrollments, suppliers] = await Promise.all([
+                getLessons(),
+                getAllEnrollments(),
+                getSuppliers()
+            ]);
+
+            // 1. Mappa le location per ID per avere accesso rapido a capienza e nome
+            const locationMap = new Map<string, { name: string; capacity: number; color: string }>();
+            suppliers.forEach(s => {
+                s.locations.forEach(l => {
+                    locationMap.set(l.id, { 
+                        name: l.name, 
+                        capacity: l.capacity || 0, 
+                        color: l.color 
+                    });
+                });
+            });
+
+            const calendarEvents: CalendarEvent[] = [];
+
+            // 2. Gestione Lezioni Manuali (Restano separate)
+            manualLessons.forEach(l => {
+                calendarEvents.push({
+                    id: l.id,
+                    date: l.date,
+                    startTime: l.startTime,
+                    endTime: l.endTime,
+                    title: `EXTRA: ${l.locationName}`,
+                    color: l.locationColor || '#94a3b8',
+                    isManual: true,
+                    locationName: l.locationName
+                });
+            });
+
+            // 3. Gestione Iscrizioni (Raggruppamento)
+            // Chiave di raggruppamento: date_startTime_locationId
+            const groupedAppointments = new Map<string, {
+                date: string;
+                startTime: string;
+                endTime: string;
+                locationId: string;
+                count: number;
+                locationName: string;
+                color: string;
+                capacity: number;
+            }>();
+
+            enrollments.forEach(enr => {
+                if (enr.appointments) {
+                    enr.appointments.forEach(app => {
+                        // FIX: Use enr.locationId instead of app.locationId
+                        const locationId = enr.locationId;
+                        const key = `${app.date}_${app.startTime}_${locationId}`;
+                        const locInfo = locationMap.get(locationId);
+                        
+                        if (!groupedAppointments.has(key)) {
+                            groupedAppointments.set(key, {
+                                date: app.date,
+                                startTime: app.startTime,
+                                endTime: app.endTime,
+                                locationId: locationId,
+                                count: 0,
+                                locationName: locInfo?.name || app.locationName,
+                                color: locInfo?.color || app.locationColor || enr.locationColor || '#3b82f6',
+                                capacity: locInfo?.capacity || 0
+                            });
+                        }
+                        
+                        const group = groupedAppointments.get(key);
+                        if (group) {
+                            group.count++;
+                        }
+                    });
+                }
+            });
+
+            // Converti i gruppi in eventi del calendario
+            groupedAppointments.forEach((group, key) => {
+                calendarEvents.push({
+                    id: key, // ID fittizio per il rendering
+                    date: group.date,
+                    startTime: group.startTime,
+                    endTime: group.endTime,
+                    title: `${group.locationName}`, // Titolo base
+                    locationName: group.locationName,
+                    color: group.color,
+                    isManual: false,
+                    enrolledCount: group.count,
+                    maxCapacity: group.capacity
+                });
+            });
+
+            setEvents(calendarEvents);
         } catch (err) {
             setError("Impossibile caricare il calendario."); console.error(err);
         } finally { setLoading(false); }
     }, []);
 
-    useEffect(() => { fetchLessons(); }, [fetchLessons]);
+    useEffect(() => { fetchData(); }, [fetchData]);
     
-    const handleOpenModal = (item: Lesson | null = null, date: Date | null = null) => { 
-        setEditingLesson(item);
+    const handleOpenModal = (item: CalendarEvent | null = null, date: Date | null = null) => { 
+        if (item && !item.isManual) {
+            // Se è un raggruppamento automatico, mostriamo solo un alert
+            // Non permettiamo modifiche di gruppo qui, devono essere gestite lato Cliente
+            return;
+        }
+        // Se è manuale o nuovo
+        const lessonToEdit = item ? { 
+            id: item.id, 
+            date: item.date, 
+            startTime: item.startTime, 
+            endTime: item.endTime,
+            // Campi fittizi
+            supplierId: '', 
+            locationId: '', 
+            supplierName: '', 
+            locationName: '' 
+        } as Lesson : null;
+        
+        setEditingLesson(lessonToEdit);
         setSelectedDate(date);
         setIsModalOpen(true); 
     };
 
-    const handleSaveLesson = async (item: LessonInput | Lesson, isRecurring: boolean, recurringEndDate?: string, recurringDays?: number[]) => {
-        if (isRecurring && !('id' in item) && recurringEndDate && recurringDays?.length) {
-            const lessonsToCreate: LessonInput[] = [];
-            let currentDate = new Date(item.date);
-            const endDate = new Date(recurringEndDate);
-            endDate.setHours(23, 59, 59, 999); // Include the end date
-
-            while (currentDate <= endDate) {
-                if (recurringDays.includes(currentDate.getDay())) {
-                    lessonsToCreate.push({ ...item, date: currentDate.toISOString() });
-                }
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-            if (lessonsToCreate.length > 0) {
-                await addLessonsBatch(lessonsToCreate);
-            }
-        } else if ('id' in item) { 
+    const handleSaveLesson = async (item: LessonInput | Lesson) => {
+        if ('id' in item) { 
             await updateLesson(item.id, item); 
         } else { 
             await addLesson(item); 
         }
-        setIsModalOpen(false); setEditingLesson(null); fetchLessons();
+        setIsModalOpen(false); setEditingLesson(null); fetchData();
     };
     
-    const handleDeleteClick = (id: string) => {
+    const handleDeleteClick = (id: string, isManual: boolean) => {
+        if (!isManual) return;
         setLessonToDelete(id);
-        setIsModalOpen(false); // Close edit modal if open
     };
 
     const handleConfirmDelete = async () => {
         if(lessonToDelete) {
             await deleteLesson(lessonToDelete);
-            fetchLessons();
+            fetchData();
             setLessonToDelete(null);
         }
     };
@@ -239,11 +314,11 @@ const Calendar: React.FC = () => {
         <div>
             <div className="flex flex-wrap gap-4 justify-between items-center">
                 <div>
-                  <h1 className="text-3xl font-bold">Calendario Lezioni</h1>
-                  <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Pianifica le lezioni a breve e lungo termine.</p>
+                  <h1 className="text-3xl font-bold">Calendario</h1>
+                  <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Visualizza le lezioni programmate e l'occupazione delle aule.</p>
                 </div>
-                <button onClick={() => handleOpenModal(null, new Date())} className="md-btn md-btn-raised md-btn-green">
-                    <PlusIcon /><span className="ml-2">Nuova Lezione</span>
+                <button onClick={() => handleOpenModal(null, new Date())} className="md-btn md-btn-flat md-btn-primary">
+                    <PlusIcon /><span className="ml-2">Lezione Extra</span>
                 </button>
             </div>
             
@@ -267,18 +342,38 @@ const Calendar: React.FC = () => {
                                 <span className={`font-semibold text-xs ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>
                              )}
                              <div className="mt-1 space-y-1 overflow-y-auto flex-1">
-                                {day && lessons
-                                    .filter(l => new Date(l.date).toDateString() === day.toDateString())
+                                {day && events
+                                    .filter(ev => new Date(ev.date).toDateString() === day.toDateString())
                                     .sort((a,b) => a.startTime.localeCompare(b.startTime))
-                                    .map(item => {
-                                        const textColor = getTextColorForBg(item.locationColor);
+                                    .map(event => {
+                                        const textColor = getTextColorForBg(event.color);
+                                        
+                                        // Abbreviazione sede (prime 3 lettere uppercase)
+                                        const locAbbr = (event.locationName || 'UNK').substring(0, 3).toUpperCase();
+
                                         return (
-                                            <div key={item.id}
-                                                 className="p-1 rounded text-[10px] leading-tight shadow-sm flex justify-between items-center group"
-                                                 style={{ backgroundColor: item.locationColor || '#f1f5f9', color: textColor }}
-                                                 onClick={(e) => { e.stopPropagation(); handleOpenModal(item, day); }}>
-                                                 <p className="font-bold truncate flex-1">{item.startTime} - {item.locationName}</p>
-                                                 <button onClick={(e) => {e.stopPropagation(); handleDeleteClick(item.id);}} className="opacity-0 group-hover:opacity-100 ml-1 hover:text-red-600 transition-opacity" aria-label="Elimina lezione">×</button>
+                                            <div key={event.id}
+                                                 className="p-1 rounded shadow-sm group flex flex-col justify-between relative"
+                                                 style={{ backgroundColor: event.color, color: textColor, minHeight: event.isManual ? 'auto' : '36px' }}
+                                                 onClick={(e) => { if(!event.isManual) e.stopPropagation(); else {e.stopPropagation(); handleOpenModal(event, day);} }}>
+                                                 
+                                                 {event.isManual ? (
+                                                    // Visualizzazione Lezione Manuale (Classica)
+                                                    <div className="flex justify-between items-center text-[10px] leading-tight">
+                                                        <span className="font-bold truncate">{event.startTime} - {event.title}</span>
+                                                        <button onClick={(e) => {e.stopPropagation(); handleDeleteClick(event.id, true);}} className="opacity-0 group-hover:opacity-100 ml-1 hover:text-red-600 transition-opacity font-bold text-lg leading-none" aria-label="Elimina">×</button>
+                                                    </div>
+                                                 ) : (
+                                                    // Visualizzazione Raggruppata (Richiesta Specifica)
+                                                    <>
+                                                        <div className="text-[11px] font-bold leading-tight">
+                                                            {locAbbr}. {event.startTime}
+                                                        </div>
+                                                        <div className="text-[10px] text-right font-mono opacity-90 mt-1">
+                                                            {event.enrolledCount} / {event.maxCapacity}
+                                                        </div>
+                                                    </>
+                                                 )}
                                             </div>
                                         )
                                 })}
@@ -300,7 +395,7 @@ const Calendar: React.FC = () => {
                 onClose={() => setLessonToDelete(null)}
                 onConfirm={handleConfirmDelete}
                 title="Elimina Lezione"
-                message="Sei sicuro di voler eliminare questa lezione? L'azione non può essere annullata."
+                message="Sei sicuro di voler eliminare questa lezione extra?"
                 isDangerous={true}
             />
         </div>

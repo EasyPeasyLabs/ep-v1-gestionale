@@ -9,6 +9,7 @@ import SuppliersIcon from './icons/SuppliersIcon';
 import FinanceIcon from './icons/FinanceIcon';
 import SettingsIcon from './icons/SettingsIcon';
 import CalendarIcon from './icons/CalendarIcon';
+import CRMIcon from './icons/CRMIcon';
 
 interface SidebarProps {
   currentPage: Page;
@@ -24,6 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
     { page: 'Clients', label: 'Clienti', icon: <ClientsIcon /> },
     { page: 'Suppliers', label: 'Fornitori', icon: <SuppliersIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },
+    { page: 'CRM', label: 'CRM', icon: <CRMIcon /> },
     { page: 'Finance', label: 'Finanza', icon: <FinanceIcon /> },
     { page: 'Settings', label: 'Impostazioni', icon: <SettingsIcon /> },
   ];

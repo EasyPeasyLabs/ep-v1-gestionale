@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Supplier, SupplierInput, Location, LocationInput } from '../types';
+import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -23,22 +23,45 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     const [rentalCost, setRentalCost] = useState(location?.rentalCost || 0);
     const [distance, setDistance] = useState(location?.distance || 0);
     const [color, setColor] = useState(location?.color || '#a855f7'); // default purple
+    
+    // Availability State
+    const [availability, setAvailability] = useState<AvailabilitySlot[]>(location?.availability || []);
+
+    const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+    const handleAddSlot = () => {
+        setAvailability([...availability, { dayOfWeek: 1, startTime: '15:00', endTime: '16:00' }]);
+    };
+
+    const handleRemoveSlot = (index: number) => {
+        setAvailability(availability.filter((_, i) => i !== index));
+    };
+
+    const handleSlotChange = (index: number, field: keyof AvailabilitySlot, value: any) => {
+        const newSlots = [...availability];
+        newSlots[index] = { ...newSlots[index], [field]: value };
+        setAvailability(newSlots);
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave({
             id: location?.id || Date.now().toString(), name, address, zipCode, city, province,
             capacity: Number(capacity), rentalCost: Number(rentalCost), distance: Number(distance), color,
+            availability
         });
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <h3 className="text-lg font-bold mb-4 flex-shrink-0">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[80vh]">
+            <div className="flex-shrink-0 border-b pb-4 mb-4" style={{borderColor: 'var(--md-divider)'}}>
+                <h3 className="text-lg font-bold">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
+            </div>
+            
             <div className="flex-1 overflow-y-auto pr-2 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                     <div className="md:col-span-2 md-input-group"><input id="locName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locName" className="md-input-label">Nome Sede</label></div>
-                    <div><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10 rounded-md border" style={{borderColor: 'var(--md-divider)'}}/></div>
+                    <div><label className="text-xs text-gray-500 block mb-1">Colore</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-8 rounded-md border cursor-pointer" style={{borderColor: 'var(--md-divider)'}}/></div>
                 </div>
                 <div className="md-input-group"><input id="locAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locAddr" className="md-input-label">Indirizzo</label></div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -51,7 +74,47 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
                     <div className="md-input-group"><input id="locCost" type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCost" className="md-input-label">Nolo (€)</label></div>
                     <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
                 </div>
+
+                <div className="mt-6">
+                    <div className="flex justify-between items-center mb-2">
+                        <h4 className="font-semibold text-sm text-indigo-700">Disponibilità Oraria</h4>
+                        <button type="button" onClick={handleAddSlot} className="text-xs flex items-center text-indigo-600 font-medium hover:bg-indigo-50 px-2 py-1 rounded">
+                            <PlusIcon /> Aggiungi Slot
+                        </button>
+                    </div>
+                    <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        {availability.length === 0 && <p className="text-xs text-gray-400 italic text-center">Nessun orario definito.</p>}
+                        {availability.map((slot, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <select 
+                                    value={slot.dayOfWeek} 
+                                    onChange={e => handleSlotChange(index, 'dayOfWeek', Number(e.target.value))}
+                                    className="text-sm border-gray-300 rounded-md py-1 px-2 flex-1"
+                                >
+                                    {daysOfWeek.map((day, i) => <option key={i} value={i}>{day}</option>)}
+                                </select>
+                                <input 
+                                    type="time" 
+                                    value={slot.startTime} 
+                                    onChange={e => handleSlotChange(index, 'startTime', e.target.value)}
+                                    className="text-sm border-gray-300 rounded-md py-1 px-2 w-24"
+                                />
+                                <span className="text-gray-400">-</span>
+                                <input 
+                                    type="time" 
+                                    value={slot.endTime} 
+                                    onChange={e => handleSlotChange(index, 'endTime', e.target.value)}
+                                    className="text-sm border-gray-300 rounded-md py-1 px-2 w-24"
+                                />
+                                <button type="button" onClick={() => handleRemoveSlot(index)} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                                    <TrashIcon />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             </div>
+            
             <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Sede</button>
@@ -94,8 +157,8 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
 
     return (
         <>
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <div className="flex flex-wrap gap-2 justify-between items-center mb-4 flex-shrink-0">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[90vh]">
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4 flex-shrink-0 border-b pb-4" style={{borderColor: 'var(--md-divider)'}}>
                 <h2 className="text-xl font-bold">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
                 <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm flex-shrink-0">
                     <PlusIcon/> <span className="ml-1 hidden sm:inline">Aggiungi Sede</span>
@@ -123,10 +186,12 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                     {locations.length > 0 ? locations.map((loc) => (
                         <div key={loc.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
                             <div className="flex items-center">
-                                <span className="w-3 h-3 rounded-full mr-3" style={{ backgroundColor: loc.color }}></span>
+                                <span className="w-3 h-3 rounded-full mr-3 border" style={{ backgroundColor: loc.color }}></span>
                                 <div>
                                     <p className="text-sm font-medium">{loc.name}</p>
-                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{loc.address}, {loc.city}</p>
+                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>
+                                        {loc.city} - {loc.availability?.length || 0} slot orari definiti
+                                    </p>
                                 </div>
                             </div>
                             <div className="flex items-center space-x-1">

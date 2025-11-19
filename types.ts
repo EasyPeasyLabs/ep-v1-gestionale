@@ -12,11 +12,13 @@ export enum EnrollmentStatus {
 }
 
 export interface Appointment {
-    lessonId: string;
+    lessonId: string; // ID univoco della singola lezione generata
     date: string; // ISO String
     startTime: string;
     endTime: string;
     locationName: string;
+    locationColor?: string;
+    childName?: string; // Per visualizzazione calendario
 }
 
 export interface Enrollment {
@@ -32,6 +34,7 @@ export interface Enrollment {
   supplierName: string;
   locationId: string;
   locationName: string;
+  locationColor?: string; // Colore ereditato dalla sede
 
   appointments: Appointment[]; // Array delle lezioni prenotate (può essere vuoto se l'iscrizione è a consumo/open)
   lessonsTotal: number;
@@ -88,6 +91,12 @@ export interface Supplier {
   locations: Location[];
 }
 
+export interface AvailabilitySlot {
+    dayOfWeek: number; // 0 = Domenica, 1 = Lunedì, ..., 6 = Sabato
+    startTime: string; // HH:mm
+    endTime: string; // HH:mm
+}
+
 export interface Location {
     id: string; // ID temporaneo per la UI o da Firestore
     name: string; // Nome Sede
@@ -99,6 +108,7 @@ export interface Location {
     rentalCost: number; // Costo nolo
     distance: number; // Distanza in km
     color: string; // Colore esadecimale per il calendario
+    availability: AvailabilitySlot[]; // Orari disponibili per le lezioni
 }
 
 export interface CompanyInfo {
