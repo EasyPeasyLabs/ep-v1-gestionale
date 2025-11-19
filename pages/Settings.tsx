@@ -28,9 +28,9 @@ const SubscriptionForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-bold mb-4">{sub ? 'Modifica Pacchetto' : 'Nuovo Pacchetto'}</h2>
-            <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">{sub ? 'Modifica Pacchetto' : 'Nuovo Pacchetto'}</h2>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Pacchetto</label></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div>
@@ -38,7 +38,7 @@ const SubscriptionForm: React.FC<{
                 </div>
                 <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>

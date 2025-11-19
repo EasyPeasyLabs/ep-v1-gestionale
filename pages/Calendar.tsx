@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Lesson, LessonInput, Supplier } from '../types';
 import { getLessons, addLesson, updateLesson, deleteLesson, addLessonsBatch } from '../services/calendarService';
@@ -81,9 +82,9 @@ const LessonForm: React.FC<{
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
     
     return (
-        <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-bold mb-4">{lesson ? 'Modifica Lezione' : 'Nuova Lezione'}</h2>
-            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">{lesson ? 'Modifica Lezione' : 'Nuova Lezione'}</h2>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group"><input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required className="md-input"/><label htmlFor="date" className="md-input-label !top-0 !text-xs !text-gray-500">Data</label></div>
                 <div className="grid grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="md-input"/><label htmlFor="start" className="md-input-label !top-0 !text-xs !text-gray-500">Orario Inizio</label></div>
@@ -130,7 +131,7 @@ const LessonForm: React.FC<{
                     </div>
                 )}
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Lezione</button>
             </div>

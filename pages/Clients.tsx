@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, Lesson, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, SubscriptionType, Lesson, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, Appointment, Supplier } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
 import { getEnrollmentsForClient, addEnrollment, deleteEnrollment } from '../services/enrollmentService';
 import { getSubscriptionTypes } from '../services/settingsService';
-import { getLessons } from '../services/calendarService';
+import { getSuppliers } from '../services/supplierService'; // Changed import
 import { addTransaction } from '../services/financeService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
@@ -18,6 +18,7 @@ import SuppliersIcon from '../components/icons/SuppliersIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importClientsFromExcel } from '../services/importService';
+import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 
 const EnrollmentForm: React.FC<{
     parent: ParentClient;
@@ -26,35 +27,54 @@ const EnrollmentForm: React.FC<{
 }> = ({ parent, onSave, onCancel }) => {
     const [childId, setChildId] = useState('');
     const [subscriptionTypeId, setSubscriptionTypeId] = useState('');
-    const [lessonId, setLessonId] = useState('');
+    const [supplierId, setSupplierId] = useState('');
+    const [locationId, setLocationId] = useState('');
 
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
-    const [lessons, setLessons] = useState<Lesson[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
-            const [subs, classes] = await Promise.all([
+            const [subs, suppliersData] = await Promise.all([
                 getSubscriptionTypes(),
-                getLessons()
+                getSuppliers()
             ]);
             setSubscriptionTypes(subs);
-            setLessons(classes.filter(c => new Date(c.date) >= new Date()).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+            setSuppliers(suppliersData);
+
             if (parent.children.length > 0) setChildId(parent.children[0].id);
             if (subs.length > 0) setSubscriptionTypeId(subs[0].id);
-            if (classes.length > 0) setLessonId(classes[0].id);
+            if (suppliersData.length > 0) {
+                setSupplierId(suppliersData[0].id);
+                if (suppliersData[0].locations.length > 0) {
+                    setLocationId(suppliersData[0].locations[0].id);
+                }
+            }
             setLoading(false);
         };
         fetchData();
     }, [parent.children]);
 
+    const handleSupplierChange = (newSupplierId: string) => {
+        setSupplierId(newSupplierId);
+        const newSupplier = suppliers.find(s => s.id === newSupplierId);
+        if (newSupplier && newSupplier.locations.length > 0) {
+            setLocationId(newSupplier.locations[0].id);
+        } else {
+            setLocationId('');
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const selectedChild = parent.children.find(c => c.id === childId);
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+        const selectedSupplier = suppliers.find(s => s.id === supplierId);
+        const selectedLocation = selectedSupplier?.locations.find(l => l.id === locationId);
         
-        if (!selectedChild || !selectedSub) return;
+        if (!selectedChild || !selectedSub || !selectedSupplier || !selectedLocation) return;
         
         const startDate = new Date();
         const endDate = new Date();
@@ -66,9 +86,13 @@ const EnrollmentForm: React.FC<{
             childName: selectedChild.name,
             subscriptionTypeId,
             subscriptionName: selectedSub.name,
-            lessonId,
+            supplierId: selectedSupplier.id,
+            supplierName: selectedSupplier.companyName,
+            locationId: selectedLocation.id,
+            locationName: selectedLocation.name,
+            appointments: [], // Nessuna lezione specifica selezionata all'iscrizione
             lessonsTotal: selectedSub.lessons,
-            lessonsRemaining: selectedSub.lessons,
+            lessonsRemaining: selectedSub.lessons, // All'inizio sono tutte disponibili
             startDate: startDate.toISOString(),
             endDate: endDate.toISOString(),
             status: EnrollmentStatus.Active,
@@ -76,32 +100,52 @@ const EnrollmentForm: React.FC<{
         onSave(newEnrollment, selectedSub, selectedChild);
     };
 
+    const selectedSupplier = suppliers.find(s => s.id === supplierId);
+
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
 
     return (
-        <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-bold mb-4">Nuova Iscrizione</h2>
-            <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">Nuova Iscrizione</h2>
+            
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group">
                     <select id="child" value={childId} onChange={e => setChildId(e.target.value)} required className="md-input">
                         {parent.children.map(child => <option key={child.id} value={child.id}>{child.name}</option>)}
                     </select>
                     <label htmlFor="child" className="md-input-label !top-0 !text-xs !text-gray-500">Figlio</label>
                 </div>
+                
                 <div className="md-input-group">
                     <select id="sub-type" value={subscriptionTypeId} onChange={e => setSubscriptionTypeId(e.target.value)} required className="md-input">
                         {subscriptionTypes.map(sub => <option key={sub.id} value={sub.id}>{sub.name} ({sub.lessons} lezioni, {sub.price}€)</option>)}
                     </select>
                     <label htmlFor="sub-type" className="md-input-label !top-0 !text-xs !text-gray-500">Pacchetto Abbonamento</label>
                 </div>
+
                 <div className="md-input-group">
-                    <select id="class" value={lessonId} onChange={e => setLessonId(e.target.value)} required className="md-input">
-                       {lessons.map(c => <option key={c.id} value={c.id}>{new Date(c.date).toLocaleDateString()} {c.startTime}-{c.endTime} @ {c.locationName}</option>)}
+                    <select id="supplier" value={supplierId} onChange={e => handleSupplierChange(e.target.value)} required className="md-input">
+                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
                     </select>
-                    <label htmlFor="class" className="md-input-label !top-0 !text-xs !text-gray-500">Lezione</label>
+                    <label htmlFor="supplier" className="md-input-label !top-0 !text-xs !text-gray-500">Fornitore (Scuola/Palestra)</label>
+                </div>
+
+                <div className="md-input-group">
+                    <select id="location" value={locationId} onChange={e => setLocationId(e.target.value)} required disabled={!selectedSupplier || selectedSupplier.locations.length === 0} className="md-input">
+                         {!selectedSupplier?.locations.length && <option value="">Nessuna sede disponibile</option>}
+                        {selectedSupplier?.locations.map(l => <option key={l.id} value={l.id}>{l.name} ({l.city})</option>)}
+                    </select>
+                    <label htmlFor="location" className="md-input-label !top-0 !text-xs !text-gray-500">Sede (Aula)</label>
+                </div>
+                
+                <div className="bg-indigo-50 p-3 rounded-md mt-2">
+                    <p className="text-xs text-indigo-800">
+                        L'iscrizione garantisce l'accesso alla sede selezionata per il numero di lezioni previsto dal pacchetto scelto.
+                    </p>
                 </div>
             </div>
-             <div className="mt-6 flex justify-end space-x-3">
+
+             <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Iscrivi</button>
             </div>
@@ -115,6 +159,7 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
     const [loading, setLoading] = useState(false);
     const [isEnrollModalOpen, setIsEnrollModalOpen] = useState(false);
     const [enrollmentToDelete, setEnrollmentToDelete] = useState<string | null>(null);
+    const [expandedEnrollmentId, setExpandedEnrollmentId] = useState<string | null>(null);
     
     const fetchEnrollments = useCallback(async (showLoading = true) => {
         if(client.clientType === ClientType.Parent) {
@@ -177,14 +222,19 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
         }
     };
 
+    const toggleExpand = (id: string) => {
+        setExpandedEnrollmentId(prev => prev === id ? null : id);
+    };
+
     return (
-        <div className="md-card p-6 animate-fade-in">
-            <div className="flex justify-between items-start">
+        <div className="md-card p-6 animate-fade-in h-full flex flex-col overflow-hidden">
+            <div className="flex justify-between items-start flex-shrink-0">
                 <button onClick={onBack} className="text-sm font-medium mb-4" style={{ color: 'var(--md-primary)'}}>&larr; Torna alla lista</button>
                  <button onClick={() => onEdit(client)} className="md-icon-btn edit" aria-label="Modifica cliente">
                     <PencilIcon />
                 </button>
             </div>
+            <div className="flex-1 overflow-y-auto pr-2">
             {client.clientType === ClientType.Parent ? (
                 <>
                     <div className="flex flex-col sm:flex-row items-start">
@@ -213,27 +263,58 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                         </div>
                         <div>
                              <div className="flex justify-between items-center">
-                                <h3 className="text-lg font-semibold">Iscrizioni</h3>
+                                <h3 className="text-lg font-semibold">Pacchetti Attivi</h3>
                                 <button onClick={() => setIsEnrollModalOpen(true)} className="md-btn md-btn-flat md-btn-primary text-sm">
                                     <PlusIcon/> <span className="ml-1">Iscrivi</span>
                                 </button>
                              </div>
                               {loading ? <div className="mt-4"><Spinner/></div> :
                                 enrollments.length > 0 ? enrollments.map(enr => (
-                                    <div key={enr.id} className="mt-2 p-3 border rounded-lg flex justify-between items-center" style={{ borderColor: 'var(--md-divider)'}}>
-                                        <div className="flex-1">
-                                            <p className="font-semibold">{enr.childName} - {enr.subscriptionName}</p>
-                                            <p className="text-sm" style={{ color: 'var(--md-text-secondary)'}}>Lezioni Rimanenti: {enr.lessonsRemaining}/{enr.lessonsTotal}</p>
-                                            <p className="text-xs" style={{ color: 'var(--md-text-secondary)'}}>Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
+                                    <div key={enr.id} className="mt-2 border rounded-lg" style={{ borderColor: 'var(--md-divider)'}}>
+                                        <div className="p-3 flex justify-between items-center cursor-pointer" onClick={() => toggleExpand(enr.id)}>
+                                            <div className="flex-1">
+                                                <p className="font-semibold text-indigo-800">{enr.childName} - {enr.subscriptionName}</p>
+                                                <p className="text-xs text-gray-500 mt-0.5">Presso: {enr.locationName}</p>
+                                                <div className="flex items-center text-sm text-gray-600 mt-1 space-x-4">
+                                                    <span>Ingressi: {enr.lessonsTotal - enr.lessonsRemaining}/{enr.lessonsTotal}</span>
+                                                    <span className={enr.lessonsRemaining <= 2 ? 'text-red-500 font-bold' : ''}>Residui: {enr.lessonsRemaining}</span>
+                                                </div>
+                                                <p className="text-xs text-gray-400 mt-1">Scadenza: {new Date(enr.endDate).toLocaleDateString()}</p>
+                                            </div>
+                                            <div className="flex items-center">
+                                                <button 
+                                                    type="button"
+                                                    onClick={(e) => handleDeleteClick(e, enr.id)} 
+                                                    className="md-icon-btn delete mr-1"
+                                                    aria-label="Elimina iscrizione"
+                                                >
+                                                    <TrashIcon />
+                                                </button>
+                                                <div className={`transform transition-transform duration-200 ${expandedEnrollmentId === enr.id ? 'rotate-180' : ''}`}>
+                                                    <ChevronDownIcon />
+                                                </div>
+                                            </div>
                                         </div>
-                                        <button 
-                                            type="button"
-                                            onClick={(e) => handleDeleteClick(e, enr.id)} 
-                                            className="md-icon-btn delete ml-2"
-                                            aria-label="Elimina iscrizione"
-                                        >
-                                            <TrashIcon />
-                                        </button>
+                                        {expandedEnrollmentId === enr.id && (
+                                            <div className="px-3 pb-3 border-t bg-gray-50 rounded-b-lg" style={{ borderColor: 'var(--md-divider)'}}>
+                                                <p className="text-xs font-semibold text-gray-500 mt-2 uppercase tracking-wide">Dettagli Ingressi</p>
+                                                {enr.appointments && enr.appointments.length > 0 ? (
+                                                    <ul className="mt-2 space-y-2">
+                                                        {enr.appointments.map((app, idx) => (
+                                                            <li key={idx} className="text-sm flex justify-between bg-white p-2 rounded shadow-sm">
+                                                                <span>{new Date(app.date).toLocaleDateString()} <span className="text-gray-500">({app.startTime})</span></span>
+                                                                <span className="text-xs text-gray-400">{app.locationName}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                ) : (
+                                                    <p className="text-sm text-gray-500 mt-2 italic">
+                                                        Iscrizione valida per l'accesso alla sede <b>{enr.locationName}</b>.
+                                                        <br/>Monitora i crediti residui.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 ))
                              : (
@@ -263,6 +344,7 @@ const ClientDetail: React.FC<{ client: Client; onBack: () => void; onEdit: (clie
                     </div>
                 </div>
             )}
+            </div>
              {isEnrollModalOpen && client.clientType === ClientType.Parent && (
                 <Modal onClose={() => setIsEnrollModalOpen(false)}>
                     <EnrollmentForm parent={client} onSave={handleSaveEnrollment} onCancel={() => setIsEnrollModalOpen(false)} />
@@ -294,9 +376,9 @@ const ChildFormModal: React.FC<{
     };
 
     return (
-        <div>
-            <h2 className="text-xl font-bold mb-4">{child ? 'Modifica Dati Figlio' : 'Aggiungi Figlio'}</h2>
-            <div className="space-y-4">
+        <div className="flex flex-col h-full">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">{child ? 'Modifica Dati Figlio' : 'Aggiungi Figlio'}</h2>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group">
                     <input id="childName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
                     <label htmlFor="childName" className="md-input-label">Nome Figlio</label>
@@ -306,7 +388,7 @@ const ChildFormModal: React.FC<{
                     <label htmlFor="childAge" className="md-input-label">Età (es. 3 anni)</label>
                 </div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="button" onClick={handleSave} className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>
@@ -399,8 +481,8 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
     }
 
     return (
-        <form onSubmit={handleSubmit} className="animate-fade-in">
-            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+        <form onSubmit={handleSubmit} className="animate-fade-in flex flex-col h-full">
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4 flex-shrink-0">
                 <h2 className="text-xl font-bold">{client ? 'Modifica Cliente' : 'Nuovo Cliente'} - <span style={{color: 'var(--md-primary)'}}>{clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'}</span></h2>
                 {clientType === ClientType.Parent && (
                      <button type="button" onClick={() => { setEditingChild(null); setIsChildModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm flex-shrink-0">
@@ -408,7 +490,8 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                     </button>
                 )}
             </div>
-            <div className="space-y-3">
+            
+            <div className="flex-1 overflow-y-auto pr-2 space-y-3">
                 {clientType === ClientType.Parent ? (
                     <>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -452,7 +535,8 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (clientData: Client
                     </div>
                 )}
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>

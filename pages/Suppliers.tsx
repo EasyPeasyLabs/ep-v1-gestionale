@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
@@ -32,9 +33,9 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     };
 
     return (
-        <form onSubmit={handleSubmit}>
-            <h3 className="text-lg font-bold mb-4">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
-            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <h3 className="text-lg font-bold mb-4 flex-shrink-0">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
                     <div className="md:col-span-2 md-input-group"><input id="locName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locName" className="md-input-label">Nome Sede</label></div>
                     <div><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-10 rounded-md border" style={{borderColor: 'var(--md-divider)'}}/></div>
@@ -51,7 +52,7 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
                     <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
                 </div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Sede</button>
             </div>
@@ -94,7 +95,7 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
     return (
         <>
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <div className="flex flex-wrap gap-2 justify-between items-center mb-4">
+            <div className="flex flex-wrap gap-2 justify-between items-center mb-4 flex-shrink-0">
                 <h2 className="text-xl font-bold">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
                 <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm flex-shrink-0">
                     <PlusIcon/> <span className="ml-1 hidden sm:inline">Aggiungi Sede</span>
@@ -138,7 +139,7 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                 </div>
 
             </div>
-             <div className="mt-6 pt-4 border-t flex justify-end space-x-3" style={{borderColor: 'var(--md-divider)'}}>
+             <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Fornitore</button>
             </div>

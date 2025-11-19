@@ -66,9 +66,9 @@ const TransactionForm: React.FC<{
     const expenseCategories = Object.values(TransactionCategory).filter(c => ![TransactionCategory.Sales, TransactionCategory.OtherIncome].includes(c));
 
     return (
-        <form onSubmit={handleSubmit}>
-            <h2 className="text-xl font-bold mb-4">Nuova Transazione</h2>
-            <div className="space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">Nuova Transazione</h2>
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
                 <div className="md-input-group"><input id="desc" type="text" value={description} onChange={e => setDescription(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="desc" className="md-input-label">Descrizione</label></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="amount" type="number" step="0.01" value={amount} onChange={e => setAmount(Number(e.target.value))} required min="0" className="md-input" placeholder=" "/><label htmlFor="amount" className="md-input-label">Importo (€)</label></div>
@@ -96,7 +96,7 @@ const TransactionForm: React.FC<{
                     <label htmlFor="payment" className="md-input-label !top-0 !text-xs !text-gray-500">Metodo Pagamento</label>
                 </div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3">
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>
@@ -221,8 +221,8 @@ const DocumentForm: React.FC<{
     const canEditSDI = status === DocumentStatus.Draft || status === DocumentStatus.Sent;
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[80vh]">
-            <h2 className="text-xl font-bold mb-4">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <h2 className="text-xl font-bold mb-4 flex-shrink-0">
                 {initialData ? 'Modifica' : 'Nuovo'} {type === 'invoice' ? 'Fattura' : 'Preventivo'}
             </h2>
             <div className="flex-1 overflow-y-auto pr-2 space-y-4">
@@ -352,7 +352,7 @@ const DocumentForm: React.FC<{
                     <label htmlFor="status" className="md-input-label !top-0 !text-xs !text-gray-500">Stato Documento</label>
                 </div>
             </div>
-            <div className="mt-6 flex justify-end space-x-3 pt-4 border-t">
+            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva</button>
             </div>

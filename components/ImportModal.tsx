@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
 import Modal from './Modal';
@@ -64,75 +65,75 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateHeaders, 
 
     return (
         <Modal onClose={onClose}>
-            <div className="text-center">
-                <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da Excel</h2>
-            </div>
-            {!result ? (
-                <div className="mt-4">
-                    <div className="p-4 bg-gray-50 border rounded-md" style={{borderColor: 'var(--md-divider)'}}>
-                        <h3 className="font-semibold text-sm">Istruzioni</h3>
-                        <ul className="list-disc list-inside text-sm mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
-                            {instructions.map((inst, index) => <li key={index}>{inst}</li>)}
-                        </ul>
-                         <button onClick={handleDownloadTemplate} className="text-sm font-medium mt-3" style={{color: 'var(--md-primary)'}}>
-                            Scarica template
-                        </button>
-                    </div>
-
+             <div className="flex flex-col h-full">
+                <div className="text-center flex-shrink-0">
+                    <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da Excel</h2>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto pr-2">
+                {!result ? (
                     <div className="mt-4">
-                        <label htmlFor="file-upload" className="block text-sm font-medium">Seleziona file Excel (.xlsx, .xls)</label>
-                        <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md" style={{borderColor: 'var(--md-divider)'}}>
-                            <div className="space-y-1 text-center">
-                                <UploadIcon />
-                                <div className="flex text-sm" style={{color: 'var(--md-text-secondary)'}}>
-                                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium focus-within:outline-none" style={{color: 'var(--md-primary)'}}>
-                                        <span>Carica un file</span>
-                                        <input id="file-upload" name="file-upload" type="file" className="sr-only" accept=".xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" onChange={handleFileChange} />
-                                    </label>
-                                    <p className="pl-1">o trascinalo qui</p>
-                                </div>
-                                {file && <p className="text-xs">{file.name}</p>}
-                            </div>
+                        <div className="p-4 bg-gray-50 border rounded-md" style={{borderColor: 'var(--md-divider)'}}>
+                            <h3 className="font-semibold text-sm">Istruzioni</h3>
+                            <ul className="list-disc list-inside text-sm mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
+                                {instructions.map((inst, index) => <li key={index}>{inst}</li>)}
+                            </ul>
+                             <button onClick={handleDownloadTemplate} className="text-sm font-medium mt-3" style={{color: 'var(--md-primary)'}}>
+                                Scarica template
+                            </button>
                         </div>
-                    </div>
 
-                    {error && <p className="text-sm text-red-600 text-center mt-3">{error}</p>}
-                    
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button type="button" onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                        <button type="button" onClick={handleImportClick} disabled={isImporting || !file} className="md-btn md-btn-raised md-btn-primary">
+                        <div className="mt-4">
+                            <label className="block text-sm font-medium mb-1">Seleziona File (.xlsx)</label>
+                            <div className="flex items-center justify-center w-full">
+                                <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <UploadIcon />
+                                        <p className="mb-2 text-sm text-gray-500"><span className="font-semibold">Clicca per caricare</span> o trascina il file</p>
+                                        <p className="text-xs text-gray-500">Excel (.xlsx)</p>
+                                    </div>
+                                    <input id="dropzone-file" type="file" className="hidden" accept=".xlsx" onChange={handleFileChange} />
+                                </label>
+                            </div>
+                            {file && <p className="mt-2 text-sm text-green-600 font-medium text-center">File selezionato: {file.name}</p>}
+                        </div>
+                        
+                        {error && <p className="mt-4 text-sm text-red-500 text-center">{error}</p>}
+                    </div>
+                ) : (
+                    <div className="mt-4 space-y-4">
+                        <div className={`p-4 rounded-md ${result.errors.length === 0 ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'}`}>
+                            <h3 className="font-bold">Importazione Completata</h3>
+                            <p className="text-sm mt-1">Creati: {result.created} | Aggiornati: {result.updated}</p>
+                        </div>
+                        
+                        {result.errors.length > 0 && (
+                            <div>
+                                <h4 className="font-semibold text-sm text-red-600">Errori ({result.errors.length})</h4>
+                                <ul className="mt-2 max-h-40 overflow-y-auto text-xs bg-gray-50 p-2 rounded border border-red-100 space-y-1">
+                                    {result.errors.map((err, idx) => (
+                                        <li key={idx} className="text-red-600">Riga {err.row}: {err.message}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                )}
+                </div>
+
+                <div className="mt-6 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+                    <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
+                    {!result && (
+                        <button 
+                            onClick={handleImportClick} 
+                            disabled={!file || isImporting} 
+                            className="md-btn md-btn-raised md-btn-primary"
+                        >
                             {isImporting ? <Spinner /> : 'Importa'}
                         </button>
-                    </div>
-                </div>
-            ) : (
-                <div className="mt-4">
-                    <h3 className="font-semibold text-lg text-center">Riepilogo Importazione</h3>
-                    <div className="mt-4 grid grid-cols-2 gap-4 text-center">
-                        <div className="bg-green-50 p-3 rounded-md">
-                            <p className="text-2xl font-bold text-green-700">{result.created}</p>
-                            <p className="text-sm font-medium text-green-600">Creati</p>
-                        </div>
-                         <div className="bg-sky-50 p-3 rounded-md">
-                            <p className="text-2xl font-bold text-sky-700">{result.updated}</p>
-                            <p className="text-sm font-medium text-sky-600">Aggiornati</p>
-                        </div>
-                    </div>
-                     {result.errors.length > 0 && (
-                        <div className="mt-4">
-                            <h4 className="font-semibold text-red-700">Errori ({result.errors.length})</h4>
-                            <div className="mt-2 bg-red-50 p-3 rounded-md max-h-40 overflow-y-auto text-sm">
-                                {result.errors.map((err, index) => (
-                                    <p key={index} className="text-red-800"><b>Riga {err.row}:</b> {err.message}</p>
-                                ))}
-                            </div>
-                        </div>
                     )}
-                    <div className="mt-6 text-center">
-                        <button type="button" onClick={onClose} className="md-btn md-btn-raised md-btn-primary">Chiudi</button>
-                    </div>
                 </div>
-            )}
+            </div>
         </Modal>
     );
 };

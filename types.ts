@@ -11,6 +11,14 @@ export enum EnrollmentStatus {
   Expired = 'Expired',
 }
 
+export interface Appointment {
+    lessonId: string;
+    date: string; // ISO String
+    startTime: string;
+    endTime: string;
+    locationName: string;
+}
+
 export interface Enrollment {
   id: string;
   clientId: string;
@@ -18,7 +26,14 @@ export interface Enrollment {
   childName: string; // Denormalizzato per una visualizzazione più semplice
   subscriptionTypeId: string;
   subscriptionName: string; // Denormalizzato
-  lessonId: string;
+  
+  // Nuovi campi per legare l'iscrizione alla sede (Aula)
+  supplierId: string;
+  supplierName: string;
+  locationId: string;
+  locationName: string;
+
+  appointments: Appointment[]; // Array delle lezioni prenotate (può essere vuoto se l'iscrizione è a consumo/open)
   lessonsTotal: number;
   lessonsRemaining: number;
   startDate: string; // ISO String
