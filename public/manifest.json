@@ -1,6 +1,7 @@
 {
   "short_name": "EP v.1",
   "name": "EP v.1 Gestionale",
+  "gcm_sender_id": "103953800507",
   "icons": [
     {
       "src": "lemon_logo_150px.png",

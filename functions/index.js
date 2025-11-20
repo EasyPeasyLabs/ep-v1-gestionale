@@ -41,7 +41,6 @@ exports.checkPeriodicNotifications = onSchedule({
             notificationsToSend.push({
                 title: `EP Planner: ${check.category}`,
                 body: check.note || `È ora del controllo: ${check.subCategory || check.category}`,
-                // Usa URL pubblico vercel o storage per l'icona, l'importante è che sia assoluto e raggiungibile
                 icon: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png' 
             });
         }
@@ -54,14 +53,16 @@ exports.checkPeriodicNotifications = onSchedule({
 
     // 3. Recupera tutti i device token salvati
     const tokensSnapshot = await db.collection('fcm_tokens').get();
-    const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
-
-    if (tokens.length === 0) {
+    
+    if (tokensSnapshot.empty) {
         console.log("Nessun dispositivo registrato a cui inviare notifiche.");
         return;
     }
 
-    // 4. Invia le notifiche con configurazione Android specifica
+    const tokens = tokensSnapshot.docs.map(doc => doc.data().token);
+    console.log(`Trovati ${tokens.length} dispositivi target.`);
+
+    // 4. Invia le notifiche (Configurazione Web Push Pura per PWA)
     const sendPromises = [];
     
     for (const notif of notificationsToSend) {
@@ -70,24 +71,18 @@ exports.checkPeriodicNotifications = onSchedule({
                 title: notif.title,
                 body: notif.body,
             },
-            // Configurazione Android specifica per "svegliare" il dispositivo
-            android: {
-                priority: 'high',
-                notification: {
-                    icon: 'stock_ticker_update', // Icona di sistema o default
-                    color: '#757575', // Colore primary app
-                    clickAction: 'FLUTTER_NOTIFICATION_CLICK' // Standard o URL specifico
-                }
-            },
-            // Configurazione Web Push
+            // Configurazione Web Push specifica per PWA (Android Chrome & Desktop)
             webpush: {
                 headers: {
                     Urgency: "high"
                 },
                 notification: {
                     icon: notif.icon,
-                    requireInteraction: true,
-                    click_action: "https://ep-v1-gestionale.vercel.app/" // Link corretto a Vercel
+                    requireInteraction: true, // La notifica rimane visibile finché l'utente non interagisce
+                    // Azioni al click gestite dal Service Worker o fcm_options
+                },
+                fcm_options: {
+                    link: "https://ep-v1-gestionale.vercel.app/"
                 }
             },
             tokens: tokens // Multicast message
@@ -96,18 +91,34 @@ exports.checkPeriodicNotifications = onSchedule({
         sendPromises.push(messaging.sendMulticast(message));
     }
 
+    // 5. Gestione Risultati e Pulizia Token Invalidi
     try {
         const responses = await Promise.all(sendPromises);
-        responses.forEach((resp, idx) => {
-            console.log(`Inviata notifica ${idx + 1}: ${resp.successCount} successi, ${resp.failureCount} errori.`);
+        const failedTokens = [];
+
+        responses.forEach((resp) => {
             if (resp.failureCount > 0) {
-                const failedTokens = [];
                 resp.responses.forEach((r, i) => {
-                    if (!r.success) failedTokens.push(tokens[i]);
+                    if (!r.success) {
+                        // Raccoglie i token non più validi
+                        failedTokens.push(tokens[i]);
+                    }
                 });
-                console.log('Token falliti:', failedTokens);
             }
         });
+
+        if (failedTokens.length > 0) {
+            console.log(`Rilevati ${failedTokens.length} token non validi. Avvio pulizia...`);
+            const batch = db.batch();
+            failedTokens.forEach(t => {
+                const ref = db.collection('fcm_tokens').doc(t);
+                batch.delete(ref);
+            });
+            await batch.commit();
+            console.log("Pulizia token completata.");
+        }
+
+        console.log("Ciclo notifiche completato.");
     } catch (error) {
         console.error("Errore durante l'invio delle notifiche:", error);
     }
