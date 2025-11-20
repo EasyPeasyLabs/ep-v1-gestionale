@@ -104,7 +104,7 @@ Ad ogni sessione, questi 3 file devono essere letti prima di produrre codice.
 
 ---
 
-## Roadmap Futura (Aggiornata al 30 Maggio 2024)
+## Roadmap Futura (Aggiornata)
 
 La seguente roadmap delinea lo stato di avanzamento e le attività future:
 
@@ -112,11 +112,13 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
 - **Gestione Avanzata Iscrizioni**: Implementata l'iscrizione multipla (selezione di più figli contemporaneamente per lo stesso corso).
 - **Registro Presenze**: Creata una sezione dedicata per la gestione giornaliera delle presenze.
 - **Logica Assenze e Recuperi**: Implementato un sistema ibrido per gestire le assenze con slittamento (recupero) automatico della lezione alla prima data utile, tenendo conto delle festività.
+- **Registro Attività (Log)**: Creata sezione per assegnare attività didattiche svolte ad ogni singola lezione e storico.
+- **CRM Avanzato (Comunicazioni Libere)**: Implementata modale per invio messaggi massivi o singoli a clienti/fornitori via Email (BCC) o WhatsApp.
+- **Planner Verifiche Periodiche**: Sistema CRUD per definire controlli ricorrenti (scadenze, pagamenti, materiali) con gestione giorni della settimana e abilitazione notifiche Push.
 
 ### In Programma
 1.  **Gestione Costi e Controllo di Gestione**
     - **Categorizzazione Avanzata**: Implementazione dettagliata dei costi Logistici, Amministrativi e Operativi.
-    - **Distinta Base Didattica**: Creazione di un sistema per definire le "Attività Didattiche" come semilavorati composti da materiali.
     - **Imputazione Costi**: Collegamento dei costi operativi a lezioni e abbonamenti.
     - **Analisi Profitto**: Algoritmi per il calcolo della percentuale reale di profitto per abbonamento/cliente.
 
@@ -124,6 +126,5 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
     - **Studio di Fattibilità**: Analisi delle API e dei servizi web dell'Agenzia delle Entrate.
     - **Integrazione (se fattibile)**: Connessione diretta per l'invio fatture elettroniche.
 
-3.  **Business Intelligence & CRM Avanzato**
+3.  **Business Intelligence**
     - **Metriche Avanzate**: Dashboard per KPI qualitativi ed economici più profondi.
-    - **Automazione Rinnovi**: Suggerimenti automatici per il rinnovo basati sullo storico frequenze.

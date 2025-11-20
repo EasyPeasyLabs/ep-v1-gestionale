@@ -18,6 +18,7 @@ Questo documento descrive l'architettura software, le scelte tecnologiche e il m
   - **Database**: Google Firestore (NoSQL, document-based)
   - **Autenticazione**: Firebase Authentication
   - **Storage**: Firebase Storage (per futuri upload di file come PDF)
+  - **Notifications**: Browser Push API (Local)
 - **Deployment**:
   - **Hosting**: Vercel
 
@@ -31,7 +32,7 @@ La codebase è organizzata in modo modulare per favorire la manutenibilità e la
 - `/components`: Contiene componenti React riutilizzabili e "stupidi" (presentazionali), come `Modal.tsx`, `Spinner.tsx`, `Sidebar.tsx`.
   - `/components/icons`: Sotto-cartella per componenti SVG icona.
 - `/pages`: Contiene i componenti "intelligenti" (container) che rappresentano le pagine principali dell'applicazione, come `Clients.tsx`, `Dashboard.tsx`. Questi componenti gestiscono la logica di business e il recupero dei dati.
-- `/services`: Contiene la logica per la comunicazione con Firebase. Ogni file (es. `parentService.ts`, `supplierService.ts`) astrae le operazioni CRUD per una specifica collection di Firestore, disaccoppiando la logica di accesso ai dati dalle pagine.
+- `/services`: Contiene la logica per la comunicazione con Firebase. Ogni file (es. `parentService.ts`, `supplierService.ts`, `settingsService.ts`) astrae le operazioni CRUD per una specifica collection di Firestore, disaccoppiando la logica di accesso ai dati dalle pagine.
 - `/firebase`: Contiene la configurazione e l'inizializzazione di Firebase (`config.ts`).
 - `/types`: Contiene le definizioni dei tipi TypeScript (`types.ts`) usate in tutta l'applicazione, garantendo la coerenza del modello dati.
 - `/data`: Inizialmente conteneva dati di mock, ora è obsoleto in favore di Firebase.
@@ -56,12 +57,15 @@ Il database NoSQL Firestore è strutturato in collection di documenti.
 - `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested).
 - `settings`: Collection che contiene documenti singleton per le impostazioni globali (`companyInfo`).
 - `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
+- `periodicChecks`: Collection per la gestione del planner delle verifiche periodiche (scadenze, materiali, appuntamenti). Include configurazione giorni, orari e flag notifiche push.
 - `lessons`: Contiene le lezioni manuali/extra create a calendario.
 - `enrollments`: Collection centrale che lega un allievo a un corso.
   - **Struttura**: Contiene un array `appointments` che elenca tutte le date previste per il corso.
-  - **Stato Lezioni**: Ogni oggetto in `appointments` ha ora un campo `status` (`Scheduled`, `Present`, `Absent`, `Cancelled`) per tracciare la frequenza.
+  - **Stato Lezioni**: Ogni oggetto in `appointments` ha un campo `status` (`Scheduled`, `Present`, `Absent`, `Cancelled`) per tracciare la frequenza.
 - `transactions`: Collection per tutte le transazioni finanziarie.
 - `invoices` & `quotes`: Collection per i documenti fiscali.
+- `activities`: Collection "Libreria" delle attività didattiche disponibili.
+- `lesson_activities`: Collection di log che associa una lezione (`lessonId`) a una o più attività svolte (`activityIds`).
 
 ### 4.2. Firebase Authentication
 
@@ -71,11 +75,14 @@ Viene utilizzato il servizio di autenticazione di Firebase per gestire il login 
 
 L'applicazione è suddivisa logicamente nei seguenti moduli:
 
-- **Dashboard**: Vista d'insieme con KPI, grafici finanziari e occupazione aule.
+- **Dashboard**: Vista d'insieme con KPI, grafici finanziari, avvisi e occupazione aule.
 - **Clienti**: Gestione CRUD completa dei clienti.
 - **Fornitori**: Gestione CRUD completa dei fornitori.
 - **Calendario**: Pianificazione lezioni e visualizzazione occupazione.
 - **Finanza**: Gestione transazioni, fatture, preventivi, automazione pagamenti.
+- **CRM**: Gestione rinnovi, scadenze e sistema di **Comunicazione Libera** (invio messaggi manuali o massivi a liste di distribuzione via Email/WhatsApp).
 - **Iscrizioni**: Gestione dei contratti attivi, monitoraggio avanzamento lezioni (progress bar).
-- **Registro Presenze**: Nuovo modulo per la gestione giornaliera delle lezioni. Permette di segnare assenze e gestire automaticamente i recuperi (slittamento lezioni).
-- **Impostazioni**: Configurazione dati aziendali e listini.
+- **Registro Presenze**: Modulo per la gestione giornaliera delle lezioni. Permette di segnare assenze e gestire automaticamente i recuperi.
+- **Lezioni (Log Attività)**: Modulo per assegnare e tracciare le attività didattiche svolte durante ogni lezione.
+- **Attività**: Libreria/Repository delle attività didattiche (titolo, tema, materiali, link).
+- **Impostazioni**: Configurazione dati aziendali, listini e **Planner Verifiche Periodiche** (gestione controlli ricorrenti e notifiche).

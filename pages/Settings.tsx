@@ -64,6 +64,7 @@ const PeriodicCheckForm: React.FC<{
     const [endTime, setEndTime] = useState(check?.endTime || '10:00');
     const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false);
     const [note, setNote] = useState(check?.note || '');
+    const [isSaving, setIsSaving] = useState(false);
 
     const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
 
@@ -81,11 +82,19 @@ const PeriodicCheckForm: React.FC<{
             return;
         }
 
-        // Request notification permission if enabling push
-        if (pushEnabled && Notification.permission !== 'granted') {
-            const permission = await Notification.requestPermission();
-            if (permission !== 'granted') {
-                alert("Attenzione: Non hai concesso i permessi per le notifiche al browser. Le notifiche push non funzioneranno.");
+        setIsSaving(true);
+
+        // Request notification permission SAFELY
+        if (pushEnabled) {
+            try {
+                if ('Notification' in window && Notification.permission !== 'granted') {
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') {
+                        alert("Attenzione: Permessi notifiche negati. Le notifiche push non funzioneranno.");
+                    }
+                }
+            } catch (err) {
+                console.warn("Errore richiesta permessi notifica:", err);
             }
         }
 
@@ -99,8 +108,17 @@ const PeriodicCheckForm: React.FC<{
             note
         };
 
-        if (check?.id) { onSave({ ...checkData, id: check.id }); }
-        else { onSave(checkData); }
+        try {
+            if (check?.id) { 
+                onSave({ ...checkData, id: check.id }); 
+            } else { 
+                onSave(checkData); 
+            }
+        } catch (err) {
+            console.error("Errore durante il salvataggio:", err);
+            alert("Errore durante il salvataggio dei dati.");
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -166,7 +184,7 @@ const PeriodicCheckForm: React.FC<{
                         <BellIcon />
                         <div className="ml-3">
                             <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
-                            <span className="block text-xs text-gray-500">Ricevi avviso su mobile anche se l'app è chiusa.</span>
+                            <span className="block text-xs text-gray-500">Ricevi avviso su mobile se il browser è attivo.</span>
                         </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -183,7 +201,9 @@ const PeriodicCheckForm: React.FC<{
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button>
+                <button type="submit" disabled={isSaving} className="md-btn md-btn-raised md-btn-green md-btn-sm">
+                    {isSaving ? 'Salvataggio...' : 'Salva'}
+                </button>
             </div>
         </form>
     );

@@ -19,6 +19,8 @@ import Enrollments from './pages/Enrollments';
 import Attendance from './pages/Attendance';
 import Activities from './pages/Activities';
 import ActivityLog from './pages/ActivityLog';
+import NotificationScheduler from './components/NotificationScheduler';
+import { requestNotificationPermission } from './services/fcmService';
 
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'Activities' | 'ActivityLog';
 
@@ -33,6 +35,11 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoadingAuth(false);
+      
+      // Se l'utente è loggato, richiediamo il permesso per le notifiche push server-side
+      if (currentUser) {
+          requestNotificationPermission(currentUser.uid);
+      }
     });
     // Cleanup subscription on unmount
     return () => unsubscribe();
@@ -86,6 +93,9 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: 'var(--md-bg-light)', color: 'var(--md-text-primary)'}}>
+      {/* Scheduler locale come fallback per quando il browser è aperto */}
+      <NotificationScheduler />
+      
       <Sidebar 
         user={user}
         currentPage={currentPage} 

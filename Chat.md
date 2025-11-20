@@ -82,5 +82,29 @@ Implementare la gestione delle presenze, il recupero lezioni e l'iscrizione mult
     - Aggiunta la funzione `registerAbsence` nel service. Quando si segna un'assenza dal Registro Presenze, il sistema chiede se si vuole recuperare la lezione.
     - **Algoritmo di Recupero**: Il sistema calcola automaticamente la prima data utile successiva alla fine del corso, mantenendo lo stesso giorno della settimana e saltando le festività italiane standard (es. Natale, Ferragosto).
 
-### Stato del Progetto alla Fine della Sessione
-L'applicazione gestisce ora il ciclo di vita operativo delle lezioni: dall'iscrizione (anche massiva) alla gestione quotidiana della presenza, fino al recupero automatico delle lezioni perse, coprendo un requisito fondamentale per la gestione scolastica.
+---
+
+## Sessione 7 (Corrente)
+
+### Obiettivo della Sessione
+Espandere le funzionalità CRM e introdurre strumenti di pianificazione e controllo operativo (Planner).
+
+### Riepilogo delle Attività
+
+1.  **CRM Avanzato - Comunicazioni Libere**:
+    - Aggiunta una nuova modale nella pagina CRM per l'invio di comunicazioni non legate a eventi specifici (es. scadenze).
+    - Implementata la selezione multipla dei destinatari (Clienti, Fornitori o Inserimento Manuale).
+    - Supporto per invio massivo tramite **Email (BCC)** per privacy o **WhatsApp** (apertura sequenziale chat).
+
+2.  **Planner Verifiche Periodiche**:
+    - Creata una nuova sezione "Pianificazione & Controllo" nel menu **Impostazioni**.
+    - Implementato un sistema CRUD (`periodicChecks`) per definire task ricorrenti (es. Controllo Pagamenti, Restituzione Materiali Peek-a-Boo, Appuntamenti Commercialista).
+    - Possibilità di selezionare giorni della settimana multipli e orari.
+    - Integrazione con le API del browser per le **Notifiche Push** (configurabili per ogni verifica).
+
+3.  **Miglioramenti UI**:
+    - Aggiornata l'icona del menu "Finanza" con una moneta Euro.
+    - Aggiunto pulsante "Nuova Comunicazione" ben visibile nell'header della pagina CRM.
+
+### Stato del Progetto
+L'applicazione ora offre strumenti proattivi per la gestione della scuola, permettendo non solo di registrare dati passati (lezioni, pagamenti) ma anche di pianificare attività future e comunicare massivamente con l'utenza.
