@@ -22,6 +22,7 @@ export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
+  const [pageParams, setPageParams] = useState<any>(null); // Stato per passare parametri alle pagine
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -35,14 +36,19 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Funzione di navigazione centralizzata che supporta parametri
+  const handleNavigation = (page: Page, params?: any) => {
+      setCurrentPage(page);
+      setPageParams(params || null);
+  };
 
   const renderContent = () => {
     if (!user) return null; // Should not happen if user is logged in
     switch (currentPage) {
       case 'Dashboard':
-        return <Dashboard setCurrentPage={setCurrentPage} />;
+        return <Dashboard setCurrentPage={handleNavigation} />;
       case 'Enrollments':
-        return <Enrollments />;
+        return <Enrollments initialParams={pageParams} />;
       case 'Attendance':
         return <Attendance />;
       case 'Clients':
@@ -54,13 +60,13 @@ const App: React.FC = () => {
       case 'CRM':
         return <CRM />;
       case 'Finance':
-        return <Finance />;
+        return <Finance initialParams={pageParams} />;
       case 'Settings':
         return <Settings />;
       case 'Profile':
         return <Profile user={user} />;
       default:
-        return <Dashboard setCurrentPage={setCurrentPage} />;
+        return <Dashboard setCurrentPage={handleNavigation} />;
     }
   };
 
@@ -77,12 +83,17 @@ const App: React.FC = () => {
       <Sidebar 
         user={user}
         currentPage={currentPage} 
-        setCurrentPage={setCurrentPage} 
+        setCurrentPage={(page) => handleNavigation(page)} 
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={user} setCurrentPage={setCurrentPage} onMenuClick={() => setIsSidebarOpen(true)} />
+        <Header 
+            user={user} 
+            setCurrentPage={(page) => handleNavigation(page)} 
+            onNavigate={handleNavigation}
+            onMenuClick={() => setIsSidebarOpen(true)} 
+        />
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
           {renderContent()}
         </main>

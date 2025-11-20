@@ -1,7 +1,7 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc } from '@firebase/firestore';
-import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus } from '../types';
+import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, writeBatch } from '@firebase/firestore';
+import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus } from '../types';
 
 const enrollmentCollectionRef = collection(db, 'enrollments');
 
@@ -118,18 +118,64 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
                 };
                 appointments.push(newAppointment);
                 
-                // Aggiorna anche endDate dell'iscrizione
-                updatedData.endDate = nextDate.toISOString();
-                
-                // Nota: lessonsRemaining NON viene decrementato se la cloud function non ha girato.
-                // Se stiamo recuperando, stiamo aggiungendo una lezione in coda per compensare quella persa.
-                // Il saldo delle lezioni "da fare" rimane matematicamente invariato (una persa ma non consumata + una nuova aggiunta).
-                // Tuttavia, se la cloud function avesse già decrementato erroneamente, qui bisognerebbe correggere.
-                // Assumiamo che l'Assenza "Sospenda il consumo", quindi se la lezione era oggi, il counter non scende.
+                // NOTA: Non aggiorniamo più endDate qui per mantenere la data di scadenza contrattuale originale.
+                // L'estensione verrà segnalata visivamente nell'interfaccia come "Recupero".
+                // updatedData.endDate = nextDate.toISOString(); 
             }
         }
     }
 
     updatedData.appointments = appointments;
     await updateDoc(enrollmentDocRef, updatedData);
+};
+
+
+/**
+ * AUTOMAZIONE "BACKEND": Consolida le lezioni passate.
+ * Questa funzione simula il job notturno.
+ * Cerca tutte le lezioni con status 'Scheduled' la cui data è passata (minore di oggi/ora).
+ * Le imposta come 'Present' e decrementa il contatore lessonsRemaining.
+ */
+export const consolidateAppointments = async (): Promise<number> => {
+    // 1. Ottieni tutte le iscrizioni attive
+    const q = query(enrollmentCollectionRef, where("status", "==", EnrollmentStatus.Active));
+    const snapshot = await getDocs(q);
+    
+    const batch = writeBatch(db);
+    const now = new Date();
+    let updatesCount = 0;
+
+    snapshot.docs.forEach(docSnap => {
+        const enrollment = docSnap.data() as Enrollment;
+        let needsUpdate = false;
+        let newLessonsRemaining = enrollment.lessonsRemaining;
+        
+        const updatedAppointments = (enrollment.appointments || []).map(app => {
+            // Costruiamo la data/ora dell'appuntamento per confrontarla con ADESSO
+            const appDateTime = new Date(`${app.date.split('T')[0]}T${app.endTime}:00`);
+            
+            // Se l'appuntamento è nel passato E lo stato è ancora 'Scheduled' (quindi non Absent o Cancelled)
+            // Allora assumiamo che sia stato svolto regolarmente (Present)
+            if (appDateTime < now && (!app.status || app.status === 'Scheduled')) {
+                needsUpdate = true;
+                newLessonsRemaining = Math.max(0, newLessonsRemaining - 1);
+                return { ...app, status: 'Present' as AppointmentStatus };
+            }
+            return app;
+        });
+
+        if (needsUpdate) {
+            batch.update(docSnap.ref, {
+                appointments: updatedAppointments,
+                lessonsRemaining: newLessonsRemaining
+            });
+            updatesCount++;
+        }
+    });
+
+    if (updatesCount > 0) {
+        await batch.commit();
+    }
+    
+    return updatesCount;
 };

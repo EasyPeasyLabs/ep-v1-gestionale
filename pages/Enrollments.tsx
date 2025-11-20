@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType } from '../types';
+import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus } from '../types';
 import { getClients } from '../services/parentService';
-import { getAllEnrollments, addEnrollment, updateEnrollment } from '../services/enrollmentService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
 import { addTransaction, deleteTransactionByRelatedId } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -11,8 +11,16 @@ import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import SearchIcon from '../components/icons/SearchIcon';
+import TrashIcon from '../components/icons/TrashIcon';
 
-const Enrollments: React.FC = () => {
+interface EnrollmentsProps {
+    initialParams?: {
+        status?: 'all' | 'pending' | 'active';
+        searchTerm?: string;
+    };
+}
+
+const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [clients, setClients] = useState<ParentClient[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -22,6 +30,14 @@ const Enrollments: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Apply initial params if present
+    useEffect(() => {
+        if (initialParams) {
+            if (initialParams.status) setStatusFilter(initialParams.status);
+            if (initialParams.searchTerm) setSearchTerm(initialParams.searchTerm);
+        }
+    }, [initialParams]);
+
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
@@ -128,6 +144,7 @@ const Enrollments: React.FC = () => {
                 type: TransactionType.Income,
                 category: TransactionCategory.Sales,
                 paymentMethod: PaymentMethod.Other,
+                status: TransactionStatus.Completed,
                 relatedDocumentId: enr.id,
             });
 
@@ -211,6 +228,34 @@ const Enrollments: React.FC = () => {
         });
     };
 
+    // --- Delete Logic (New) ---
+    const executeDelete = async (enr: Enrollment) => {
+        setLoading(true);
+        try {
+            await deleteEnrollment(enr.id);
+            // Opzionale: puliamo anche eventuali transazioni per non lasciare orfani
+            await deleteTransactionByRelatedId(enr.id);
+            
+            await fetchData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch(err) {
+            console.error("[DEBUG] Errore Eliminazione:", err);
+            setError("Errore durante l'eliminazione definitiva.");
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => {
+        e.stopPropagation();
+        setConfirmState({
+            isOpen: true,
+            title: "Elimina Iscrizione",
+            message: `ATTENZIONE: Stai per eliminare definitivamente l'iscrizione di ${enr.childName}. Questa azione rimuoverà il record dal database e le eventuali transazioni collegate. L'azione è irreversibile.`,
+            isDangerous: true,
+            onConfirm: () => executeDelete(enr)
+        });
+    };
+
 
     const getScheduleString = (enr: Enrollment) => {
         if (!enr.appointments || enr.appointments.length === 0) return "Orario non definito";
@@ -281,9 +326,25 @@ const Enrollments: React.FC = () => {
                         />
                     </div>
                     <div className="flex space-x-2">
-                        <button onClick={() => setStatusFilter('all')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${statusFilter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Tutti</button>
-                        <button onClick={() => setStatusFilter('pending')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Da Pagare</button>
-                        <button onClick={() => setStatusFilter('active')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${statusFilter === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>Attivi</button>
+                        <button 
+                            onClick={() => setStatusFilter('all')} 
+                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${statusFilter === 'all' ? 'text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                            style={statusFilter === 'all' ? { backgroundColor: 'var(--md-primary)' } : {}}
+                        >
+                            Tutti
+                        </button>
+                        <button 
+                            onClick={() => setStatusFilter('pending')} 
+                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                            Da Pagare
+                        </button>
+                        <button 
+                            onClick={() => setStatusFilter('active')} 
+                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${statusFilter === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                        >
+                            Attivi
+                        </button>
                     </div>
                 </div>
             </div>
@@ -304,9 +365,13 @@ const Enrollments: React.FC = () => {
                     if (clientEnrollments.length === 0 && statusFilter !== 'all') return null;
 
                     return (
-                        <div key={client.id} className="md-card p-4 flex flex-col md:flex-row md:items-start md:justify-between gap-4 border-l-4 border-indigo-500 animate-fade-in">
+                        <div 
+                            key={client.id} 
+                            className="md-card p-4 flex flex-col md:flex-row md:items-start md:justify-between gap-4 border-l-4 animate-fade-in"
+                            style={{ borderLeftColor: 'var(--md-primary)' }}
+                        >
                             <div className="md:w-1/4 min-w-[200px]">
-                                <h3 className="font-bold text-lg text-indigo-900">{client.firstName} {client.lastName}</h3>
+                                <h3 className="font-bold text-lg" style={{ color: 'var(--md-primary)' }}>{client.firstName} {client.lastName}</h3>
                                 <p className="text-sm text-gray-500">{client.phone}</p>
                                 <div className="mt-3">
                                     <button onClick={(e) => handleEnrollClick(e, client)} className="md-btn md-btn-flat md-btn-primary text-sm px-0">
@@ -320,93 +385,130 @@ const Enrollments: React.FC = () => {
                                     <div className="text-sm text-gray-400 italic p-2 bg-gray-50 rounded">Nessuna iscrizione.</div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {clientEnrollments.map(enr => (
-                                            <div key={enr.id} className="bg-white border rounded-md p-4 shadow-sm flex flex-col sm:flex-row justify-between gap-4 relative overflow-hidden" style={{ borderLeft: `6px solid ${enr.locationColor || '#e5e7eb'}` }}>
-                                                
-                                                {/* Left Side: Info */}
-                                                <div className="flex-1">
-                                                    {/* Name + Badge */}
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <span className="font-bold text-lg text-gray-800">{enr.childName}</span>
-                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
-                                                            enr.status === EnrollmentStatus.Active ? 'bg-green-50 text-green-700 border-green-200' : 
-                                                            enr.status === EnrollmentStatus.Pending ? 'bg-amber-50 text-amber-700 border-amber-200' : 
-                                                            'bg-gray-100 text-gray-500 border-gray-200'
-                                                        }`}>
-                                                            {enr.status === EnrollmentStatus.Pending ? 'In Attesa' : enr.status === EnrollmentStatus.Active ? 'Attiva' : 'Terminata'}
-                                                        </span>
-                                                    </div>
+                                        {clientEnrollments.map(enr => {
+                                            // Calcolo ultima data effettiva (potrebbe essere oltre la scadenza contratto)
+                                            const sortedApps = [...(enr.appointments || [])].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                                            const lastApp = sortedApps.length > 0 ? sortedApps[sortedApps.length - 1] : null;
+                                            const lastLessonDate = lastApp ? new Date(lastApp.date) : new Date(enr.endDate);
+                                            const contractEndDate = new Date(enr.endDate);
+                                            
+                                            // Controlla se c'è uno slittamento (confrontando solo le date)
+                                            const isExtended = lastLessonDate.setHours(0,0,0,0) > contractEndDate.setHours(0,0,0,0);
+                                            const lastLessonDateObj = lastApp ? new Date(lastApp.date) : null;
 
-                                                    {/* Details Grid */}
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-sm text-gray-600 mb-3">
-                                                        <div>
-                                                            <span className="text-gray-400 text-xs uppercase block">Inizio</span>
-                                                            <span className="font-medium">{new Date(enr.startDate).toLocaleDateString('it-IT')}</span>
-                                                        </div>
-                                                        <div>
-                                                            <span className="text-gray-400 text-xs uppercase block">Pacchetto</span>
-                                                            <span className="font-medium">{enr.subscriptionName}</span>
-                                                            <span className="ml-2 font-bold text-indigo-600 bg-indigo-50 px-1 rounded text-xs">
-                                                                {enr.price !== undefined ? `€${enr.price}` : '€ -'}
+                                            return (
+                                                <div key={enr.id} className="bg-white border rounded-md p-4 shadow-sm flex flex-col sm:flex-row justify-between gap-4 relative overflow-hidden" style={{ borderLeft: `6px solid ${enr.locationColor || '#e5e7eb'}` }}>
+                                                    
+                                                    {/* Left Side: Info */}
+                                                    <div className="flex-1">
+                                                        {/* Name + Badge */}
+                                                        <div className="flex items-center gap-3 mb-3">
+                                                            <span className="font-bold text-lg text-gray-800">{enr.childName}</span>
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border ${
+                                                                enr.status === EnrollmentStatus.Active ? 'bg-green-50 text-green-700 border-green-200' : 
+                                                                enr.status === EnrollmentStatus.Pending ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                                                                'bg-gray-100 text-gray-500 border-gray-200'
+                                                            }`}>
+                                                                {enr.status === EnrollmentStatus.Pending ? 'In Attesa' : enr.status === EnrollmentStatus.Active ? 'Attiva' : 'Terminata'}
                                                             </span>
                                                         </div>
-                                                        <div>
-                                                            <span className="text-gray-400 text-xs uppercase block">Sede</span>
-                                                            <strong style={{ color: enr.locationColor || 'inherit' }}>{enr.locationName}</strong>
+
+                                                        {/* Details Grid */}
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-gray-600 mb-3">
+                                                            <div>
+                                                                <span className="text-gray-400 text-xs uppercase block">Inizio</span>
+                                                                <span className="font-medium text-gray-900">{new Date(enr.startDate).toLocaleDateString('it-IT')}</span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-400 text-xs uppercase block">Scadenza</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-medium text-gray-900">{new Date(enr.endDate).toLocaleDateString('it-IT')}</span>
+                                                                    {isExtended && lastLessonDateObj && (
+                                                                        <span 
+                                                                            className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 border border-amber-200 rounded font-bold cursor-help" 
+                                                                            title={`Ultima lezione slittata al: ${lastLessonDateObj.toLocaleDateString('it-IT')}`}
+                                                                        >
+                                                                            RECUPERO
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-400 text-xs uppercase block">Pacchetto</span>
+                                                                <span className="font-medium">{enr.subscriptionName}</span>
+                                                                <span className="ml-2 font-bold px-1 rounded text-xs" style={{ color: 'var(--md-primary)', backgroundColor: 'var(--md-bg-light)' }}>
+                                                                    {enr.price !== undefined ? `€${enr.price}` : '€ -'}
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-gray-400 text-xs uppercase block">Sede</span>
+                                                                <strong style={{ color: enr.locationColor || 'inherit' }}>{enr.locationName}</strong>
+                                                            </div>
+                                                            <div className="col-span-2 md:col-span-2">
+                                                                <span className="text-gray-400 text-xs uppercase block">Orario</span>
+                                                                <span>{getScheduleString(enr)}</span>
+                                                            </div>
                                                         </div>
-                                                        <div>
-                                                            <span className="text-gray-400 text-xs uppercase block">Orario</span>
-                                                            <span>{getScheduleString(enr)}</span>
-                                                        </div>
+
+                                                        {/* Progress Bar */}
+                                                        {enr.status === EnrollmentStatus.Active && (
+                                                            <div className="mt-2 max-w-md">
+                                                                <div className="flex justify-between text-[10px] text-gray-500 mb-1">
+                                                                    <span>Svolte: {enr.lessonsTotal - enr.lessonsRemaining}</span>
+                                                                    <span>Rimanenti: {enr.lessonsRemaining}</span>
+                                                                </div>
+                                                                <div className="w-full bg-gray-200 rounded-full h-2">
+                                                                    <div 
+                                                                        className="h-2 rounded-full transition-all duration-500" 
+                                                                        style={{ width: `${Math.max(0, Math.min(100, ((enr.lessonsTotal - enr.lessonsRemaining) / enr.lessonsTotal) * 100))}%`, backgroundColor: enr.locationColor || '#6366f1' }}
+                                                                    ></div>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
 
-                                                    {/* Progress Bar */}
-                                                    {enr.status === EnrollmentStatus.Active && (
-                                                        <div className="mt-2 max-w-md">
-                                                            <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                                                                <span>Svolte: {enr.lessonsTotal - enr.lessonsRemaining}</span>
-                                                                <span>Rimanenti: {enr.lessonsRemaining}</span>
-                                                            </div>
-                                                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                                                <div 
-                                                                    className="h-2 rounded-full transition-all duration-500" 
-                                                                    style={{ width: `${Math.max(0, Math.min(100, ((enr.lessonsTotal - enr.lessonsRemaining) / enr.lessonsTotal) * 100))}%`, backgroundColor: enr.locationColor || '#6366f1' }}
-                                                                ></div>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* Right Side: Actions */}
-                                                <div className="flex flex-col gap-2 justify-center min-w-[120px] border-t sm:border-t-0 sm:border-l border-gray-100 pt-3 sm:pt-0 sm:pl-4">
-                                                    {enr.status === EnrollmentStatus.Pending && (
-                                                        <button onClick={(e) => handlePaymentRequest(e, enr)} className="md-btn md-btn-raised md-btn-green w-full text-xs">
-                                                            PAGATO
-                                                        </button>
-                                                    )}
-                                                    
-                                                    {(enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) && (
-                                                        <>
-                                                            <button onClick={(e) => handleEditClick(e, client, enr)} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded transition-colors flex items-center justify-center w-full border border-gray-200">
-                                                                <PencilIcon /> <span className="ml-1">Modifica</span>
+                                                    {/* Right Side: Actions */}
+                                                    <div className="flex flex-col gap-2 justify-center min-w-[120px] border-t sm:border-t-0 sm:border-l border-gray-100 pt-3 sm:pt-0 sm:pl-4">
+                                                        {enr.status === EnrollmentStatus.Pending && (
+                                                            <button onClick={(e) => handlePaymentRequest(e, enr)} className="md-btn md-btn-raised md-btn-green w-full text-xs">
+                                                                PAGATO
                                                             </button>
-                                                        </>
-                                                    )}
+                                                        )}
+                                                        
+                                                        {(enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) && (
+                                                            <>
+                                                                <button onClick={(e) => handleEditClick(e, client, enr)} className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded transition-colors flex items-center justify-center w-full border border-gray-200">
+                                                                    <PencilIcon /> <span className="ml-1">Modifica</span>
+                                                                </button>
+                                                            </>
+                                                        )}
 
-                                                     {enr.status === EnrollmentStatus.Active && (
-                                                        <button onClick={(e) => handleRevokeRequest(e, enr)} className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-2 rounded transition-colors font-medium w-full text-center">
-                                                            Revoca Pagamento
+                                                         {enr.status === EnrollmentStatus.Active && (
+                                                            <button onClick={(e) => handleRevokeRequest(e, enr)} className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-2 rounded transition-colors font-medium w-full text-center">
+                                                                Revoca Pagamento
+                                                            </button>
+                                                        )}
+                                                        
+                                                        {(enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) && (
+                                                             <button onClick={(e) => handleAbandonRequest(e, enr)} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-2 rounded transition-colors w-full text-center">
+                                                                Abbandona
+                                                            </button>
+                                                        )}
+
+                                                        {/* Delete Button (New) */}
+                                                        <button 
+                                                            onClick={(e) => handleDeleteRequest(e, enr)} 
+                                                            className="text-xs bg-white border border-red-200 hover:bg-red-50 text-red-600 px-3 py-2 rounded transition-colors w-full text-center mt-1"
+                                                        >
+                                                            <div className="flex items-center justify-center">
+                                                                 <TrashIcon /> <span className="ml-1">Elimina</span>
+                                                            </div>
                                                         </button>
-                                                    )}
-                                                    
-                                                    {(enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) && (
-                                                         <button onClick={(e) => handleAbandonRequest(e, enr)} className="text-xs bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-3 py-2 rounded transition-colors w-full text-center">
-                                                            Abbandona
-                                                        </button>
-                                                    )}
+
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>

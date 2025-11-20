@@ -8,7 +8,7 @@ import ExclamationIcon from './icons/ExclamationIcon';
 interface NotificationsDropdownProps {
     notifications: Notification[];
     loading: boolean;
-    onNotificationClick: () => void;
+    onNotificationClick: (notification: Notification) => void;
 }
 
 const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notifications, loading, onNotificationClick }) => {
@@ -29,7 +29,7 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
                         {notifications.map(notification => (
                             <li key={notification.id}>
                                 <button
-                                    onClick={onNotificationClick}
+                                    onClick={() => onNotificationClick(notification)}
                                     className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b last:border-b-0 border-slate-100"
                                 >
                                     <div className="flex items-start space-x-3">

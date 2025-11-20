@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Appointment, Enrollment, EnrollmentStatus } from '../types';
-import { getAllEnrollments, registerAbsence } from '../services/enrollmentService';
+import { getAllEnrollments, registerAbsence, consolidateAppointments } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
+import CheckCircleIcon from '../components/icons/ChecklistIcon'; // Riutilizziamo un'icona esistente o simile
 
 // Interfaccia estesa per visualizzare le lezioni nella lista presenze
 interface AttendanceItem extends Appointment {
@@ -16,6 +17,7 @@ const Attendance: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [consolidating, setConsolidating] = useState(false);
     
     // Modal State per conferma assenza
     const [confirmState, setConfirmState] = useState<{
@@ -31,6 +33,23 @@ const Attendance: React.FC = () => {
         onConfirm: () => {},
         isDangerous: false
     });
+
+    // Funzione per consolidare le lezioni passate (Simulazione Backend Automation)
+    const handleConsolidation = useCallback(async () => {
+        setConsolidating(true);
+        try {
+            const count = await consolidateAppointments();
+            if (count > 0) {
+                console.log(`Consolidate ${count} iscrizioni con lezioni passate.`);
+                // Emettiamo evento globale per aggiornare le altre viste (es. Dashboard o Iscrizioni)
+                window.dispatchEvent(new Event('EP_DataUpdated'));
+            }
+        } catch (e) {
+            console.error("Errore consolidamento automatico:", e);
+        } finally {
+            setConsolidating(false);
+        }
+    }, []);
 
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);
@@ -69,9 +88,14 @@ const Attendance: React.FC = () => {
         }
     }, [selectedDate]);
 
+    // All'avvio, eseguiamo prima il consolidamento e poi il fetch
     useEffect(() => {
-        fetchAttendanceData();
-    }, [fetchAttendanceData]);
+        const init = async () => {
+            await handleConsolidation();
+            fetchAttendanceData();
+        };
+        init();
+    }, [handleConsolidation, fetchAttendanceData]); // Dipendenze stabili
 
     const handleDateChange = (offset: number) => {
         const date = new Date(selectedDate);
@@ -91,6 +115,8 @@ const Attendance: React.FC = () => {
                     // true = recupero automatico
                     await registerAbsence(item.enrollmentId, item.lessonId, true); 
                     await fetchAttendanceData();
+                    // Anche dopo un'assenza registrata, forziamo un refresh globale
+                    window.dispatchEvent(new Event('EP_DataUpdated'));
                 } catch (err) {
                     console.error("Errore registrazione assenza:", err);
                     alert("Errore durante la registrazione dell'assenza.");
@@ -109,6 +135,20 @@ const Attendance: React.FC = () => {
                         Gestisci le presenze giornaliere e i recuperi automatici.
                     </p>
                 </div>
+                <button 
+                    onClick={() => { handleConsolidation().then(fetchAttendanceData); }} 
+                    disabled={consolidating}
+                    className="md-btn md-btn-flat text-sm flex items-center"
+                >
+                    {consolidating ? <Spinner /> : (
+                        <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Aggiorna Stato Lezioni
+                        </>
+                    )}
+                </button>
             </div>
 
             {/* Barra di Navigazione Data */}
@@ -159,7 +199,12 @@ const Attendance: React.FC = () => {
                                 <tbody className="divide-y divide-gray-100">
                                     {attendanceItems.map((item, idx) => {
                                         const isAbsent = item.status === 'Absent';
-                                        const isPast = new Date(item.date + 'T' + item.endTime) < new Date();
+                                        const isPresent = item.status === 'Present';
+                                        
+                                        // Determina se la lezione è nel passato (quindi teoricamente "svolta")
+                                        // Usiamo una comparazione sicura data+ora
+                                        const lessonEnd = new Date(`${item.date.split('T')[0]}T${item.endTime}:00`);
+                                        const isPast = lessonEnd < new Date();
 
                                         return (
                                             <tr key={idx} className={`hover:bg-gray-50 transition-colors ${isAbsent ? 'bg-red-50' : ''}`}>
@@ -181,13 +226,20 @@ const Attendance: React.FC = () => {
                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
                                                             Assente
                                                         </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                    ) : isPresent ? (
+                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                                             Presente
+                                                        </span>
+                                                    ) : (
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                            Programmata
                                                         </span>
                                                     )}
                                                 </td>
                                                 <td className="p-4 text-right">
+                                                    {!isAbsent && !isPresent && isPast && (
+                                                        <span className="text-xs text-amber-600 italic mr-2">In attesa di aggiornamento...</span>
+                                                    )}
                                                     {!isAbsent && (
                                                         <button 
                                                             onClick={() => handleMarkAbsence(item)}

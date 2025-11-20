@@ -27,7 +27,7 @@ const LoginPage: React.FC = () => {
 
     return (
         <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--md-bg-light)' }}>
-            <div className="w-full max-w-md p-8 space-y-8 md-card">
+            <div className="w-full max-w-md p-8 space-y-8 md-card border-t-4" style={{ borderColor: 'var(--md-primary)' }}>
                 <div className="text-center">
                     <h1 className="text-3xl font-bold tracking-wider" style={{ color: 'var(--md-text-primary)' }}>EP <span style={{ color: 'var(--md-primary)' }}>v.1</span></h1>
                     <p className="mt-2" style={{ color: 'var(--md-text-secondary)' }}>Accedi al tuo gestionale</p>

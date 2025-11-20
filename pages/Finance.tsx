@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment, Invoice, Quote, InvoiceInput, QuoteInput, DocumentStatus, DocumentItem, Client, ClientType, Installment } from '../types';
-import { getTransactions, addTransaction, deleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, deleteTransactionByRelatedId, updateTransaction } from '../services/financeService';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment, Invoice, Quote, InvoiceInput, QuoteInput, DocumentStatus, DocumentItem, Client, ClientType, Installment, Supplier, TransactionStatus } from '../types';
+import { getTransactions, addTransaction, deleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, deleteTransactionByRelatedId, updateTransaction, calculateRentTransactions, batchAddTransactions } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getClients } from '../services/parentService';
+import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { generateDocumentPDF } from '../utils/pdfGenerator';
 import Modal from '../components/Modal';
@@ -12,10 +13,20 @@ import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import PencilIcon from '../components/icons/PencilIcon';
+import CalculatorIcon from '../components/icons/CalculatorIcon';
 import { Chart, registerables, TooltipItem } from 'chart.js';
 Chart.register(...registerables);
 
 type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes';
+
+interface FinanceProps {
+    initialParams?: {
+        tab?: Tab;
+        invoiceStatus?: DocumentStatus;
+        transactionStatus?: 'pending' | 'completed';
+        searchTerm?: string; // Anche se non implementato in tutti i tab, lo prepariamo
+    };
+}
 
 const StatCard: React.FC<{ title: string; value: string; color: string; onClick?: () => void }> = ({ title, value, color, onClick }) => (
   <div 
@@ -61,10 +72,11 @@ const TransactionForm: React.FC<{
     const [type, setType] = useState<TransactionType>(initialData?.type || TransactionType.Expense);
     const [category, setCategory] = useState<TransactionCategory>(initialData?.category || TransactionCategory.OtherExpense);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod || PaymentMethod.BankTransfer);
+    const [status, setStatus] = useState<TransactionStatus>(initialData?.status || TransactionStatus.Completed);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const data = { description, amount: Number(amount), date: new Date(date).toISOString(), type, category, paymentMethod };
+        const data = { description, amount: Number(amount), date: new Date(date).toISOString(), type, category, paymentMethod, status };
         
         if (initialData) {
             onSave({ ...data, id: initialData.id } as Transaction);
@@ -100,11 +112,20 @@ const TransactionForm: React.FC<{
                         <label htmlFor="category" className="md-input-label !top-0 !text-xs !text-gray-500">Categoria</label>
                     </div>
                 </div>
-                <div className="md-input-group">
-                    <select id="payment" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="md-input">
-                        {Object.values(PaymentMethod).map(method => <option key={method} value={method}>{method}</option>)}
-                    </select>
-                    <label htmlFor="payment" className="md-input-label !top-0 !text-xs !text-gray-500">Metodo Pagamento</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="md-input-group">
+                        <select id="payment" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="md-input">
+                            {Object.values(PaymentMethod).map(method => <option key={method} value={method}>{method}</option>)}
+                        </select>
+                        <label htmlFor="payment" className="md-input-label !top-0 !text-xs !text-gray-500">Metodo Pagamento</label>
+                    </div>
+                     <div className="md-input-group">
+                        <select id="status" value={status} onChange={e => setStatus(e.target.value as TransactionStatus)} className="md-input">
+                            <option value={TransactionStatus.Completed}>Completato (Pagato)</option>
+                            <option value={TransactionStatus.Pending}>In Attesa (Addebitato)</option>
+                        </select>
+                        <label htmlFor="status" className="md-input-label !top-0 !text-xs !text-gray-500">Stato</label>
+                    </div>
                 </div>
             </div>
             <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
@@ -177,14 +198,12 @@ const DocumentForm: React.FC<{
             ? `${client.firstName} ${client.lastName}` 
             : client.companyName;
 
-        // Logica D: Controllo data scadenza per stato automatico "Scaduto"
         let finalStatus = status;
         if (type === 'invoice') {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const expiryDate = new Date(dueDate);
             
-            // Se la data di scadenza è passata e lo stato non è 'Pagato', 'Annullato' o 'Convertito', diventa 'Scaduto'
             if (expiryDate < today && 
                 status !== DocumentStatus.Paid && 
                 status !== DocumentStatus.Cancelled && 
@@ -228,7 +247,6 @@ const DocumentForm: React.FC<{
         }
     };
 
-    // Logica B: SDI editabile solo se Bozza o Inviato
     const canEditSDI = status === DocumentStatus.Draft || status === DocumentStatus.Sent;
 
     return (
@@ -372,23 +390,33 @@ const DocumentForm: React.FC<{
 };
 
 
-const Finance: React.FC = () => {
+const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [activeTab, setActiveTab] = useState<Tab>('overview');
     const [transactionFilter, setTransactionFilter] = useState<'all' | TransactionType>('all');
     const [invoiceFilter, setInvoiceFilter] = useState<'all' | DocumentStatus>('all');
     
+    // Handle initialParams
+    useEffect(() => {
+        if (initialParams) {
+            if (initialParams.tab) setActiveTab(initialParams.tab);
+            if (initialParams.invoiceStatus) setInvoiceFilter(initialParams.invoiceStatus);
+            // Se volessimo filtrare anche le transazioni, potremmo usare transactionStatus ma qui il filtro è income/expense
+            // Tuttavia, i "pending" sono gestiti in un blocco separato che è sempre visibile in 'transactions' tab.
+        }
+    }, [initialParams]);
+
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
-    const [clients, setClients] = useState<Client[]>([]); // Cache for PDF gen
+    const [clients, setClients] = useState<Client[]>([]); 
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     
     const [isTransModalOpen, setIsTransModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     
-    // Unified Document Modal
     const [isDocModalOpen, setIsDocModalOpen] = useState(false);
     const [docType, setDocType] = useState<'invoice' | 'quote'>('invoice');
     const [editingDoc, setEditingDoc] = useState<Invoice | Quote | null>(null);
@@ -406,24 +434,36 @@ const Finance: React.FC = () => {
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [transData, enrollData, invData, quoData, clientsData] = await Promise.all([
+            const [transData, enrollData, invData, quoData, clientsData, suppliersData] = await Promise.all([
                 getTransactions(), 
                 getAllEnrollments(),
                 getInvoices(),
                 getQuotes(),
-                getClients()
+                getClients(),
+                getSuppliers()
             ]);
             setTransactions(transData); 
             setEnrollments(enrollData);
             setInvoices(invData);
             setQuotes(quoData);
             setClients(clientsData);
+            setSuppliers(suppliersData);
         } catch (err) {
             setError("Impossibile caricare i dati finanziari."); console.error(err);
         } finally { setLoading(false); }
     }, []);
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
+
+    // Derived state for Transactions
+    const completedTransactions = useMemo(() => 
+        transactions.filter(t => !t.status || t.status === TransactionStatus.Completed), 
+    [transactions]);
+
+    const pendingTransactions = useMemo(() => 
+        transactions.filter(t => t.status === TransactionStatus.Pending), 
+    [transactions]);
+
 
     // Handlers for Transactions
     const handleOpenTransModal = (transaction: Transaction | null = null) => {
@@ -439,11 +479,9 @@ const Finance: React.FC = () => {
     const handleSaveTransaction = async (transactionData: TransactionInput | Transaction) => {
         try {
             if ('id' in transactionData) {
-                // Update existing
                 const { id, ...data } = transactionData;
                 await updateTransaction(id, data);
             } else {
-                // Add new
                 await addTransaction(transactionData); 
             }
             handleCloseTransModal();
@@ -453,6 +491,37 @@ const Finance: React.FC = () => {
             alert("Errore durante il salvataggio della transazione.");
         }
     };
+
+    const handleGenerateRent = async () => {
+        setLoading(true);
+        try {
+            const newTransactions = calculateRentTransactions(enrollments, suppliers, transactions);
+            
+            if (newTransactions.length > 0) {
+                await batchAddTransactions(newTransactions);
+                await fetchAllData();
+                alert(`Generazione completata. Aggiunti ${newTransactions.length} movimenti di nolo in stato 'Da Saldare'.`);
+            } else {
+                alert("Nessuna nuova spesa di nolo da generare.");
+            }
+        } catch (err) {
+            console.error("Errore generazione nolo:", err);
+            alert("Errore durante la generazione delle spese di nolo.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleConfirmPendingTransaction = async (t: Transaction) => {
+        try {
+            await updateTransaction(t.id, { status: TransactionStatus.Completed });
+            fetchAllData();
+        } catch (err) {
+            console.error("Errore conferma transazione", err);
+            alert("Impossibile confermare il saldo.");
+        }
+    };
+
 
     // Handlers for Documents (Invoices/Quotes)
     const handleOpenDocModal = (type: 'invoice' | 'quote', doc: Invoice | Quote | null = null) => {
@@ -486,16 +555,10 @@ const Finance: React.FC = () => {
                     finalInvoiceNumber = result.invoiceNumber;
                 }
 
-                // Logica Transazioni Robusta: Pulisci sempre prima per garantire unicità
-                // 1. Se aggiorniamo una fattura, rimuoviamo eventuali transazioni collegate esistenti.
-                // 2. Se creiamo una nuova fattura (isUpdate = false), in teoria non ce ne sono, ma delete è safe.
-                // Per sicurezza, facciamolo se è un update.
                 if (isUpdate) {
                     await deleteTransactionByRelatedId(savedId);
                 }
 
-                // 2. Se lo stato finale è "Pagato", creiamo la transazione corretta.
-                // Questo approccio (cancella e ricrea se pagato) evita duplicati e mantiene i dati allineati.
                 if (isPaidNow) {
                     await addTransaction({
                         date: new Date().toISOString(), 
@@ -504,11 +567,11 @@ const Finance: React.FC = () => {
                         type: TransactionType.Income,
                         category: TransactionCategory.Sales,
                         paymentMethod: invData.paymentMethod || PaymentMethod.BankTransfer,
+                        status: TransactionStatus.Completed,
                         relatedDocumentId: savedId
                     });
                 }
                 
-                // Handle Quote conversion status update
                 if (quoteToConvertId) {
                     await updateQuoteStatus(quoteToConvertId, DocumentStatus.Converted);
                     setQuoteToConvertId(null);
@@ -520,7 +583,6 @@ const Finance: React.FC = () => {
             }
             handleCloseDocModal();
             await fetchAllData();
-            // Dispatch global event to update notifications
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
             console.error(e);
@@ -530,7 +592,6 @@ const Finance: React.FC = () => {
 
     const handleConvertQuoteToInvoice = (quote: Quote) => {
         setQuoteToConvertId(quote.id);
-        // Pre-fill invoice with quote data
         const invoiceData: InvoiceInput = {
             clientId: quote.clientId,
             clientName: quote.clientName,
@@ -542,14 +603,13 @@ const Finance: React.FC = () => {
             isProForma: false,
             paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer,
             installments: quote.installments || [],
-            invoiceNumber: '', // Will be generated
+            invoiceNumber: '',
             hasStampDuty: quote.hasStampDuty,
             notes: quote.notes || '',
             relatedQuoteNumber: quote.quoteNumber
         };
-        // Open modal as Invoice with this data
         setDocType('invoice');
-        setEditingDoc(invoiceData as unknown as Invoice); // Temporary cast to pre-fill
+        setEditingDoc(invoiceData as unknown as Invoice);
         setIsDocModalOpen(true);
     };
 
@@ -570,16 +630,12 @@ const Finance: React.FC = () => {
             const invoice = invoices.find(i => i.id === id);
             
             if (invoice) {
-                // Logica Robusta per Transazioni:
-                // 1. Tentiamo sempre di rimuovere eventuali transazioni esistenti collegate a questa fattura.
-                // Questo garantisce che non ci siano mai duplicati, indipendentemente dallo stato precedente.
                 try {
                     await deleteTransactionByRelatedId(id);
                 } catch (e) {
                     console.error("Errore nella pulizia delle transazioni precedenti:", e);
                 }
 
-                // 2. Se il nuovo stato è "Pagato", creiamo la transazione.
                 if (status === DocumentStatus.Paid) {
                     try {
                         await addTransaction({
@@ -589,6 +645,7 @@ const Finance: React.FC = () => {
                             type: TransactionType.Income,
                             category: TransactionCategory.Sales,
                             paymentMethod: invoice.paymentMethod || PaymentMethod.BankTransfer,
+                            status: TransactionStatus.Completed,
                             relatedDocumentId: invoice.id
                         });
                     } catch (e) {
@@ -596,12 +653,10 @@ const Finance: React.FC = () => {
                         alert("Attenzione: Stato aggiornato ma errore nella creazione della transazione automatica.");
                     }
                 }
-                // Se lo stato non è "Pagato", la transazione è stata rimossa al punto 1 e non ne viene creata una nuova.
             }
 
              setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status } : inv));
              await updateInvoiceStatus(id, status);
-             // Trigger notification update
              window.dispatchEvent(new Event('EP_DataUpdated'));
         } else {
              setQuotes(prev => prev.map(q => q.id === id ? { ...q, status } : q));
@@ -623,7 +678,6 @@ const Finance: React.FC = () => {
             else if (deleteType === 'quote') await deleteQuote(deleteId);
             
             await fetchAllData();
-            // Update notifications if we deleted an invoice that was causing a notification
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
             console.error(e);
@@ -646,16 +700,15 @@ const Finance: React.FC = () => {
     };
 
 
-    // --- CHART LOGIC ---
+    // --- CHART LOGIC (Uses ONLY Completed Transactions) ---
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
-    const monthlyIncome = transactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    const monthlyExpense = transactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    const annualIncome = transactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    const annualExpense = transactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    const monthlyIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    const monthlyExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    const annualIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    const annualExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
     
-    // Logica C: Totale Scaduto
     const overdueAmount = invoices.filter(inv => inv.status === DocumentStatus.Overdue).reduce((sum, inv) => sum + inv.totalAmount, 0);
 
     const COEFFICIENTE_REDDITIVITA = 0.78, ALIQUOTA_INPS = 0.2623, ALIQUOTA_IMPOSTA = 0.05;
@@ -669,19 +722,16 @@ const Finance: React.FC = () => {
         if (activeTab !== 'overview') return;
         const last6Months = [...Array(6)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return { month: d.getMonth(), year: d.getFullYear() }; }).reverse();
         const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' }));
-        const monthlyIncomeData = last6Months.map(d => transactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
-        const monthlyExpenseData = last6Months.map(d => transactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
+        const monthlyIncomeData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
+        const monthlyExpenseData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
         const monthlyEnrollmentsData = last6Months.map(d => enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length);
         
-        // Data for Doughnut Charts
-        const expenseByCategory = transactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
-        
-        const incomeByCategory = transactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+        const expenseByCategory = completedTransactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+        const incomeByCategory = completedTransactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
 
 
         let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart;
         
-        // Tooltip callback for percentages
         const percentageTooltip = {
             callbacks: {
                 label: function(context: TooltipItem<'doughnut'>) {
@@ -696,44 +746,8 @@ const Finance: React.FC = () => {
 
         if (monthlyChartRef.current) { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
         if (enrollmentsChartRef.current) { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        
-        // Expense Chart
-        if (expensesDoughnutRef.current) { 
-            expensesDoughnut = new Chart(expensesDoughnutRef.current, { 
-                type: 'doughnut', 
-                data: { 
-                    labels: Object.keys(expenseByCategory), 
-                    datasets: [{ 
-                        data: Object.values(expenseByCategory), 
-                        backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa'] 
-                    }] 
-                }, 
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    plugins: { tooltip: percentageTooltip }
-                } 
-            }); 
-        }
-        
-        // Income Chart
-        if (incomeDoughnutRef.current) {
-            incomeDoughnut = new Chart(incomeDoughnutRef.current, {
-                type: 'doughnut',
-                data: {
-                    labels: Object.keys(incomeByCategory),
-                    datasets: [{
-                        data: Object.values(incomeByCategory),
-                        backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0'] // Green, Blue, Amber, Purple
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { tooltip: percentageTooltip }
-                }
-            });
-        }
+        if (expensesDoughnutRef.current) { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
+        if (incomeDoughnutRef.current) { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
         
         return () => { 
             if (monthlyChart) monthlyChart.destroy(); 
@@ -741,15 +755,13 @@ const Finance: React.FC = () => {
             if (expensesDoughnut) expensesDoughnut.destroy(); 
             if (incomeDoughnut) incomeDoughnut.destroy();
         };
-    }, [transactions, enrollments, activeTab]);
+    }, [completedTransactions, enrollments, activeTab]); // Changed dependency to completedTransactions
 
-    // Logic for Filtering Transactions
-    const filteredTransactions = transactions.filter(t => {
+    const filteredTransactions = completedTransactions.filter(t => {
         if (transactionFilter === 'all') return true;
         return t.type === transactionFilter;
     });
 
-    // Logic for Filtering Invoices
     const filteredInvoices = invoices.filter(inv => {
         if (invoiceFilter === 'all') return true;
         return inv.status === invoiceFilter;
@@ -795,11 +807,10 @@ const Finance: React.FC = () => {
                         <ChartCard title="Trend Iscrizioni Allievi"><canvas ref={enrollmentsChartRef}></canvas></ChartCard>
                     </div>
                     
-                    {/* Fiscal Projection & Breakdown Section */}
                     <div className="grid grid-cols-1 gap-6">
                         <div className="md-card p-6">
                             <h3 className="text-lg font-semibold">Proiezione Fiscale (Regime Forfettario)</h3>
-                            <p className="text-sm mb-4" style={{color: 'var(--md-text-secondary)'}}>Stima basata sul fatturato dell'anno in corso.</p>
+                            <p className="text-sm mb-4" style={{color: 'var(--md-text-secondary)'}}>Stima basata sul fatturato (incassato) dell'anno in corso.</p>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
                                 <div className="bg-gray-50 p-3 rounded-md"><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>Fatturato Annuo</p><p className="font-bold text-lg">{annualIncome.toFixed(2)}€</p></div>
                                 <div className="bg-gray-50 p-3 rounded-md"><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>Imponibile (78%)</p><p className="font-bold text-lg">{imponibileLordo.toFixed(2)}€</p></div>
@@ -818,27 +829,49 @@ const Finance: React.FC = () => {
             );
             case 'transactions': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
-                    {/* Filter Controls */}
-                    <div className="p-4 md:p-0 md:mb-4 flex space-x-2">
-                        <button 
-                            onClick={() => setTransactionFilter('all')} 
-                            className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Tutti
-                        </button>
-                         <button 
-                            onClick={() => setTransactionFilter(TransactionType.Income)} 
-                            className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Entrate
-                        </button>
-                         <button 
-                            onClick={() => setTransactionFilter(TransactionType.Expense)} 
-                            className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Uscite
+                    
+                    {/* Controls */}
+                    <div className="p-4 md:p-0 md:mb-4 flex flex-wrap justify-between gap-2">
+                        <div className="flex space-x-2">
+                            <button onClick={() => setTransactionFilter('all')} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutti</button>
+                            <button onClick={() => setTransactionFilter(TransactionType.Income)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Entrate</button>
+                            <button onClick={() => setTransactionFilter(TransactionType.Expense)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Uscite</button>
+                        </div>
+                        <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm">
+                            <CalculatorIcon /> <span className="ml-2">Calcola Nolo Sedi</span>
                         </button>
                     </div>
+
+                    {/* Pending Transactions Section */}
+                    {pendingTransactions.length > 0 && (
+                        <div className="mb-6 border-2 border-amber-200 bg-amber-50 rounded-lg overflow-hidden">
+                            <div className="p-4 bg-amber-100 border-b border-amber-200 flex justify-between items-center">
+                                <h3 className="text-sm font-bold text-amber-900 flex items-center">
+                                    ⚠️ Noli da Saldare ({pendingTransactions.length})
+                                </h3>
+                                <span className="text-xs text-amber-800">Questi importi non sono ancora inclusi nel bilancio.</span>
+                            </div>
+                            <div className="divide-y divide-amber-200">
+                                {pendingTransactions.map(t => (
+                                    <div key={t.id} className="p-3 flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm font-bold text-amber-900">{t.description}</p>
+                                            <p className="text-xs text-amber-700">{new Date(t.date).toLocaleDateString()} - {t.amount.toFixed(2)}€</p>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <button 
+                                                onClick={() => handleConfirmPendingTransaction(t)}
+                                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow-sm font-medium transition-colors"
+                                            >
+                                                Salda
+                                            </button>
+                                             <button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete text-amber-700"><TrashIcon/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="md:hidden space-y-3 p-4 pt-0">
                         {filteredTransactions.map(t => (
@@ -857,7 +890,7 @@ const Finance: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                         {filteredTransactions.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nessuna transazione trovata.</p>}
+                         {filteredTransactions.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nessuna transazione registrata.</p>}
                     </div>
                     <table className="w-full text-left hidden md:table">
                         <thead>
@@ -882,7 +915,7 @@ const Finance: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                             {filteredTransactions.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-gray-500">Nessuna transazione trovata.</td></tr>}
+                             {filteredTransactions.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-gray-500">Nessuna transazione registrata.</td></tr>}
                         </tbody>
                     </table>
                 </div>

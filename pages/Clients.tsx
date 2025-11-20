@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment } from '../types';
 import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
+import { getAllEnrollments } from '../services/enrollmentService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -9,7 +10,6 @@ import TrashIcon from '../components/icons/TrashIcon';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
-import ClientsIcon from '../components/icons/ClientsIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importClientsFromExcel } from '../services/importService';
@@ -293,6 +293,7 @@ const ClientDetail: React.FC<{
 
 const Clients: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
+    const [enrollments, setEnrollments] = useState<Enrollment[]>([]); // Nuovo stato per calcolare i colori
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     
@@ -311,8 +312,13 @@ const Clients: React.FC = () => {
     const fetchClientsData = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await getClients();
-            setClients(data);
+            // Fetch sia clienti che iscrizioni per mappare i colori
+            const [clientsData, enrollmentsData] = await Promise.all([
+                getClients(),
+                getAllEnrollments()
+            ]);
+            setClients(clientsData);
+            setEnrollments(enrollmentsData);
             setError(null);
         } catch (err) {
             setError("Impossibile caricare i clienti.");
@@ -426,6 +432,45 @@ const Clients: React.FC = () => {
         }
     });
 
+    // Funzione per calcolare lo stile del bordo dell'avatar
+    const getAvatarBorderStyle = (client: Client) => {
+        // Solo per genitori con figli
+        if (client.clientType !== ClientType.Parent) return {};
+        const parent = client as ParentClient;
+        if (!parent.children || parent.children.length === 0) return {};
+
+        const colors: string[] = [];
+        
+        parent.children.forEach(child => {
+            // Trova iscrizioni per questo figlio
+            const childEnrollments = enrollments.filter(e => e.childId === child.id);
+            // Ordina per data (la più recente prima)
+            childEnrollments.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+            
+            // Prendi il colore dell'ultima iscrizione, se esiste
+            if (childEnrollments.length > 0 && childEnrollments[0].locationColor) {
+                colors.push(childEnrollments[0].locationColor);
+            }
+        });
+
+        if (colors.length === 0) return {}; // Nessun colore trovato (default)
+
+        // Se c'è un solo colore, bordo solido. AUMENTATO PADDING A 6PX
+        if (colors.length === 1) {
+            return { background: colors[0], padding: '6px' }; 
+        }
+
+        // Se ci sono più colori, conic-gradient
+        const step = 100 / colors.length;
+        let gradient = 'conic-gradient(';
+        colors.forEach((color, index) => {
+            gradient += `${color} ${index * step}% ${(index + 1) * step}%,`;
+        });
+        gradient = gradient.slice(0, -1) + ')'; // rimuovi ultima virgola
+
+        return { background: gradient, padding: '6px' }; // AUMENTATO PADDING A 6PX
+    };
+
     // Render
     if (viewingClient) {
         return (
@@ -483,11 +528,21 @@ const Clients: React.FC = () => {
                     >
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold mr-3 ${client.clientType === ClientType.Parent ? 'bg-indigo-500' : 'bg-purple-500'}`}>
-                                    {client.clientType === ClientType.Parent 
-                                        ? (client as ParentClient).firstName.charAt(0).toUpperCase()
-                                        : (client as InstitutionalClient).companyName.charAt(0).toUpperCase()
-                                    }
+                                {/* Avatar Container with Dynamic Border */}
+                                <div 
+                                    className="w-12 h-12 rounded-full flex items-center justify-center mr-3 flex-shrink-0"
+                                    style={getAvatarBorderStyle(client)}
+                                >
+                                    {/* Inner Avatar - Uses Theme Primary Color */}
+                                    <div 
+                                        className="w-full h-full rounded-full flex items-center justify-center text-white font-bold"
+                                        style={{ backgroundColor: 'var(--md-primary)' }}
+                                    >
+                                        {client.clientType === ClientType.Parent 
+                                            ? (client as ParentClient).firstName.charAt(0).toUpperCase()
+                                            : (client as InstitutionalClient).companyName.charAt(0).toUpperCase()
+                                        }
+                                    </div>
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-gray-800 line-clamp-1">

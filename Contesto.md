@@ -104,23 +104,26 @@ Ad ogni sessione, questi 3 file devono essere letti prima di produrre codice.
 
 ---
 
-## Roadmap Futura (Aggiornata al 29 Maggio 2024)
+## Roadmap Futura (Aggiornata al 30 Maggio 2024)
 
-La seguente roadmap delinea le attività pianificate per le prossime sessioni di sviluppo:
+La seguente roadmap delinea lo stato di avanzamento e le attività future:
 
-### 1. Gestione Avanzata Iscrizioni e Figli
-- **Risoluzione Duplicati**: Implementare logica per evitare la duplicazione errata delle iscrizioni quando si selezionano più time-slot per lo stesso abbonamento. Un abbonamento deve essere l'entità padre che raggruppa i time-slot.
-- **Verifica Flusso Finanziario**: Audit del percorso Iscrizione -> Generazione Transazione per assicurare correttezza dei dati.
+### Completate
+- **Gestione Avanzata Iscrizioni**: Implementata l'iscrizione multipla (selezione di più figli contemporaneamente per lo stesso corso).
+- **Registro Presenze**: Creata una sezione dedicata per la gestione giornaliera delle presenze.
+- **Logica Assenze e Recuperi**: Implementato un sistema ibrido per gestire le assenze con slittamento (recupero) automatico della lezione alla prima data utile, tenendo conto delle festività.
 
-### 2. Gestione Costi e Controllo di Gestione
-- **Categorizzazione Avanzata**: Implementazione dettagliata dei costi Logistici, Amministrativi e Operativi.
-- **Distinta Base Didattica**: Creazione di un sistema per definire le "Attività Didattiche" come semilavorati composti da materiali.
-- **Imputazione Costi**: Collegamento dei costi operativi (tramite distinta base) a lezioni e abbonamenti per calcolare il costo reale del venduto.
-- **Analisi Profitto**: Implementazione di algoritmi per il calcolo della percentuale reale di profitto per abbonamento/cliente.
+### In Programma
+1.  **Gestione Costi e Controllo di Gestione**
+    - **Categorizzazione Avanzata**: Implementazione dettagliata dei costi Logistici, Amministrativi e Operativi.
+    - **Distinta Base Didattica**: Creazione di un sistema per definire le "Attività Didattiche" come semilavorati composti da materiali.
+    - **Imputazione Costi**: Collegamento dei costi operativi a lezioni e abbonamenti.
+    - **Analisi Profitto**: Algoritmi per il calcolo della percentuale reale di profitto per abbonamento/cliente.
 
-### 3. Integrazione Fiscale e SDI
-- **Studio di Fattibilità**: Analisi delle API e dei servizi web dell'Agenzia delle Entrate.
-- **Integrazione (se fattibile)**: Connessione diretta per l'invio e la gestione delle fatture elettroniche e del sistema di interscambio (SDI).
+2.  **Integrazione Fiscale e SDI**
+    - **Studio di Fattibilità**: Analisi delle API e dei servizi web dell'Agenzia delle Entrate.
+    - **Integrazione (se fattibile)**: Connessione diretta per l'invio fatture elettroniche.
 
-### 4. Business Intelligence
-- **Metriche Avanzate**: Sviluppo di nuove dashboard per KPI qualitativi ed economici più profondi.
+3.  **Business Intelligence & CRM Avanzato**
+    - **Metriche Avanzate**: Dashboard per KPI qualitativi ed economici più profondi.
+    - **Automazione Rinnovi**: Suggerimenti automatici per il rinnovo basati sullo storico frequenze.

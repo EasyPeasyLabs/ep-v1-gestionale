@@ -2,11 +2,19 @@
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch } from '@firebase/firestore';
-import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus } from '../types';
+import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus } from '../types';
 
 // --- Transactions ---
 const transactionCollectionRef = collection(db, 'transactions');
-const docToTransaction = (doc: QueryDocumentSnapshot<DocumentData>): Transaction => ({ id: doc.id, ...doc.data() } as Transaction);
+const docToTransaction = (doc: QueryDocumentSnapshot<DocumentData>): Transaction => {
+    const data = doc.data();
+    return { 
+        id: doc.id, 
+        ...data,
+        // Retrocompatibilità: se status non esiste, assumiamo Completed
+        status: data.status || TransactionStatus.Completed 
+    } as Transaction;
+};
 
 export const getTransactions = async (): Promise<Transaction[]> => {
     const q = query(transactionCollectionRef, orderBy('date', 'desc'));
@@ -15,7 +23,11 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 };
 
 export const addTransaction = async (transaction: TransactionInput): Promise<string> => {
-    const docRef = await addDoc(transactionCollectionRef, transaction);
+    const dataToSave = {
+        ...transaction,
+        status: transaction.status || TransactionStatus.Completed
+    };
+    const docRef = await addDoc(transactionCollectionRef, dataToSave);
     return docRef.id;
 };
 
@@ -39,28 +51,118 @@ export const deleteTransactionByRelatedId = async (relatedId: string): Promise<v
     await batch.commit();
 };
 
+// Funzione di Batch per aggiungere multiple transazioni (usata dal generatore Nolo)
+export const batchAddTransactions = async (transactions: TransactionInput[]): Promise<void> => {
+    const batch = writeBatch(db);
+    transactions.forEach(t => {
+        const docRef = doc(transactionCollectionRef);
+        batch.set(docRef, t);
+    });
+    await batch.commit();
+};
+
+// --- Rent Expenses Automation ---
+/**
+ * Calcola le spese di nolo basate sulle lezioni effettivamente svolte (Present).
+ * Raggruppa per Mese e Sede.
+ * Restituisce solo le transazioni che NON esistono già nel DB (evita duplicati).
+ * LE NUOVE TRANSAZIONI SONO IN STATO 'PENDING' (Addebitate ma non pagate).
+ */
+export const calculateRentTransactions = (
+    enrollments: Enrollment[], 
+    suppliers: Supplier[], 
+    existingTransactions: Transaction[]
+): TransactionInput[] => {
+    const newTransactions: TransactionInput[] = [];
+    
+    // 1. Mappa Costi Sedi (LocationID -> {cost, name})
+    const locationMap = new Map<string, {cost: number, name: string}>();
+    suppliers.forEach(s => {
+        s.locations.forEach(l => {
+            locationMap.set(l.id, {
+                cost: l.rentalCost || 0,
+                name: l.name
+            });
+        });
+    });
+
+    // 2. Aggregazione Presenze per Mese/Anno e Sede
+    // Key format: "YYYY-MM|LocationID"
+    // Value: count
+    const aggregates = new Map<string, number>();
+
+    enrollments.forEach(enr => {
+        if (enr.appointments) {
+            enr.appointments.forEach(app => {
+                // "Se le lezioni vengono effettivamente svolte... conteggiando solo i relativi figli presenti"
+                if (app.status === 'Present') {
+                    const date = new Date(app.date);
+                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    const locId = enr.locationId; 
+                    
+                    const key = `${monthKey}|${locId}`;
+                    const currentCount = aggregates.get(key) || 0;
+                    aggregates.set(key, currentCount + 1);
+                }
+            });
+        }
+    });
+
+    // 3. Generazione Transazioni
+    aggregates.forEach((count, key) => {
+        const [monthKey, locId] = key.split('|');
+        const [year, month] = monthKey.split('-');
+        const locData = locationMap.get(locId);
+
+        if (locData && locData.cost > 0) {
+            const totalCost = count * locData.cost;
+            const description = `Nolo Sede: ${locData.name} - ${month}/${year}`;
+            
+            // 4. Controllo Duplicati
+            // Verifica se esiste già una transazione Expense di tipo Rent con la stessa descrizione
+            // (indipendentemente dallo stato, per evitare di ri-creare un nolo pendente)
+            const exists = existingTransactions.some(t => 
+                t.type === TransactionType.Expense &&
+                t.category === TransactionCategory.Rent &&
+                t.description === description
+            );
+
+            if (!exists) {
+                // Imposta la data all'ultimo giorno del mese di competenza
+                const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0);
+                
+                newTransactions.push({
+                    date: lastDayOfMonth.toISOString(),
+                    description: description,
+                    amount: totalCost,
+                    type: TransactionType.Expense,
+                    category: TransactionCategory.Rent,
+                    paymentMethod: PaymentMethod.BankTransfer, 
+                    status: TransactionStatus.Pending, // FONDAMENTALE: Stato Pending
+                    relatedDocumentId: `AUTO-RENT-${key}`
+                });
+            }
+        }
+    });
+
+    return newTransactions;
+};
+
 
 // --- Document Number Generation ---
 const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
     const coll = collection(db, collectionName);
-    // Ordina per numero documento decrescente. Nota: questo funziona bene se il formato è consistente.
-    // Se cambiamo formato (es da 3 a 4 cifre), l'ordinamento stringa potrebbe dare problemi.
-    // Per semplicità qui assumiamo che l'anno corrente sia parte della query o gestito nel prefix.
-    // Qui usiamo una logica semplificata basata sull'ultimo inserito.
-    const q = query(coll, orderBy('issueDate', 'desc'), limit(50)); // Prendiamo gli ultimi 50 per trovare l'ultimo numero dell'anno corrente
+    const q = query(coll, orderBy('issueDate', 'desc'), limit(50)); 
     const snapshot = await getDocs(q);
     
     const currentYear = new Date().getFullYear().toString();
     let lastSeq = 0;
 
     if (!snapshot.empty) {
-        // Cerca il numero più alto per l'anno corrente
         snapshot.docs.forEach(d => {
             const num = d.data()[collectionName === 'invoices' ? 'invoiceNumber' : 'quoteNumber'] as string;
-            // Formato atteso: PREFIX-YYYY-SEQ (es. PR-2025-0001) o PREFIX-SEQ (vecchio)
             if (num && num.includes(currentYear)) {
                 const parts = num.split('-');
-                // Assumiamo che l'ultima parte sia sempre la sequenza
                 const seqStr = parts[parts.length - 1];
                 const seq = parseInt(seqStr, 10);
                 if (!isNaN(seq) && seq > lastSeq) {
@@ -86,13 +188,12 @@ export const getInvoices = async (): Promise<Invoice[]> => {
 };
 
 export const checkAndSetOverdueInvoices = async (): Promise<void> => {
-    // Ottieni tutte le fatture con stato 'Inviato'
     const q = query(invoiceCollectionRef, where("status", "==", DocumentStatus.Sent));
     const snapshot = await getDocs(q);
     
     const batch = writeBatch(db);
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalizza a inizio giornata
+    today.setHours(0, 0, 0, 0); 
 
     let updatesCount = 0;
 
@@ -100,7 +201,6 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
         const invoice = docSnap.data() as Invoice;
         const dueDate = new Date(invoice.dueDate);
         
-        // Se la data di scadenza è precedente a oggi
         if (dueDate < today) {
             batch.update(docSnap.ref, { status: DocumentStatus.Overdue });
             updatesCount++;
@@ -113,8 +213,6 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
 };
 
 export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, invoiceNumber: string}> => {
-    // Se è proforma, magari non consumiamo il numero ufficiale? 
-    // Per semplicità, generiamo sempre un numero interno, ma la UI potrà visualizzare "PROFORMA"
     const invoiceNumber = invoice.invoiceNumber || await getNextDocumentNumber('invoices', 'FT', 3);
     const docRef = await addDoc(invoiceCollectionRef, { ...invoice, invoiceNumber });
     return { id: docRef.id, invoiceNumber };
@@ -147,7 +245,7 @@ export const getQuotes = async (): Promise<Quote[]> => {
 };
 
 export const addQuote = async (quote: QuoteInput): Promise<string> => {
-    const quoteNumber = await getNextDocumentNumber('quotes', 'PR', 4); // 4 cifre per preventivi
+    const quoteNumber = await getNextDocumentNumber('quotes', 'PR', 4); 
     const docRef = await addDoc(quoteCollectionRef, { ...quote, quoteNumber });
     return docRef.id;
 };

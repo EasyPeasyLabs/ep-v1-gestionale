@@ -183,7 +183,12 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parent, existingEnrollm
             );
             
             const startDate = appointments.length > 0 ? appointments[0].date : startObj.toISOString();
-            const endDate = appointments.length > 0 ? appointments[appointments.length - 1].date : startObj.toISOString();
+            
+            // Calcolo data di scadenza basata sulla durata del pacchetto
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(startDateObj);
+            endDateObj.setDate(endDateObj.getDate() + (selectedSub.durationInDays || 0));
+            const endDate = endDateObj.toISOString();
 
             const newEnrollment: EnrollmentInput = {
                 clientId: parent.id,

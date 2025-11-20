@@ -154,6 +154,11 @@ export enum TransactionType {
     Expense = 'expense',
 }
 
+export enum TransactionStatus {
+    Pending = 'pending',     // Addebitato ma non ancora pagato (es. Nolo calcolato)
+    Completed = 'completed', // Pagamento effettuato/Incassato
+}
+
 export enum TransactionCategory {
     // Income
     Sales = 'Vendite Abbonamenti',
@@ -186,6 +191,7 @@ export interface Transaction {
     type: TransactionType;
     category: TransactionCategory;
     paymentMethod: PaymentMethod;
+    status: TransactionStatus; // Nuovo campo per gestire "Addebitato" vs "Pagato"
     relatedDocumentId?: string; // Es. id iscrizione o fattura
 }
 
@@ -250,10 +256,12 @@ export interface Quote {
 // --- Notifiche ---
 export interface Notification {
   id: string; 
-  type: 'expiry' | 'low_lessons';
+  type: 'expiry' | 'low_lessons' | 'payment_required' | 'action_required';
   message: string;
-  clientId: string;
+  clientId?: string; // Opzionale perché non tutte le notifiche sono legate a un cliente
   date: string; // ISO string
+  linkPage?: string; // Opzionale: pagina di destinazione al click
+  filterContext?: any; // Dati per pre-filtrare la pagina di destinazione
 }
 
 

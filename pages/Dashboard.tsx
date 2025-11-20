@@ -3,12 +3,15 @@ import React, { useEffect, useState } from 'react';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
-import { getLessons } from '../services/calendarService'; // Import lezioni manuali
-import { getInvoices, checkAndSetOverdueInvoices } from '../services/financeService';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, InstitutionalClient, DocumentStatus } from '../types';
+import { getLessons } from '../services/calendarService'; 
+import { getTransactions } from '../services/financeService';
+import { getNotifications } from '../services/notificationService';
+import { EnrollmentStatus, Notification, TransactionType, TransactionStatus } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
+import ChecklistIcon from '../components/icons/ChecklistIcon'; // Per action_required
+import FinanceIcon from '../components/icons/FinanceIcon'; // Per payment_required (alternativa)
 import { Page } from '../App';
 
 const StatCard: React.FC<{ title: string; value: string | React.ReactNode; subtext?: string; onClick?: () => void }> = ({ title, value, subtext, onClick }) => (
@@ -64,19 +67,19 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Aggiorna stato fatture scadute prima di caricare
-        await checkAndSetOverdueInvoices();
-
-        const [clients, suppliers, enrollments, manualLessons, invoices] = await Promise.all([
+        
+        const [clients, suppliers, enrollments, manualLessons, transactions, notifs] = await Promise.all([
           getClients(),
           getSuppliers(),
           getAllEnrollments(),
           getLessons(),
-          getInvoices()
+          getTransactions(),
+          getNotifications() // Centralized notifications
         ]);
         
         setClientCount(clients.length);
         setSupplierCount(suppliers.length);
+        setNotifications(notifs);
 
         // 1. Calcolo Clienti e Fornitori Attivi
         // Includiamo sia Active che Pending perchè occupano posti
@@ -94,8 +97,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         const currentYear = now.getFullYear();
         
         let lessonsCount = 0;
-        // Conta lezioni da iscrizioni (solo attive per l'erogazione effettiva, o anche pending? Di solito erogate = attive)
-        // Per "lezioni erogate" contiamo quelle effettive, quindi Active.
+        // Conta lezioni da iscrizioni (solo attive per l'erogazione effettiva)
         enrollments.filter(e => e.status === EnrollmentStatus.Active).forEach(enr => {
             if(enr.appointments) {
                 enr.appointments.forEach(app => {
@@ -116,7 +118,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setLessonsThisMonth(lessonsCount);
 
         // 3. Calcolo Occupazione Dettagliata (Saturazione)
-        // Qui contiamo anche Pending perché occupano il posto.
         const slotsMap: Record<string, LocationOccupancy> = {};
 
         suppliers.forEach(s => {
@@ -124,13 +125,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 // Inizializza gli slot disponibili basandosi sulla disponibilità definita
                 if(l.availability && l.availability.length > 0) {
                     l.availability.forEach(slot => {
-                        // Chiave univoca: ID Sede + Giorno + Orario Inizio
                         const key = `${l.id}-${slot.dayOfWeek}-${slot.startTime}`;
                         slotsMap[key] = {
                             key,
                             locationName: l.name,
                             dayIndex: slot.dayOfWeek,
-                            dayName: daysMap[slot.dayOfWeek].substring(0, 3), // LUN, MAR...
+                            dayName: daysMap[slot.dayOfWeek].substring(0, 3), 
                             startTime: slot.startTime,
                             endTime: slot.endTime,
                             color: l.color || '#ccc',
@@ -146,7 +146,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         // Calcola occupazione per ogni slot
         activeOrPendingEnrollments.forEach(enr => {
             if(enr.appointments && enr.appointments.length > 0) {
-                // Assumiamo che le lezioni siano regolari: prendiamo il primo appuntamento per determinare giorno e ora ricorrenti
                 const firstApp = enr.appointments[0];
                 const firstDate = new Date(firstApp.date);
                 const dayOfWeek = firstDate.getDay();
@@ -160,13 +159,11 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             }
         });
 
-        // Converti map in array e calcola percentuali
         const occupancyList = Object.values(slotsMap).map(slot => {
             const percent = slot.capacity > 0 ? Math.round((slot.occupied / slot.capacity) * 100) : 0;
             return { ...slot, occupancyPercent: percent };
         });
 
-        // Ordina per giorno della settimana (Lun -> Dom), poi per orario, poi per nome sede
         occupancyList.sort((a, b) => {
             const dayA = a.dayIndex === 0 ? 7 : a.dayIndex;
             const dayB = b.dayIndex === 0 ? 7 : b.dayIndex;
@@ -178,7 +175,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setLocationOccupancy(occupancyList);
 
 
-        // 4. Calendario Settimanale (Inclusi ACTIVE e PENDING)
+        // 4. Calendario Settimanale
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); 
@@ -194,7 +191,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             
             let dayLessonCount = 0;
             
-            // Count from enrollments (Active AND Pending)
             activeOrPendingEnrollments.forEach(enr => {
                 if(enr.appointments) {
                     enr.appointments.forEach(app => {
@@ -205,7 +201,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 }
             });
             
-            // Count manual lessons
             manualLessons.forEach(ml => {
                 if(new Date(ml.date).toDateString() === currentDay.toDateString()) {
                     dayLessonCount++;
@@ -220,65 +215,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         }
         setWeekDays(daysData);
 
-
-        // 5. Generazione Notifiche (Avvisi)
-        const clientMap = new Map<string, string>();
-        clients.forEach(c => {
-            if (c.clientType === ClientType.Parent) {
-                clientMap.set(c.id, `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}`);
-            } else {
-                clientMap.set(c.id, (c as InstitutionalClient).companyName);
-            }
-        });
-
-        const newNotifications: Notification[] = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const sevenDaysFromNow = new Date(today);
-        sevenDaysFromNow.setDate(today.getDate() + 7);
-
-        activeOrPendingEnrollments.forEach(enr => {
-            const parentName = clientMap.get(enr.clientId) || 'Cliente';
-            const endDate = new Date(enr.endDate);
-            
-            if (endDate >= today && endDate <= sevenDaysFromNow) {
-                const diffTime = endDate.getTime() - today.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                newNotifications.push({
-                    id: enr.id,
-                    type: 'expiry',
-                    message: `Scadenza: ${enr.childName} (${parentName}) tra ${diffDays} gg.`,
-                    clientId: enr.clientId,
-                    date: new Date().toISOString(),
-                });
-            }
-
-            if (enr.lessonsRemaining > 0 && enr.lessonsRemaining <= 2) {
-                newNotifications.push({
-                    id: `${enr.id}-lessons`,
-                    type: 'low_lessons',
-                    message: `Esaurimento: ${enr.lessonsRemaining} lezioni rimaste per ${enr.childName}.`,
-                    clientId: enr.clientId,
-                    date: new Date().toISOString(),
-                });
-            }
-        });
-
-        invoices.forEach(inv => {
-            if (inv.status === DocumentStatus.Overdue) {
-                newNotifications.push({
-                    id: `inv-${inv.id}`,
-                    type: 'expiry',
-                    message: `Scaduto: Fattura ${inv.invoiceNumber} (${inv.totalAmount.toFixed(2)}€) - ${inv.clientName}`,
-                    clientId: inv.clientId,
-                    date: new Date().toISOString(),
-                });
-            }
-        });
-        
-        setNotifications(newNotifications);
-
-
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
       } finally {
@@ -286,7 +222,24 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       }
     };
     fetchData();
+    
+    const handleDataUpdate = () => {
+        // In un'app reale rifarebbe il fetch. Qui per semplicità ricarichiamo tutto.
+        fetchData();
+    };
+    window.addEventListener('EP_DataUpdated', handleDataUpdate);
+    return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
   }, []);
+
+  const getNotificationIcon = (type: Notification['type']) => {
+      switch (type) {
+          case 'expiry': return <span className="text-amber-500"><ClockIcon /></span>;
+          case 'low_lessons': return <span className="text-indigo-500"><ExclamationIcon /></span>;
+          case 'payment_required': return <span className="text-red-500"><ExclamationIcon /></span>;
+          case 'action_required': return <span className="text-blue-500"><ChecklistIcon /></span>;
+          default: return <span className="text-gray-500"><ClockIcon /></span>;
+      }
+  };
 
   return (
     <div>
@@ -365,21 +318,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 <p className="text-xs text-center text-gray-400 mt-2">Lezioni per giorno (settimana corrente)</p>
             </div>
 
-            {/* COL 2: Saturazione (New) */}
+            {/* COL 2: Saturazione */}
             <div className="md-card p-6 flex flex-col">
                 <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--md-text-primary)'}}>Saturazione</h2>
                 
                 <div className="flex-1 overflow-y-auto max-h-96 pr-2 space-y-5">
                     {locationOccupancy.map((slot, idx) => (
                         <div key={idx} className="w-full">
-                            {/* Header: Sede, Giorno, Orario */}
                             <div className="flex items-center mb-1">
                                 <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: slot.color }}></div>
                                 <span className="font-bold text-sm text-gray-700 mr-2">{slot.dayName}</span>
                                 <span className="text-xs font-medium text-gray-500 truncate flex-1">{slot.locationName} ({slot.startTime}-{slot.endTime})</span>
                             </div>
-                            
-                            {/* Info Row: % e Rapporto Numerico */}
                             <div className="flex justify-between items-end mb-1">
                                 <span className="text-lg font-bold" style={{ color: slot.occupancyPercent > 90 ? '#e11d48' : slot.color }}>
                                     {slot.occupancyPercent}%
@@ -388,8 +338,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                                     {slot.occupied} / {slot.capacity} occupati
                                 </span>
                             </div>
-
-                            {/* Progress Bar */}
                             <div className="w-full bg-gray-100 rounded-full h-2">
                                 <div 
                                     className="h-2 rounded-full transition-all duration-500" 
@@ -408,7 +356,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
             {/* COL 3: Avvisi */}
             <div className="md-card p-6 flex flex-col">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--md-text-primary)'}}>Avvisi</h2>
+                <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--md-text-primary)'}}>Avvisi ({notifications.length})</h2>
                 <div className="flex-grow overflow-y-auto max-h-64">
                     {notifications.length === 0 ? (
                         <div className="h-full flex items-center justify-center">
@@ -416,13 +364,14 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         </div>
                     ) : (
                         <ul className="space-y-3">
-                            {notifications.slice(0, 5).map((notif, index) => (
-                                <li key={index} className="flex items-start space-x-3 p-2 rounded hover:bg-gray-50 border-b border-gray-100 last:border-0">
+                            {notifications.map((notif, index) => (
+                                <li 
+                                    key={index} 
+                                    className="flex items-start space-x-3 p-2 rounded hover:bg-gray-50 border-b border-gray-100 last:border-0 cursor-pointer"
+                                    onClick={() => setCurrentPage && notif.linkPage && setCurrentPage(notif.linkPage as Page)}
+                                >
                                     <div className="flex-shrink-0 mt-0.5">
-                                        {notif.type === 'expiry' ? 
-                                            <span className="text-amber-500"><ClockIcon /></span> : 
-                                            <span className="text-red-500"><ExclamationIcon /></span>
-                                        }
+                                        {getNotificationIcon(notif.type)}
                                     </div>
                                     <div className="text-sm text-gray-700">
                                         {notif.message}

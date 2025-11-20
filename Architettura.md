@@ -13,7 +13,7 @@ Questo documento descrive l'architettura software, le scelte tecnologiche e il m
   - **Libreria UI**: React.js
   - **Linguaggio**: TypeScript
   - **Styling**: TailwindCSS con un sistema di design custom basato su Material Design (variabili CSS).
-  - **Librerie Aggiuntive**: `chart.js` per i grafici, `xlsx` per l'import/export da Excel.
+  - **Librerie Aggiuntive**: `chart.js` per i grafici, `xlsx` per l'import/export da Excel, `jspdf` per la generazione documenti.
 - **Backend (BaaS)**:
   - **Database**: Google Firestore (NoSQL, document-based)
   - **Autenticazione**: Firebase Authentication
@@ -40,11 +40,11 @@ La codebase è organizzata in modo modulare per favorire la manutenibilità e la
 
 Lo stato è gestito principalmente a livello di componente tramite i React Hooks (`useState`, `useEffect`, `useCallback`).
 - **Stato Globale**: Non è presente una libreria di state management globale (come Redux o Zustand) per semplicità. Lo stato dell'utente autenticato è gestito nel componente radice `App.tsx` e passato tramite props.
-- **Flusso Dati**: È unidirezionale. Le `pages` recuperano i dati tramite i `services`, li memorizzano nel loro stato locale e li passano ai componenti figli (`components`) come props. Le azioni utente nei componenti figli vengono gestite tramite callback passate dai componenti genitori.
+- **Event Bus**: È stato introdotto un semplice sistema di eventi custom (`window.dispatchEvent('EP_DataUpdated')`) per notificare i componenti (es. `Header` per le notifiche) quando i dati vengono modificati in altre parti dell'app.
 
 ### 3.3. Routing
 
-Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato (`currentPage`). Questo approccio è semplice e adatto per un'applicazione gestionale interna dove gli URL complessi non sono un requisito primario. Il cambio di pagina avviene tramite la funzione `setCurrentPage`, passata come prop.
+Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato (`currentPage`). Questo approccio è semplice e adatto per un'applicazione gestionale interna. Il cambio di pagina avviene tramite la funzione `setCurrentPage`, passata come prop.
 
 ## 4. Architettura Backend (Firebase)
 
@@ -52,37 +52,30 @@ Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato
 
 Il database NoSQL Firestore è strutturato in collection di documenti.
 
-- `clients`: Contiene le anagrafiche dei clienti. Un campo `clientType` (`Parent` o `Institutional`) distingue i due tipi di cliente, permettendo una struttura di documento flessibile all'interno della stessa collection. I figli dei clienti `Parent` sono un array di oggetti nidificati.
-- `suppliers`: Contiene i fornitori. Le sedi (`locations`) sono un array di oggetti nidificati all'interno di ogni documento fornitore.
-- `settings`: Collection che contiene documenti singleton per le impostazioni globali.
-  - `companyInfo` (documento): Memorizza i dati dell'azienda.
+- `clients`: Contiene le anagrafiche dei clienti. Un campo `clientType` (`Parent` o `Institutional`) distingue i due tipi di cliente.
+- `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested).
+- `settings`: Collection che contiene documenti singleton per le impostazioni globali (`companyInfo`).
 - `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
-- `lessons`: Sostituisce la vecchia collection `scheduledClasses`. Contiene ogni singola lezione come un evento datato (con un campo `date` invece di `dayOfWeek`), permettendo una pianificazione flessibile. Utilizza dati denormalizzati (es. `supplierName`, `locationName`) per semplificare le query di lettura.
-- `enrollments`: Collection che lega un `clientId` e un `childId` a un `subscriptionTypeId` e a un `lessonId`, rappresentando l'associazione di un allievo a una lezione specifica e datata.
-- `transactions`: Collection per tutte le transazioni finanziarie (entrate e uscite). Include un campo `relatedDocumentId` per collegare la transazione alla fattura o iscrizione che l'ha generata.
+- `lessons`: Contiene le lezioni manuali/extra create a calendario.
+- `enrollments`: Collection centrale che lega un allievo a un corso.
+  - **Struttura**: Contiene un array `appointments` che elenca tutte le date previste per il corso.
+  - **Stato Lezioni**: Ogni oggetto in `appointments` ha ora un campo `status` (`Scheduled`, `Present`, `Absent`, `Cancelled`) per tracciare la frequenza.
+- `transactions`: Collection per tutte le transazioni finanziarie.
 - `invoices` & `quotes`: Collection per i documenti fiscali.
 
 ### 4.2. Firebase Authentication
 
-Viene utilizzato il servizio di autenticazione di Firebase per gestire il login degli utenti tramite email e password. Il componente `App.tsx` ha un listener `onAuthStateChanged` che reagisce ai cambiamenti dello stato di autenticazione per mostrare la pagina di login o l'interfaccia principale.
+Viene utilizzato il servizio di autenticazione di Firebase per gestire il login degli utenti tramite email e password.
 
 ## 5. Moduli Funzionali
 
-L'applicazione è suddivisa logicamente nei seguenti moduli, che corrispondono alle pagine principali:
+L'applicazione è suddivisa logicamente nei seguenti moduli:
 
-- **Dashboard**: Fornisce una vista d'insieme con statistiche chiave.
-- **Clienti**: Gestione CRUD completa dei clienti (genitori e istituzionali), inclusa la gestione dei figli e delle iscrizioni.
-- **Fornitori**: Gestione CRUD completa dei fornitori e delle loro sedi operative.
-- **Calendario**: Potente strumento di pianificazione con una vista di calendario mensile interattiva. Supporta la creazione di lezioni singole in date specifiche e la generazione automatica di lezioni ricorrenti.
-- **Finanza**: 
-    - Tracciamento completo di entrate e uscite.
-    - **Automazione**: Le fatture in stato "Pagato" generano automaticamente (o aggiornano) una transazione di entrata corrispondente, mantenendo una relazione 1-a-1 rigorosa per evitare duplicati.
-    - **Visualizzazione**: Dashboard finanziaria con grafici a barre (mensile), grafici a ciambella (ripartizione costi e ricavi con percentuali) e proiezioni fiscali per regime forfettario.
-    - **Documenti**: Gestione fatture e preventivi con generazione PDF.
-- **Impostazioni**: Configurazione dei dati aziendali e del listino prezzi (pacchetti abbonamento).
-- **Importazione Dati**: Funzionalità per l'import di massa di clienti e fornitori da file Excel.
-
-## 6. Sicurezza
-
-- **Regole di Firestore**: Le regole di sicurezza di Firestore verranno configurate per garantire che solo gli utenti autenticati possano leggere e scrivere i dati.
-- **Autenticazione**: L'accesso all'intera applicazione è protetto da login.
+- **Dashboard**: Vista d'insieme con KPI, grafici finanziari e occupazione aule.
+- **Clienti**: Gestione CRUD completa dei clienti.
+- **Fornitori**: Gestione CRUD completa dei fornitori.
+- **Calendario**: Pianificazione lezioni e visualizzazione occupazione.
+- **Finanza**: Gestione transazioni, fatture, preventivi, automazione pagamenti.
+- **Iscrizioni**: Gestione dei contratti attivi, monitoraggio avanzamento lezioni (progress bar).
+- **Registro Presenze**: Nuovo modulo per la gestione giornaliera delle lezioni. Permette di segnare assenze e gestire automaticamente i recuperi (slittamento lezioni).
+- **Impostazioni**: Configurazione dati aziendali e listini.
