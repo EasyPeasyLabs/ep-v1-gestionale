@@ -4,7 +4,7 @@ import { getToken } from '@firebase/messaging';
 import { doc, setDoc } from '@firebase/firestore';
 
 // Sostituisci con la tua VAPID Key generata dalla console Firebase -> Project Settings -> Cloud Messaging -> Web Configuration
-const VAPID_KEY = "BPTZtK9J9i7g7z5y_YOUR_GENERATED_KEY_HERE_rX1x2x3x4x5"; 
+const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7EJKK0RuaHwiREwG-6u997AEgXo"; 
 
 export const requestNotificationPermission = async (userId: string) => {
   try {
