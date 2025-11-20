@@ -55,6 +55,7 @@ export const generateDocumentPDF = async (
     
     // 1. Logo (Top Left)
     try {
+        // Use relative path to ensure fetch works from any route or subdirectory
         const logoBase64 = await loadImage('./lemon_logo_150px.png');
         if (logoBase64) {
             // x=14, y=10, width=25, height=33 (Richiesta Utente)
