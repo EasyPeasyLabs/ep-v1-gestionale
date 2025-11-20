@@ -6,9 +6,27 @@ import { doc, setDoc } from '@firebase/firestore';
 // Chiave VAPID reale fornita dall'utente
 const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7EJKK0RuaHwiREwG-6u997AEgXo";
 
+// Funzione per registrare esplicitamente il SW (utile per PWA)
+const registerServiceWorker = async () => {
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+      console.log('[FCM Service] Service Worker registrato con scope:', registration.scope);
+      return registration;
+    } catch (err) {
+      console.error('[FCM Service] Registrazione Service Worker fallita:', err);
+      return null;
+    }
+  }
+  return null;
+};
+
 export const requestNotificationPermission = async (userId: string): Promise<boolean> => {
   console.log("[FCM Service] 1. Inizio procedura richiesta permessi...");
   
+  // Assicura che il SW sia registrato prima di chiedere il token
+  await registerServiceWorker();
+
   if (!VAPID_KEY) {
       console.error("[FCM Service] ❌ ERRORE CONFIGURAZIONE: Manca la VAPID KEY.");
       return false;
@@ -28,7 +46,11 @@ export const requestNotificationPermission = async (userId: string): Promise<boo
       console.log("[FCM Service] 4. Permesso accordato. Tento di ottenere il token...");
       
       try {
-          const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
+          // Ottieni il token passando esplicitamente la VAPID key
+          const currentToken = await getToken(messaging, { 
+              vapidKey: VAPID_KEY,
+              serviceWorkerRegistration: await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js') 
+          });
 
           if (currentToken) {
             console.log('[FCM Service] 5. FCM Token ottenuto:', currentToken);
@@ -42,7 +64,6 @@ export const requestNotificationPermission = async (userId: string): Promise<boo
           console.error('[FCM Service] Errore recupero token:', tokenError);
 
           // LOGICA DI AUTO-RIPARAZIONE
-          // Se l'errore riguarda la chiave o l'accesso, proviamo a pulire la vecchia sottoscrizione
           if (tokenError.message?.includes("applicationServerKey") || 
               tokenError.message?.includes("Subscription failed") ||
               tokenError.message?.includes("not valid")) {

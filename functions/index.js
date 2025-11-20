@@ -11,7 +11,7 @@ const messaging = admin.messaging();
 exports.checkPeriodicNotifications = onSchedule({
     schedule: "* * * * *",
     timeZone: "Europe/Rome",
-    region: "europe-west1", // Imposta la regione più vicina (es. Belgio per bassa latenza EU)
+    region: "europe-west1",
 }, async (event) => {
     
     // 1. Calcola Ora e Giorno corrente in Italia
@@ -22,7 +22,6 @@ exports.checkPeriodicNotifications = onSchedule({
     const currentHour = now.toLocaleTimeString("it-IT", { ...options, hour: "2-digit", minute: "2-digit" });
     
     // Ottieni il giorno della settimana (0=Domenica, 1=Lunedì...)
-    // Attenzione: getDay() in locale dipende dal server, usiamo toLocaleString per sicurezza
     const dayString = now.toLocaleString("en-US", { ...options, weekday: 'short' }); // Sun, Mon, Tue...
     const dayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
     const currentDay = dayMap[dayString];
@@ -42,7 +41,8 @@ exports.checkPeriodicNotifications = onSchedule({
             notificationsToSend.push({
                 title: `EP Planner: ${check.category}`,
                 body: check.note || `È ora del controllo: ${check.subCategory || check.category}`,
-                icon: 'https://ep-v1-gestionale.web.app/lemon_logo_150px.png' // URL assoluto necessario
+                // Usa URL pubblico vercel o storage per l'icona, l'importante è che sia assoluto e raggiungibile
+                icon: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png' 
             });
         }
     });
@@ -61,7 +61,7 @@ exports.checkPeriodicNotifications = onSchedule({
         return;
     }
 
-    // 4. Invia le notifiche
+    // 4. Invia le notifiche con configurazione Android specifica
     const sendPromises = [];
     
     for (const notif of notificationsToSend) {
@@ -70,11 +70,24 @@ exports.checkPeriodicNotifications = onSchedule({
                 title: notif.title,
                 body: notif.body,
             },
+            // Configurazione Android specifica per "svegliare" il dispositivo
+            android: {
+                priority: 'high',
+                notification: {
+                    icon: 'stock_ticker_update', // Icona di sistema o default
+                    color: '#757575', // Colore primary app
+                    clickAction: 'FLUTTER_NOTIFICATION_CLICK' // Standard o URL specifico
+                }
+            },
+            // Configurazione Web Push
             webpush: {
+                headers: {
+                    Urgency: "high"
+                },
                 notification: {
                     icon: notif.icon,
                     requireInteraction: true,
-                    click_action: "https://ep-v1-gestionale.web.app/" // Apre l'app al click
+                    click_action: "https://ep-v1-gestionale.vercel.app/" // Link corretto a Vercel
                 }
             },
             tokens: tokens // Multicast message
@@ -92,8 +105,7 @@ exports.checkPeriodicNotifications = onSchedule({
                 resp.responses.forEach((r, i) => {
                     if (!r.success) failedTokens.push(tokens[i]);
                 });
-                console.log('Token falliti (da pulire in futuro):', failedTokens);
-                // Qui si potrebbe aggiungere logica per rimuovere token non più validi dal DB
+                console.log('Token falliti:', failedTokens);
             }
         });
     } catch (error) {
