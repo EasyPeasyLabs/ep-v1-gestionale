@@ -12,6 +12,8 @@ import TrashIcon from '../components/icons/TrashIcon';
 import ChecklistIcon from '../components/icons/ChecklistIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
+import { requestNotificationPermission } from '../services/fcmService';
+import { auth } from '../firebase/config';
 
 
 const SubscriptionForm: React.FC<{
@@ -76,6 +78,7 @@ const PeriodicCheckForm: React.FC<{
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        console.log("[DEBUG] Form Submit avviato");
         
         if (selectedDays.length === 0) {
             alert("Seleziona almeno un giorno della settimana.");
@@ -84,23 +87,35 @@ const PeriodicCheckForm: React.FC<{
 
         setIsSaving(true);
 
-        // Request notification permission SAFELY
+        // FIX: Gestione permessi notifiche con Timeout di sicurezza (5 secondi)
         if (pushEnabled) {
+            console.log("[DEBUG] Notifiche attive, tento registrazione...");
             try {
-                if ('Notification' in window && Notification.permission !== 'granted') {
-                    const permission = await Notification.requestPermission();
-                    if (permission !== 'granted') {
-                        alert("Attenzione: Permessi notifiche negati. Le notifiche push non funzioneranno.");
-                    }
+                // Creiamo una promise che si risolve automaticamente dopo 5 secondi
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error("Timeout richiesta permessi")), 5000)
+                );
+
+                if (auth.currentUser) {
+                    // Race tra la richiesta permessi e il timeout
+                    await Promise.race([
+                        requestNotificationPermission(auth.currentUser.uid),
+                        timeoutPromise
+                    ]);
+                    console.log("[DEBUG] Registrazione notifiche completata (o timeout).");
+                } else {
+                    console.warn("[DEBUG] Utente non loggato, impossibile registrare token.");
                 }
             } catch (err) {
-                console.warn("Errore richiesta permessi notifica:", err);
+                console.warn("[DEBUG] Errore/Timeout richiesta permessi notifica (proseguo salvataggio dati):", err);
             }
+        } else {
+             console.log("[DEBUG] Notifiche disattive, salto registrazione.");
         }
 
-        const checkData: PeriodicCheckInput = {
+        // FIX: Costruzione oggetto dati senza campi undefined (causa crash Firestore)
+        const checkData: any = {
             category,
-            subCategory: category === CheckCategory.Appointments ? (subCategory as AppointmentType) : undefined,
             daysOfWeek: selectedDays.sort(),
             startTime,
             endTime,
@@ -108,16 +123,28 @@ const PeriodicCheckForm: React.FC<{
             note
         };
 
+        // Aggiungi subCategory solo se necessaria
+        if (category === CheckCategory.Appointments && subCategory) {
+            checkData.subCategory = subCategory;
+        } else if (check?.id) {
+            // Se siamo in modifica e la categoria non è Appointments, settiamo a null per pulire il campo nel DB
+            checkData.subCategory = null;
+        }
+
         try {
+            console.log("[DEBUG] Tentativo salvataggio su Firestore...", checkData);
             if (check?.id) { 
-                onSave({ ...checkData, id: check.id }); 
+                await onSave({ ...checkData, id: check.id }); 
             } else { 
-                onSave(checkData); 
+                await onSave(checkData); 
             }
+            console.log("[DEBUG] Salvataggio completato con successo.");
         } catch (err) {
-            console.error("Errore durante il salvataggio:", err);
-            alert("Errore durante il salvataggio dei dati.");
-            setIsSaving(false);
+            console.error("[DEBUG] Errore critico durante il salvataggio:", err);
+            alert(`Errore durante il salvataggio dei dati: ${(err as any).message}`);
+        } finally {
+             console.log("[DEBUG] Reset stato isSaving.");
+             setIsSaving(false); // Sblocca sempre il bottone, qualunque cosa accada
         }
     };
 
@@ -184,7 +211,7 @@ const PeriodicCheckForm: React.FC<{
                         <BellIcon />
                         <div className="ml-3">
                             <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
-                            <span className="block text-xs text-gray-500">Ricevi avviso su mobile se il browser è attivo.</span>
+                            <span className="block text-xs text-gray-500">Ricevi avviso su mobile anche ad app chiusa.</span>
                         </div>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -230,12 +257,15 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         setIsFormOpen(false);
         setEditingCheck(null);
         fetchChecks();
+        // Emette evento per aggiornare anche lo scheduler locale, se presente
+        window.dispatchEvent(new Event('EP_DataUpdated'));
     };
 
     const handleDelete = async (id: string) => {
         if (window.confirm("Eliminare questa regola?")) {
             await deletePeriodicCheck(id);
             fetchChecks();
+             window.dispatchEvent(new Event('EP_DataUpdated'));
         }
     };
 
@@ -269,7 +299,7 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                                                 <span className="text-xs font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-1 rounded mb-2 inline-block">
                                                     {check.category}
                                                 </span>
-                                                {check.pushEnabled && <span className="text-gray-400" title="Notifiche Attive"><BellIcon /></span>}
+                                                {check.pushEnabled && <span className="text-indigo-500" title="Notifiche Attive"><BellIcon /></span>}
                                             </div>
                                             <h3 className="font-bold text-gray-800 mb-1">
                                                 {check.subCategory ? `${check.subCategory}` : check.category}
