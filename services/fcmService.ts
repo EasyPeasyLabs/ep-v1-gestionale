@@ -9,7 +9,6 @@ const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7
 export const requestNotificationPermission = async (userId: string): Promise<boolean> => {
   console.log("[FCM Service] 1. Inizio procedura richiesta permessi...");
   
-  // Controllo preventivo della chiave
   if (!VAPID_KEY) {
       console.error("[FCM Service] ❌ ERRORE CONFIGURAZIONE: Manca la VAPID KEY.");
       return false;
@@ -21,54 +20,63 @@ export const requestNotificationPermission = async (userId: string): Promise<boo
       return false;
     }
 
-    // 1. Richiesta permesso al browser (Popup nativo)
-    console.log("[FCM Service] 2. Richiedo permesso Notification.requestPermission()...");
+    // 1. Richiesta permesso al browser
     const permission = await Notification.requestPermission();
     console.log(`[FCM Service] 3. Risposta utente: ${permission}`);
 
     if (permission === 'granted') {
-      console.log("[FCM Service] 4. Permesso accordato. Tento di ottenere il token da Firebase...");
+      console.log("[FCM Service] 4. Permesso accordato. Tento di ottenere il token...");
       
-      // 2. Ottieni il token univoco del dispositivo
-      // NOTA: Questo step richiede che firebase-messaging-sw.js sia nella root e corretto
       try {
-          const currentToken = await getToken(messaging, { 
-            vapidKey: VAPID_KEY 
-          });
+          const currentToken = await getToken(messaging, { vapidKey: VAPID_KEY });
 
           if (currentToken) {
-            console.log('[FCM Service] 5. FCM Token ottenuto con successo:', currentToken);
-            
-            // 3. Salva il token nel database
-            console.log("[FCM Service] 6. Salvataggio token nel database Firestore...");
+            console.log('[FCM Service] 5. FCM Token ottenuto:', currentToken);
             await saveTokenToDatabase(currentToken, userId);
-            console.log("[FCM Service] 7. Token salvato correttamente.");
             return true;
           } else {
-            console.warn('[FCM Service] 5b. Nessun token di registrazione disponibile.');
+            console.warn('[FCM Service] 5b. Nessun token disponibile.');
             return false;
           }
-      } catch (tokenError) {
-          console.error('[FCM Service] Errore specifico nel recupero del token (getToken):', tokenError);
-          // Spesso questo errore è dovuto a VAPID Key errata o Service Worker mancante
-          if (tokenError.toString().includes("applicationServerKey")) {
-              alert("Errore Tecnico: La chiave VAPID configurata non sembra valida per questo progetto Firebase.");
+      } catch (tokenError: any) {
+          console.error('[FCM Service] Errore recupero token:', tokenError);
+
+          // LOGICA DI AUTO-RIPARAZIONE
+          // Se l'errore riguarda la chiave o l'accesso, proviamo a pulire la vecchia sottoscrizione
+          if (tokenError.message?.includes("applicationServerKey") || 
+              tokenError.message?.includes("Subscription failed") ||
+              tokenError.message?.includes("not valid")) {
+              
+              console.warn("[FCM Service] Rilevata sottoscrizione corrotta/vecchia. Tento pulizia...");
+              try {
+                  const reg = await navigator.serviceWorker.getRegistration();
+                  if (reg) {
+                      const sub = await reg.pushManager.getSubscription();
+                      if (sub) {
+                          await sub.unsubscribe();
+                          console.log("[FCM Service] Vecchia sottoscrizione rimossa con successo. Riprova a cliccare il pulsante.");
+                          alert("Il sistema ha rimosso una configurazione obsoleta. Per favore, clicca di nuovo su 'Rinizializza Servizio' per completare la correzione.");
+                          return false;
+                      }
+                  }
+              } catch (cleanErr) {
+                  console.error("[FCM Service] Impossibile pulire la sottoscrizione:", cleanErr);
+              }
           }
           return false;
       }
     } else {
-      console.warn('[FCM Service] 3b. Permesso notifiche negato dall\'utente.');
+      console.warn('[FCM Service] Permesso notifiche negato.');
       return false;
     }
   } catch (error) {
-    console.error('[FCM Service] ERRORE CRITICO durante il processo:', error);
+    console.error('[FCM Service] ERRORE CRITICO:', error);
     return false;
   }
 };
 
 const saveTokenToDatabase = async (token: string, userId: string) => {
     try {
-        // Usiamo il token come ID del documento per evitare duplicati dello stesso device
         const tokenRef = doc(db, 'fcm_tokens', token);
         await setDoc(tokenRef, {
             token: token,
@@ -78,7 +86,6 @@ const saveTokenToDatabase = async (token: string, userId: string) => {
             platform: navigator.platform
         }, { merge: true });
     } catch (e) {
-        console.error("[FCM Service] Errore nel salvataggio su Firestore:", e);
-        throw e; // Rilanciamo questo errore specifico
+        console.error("[FCM Service] Errore salvataggio DB:", e);
     }
 };

@@ -76,70 +76,14 @@ const PeriodicCheckForm: React.FC<{
         );
     };
 
-    // Funzione per testare immediatamente la notifica
-    const handleTestNotification = async () => {
-        if (!('Notification' in window)) {
-            alert("Il tuo browser non supporta le notifiche.");
-            return;
-        }
-
-        if (Notification.permission === 'granted') {
-            new Notification("Test Notifica EP v.1", {
-                body: "Le notifiche funzionano correttamente su questo dispositivo!",
-                icon: '/lemon_logo_150px.png'
-            });
-        } else if (Notification.permission === 'denied') {
-            alert("Le notifiche sono BLOCCATE. Clicca sul lucchetto 🔒 nella barra indirizzi e consenti le notifiche.");
-        } else {
-            // Chiede permesso
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                new Notification("Test Notifica EP v.1", {
-                    body: "Permesso accordato! Ora riceverai gli avvisi.",
-                    icon: '/lemon_logo_150px.png'
-                });
-            }
-        }
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log("[DEBUG] Form Submit avviato");
-        
         if (selectedDays.length === 0) {
             alert("Seleziona almeno un giorno della settimana.");
             return;
         }
-
         setIsSaving(true);
-
-        // FIX: Gestione permessi notifiche con Timeout di sicurezza (5 secondi)
-        if (pushEnabled) {
-            console.log("[DEBUG] Notifiche attive, tento registrazione...");
-            try {
-                // Creiamo una promise che si risolve automaticamente dopo 5 secondi
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error("Timeout richiesta permessi")), 5000)
-                );
-
-                if (auth.currentUser) {
-                    // Race tra la richiesta permessi e il timeout
-                    await Promise.race([
-                        requestNotificationPermission(auth.currentUser.uid),
-                        timeoutPromise
-                    ]);
-                    console.log("[DEBUG] Registrazione notifiche completata (o timeout).");
-                } else {
-                    console.warn("[DEBUG] Utente non loggato, impossibile registrare token.");
-                }
-            } catch (err) {
-                console.warn("[DEBUG] Errore/Timeout richiesta permessi notifica (proseguo salvataggio dati):", err);
-            }
-        } else {
-             console.log("[DEBUG] Notifiche disattive, salto registrazione.");
-        }
-
-        // FIX: Costruzione oggetto dati senza campi undefined (causa crash Firestore)
+        
         const checkData: any = {
             category,
             daysOfWeek: selectedDays.sort(),
@@ -148,29 +92,20 @@ const PeriodicCheckForm: React.FC<{
             pushEnabled,
             note
         };
-
-        // Aggiungi subCategory solo se necessaria
         if (category === CheckCategory.Appointments && subCategory) {
             checkData.subCategory = subCategory;
         } else if (check?.id) {
-            // Se siamo in modifica e la categoria non è Appointments, settiamo a null per pulire il campo nel DB
             checkData.subCategory = null;
         }
 
         try {
-            console.log("[DEBUG] Tentativo salvataggio su Firestore...", checkData);
-            if (check?.id) { 
-                await onSave({ ...checkData, id: check.id }); 
-            } else { 
-                await onSave(checkData); 
-            }
-            console.log("[DEBUG] Salvataggio completato con successo.");
+            if (check?.id) { await onSave({ ...checkData, id: check.id }); } 
+            else { await onSave(checkData); }
         } catch (err) {
-            console.error("[DEBUG] Errore critico durante il salvataggio:", err);
-            alert(`Errore durante il salvataggio dei dati: ${(err as any).message}`);
+            console.error("Errore salvataggio:", err);
+            alert("Errore durante il salvataggio.");
         } finally {
-             console.log("[DEBUG] Reset stato isSaving.");
-             setIsSaving(false); // Sblocca sempre il bottone, qualunque cosa accada
+             setIsSaving(false);
         }
     };
 
@@ -180,25 +115,12 @@ const PeriodicCheckForm: React.FC<{
                 <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Verifica' : 'Nuova Verifica Periodica'}</h2>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
-                
-                {/* Category Selection */}
                 <div className="md-input-group">
-                    <select 
-                        id="checkCat" 
-                        value={category} 
-                        onChange={e => {
-                            setCategory(e.target.value as CheckCategory);
-                            if (e.target.value !== CheckCategory.Appointments) setSubCategory('');
-                            else setSubCategory(AppointmentType.Generic);
-                        }} 
-                        className="md-input"
-                    >
+                    <select id="checkCat" value={category} onChange={e => { setCategory(e.target.value as CheckCategory); if (e.target.value !== CheckCategory.Appointments) setSubCategory(''); else setSubCategory(AppointmentType.Generic); }} className="md-input">
                         {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <label htmlFor="checkCat" className="md-input-label !top-0 !text-xs !text-gray-500">Categoria Controllo</label>
                 </div>
-
-                {/* SubCategory for Appointments */}
                 {category === CheckCategory.Appointments && (
                     <div className="md-input-group animate-fade-in">
                         <select id="subCat" value={subCategory} onChange={e => setSubCategory(e.target.value as AppointmentType)} className="md-input">
@@ -207,67 +129,41 @@ const PeriodicCheckForm: React.FC<{
                         <label htmlFor="subCat" className="md-input-label !top-0 !text-xs !text-gray-500">Tipo Appuntamento</label>
                     </div>
                 )}
-
-                {/* Days Selection */}
                 <div>
-                    <label className="block text-xs text-gray-500 mb-2">Giorni della settimana (Ripetizione)</label>
+                    <label className="block text-xs text-gray-500 mb-2">Giorni della settimana</label>
                     <div className="flex flex-wrap gap-2">
                         {daysMap.map((label, idx) => (
-                            <button
-                                key={idx}
-                                type="button"
-                                onClick={() => toggleDay(idx)}
-                                className={`w-10 h-10 rounded-full text-xs font-bold transition-colors flex items-center justify-center border ${selectedDays.includes(idx) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}
-                            >
+                            <button key={idx} type="button" onClick={() => toggleDay(idx)} className={`w-10 h-10 rounded-full text-xs font-bold transition-colors flex items-center justify-center border ${selectedDays.includes(idx) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>
                                 {label}
                             </button>
                         ))}
                     </div>
                 </div>
-
-                {/* Time Selection */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="chkStart" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="md-input"/><label htmlFor="chkStart" className="md-input-label !top-0 !text-xs !text-gray-500">Dalle</label></div>
                     <div className="md-input-group"><input id="chkEnd" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="chkEnd" className="md-input-label !top-0 !text-xs !text-gray-500">Alle</label></div>
                 </div>
-
-                {/* Push Notification Toggle & Test */}
-                <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded border border-gray-200">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                            <BellIcon />
-                            <div className="ml-3">
-                                <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
-                                <span className="block text-xs text-gray-500">Avviso su mobile anche ad app chiusa.</span>
-                            </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
+                    <div className="flex items-center">
+                        <BellIcon />
+                        <div className="ml-3">
+                            <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
+                            <span className="block text-xs text-gray-500">Avviso su mobile anche ad app chiusa.</span>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </label>
                     </div>
-                    {pushEnabled && (
-                        <button 
-                            type="button"
-                            onClick={handleTestNotification}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium self-end underline mt-1"
-                        >
-                            Prova Invio Immediato
-                        </button>
-                    )}
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
                 </div>
-
                 <div className="md-input-group">
                     <input type="text" value={note} onChange={e => setNote(e.target.value)} className="md-input" placeholder=" " />
                     <label className="md-input-label">Note / Dettagli (Opzionale)</label>
                 </div>
-
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button type="submit" disabled={isSaving} className="md-btn md-btn-raised md-btn-green md-btn-sm">
-                    {isSaving ? 'Salvataggio...' : 'Salva'}
-                </button>
+                <button type="submit" disabled={isSaving} className="md-btn md-btn-raised md-btn-green md-btn-sm">{isSaving ? 'Salvataggio...' : 'Salva'}</button>
             </div>
         </form>
     );
@@ -291,10 +187,7 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
     const handleSave = async (check: PeriodicCheckInput | PeriodicCheck) => {
         if ('id' in check) await updatePeriodicCheck(check.id, check);
         else await addPeriodicCheck(check);
-        setIsFormOpen(false);
-        setEditingCheck(null);
-        fetchChecks();
-        // Emette evento per aggiornare anche lo scheduler locale, se presente
+        setIsFormOpen(false); setEditingCheck(null); fetchChecks();
         window.dispatchEvent(new Event('EP_DataUpdated'));
     };
 
@@ -302,7 +195,7 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
         if (window.confirm("Eliminare questa regola?")) {
             await deletePeriodicCheck(id);
             fetchChecks();
-             window.dispatchEvent(new Event('EP_DataUpdated'));
+            window.dispatchEvent(new Event('EP_DataUpdated'));
         }
     };
 
@@ -317,13 +210,12 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                     <div className="p-6 pb-4 border-b flex justify-between items-center flex-shrink-0">
                         <div>
                             <h2 className="text-xl font-bold">Planner Verifiche Periodiche</h2>
-                            <p className="text-sm text-gray-500">Pianifica i controlli ricorrenti e le notifiche.</p>
+                            <p className="text-sm text-gray-500">Pianifica i controlli ricorrenti.</p>
                         </div>
                         <button onClick={() => setIsFormOpen(true)} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
                             <PlusIcon /> <span className="ml-2">Aggiungi Verifica</span>
                         </button>
                     </div>
-                    
                     <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
                         {loading ? <Spinner /> : checks.length === 0 ? (
                             <p className="text-center text-gray-400 italic py-10">Nessuna verifica pianificata.</p>
@@ -333,27 +225,16 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                                     <div key={check.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-between relative group">
                                         <div>
                                             <div className="flex justify-between items-start">
-                                                <span className="text-xs font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-1 rounded mb-2 inline-block">
-                                                    {check.category}
-                                                </span>
+                                                <span className="text-xs font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-1 rounded mb-2 inline-block">{check.category}</span>
                                                 {check.pushEnabled && <span className="text-indigo-500" title="Notifiche Attive"><BellIcon /></span>}
                                             </div>
-                                            <h3 className="font-bold text-gray-800 mb-1">
-                                                {check.subCategory ? `${check.subCategory}` : check.category}
-                                            </h3>
-                                            <div className="text-sm text-gray-600 flex items-center gap-2 mb-2">
-                                                <ClockIcon /> {check.startTime} - {check.endTime}
-                                            </div>
+                                            <h3 className="font-bold text-gray-800 mb-1">{check.subCategory ? `${check.subCategory}` : check.category}</h3>
+                                            <div className="text-sm text-gray-600 flex items-center gap-2 mb-2"><ClockIcon /> {check.startTime} - {check.endTime}</div>
                                             <div className="flex gap-1 flex-wrap mb-2">
-                                                {check.daysOfWeek.sort().map(d => (
-                                                    <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200">
-                                                        {daysMapShort[d]}
-                                                    </span>
-                                                ))}
+                                                {check.daysOfWeek.sort().map(d => <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200">{daysMapShort[d]}</span>)}
                                             </div>
                                             {check.note && <p className="text-xs text-gray-500 italic mt-2">"{check.note}"</p>}
                                         </div>
-                                        
                                         <div className="mt-4 pt-3 border-t flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                                             <button onClick={() => { setEditingCheck(check); setIsFormOpen(true); }} className="md-icon-btn edit"><PencilIcon /></button>
                                             <button onClick={() => handleDelete(check.id)} className="md-icon-btn delete"><TrashIcon /></button>
@@ -363,10 +244,7 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                             </div>
                         )}
                     </div>
-
-                    <div className="p-4 border-t bg-white flex justify-end flex-shrink-0">
-                        <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
-                    </div>
+                    <div className="p-4 border-t bg-white flex justify-end flex-shrink-0"><button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button></div>
                 </div>
             )}
         </Modal>
@@ -383,24 +261,19 @@ const Settings: React.FC = () => {
     const [isSubModalOpen, setIsSubModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<SubscriptionType | null>(null);
     const [subToDelete, setSubToDelete] = useState<string | null>(null);
-    
-    // Theme state
     const [primaryColor, setPrimaryColor] = useState('#3F51B5');
     const [bgColor, setBgColor] = useState('#f5f5f5');
-
-    // Checks Modal
     const [isChecksModalOpen, setIsChecksModalOpen] = useState(false);
+    const [notifPermission, setNotifPermission] = useState(Notification.permission);
 
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
             const [companyData, subsData] = await Promise.all([getCompanyInfo(), getSubscriptionTypes()]);
             setInfo(companyData); setSubscriptions(subsData);
-            
             const savedTheme = getSavedTheme();
             setPrimaryColor(savedTheme.primary);
             setBgColor(savedTheme.bg);
-
         } catch (err) {
             setError("Impossibile caricare le impostazioni."); console.error(err);
         } finally { setLoading(false); }
@@ -435,9 +308,7 @@ const Settings: React.FC = () => {
         setIsSubModalOpen(false); setEditingSub(null); fetchAllData();
     };
     
-    const handleDeleteClick = (id: string) => {
-        setSubToDelete(id);
-    }
+    const handleDeleteClick = (id: string) => { setSubToDelete(id); }
 
     const handleConfirmDelete = async () => {
         if(subToDelete) {
@@ -459,16 +330,27 @@ const Settings: React.FC = () => {
         handleColorChange(defPrimary, defBg);
     };
 
-    if (loading) {
-        return (
-             <div>
-                <h1 className="text-3xl font-bold">Impostazioni</h1>
-                <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali, listini e integrazioni.</p>
-                <div className="mt-8 flex justify-center items-center h-64"><Spinner /></div>
-            </div>
-        );
-    }
-    if (error) { return <p className="text-center text-red-500 py-8">{error}</p>; }
+    const handleReconnectNotifications = async () => {
+        if(!auth.currentUser) return;
+        const result = await requestNotificationPermission(auth.currentUser.uid);
+        setNotifPermission(Notification.permission);
+        if(result) alert("Servizio Notifiche connesso con successo!");
+        else alert("Connessione fallita o annullata.");
+    };
+
+    const handleTestNotification = () => {
+        if(Notification.permission === 'granted') {
+            new Notification("Test Locale EP v.1", {
+                body: "Se leggi questo messaggio, il tuo browser è configurato correttamente!",
+                icon: '/lemon_logo_150px.png'
+            });
+        } else {
+            alert("Impossibile inviare test: permessi non concessi.");
+        }
+    };
+
+    if (loading) return <div className="mt-8 flex justify-center items-center h-64"><Spinner /></div>;
+    if (error) return <p className="text-center text-red-500 py-8">{error}</p>;
 
   return (
     <div>
@@ -478,6 +360,38 @@ const Settings: React.FC = () => {
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Colonna Sinistra */}
             <div className="space-y-8">
+                {/* Diagnostica Notifiche (NUOVO) */}
+                <div className="md-card p-6 border-l-4 border-indigo-500 bg-white">
+                    <h2 className="text-lg font-semibold text-indigo-900 mb-4">Centro Diagnostica Notifiche</h2>
+                    <div className="space-y-3 mb-6">
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Permesso Browser:</span>
+                            <span className={`text-sm font-bold ${notifPermission === 'granted' ? 'text-green-600' : 'text-red-600'}`}>
+                                {notifPermission === 'granted' ? 'CONSENTITO ✅' : notifPermission === 'denied' ? 'BLOCCATO ❌' : 'RICHIESTA ⚠️'}
+                            </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-600">Stato Servizio:</span>
+                            <span className="text-sm font-medium text-gray-500">Monitoraggio Attivo</span>
+                        </div>
+                    </div>
+                    
+                    {notifPermission === 'denied' && (
+                         <div className="bg-red-50 p-3 rounded border border-red-200 text-xs text-red-700 mb-4">
+                            <strong>ATTENZIONE:</strong> Le notifiche sono state bloccate dal browser. Clicca sull'icona del lucchetto 🔒 o delle impostazioni nella barra degli indirizzi e imposta "Notifiche" su "Consenti", poi ricarica la pagina.
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <button onClick={handleReconnectNotifications} className="md-btn md-btn-raised md-btn-primary text-xs">
+                            Rinizializza Servizio
+                        </button>
+                        <button onClick={handleTestNotification} className="md-btn md-btn-flat md-btn-primary text-xs border border-indigo-100">
+                            Test Notifica (Locale)
+                        </button>
+                    </div>
+                </div>
+
                 <div className="md-card p-6">
                     <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Dati Aziendali</h2>
                     {info && (
@@ -496,49 +410,10 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                 </div>
-
-                {/* Card Personalizzazione Tema */}
-                <div className="md-card p-6">
-                    <div className="flex justify-between items-center border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>
-                         <h2 className="text-lg font-semibold">Personalizzazione Interfaccia</h2>
-                         <button onClick={handleResetTheme} className="text-xs text-indigo-600 hover:underline">Ripristina Default</button>
-                    </div>
-                    <p className="text-sm text-gray-500 mb-4">Seleziona i colori per personalizzare l'aspetto dell'applicazione.</p>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Colore Primario</label>
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="color" 
-                                    value={primaryColor} 
-                                    onChange={(e) => handleColorChange(e.target.value, bgColor)}
-                                    className="h-10 w-16 cursor-pointer border border-gray-300 rounded p-1"
-                                />
-                                <span className="text-xs text-gray-500 uppercase">{primaryColor}</span>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-1">Colore di intestazioni, pulsanti principali e icone attive.</p>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Colore Sfondo</label>
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="color" 
-                                    value={bgColor} 
-                                    onChange={(e) => handleColorChange(primaryColor, e.target.value)}
-                                    className="h-10 w-16 cursor-pointer border border-gray-300 rounded p-1"
-                                />
-                                <span className="text-xs text-gray-500 uppercase">{bgColor}</span>
-                            </div>
-                             <p className="text-xs text-gray-400 mt-1">Colore di sfondo generale delle pagine.</p>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             {/* Colonna Destra */}
             <div className="space-y-8">
-                {/* Pianificazione & Controllo (NEW) */}
                 <div className="md-card p-6 bg-indigo-50 border border-indigo-100">
                     <div className="flex justify-between items-center border-b border-indigo-200 pb-3 mb-4">
                         <div className="flex items-center gap-2">
@@ -549,20 +424,38 @@ const Settings: React.FC = () => {
                     <p className="text-sm text-indigo-800 mb-6">
                         Gestisci scadenze, controlli ricorrenti e appuntamenti importanti per la tua attività.
                     </p>
-                    <button 
-                        onClick={() => setIsChecksModalOpen(true)}
-                        className="w-full md-btn md-btn-raised md-btn-primary flex items-center justify-center"
-                    >
+                    <button onClick={() => setIsChecksModalOpen(true)} className="w-full md-btn md-btn-raised md-btn-primary flex items-center justify-center">
                         <span className="mr-2"><ClockIcon /></span> Gestisci Verifiche Periodiche
                     </button>
                 </div>
 
                 <div className="md-card p-6">
+                    <div className="flex justify-between items-center border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>
+                         <h2 className="text-lg font-semibold">Personalizzazione Interfaccia</h2>
+                         <button onClick={handleResetTheme} className="text-xs text-indigo-600 hover:underline">Ripristina Default</button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Colore Primario</label>
+                            <div className="flex items-center gap-3">
+                                <input type="color" value={primaryColor} onChange={(e) => handleColorChange(e.target.value, bgColor)} className="h-10 w-16 cursor-pointer border border-gray-300 rounded p-1" />
+                                <span className="text-xs text-gray-500 uppercase">{primaryColor}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Colore Sfondo</label>
+                            <div className="flex items-center gap-3">
+                                <input type="color" value={bgColor} onChange={(e) => handleColorChange(primaryColor, e.target.value)} className="h-10 w-16 cursor-pointer border border-gray-300 rounded p-1" />
+                                <span className="text-xs text-gray-500 uppercase">{bgColor}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="md-card p-6">
                     <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
                         <h2 className="text-lg font-semibold">Listino Abbonamenti</h2>
-                        <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-flat md-btn-primary text-sm">
-                            <PlusIcon/><span className="ml-1">Aggiungi</span>
-                        </button>
+                        <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-flat md-btn-primary text-sm"><PlusIcon/><span className="ml-1">Aggiungi</span></button>
                     </div>
                     <div className="mt-4 space-y-3">
                         {subscriptions.map(sub => (
@@ -572,8 +465,8 @@ const Settings: React.FC = () => {
                                     <p className="text-sm" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni / {sub.durationInDays} giorni - {sub.price}€</p>
                                 </div>
                                 <div className="flex items-center space-x-1">
-                                    <button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit" aria-label={`Modifica pacchetto ${sub.name}`}><PencilIcon/></button>
-                                    <button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete" aria-label={`Elimina pacchetto ${sub.name}`}><TrashIcon/></button>
+                                    <button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon/></button>
+                                    <button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon/></button>
                                 </div>
                             </div>
                         ))}
