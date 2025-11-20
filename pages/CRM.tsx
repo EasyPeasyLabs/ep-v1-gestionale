@@ -152,13 +152,13 @@ const CommunicationModal: React.FC<{
     };
 
     return (
-        <div className="flex flex-col h-full max-h-[80vh]">
-            <div className="border-b pb-4 mb-4">
+        <div className="flex flex-col h-full">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold">Nuova Comunicazione</h2>
                 <p className="text-sm text-gray-500">A: {recipientName} ({channel === 'email' ? recipientEmail : recipientPhone})</p>
             </div>
 
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
                 {/* Channel Selector */}
                 <div className="flex space-x-4 mb-4">
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${channel === 'email' ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'hover:bg-gray-50'}`}>
@@ -216,9 +216,9 @@ const CommunicationModal: React.FC<{
                 )}
             </div>
 
-            <div className="mt-4 pt-4 border-t flex justify-end space-x-3">
-                <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                <button onClick={handleSend} className="md-btn md-btn-raised md-btn-primary">
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
+                <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button onClick={handleSend} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
                     <span className="mr-2"><SendIcon /></span>
                     Invia {channel === 'email' ? 'Email' : 'WhatsApp'}
                 </button>

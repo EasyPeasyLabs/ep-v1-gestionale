@@ -66,11 +66,11 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateHeaders, 
     return (
         <Modal onClose={onClose}>
              <div className="flex flex-col h-full">
-                <div className="text-center flex-shrink-0">
+                <div className="text-center flex-shrink-0 p-6 pb-2 border-b border-gray-100">
                     <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da Excel</h2>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto pr-2">
+                <div className="flex-1 overflow-y-auto min-h-0 p-6">
                 {!result ? (
                     <div className="mt-4">
                         <div className="p-4 bg-gray-50 border rounded-md" style={{borderColor: 'var(--md-divider)'}}>
@@ -121,13 +121,13 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateHeaders, 
                 )}
                 </div>
 
-                <div className="mt-6 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
-                    <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
+                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+                    <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Chiudi</button>
                     {!result && (
                         <button 
                             onClick={handleImportClick} 
                             disabled={!file || isImporting} 
-                            className="md-btn md-btn-raised md-btn-primary"
+                            className="md-btn md-btn-raised md-btn-primary md-btn-sm"
                         >
                             {isImporting ? <Spinner /> : 'Importa'}
                         </button>

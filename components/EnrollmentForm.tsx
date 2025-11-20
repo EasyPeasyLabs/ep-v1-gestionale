@@ -227,10 +227,14 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parent, existingEnrollm
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[85vh]">
-            <h2 className="text-xl font-bold mb-4 flex-shrink-0 border-b pb-3">{existingEnrollment ? 'Modifica Iscrizione' : 'Nuova Iscrizione'}</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-800">
+                    {existingEnrollment ? 'Modifica Iscrizione' : 'Nuova Iscrizione'}
+                </h2>
+            </div>
             
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
                 
                 {/* Selettore Multiplo Figli */}
                 <div className="md-input-group relative">
@@ -356,9 +360,9 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parent, existingEnrollm
                 </div>
             </div>
 
-             <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
-                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green" disabled={selectedSlotIndex === null || selectedChildIds.length === 0}>
+             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm" disabled={selectedSlotIndex === null || selectedChildIds.length === 0}>
                     {existingEnrollment ? 'Salva Modifiche' : `Conferma Iscrizione (${selectedChildIds.length})`}
                 </button>
             </div>

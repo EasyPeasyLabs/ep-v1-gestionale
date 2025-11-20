@@ -6,8 +6,8 @@ export interface ThemeColors {
 }
 
 export const defaultTheme: ThemeColors = {
-    primary: '#3F51B5',
-    primaryDark: '#303F9F',
+    primary: '#757575', // Grigio richiesto
+    primaryDark: '#616161', // Variante più scura calcolata
     bgLight: '#f5f5f5'
 };
 

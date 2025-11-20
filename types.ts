@@ -146,6 +146,17 @@ export interface Lesson {
     locationColor?: string; // Denormalizzato per UI
 }
 
+// --- Registro Attività ---
+export interface Activity {
+    id: string;
+    title: string;
+    category: string;
+    theme: string; // Filo conduttore
+    description: string;
+    materials: string;
+    links: string;
+    createdAt: string; // ISO String
+}
 
 // --- Finanza ---
 
@@ -275,6 +286,7 @@ export type LocationInput = Omit<Location, 'id'>;
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
 export type LessonInput = Omit<Lesson, 'id'>;
 export type EnrollmentInput = Omit<Enrollment, 'id'>;
+export type ActivityInput = Omit<Activity, 'id'>;
 
 export type TransactionInput = Omit<Transaction, 'id'>;
 export type InvoiceInput = Omit<Invoice, 'id'>;

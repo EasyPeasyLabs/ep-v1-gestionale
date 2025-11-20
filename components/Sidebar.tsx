@@ -12,6 +12,7 @@ import CalendarIcon from './icons/CalendarIcon';
 import CRMIcon from './icons/CRMIcon';
 import ChecklistIcon from './icons/ChecklistIcon';
 import ClipboardIcon from './icons/ClipboardIcon';
+import BookOpenIcon from './icons/BookOpenIcon';
 
 interface SidebarProps {
   currentPage: Page;
@@ -26,6 +27,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
     { page: 'Attendance', label: 'Registro Presenze', icon: <ClipboardIcon /> },
+    { page: 'Activities', label: 'Registro Attività', icon: <BookOpenIcon /> },
     { page: 'Clients', label: 'Clienti', icon: <ClientsIcon /> },
     { page: 'Suppliers', label: 'Fornitori', icon: <SuppliersIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },
@@ -49,10 +51,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
       ></div>
 
       <nav className={`w-64 bg-white shadow-lg flex-shrink-0 flex flex-col fixed md:relative h-full z-40 transition-transform transform md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ backgroundColor: 'var(--md-bg-card)'}}>
-        <div className="h-16 flex items-center justify-center border-b" style={{ borderColor: 'var(--md-divider)'}}>
-          <h1 className="text-2xl font-bold tracking-wider" style={{ color: 'var(--md-text-primary)'}}>EP <span style={{ color: 'var(--md-primary)'}}>v.1</span></h1>
+        <div className="h-16 flex items-center px-4 border-b" style={{ borderColor: 'var(--md-divider)'}}>
+          <div className="flex items-center gap-3">
+             <img 
+                src="./lemon_logo_150px.png" 
+                alt="EP Logo" 
+                className="h-10 w-auto object-contain"
+             />
+             <h1 className="text-xl font-bold tracking-wider" style={{ color: 'var(--md-text-primary)'}}>EP v1</h1>
+          </div>
         </div>
-        <ul className="flex-1 px-4 py-6">
+        <ul className="flex-1 px-4 py-6 overflow-y-auto">
           {navItems.map((item) => (
             item.page !== 'Profile' && (
               <li key={item.page}>

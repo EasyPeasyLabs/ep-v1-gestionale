@@ -96,10 +96,12 @@ const ClientForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[90vh]">
-            <h2 className="text-xl font-bold mb-4 flex-shrink-0 border-b pb-3">{client ? 'Modifica Cliente' : 'Nuovo Cliente'}</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-800">{client ? 'Modifica Cliente' : 'Nuovo Cliente'}</h2>
+            </div>
             
-            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
                 {!client && (
                     <div className="md-input-group">
                          <select value={clientType} onChange={e => setClientType(e.target.value as ClientType)} className="md-input">
@@ -199,9 +201,9 @@ const ClientForm: React.FC<{
                 )}
             </div>
 
-            <div className="mt-4 pt-4 border-t flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
-                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green">Salva Cliente</button>
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Cliente</button>
             </div>
         </form>
     );
@@ -214,14 +216,14 @@ const ClientDetail: React.FC<{
 }> = ({ client, onBack, onEdit }) => {
     return (
         <div className="flex flex-col h-full">
-             <div className="flex justify-between items-center mb-6 border-b pb-4">
+             <div className="flex justify-between items-center mb-6 border-b pb-4 flex-shrink-0">
                 <h2 className="text-2xl font-bold text-gray-800">Dettaglio Cliente</h2>
                 <button onClick={onBack} className="md-btn md-btn-flat text-gray-500">
                     X
                 </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto min-h-0">
                 <div className="md-card p-6 mb-6 border-l-4 border-indigo-500">
                     <h3 className="text-xl font-bold text-indigo-900 mb-1">
                         {client.clientType === ClientType.Parent 
@@ -280,9 +282,9 @@ const ClientDetail: React.FC<{
                 )}
             </div>
 
-            <div className="mt-6 pt-4 border-t flex justify-between">
-                 <button onClick={onBack} className="md-btn md-btn-flat">Torna alla lista</button>
-                 <button onClick={onEdit} className="md-btn md-btn-raised md-btn-primary">
+            <div className="mt-6 pt-4 border-t flex justify-between flex-shrink-0">
+                 <button onClick={onBack} className="md-btn md-btn-flat md-btn-sm">Torna alla lista</button>
+                 <button onClick={onEdit} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
                     <PencilIcon /> <span className="ml-2">Modifica</span>
                 </button>
             </div>

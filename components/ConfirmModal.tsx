@@ -31,7 +31,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
       <div className="flex justify-end space-x-3">
         <button 
             onClick={onClose} 
-            className="md-btn md-btn-flat"
+            className="md-btn md-btn-flat md-btn-sm"
         >
           {cancelText}
         </button>
@@ -40,7 +40,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
             onConfirm();
             onClose();
           }} 
-          className={`md-btn md-btn-raised ${isDangerous ? 'md-btn-red' : 'md-btn-primary'}`}
+          className={`md-btn md-btn-raised md-btn-sm ${isDangerous ? 'md-btn-red' : 'md-btn-primary'}`}
         >
           {confirmText}
         </button>

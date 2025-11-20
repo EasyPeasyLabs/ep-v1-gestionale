@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -11,9 +12,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        /* Material Design Color Palette */
-        --md-primary: #3F51B5; /* Indigo */
-        --md-primary-dark: #303F9F;
+        /* Material Design Color Palette - Default Updated to Grey #757575 */
+        --md-primary: #757575; 
+        --md-primary-dark: #616161;
         --md-accent: #FF4081; /* Pink */
         
         --md-green: #4CAF50;
@@ -141,6 +142,13 @@
       .md-btn-flat { background-color: transparent; }
       .md-btn-flat.md-btn-primary { color: var(--md-primary); }
       .md-btn-flat:hover:not(:disabled) { background-color: rgba(0,0,0,0.08); }
+
+      /* Small Button Variant */
+      .md-btn-sm {
+        height: 30px;
+        padding: 0 12px;
+        font-size: 13px;
+      }
 
       /* Icon Button */
       .md-icon-btn {
