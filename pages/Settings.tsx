@@ -76,6 +76,32 @@ const PeriodicCheckForm: React.FC<{
         );
     };
 
+    // Funzione per testare immediatamente la notifica
+    const handleTestNotification = async () => {
+        if (!('Notification' in window)) {
+            alert("Il tuo browser non supporta le notifiche.");
+            return;
+        }
+
+        if (Notification.permission === 'granted') {
+            new Notification("Test Notifica EP v.1", {
+                body: "Le notifiche funzionano correttamente su questo dispositivo!",
+                icon: '/lemon_logo_150px.png'
+            });
+        } else if (Notification.permission === 'denied') {
+            alert("Le notifiche sono BLOCCATE. Clicca sul lucchetto 🔒 nella barra indirizzi e consenti le notifiche.");
+        } else {
+            // Chiede permesso
+            const permission = await Notification.requestPermission();
+            if (permission === 'granted') {
+                new Notification("Test Notifica EP v.1", {
+                    body: "Permesso accordato! Ora riceverai gli avvisi.",
+                    icon: '/lemon_logo_150px.png'
+                });
+            }
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         console.log("[DEBUG] Form Submit avviato");
@@ -205,19 +231,30 @@ const PeriodicCheckForm: React.FC<{
                     <div className="md-input-group"><input id="chkEnd" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="chkEnd" className="md-input-label !top-0 !text-xs !text-gray-500">Alle</label></div>
                 </div>
 
-                {/* Push Notification Toggle */}
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
-                    <div className="flex items-center">
-                        <BellIcon />
-                        <div className="ml-3">
-                            <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
-                            <span className="block text-xs text-gray-500">Ricevi avviso su mobile anche ad app chiusa.</span>
+                {/* Push Notification Toggle & Test */}
+                <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded border border-gray-200">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                            <BellIcon />
+                            <div className="ml-3">
+                                <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
+                                <span className="block text-xs text-gray-500">Avviso su mobile anche ad app chiusa.</span>
+                            </div>
                         </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
+                    {pushEnabled && (
+                        <button 
+                            type="button"
+                            onClick={handleTestNotification}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-medium self-end underline mt-1"
+                        >
+                            Prova Invio Immediato
+                        </button>
+                    )}
                 </div>
 
                 <div className="md-input-group">
