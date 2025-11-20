@@ -8,6 +8,7 @@ import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, Transacti
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
+import PlusIcon from '../components/icons/PlusIcon';
 
 // --- Icons ---
 const MailIcon = () => (
@@ -42,16 +43,250 @@ interface PendingRent {
     supplier: Supplier | undefined;
 }
 
-interface CommunicationPayload {
-    recipientName: string;
-    recipientEmail: string;
-    recipientPhone: string;
-    subject: string;
-    message: string;
-    channel: 'email' | 'whatsapp';
-}
+// --- Modale Comunicazione Libera (Nuova) ---
 
-// --- Communication Modal ---
+const FreeCommunicationModal: React.FC<{
+    clients: Client[];
+    suppliers: Supplier[];
+    onClose: () => void;
+}> = ({ clients, suppliers, onClose }) => {
+    const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
+    const [recipientType, setRecipientType] = useState<'clients' | 'suppliers' | 'manual'>('clients');
+    
+    // Selection State
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    
+    // Manual Input State
+    const [manualName, setManualName] = useState('');
+    const [manualContact, setManualContact] = useState('');
+
+    // Content State
+    const [subject, setSubject] = useState('');
+    const [message, setMessage] = useState('');
+    const [signature, setSignature] = useState('Lo Staff di Easy Peasy');
+
+    // Reset selection on type change
+    useEffect(() => {
+        setSelectedIds([]);
+        setSearchTerm('');
+        setManualName('');
+        setManualContact('');
+    }, [recipientType]);
+
+    const toggleSelection = (id: string) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const handleSend = () => {
+        const recipients: { name: string; contact: string }[] = [];
+
+        // 1. Gather Recipients
+        if (recipientType === 'manual') {
+            if (!manualContact) { alert("Inserisci il recapito del destinatario."); return; }
+            recipients.push({ name: manualName || 'Destinatario', contact: manualContact });
+        } else if (recipientType === 'clients') {
+            selectedIds.forEach(id => {
+                const c = clients.find(x => x.id === id);
+                if (c) {
+                    const name = c.clientType === ClientType.Parent 
+                        ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
+                        : (c as InstitutionalClient).companyName;
+                    const contact = channel === 'email' ? c.email : c.phone;
+                    if (contact) recipients.push({ name, contact });
+                }
+            });
+        } else if (recipientType === 'suppliers') {
+            selectedIds.forEach(id => {
+                const s = suppliers.find(x => x.id === id);
+                if (s) {
+                    const contact = channel === 'email' ? s.email : s.phone;
+                    if (contact) recipients.push({ name: s.companyName, contact });
+                }
+            });
+        }
+
+        if (recipients.length === 0) {
+            alert("Seleziona almeno un destinatario.");
+            return;
+        }
+
+        const fullMessage = `${message}\n\n${signature}`;
+
+        if (channel === 'email') {
+            // Email: Use BCC for multiple recipients
+            const bccList = recipients.map(r => r.contact).join(',');
+            const mailtoLink = `mailto:?bcc=${bccList}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(fullMessage)}`;
+            window.open(mailtoLink, '_blank');
+        } else {
+            // WhatsApp: Warn about popups for multiple
+            if (recipients.length > 1) {
+                const confirm = window.confirm(`Stai per inviare messaggi a ${recipients.length} destinatari su WhatsApp. Potrebbero aprirsi più finestre. Continuare?`);
+                if (!confirm) return;
+            }
+
+            recipients.forEach((r) => {
+                const cleanPhone = r.contact.replace(/[^0-9]/g, '');
+                const waMessage = `*${subject}*\n\n${fullMessage}`;
+                const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waMessage)}`;
+                window.open(waLink, '_blank');
+            });
+        }
+        onClose();
+    };
+
+    // Filter lists
+    const getFilteredList = () => {
+        if (recipientType === 'clients') {
+            return clients.filter(c => {
+                const name = c.clientType === ClientType.Parent 
+                    ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
+                    : (c as InstitutionalClient).companyName;
+                return name.toLowerCase().includes(searchTerm.toLowerCase());
+            }).map(c => ({
+                id: c.id,
+                name: c.clientType === ClientType.Parent 
+                    ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
+                    : (c as InstitutionalClient).companyName,
+                sub: c.clientType === ClientType.Parent ? 'Genitore' : 'Istituzionale'
+            }));
+        }
+        if (recipientType === 'suppliers') {
+            return suppliers.filter(s => s.companyName.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map(s => ({ id: s.id, name: s.companyName, sub: 'Fornitore' }));
+        }
+        return [];
+    };
+
+    const listItems = getFilteredList();
+
+    return (
+        <div className="flex flex-col h-full max-h-[90vh]">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold">Comunicazione Libera</h2>
+                <p className="text-sm text-gray-500">Invia messaggi a uno o più destinatari.</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
+                
+                {/* 1. Canale */}
+                <div className="flex space-x-4 mb-2">
+                    <label className={`flex-1 flex items-center justify-center p-3 border rounded-lg cursor-pointer transition-all ${channel === 'email' ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500 text-indigo-700' : 'hover:bg-gray-50'}`}>
+                        <input type="radio" name="free-channel" value="email" checked={channel === 'email'} onChange={() => setChannel('email')} className="sr-only" />
+                        <MailIcon />
+                        <span className="ml-2 font-medium">Email</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center p-3 border rounded-lg cursor-pointer transition-all ${channel === 'whatsapp' ? 'bg-green-50 border-green-500 ring-1 ring-green-500 text-green-700' : 'hover:bg-gray-50'}`}>
+                        <input type="radio" name="free-channel" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} className="sr-only" />
+                        <ChatIcon />
+                        <span className="ml-2 font-medium">WhatsApp</span>
+                    </label>
+                </div>
+
+                {/* 2. Tipo Destinatario */}
+                <div className="flex border-b border-gray-200 mb-2">
+                    <button onClick={() => setRecipientType('clients')} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${recipientType === 'clients' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Clienti</button>
+                    <button onClick={() => setRecipientType('suppliers')} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${recipientType === 'suppliers' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Fornitori</button>
+                    <button onClick={() => setRecipientType('manual')} className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${recipientType === 'manual' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manuale</button>
+                </div>
+
+                {/* 3. Selezione Destinatari */}
+                {recipientType === 'manual' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-md">
+                        <div className="md-input-group">
+                            <input type="text" value={manualName} onChange={e => setManualName(e.target.value)} className="md-input" placeholder=" " />
+                            <label className="md-input-label">Nome Destinatario</label>
+                        </div>
+                        <div className="md-input-group">
+                            <input type="text" value={manualContact} onChange={e => setManualContact(e.target.value)} className="md-input" placeholder=" " />
+                            <label className="md-input-label">{channel === 'email' ? 'Indirizzo Email' : 'Numero Cellulare'}</label>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="border rounded-md overflow-hidden flex flex-col h-48">
+                        <div className="p-2 bg-gray-50 border-b">
+                             <input 
+                                type="text" 
+                                placeholder="Cerca..." 
+                                className="w-full bg-white border rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                            {listItems.map(item => (
+                                <label key={item.id} className="flex items-center p-2 hover:bg-indigo-50 rounded cursor-pointer">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedIds.includes(item.id)}
+                                        onChange={() => toggleSelection(item.id)}
+                                        className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                                    />
+                                    <div className="ml-3">
+                                        <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                                        <p className="text-xs text-gray-500">{item.sub}</p>
+                                    </div>
+                                </label>
+                            ))}
+                            {listItems.length === 0 && <p className="text-center text-xs text-gray-400 py-4">Nessun risultato.</p>}
+                        </div>
+                        <div className="bg-gray-50 px-2 py-1 text-xs text-right text-gray-500 border-t">
+                            {selectedIds.length} selezionati
+                        </div>
+                    </div>
+                )}
+
+                {/* 4. Contenuto Messaggio */}
+                <div className="space-y-4 pt-2">
+                    <div className="md-input-group">
+                        <input 
+                            type="text" 
+                            value={subject} 
+                            onChange={(e) => setSubject(e.target.value)} 
+                            className="md-input" 
+                            placeholder=" " 
+                        />
+                        <label className="md-input-label">
+                            {channel === 'email' ? 'Oggetto' : 'Titolo (in grassetto)'}
+                        </label>
+                    </div>
+                    <div className="md-input-group">
+                         <textarea 
+                            rows={5} 
+                            value={message} 
+                            onChange={(e) => setMessage(e.target.value)} 
+                            className="w-full p-3 border rounded-md focus:ring-indigo-500 focus:border-indigo-500 bg-white text-sm"
+                            placeholder="Scrivi qui il tuo messaggio..."
+                            style={{borderColor: 'var(--md-divider)'}}
+                        ></textarea>
+                    </div>
+                     <div className="md-input-group">
+                        <input 
+                            type="text" 
+                            value={signature} 
+                            onChange={(e) => setSignature(e.target.value)} 
+                            className="md-input text-sm text-gray-600 italic" 
+                            placeholder=" " 
+                        />
+                        <label className="md-input-label">Firma</label>
+                    </div>
+                </div>
+
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
+                <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button onClick={handleSend} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
+                    <span className="mr-2"><SendIcon /></span>
+                    Invia {channel === 'email' ? `Email (${recipientType === 'manual' ? 1 : selectedIds.length})` : `WhatsApp (${recipientType === 'manual' ? 1 : selectedIds.length})`}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+
+// --- Communication Modal (Existing - Contextual) ---
 
 const CommunicationModal: React.FC<{
     data: ExpiringEnrollment | PendingRent;
@@ -233,10 +468,17 @@ const CRM: React.FC = () => {
     const [expiringEnrollments, setExpiringEnrollments] = useState<ExpiringEnrollment[]>([]);
     const [pendingRents, setPendingRents] = useState<PendingRent[]>([]);
     
+    // Data required for free communication
+    const [allClients, setAllClients] = useState<Client[]>([]);
+    const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]);
+
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalData, setModalData] = useState<ExpiringEnrollment | PendingRent | null>(null);
     const [modalType, setModalType] = useState<'client' | 'supplier'>('client');
+
+    // Free Communication Modal State
+    const [isFreeCommModalOpen, setIsFreeCommModalOpen] = useState(false);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -247,6 +489,9 @@ const CRM: React.FC = () => {
                 getClients(),
                 getSuppliers()
             ]);
+
+            setAllClients(clients);
+            setAllSuppliers(suppliers);
 
             // 1. Process Expiring Enrollments
             const today = new Date();
@@ -316,11 +561,17 @@ const CRM: React.FC = () => {
 
     return (
         <div>
-            <div className="mb-6">
-                <h1 className="text-3xl font-bold">CRM</h1>
-                <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
-                    Gestione relazioni clienti, rinnovi e comunicazioni fornitori.
-                </p>
+            <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl font-bold">CRM</h1>
+                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
+                        Gestione relazioni clienti, rinnovi e comunicazioni fornitori.
+                    </p>
+                </div>
+                <button onClick={() => setIsFreeCommModalOpen(true)} className="md-btn md-btn-raised md-btn-primary">
+                    <PlusIcon />
+                    <span className="ml-2">Nuova Comunicazione</span>
+                </button>
             </div>
 
             {loading ? (
@@ -412,12 +663,24 @@ const CRM: React.FC = () => {
                 </div>
             )}
 
+            {/* Event-Driven Modal */}
             {isModalOpen && modalData && (
                 <Modal onClose={() => setIsModalOpen(false)} size="lg">
                     <CommunicationModal 
                         data={modalData} 
                         type={modalType} 
                         onClose={() => setIsModalOpen(false)} 
+                    />
+                </Modal>
+            )}
+
+            {/* Free Communication Modal */}
+            {isFreeCommModalOpen && (
+                <Modal onClose={() => setIsFreeCommModalOpen(false)} size="lg">
+                    <FreeCommunicationModal 
+                        clients={allClients}
+                        suppliers={allSuppliers}
+                        onClose={() => setIsFreeCommModalOpen(false)}
                     />
                 </Modal>
             )}

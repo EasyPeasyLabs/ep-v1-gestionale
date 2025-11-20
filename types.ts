@@ -146,7 +146,7 @@ export interface Lesson {
     locationColor?: string; // Denormalizzato per UI
 }
 
-// --- Registro Attività ---
+// --- Registro Attività (Libreria) ---
 export interface Activity {
     id: string;
     title: string;
@@ -156,6 +156,15 @@ export interface Activity {
     materials: string;
     links: string;
     createdAt: string; // ISO String
+}
+
+// --- Registro Attività (Storico/Log) ---
+export interface LessonActivity {
+    id: string;
+    lessonId: string; // Link all'appointment.lessonId
+    activityIds: string[]; // Array di ID attività svolte
+    date: string; // Denormalizzato per query facili
+    note?: string; // Eventuali note specifiche per quella lezione
 }
 
 // --- Finanza ---
@@ -275,6 +284,34 @@ export interface Notification {
   filterContext?: any; // Dati per pre-filtrare la pagina di destinazione
 }
 
+// --- Verifiche Periodiche (Planner) ---
+export enum CheckCategory {
+    Payments = 'Scadenze Pagamenti',
+    Enrollments = 'Scadenze Iscrizioni',
+    Transactions = 'Registrazione Transazioni',
+    Documents = 'Preventivi e Fatture',
+    Materials = 'Restituzione Materiali (Peek-a-Boo)',
+    Appointments = 'Appuntamenti'
+}
+
+export enum AppointmentType {
+    NewClient = 'Nuovi Potenziali Clienti',
+    NewSupplier = 'Nuovi Fornitori',
+    Accountant = 'Commercialista',
+    Generic = 'Generico'
+}
+
+export interface PeriodicCheck {
+    id: string;
+    category: CheckCategory;
+    subCategory?: AppointmentType; // Opzionale, usato solo se category è Appointments
+    daysOfWeek: number[]; // 0=Domenica, 1=Lunedì... Array di giorni selezionati
+    startTime: string; // HH:mm
+    endTime: string; // HH:mm
+    pushEnabled: boolean;
+    note?: string;
+}
+
 
 // --- Tipi di Input per Firestore (senza 'id') ---
 export type ParentClientInput = Omit<ParentClient, 'id'>;
@@ -291,3 +328,4 @@ export type ActivityInput = Omit<Activity, 'id'>;
 export type TransactionInput = Omit<Transaction, 'id'>;
 export type InvoiceInput = Omit<Invoice, 'id'>;
 export type QuoteInput = Omit<Quote, 'id'>;
+export type PeriodicCheckInput = Omit<PeriodicCheck, 'id'>;

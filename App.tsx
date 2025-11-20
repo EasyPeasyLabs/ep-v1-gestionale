@@ -18,8 +18,9 @@ import CRM from './pages/CRM';
 import Enrollments from './pages/Enrollments';
 import Attendance from './pages/Attendance';
 import Activities from './pages/Activities';
+import ActivityLog from './pages/ActivityLog';
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'Activities';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'Activities' | 'ActivityLog';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -54,6 +55,8 @@ const App: React.FC = () => {
         return <Attendance />;
       case 'Activities':
         return <Activities />;
+      case 'ActivityLog':
+        return <ActivityLog />;
       case 'Clients':
         return <Clients />;
       case 'Suppliers':

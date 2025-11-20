@@ -30,11 +30,6 @@ const LoginPage: React.FC = () => {
             <div className="w-full max-w-md p-8 space-y-8 md-card border-t-4" style={{ borderColor: 'var(--md-primary)' }}>
                 <div className="text-center">
                     <div className="flex justify-center items-center gap-3 mb-4">
-                        <img 
-                            src="./lemon_logo_150px.png" 
-                            alt="EP Logo" 
-                            className="h-12 w-auto object-contain"
-                        />
                         <h1 className="text-3xl font-bold tracking-wider" style={{ color: 'var(--md-text-primary)' }}>EP v1</h1>
                     </div>
                     <p className="mt-2" style={{ color: 'var(--md-text-secondary)' }}>Accedi al tuo gestionale</p>

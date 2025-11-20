@@ -55,8 +55,11 @@ export const generateDocumentPDF = async (
     
     // 1. Logo (Top Left)
     try {
-        // Use relative path to ensure fetch works from any route or subdirectory
-        const logoBase64 = await loadImage('./lemon_logo_150px.png');
+        // Usiamo window.location.origin per costruire un URL assoluto.
+        // Questo è fondamentale perché se l'utente si trova in una rotta come /clients/detail,
+        // un percorso relativo "./logo.png" cercherebbe in /clients/logo.png (che non esiste).
+        const logoUrl = `${window.location.origin}/lemon_logo_150px.png`;
+        const logoBase64 = await loadImage(logoUrl);
         if (logoBase64) {
             // x=14, y=10, width=25, height=33 (Richiesta Utente)
             docPdf.addImage(logoBase64, 'PNG', 14, 10, 25, 33);

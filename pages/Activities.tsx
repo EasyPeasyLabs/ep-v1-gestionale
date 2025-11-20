@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, ActivityInput } from '../types';
 import { getActivities, addActivity, updateActivity, deleteActivity } from '../services/activityService';
@@ -9,6 +8,13 @@ import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import SearchIcon from '../components/icons/SearchIcon';
+
+// --- Helper per estrarre URL ---
+const extractFirstUrl = (text: string): string | null => {
+    if (!text) return null;
+    const match = text.match(/(https?:\/\/[^\s]+)/g);
+    return match ? match[0] : null;
+};
 
 // --- Componenti Interni ---
 
@@ -43,6 +49,8 @@ const ActivityForm: React.FC<{
         }
     };
 
+    const detectedLink = extractFirstUrl(links);
+
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             {/* Header Fixed */}
@@ -76,7 +84,7 @@ const ActivityForm: React.FC<{
                         rows={3}
                         value={description} 
                         onChange={e => setDescription(e.target.value)} 
-                        className="w-full p-2 border rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-transparent"
+                        className="w-full p-2 border rounded-md text-sm focus:ring-gray-500 focus:border-gray-500 bg-transparent"
                         style={{borderColor: 'var(--md-divider)'}}
                         placeholder="Descrivi brevemente l'attività..."
                     />
@@ -88,7 +96,7 @@ const ActivityForm: React.FC<{
                         rows={2}
                         value={materials} 
                         onChange={e => setMaterials(e.target.value)} 
-                        className="w-full p-2 border rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-transparent"
+                        className="w-full p-2 border rounded-md text-sm focus:ring-gray-500 focus:border-gray-500 bg-transparent"
                         style={{borderColor: 'var(--md-divider)'}}
                         placeholder="Elenco materiali..."
                     />
@@ -100,10 +108,20 @@ const ActivityForm: React.FC<{
                         rows={2}
                         value={links} 
                         onChange={e => setLinks(e.target.value)} 
-                        className="w-full p-2 border rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-transparent"
+                        className="w-full p-2 border rounded-md text-sm focus:ring-gray-500 focus:border-gray-500 bg-transparent"
                         style={{borderColor: 'var(--md-divider)'}}
                         placeholder="URL video, risorse esterne..."
                     />
+                    {detectedLink && (
+                        <a 
+                            href={detectedLink} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-gray-600 hover:underline hover:text-gray-900 mt-1 inline-flex items-center font-medium"
+                        >
+                            🔗 Apri collegamento rilevato ↗
+                        </a>
+                    )}
                 </div>
             </div>
 
@@ -203,9 +221,9 @@ const Activities: React.FC = () => {
         <div>
             <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <div>
-                    <h1 className="text-3xl font-bold">Registro Attività</h1>
+                    <h1 className="text-3xl font-bold">Attività</h1>
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
-                        Archivio idee, materiali e piani didattici.
+                        Libreria di idee, materiali e piani didattici.
                     </p>
                 </div>
                 <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-primary">
@@ -222,7 +240,7 @@ const Activities: React.FC = () => {
                     <input
                         type="text"
                         placeholder="Cerca per titolo, categoria, tema..."
-                        className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                        className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-gray-500 focus:ring-gray-500 shadow-sm"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         style={{borderColor: 'var(--md-divider)'}}
@@ -234,48 +252,66 @@ const Activities: React.FC = () => {
                 <div className="flex justify-center py-12"><Spinner /></div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredActivities.map(act => (
-                        <div key={act.id} className="md-card flex flex-col h-full hover:shadow-lg transition-shadow relative group border-t-4 border-indigo-400">
-                            <div className="p-5 flex-1">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-[10px] uppercase font-bold tracking-wide text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">
-                                        {act.category}
-                                    </span>
-                                </div>
-                                <h3 className="text-lg font-bold text-gray-800 mb-1">{act.title}</h3>
-                                {act.theme && (
-                                    <p className="text-xs text-gray-500 italic mb-3">Tema: {act.theme}</p>
-                                )}
-                                <p className="text-sm text-gray-600 line-clamp-3 mb-4">
-                                    {act.description || "Nessuna descrizione."}
-                                </p>
-                                
-                                {(act.materials || act.links) && (
-                                    <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
-                                        {act.materials && <p className="truncate">📦 {act.materials}</p>}
-                                        {act.links && <p className="truncate text-blue-500">🔗 Risorse disponibili</p>}
+                    {filteredActivities.map(act => {
+                        const linkUrl = extractFirstUrl(act.links);
+                        
+                        return (
+                            <div key={act.id} className="md-card flex flex-col h-full hover:shadow-lg transition-shadow relative group border-t-4 border-gray-400">
+                                <div className="p-5 flex-1">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-[10px] uppercase font-bold tracking-wide text-gray-700 bg-gray-200 px-2 py-1 rounded-full">
+                                            {act.category}
+                                        </span>
                                     </div>
-                                )}
-                            </div>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{act.title}</h3>
+                                    {act.theme && (
+                                        <p className="text-xs text-gray-500 italic mb-3">Tema: {act.theme}</p>
+                                    )}
+                                    <p className="text-sm text-gray-600 line-clamp-3 mb-4">
+                                        {act.description || "Nessuna descrizione."}
+                                    </p>
+                                    
+                                    {(act.materials || act.links) && (
+                                        <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
+                                            {act.materials && <p className="truncate">📦 {act.materials}</p>}
+                                            {act.links && (
+                                                linkUrl ? (
+                                                    <a 
+                                                        href={linkUrl} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="truncate text-gray-600 hover:underline hover:text-gray-900 flex items-center font-medium"
+                                                        onClick={(e) => e.stopPropagation()} // Evita conflitti se il card avesse un click
+                                                    >
+                                                        🔗 Risorse disponibili (Apri)
+                                                    </a>
+                                                ) : (
+                                                    <p className="truncate text-gray-600">🔗 Risorse disponibili</p>
+                                                )
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
-                            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-2" style={{borderColor: 'var(--md-divider)'}}>
-                                <button 
-                                    onClick={() => handleOpenModal(act)} 
-                                    className="md-icon-btn edit"
-                                    title="Modifica"
-                                >
-                                    <PencilIcon />
-                                </button>
-                                <button 
-                                    onClick={() => handleDeleteRequest(act.id)} 
-                                    className="md-icon-btn delete"
-                                    title="Elimina"
-                                >
-                                    <TrashIcon />
-                                </button>
+                                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-2" style={{borderColor: 'var(--md-divider)'}}>
+                                    <button 
+                                        onClick={() => handleOpenModal(act)} 
+                                        className="md-icon-btn edit"
+                                        title="Modifica"
+                                    >
+                                        <PencilIcon />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteRequest(act.id)} 
+                                        className="md-icon-btn delete"
+                                        title="Elimina"
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                     {filteredActivities.length === 0 && (
                         <div className="col-span-full text-center py-12 text-gray-500 italic">
                             Nessuna attività trovata.
