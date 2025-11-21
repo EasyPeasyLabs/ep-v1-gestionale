@@ -47,7 +47,7 @@ La codebase è organizzata in modo modulare per favorire la manutenibilità e la
 Lo stato è gestito principalmente a livello di componente tramite i React Hooks (`useState`, `useEffect`, `useCallback`).
 - **Stato Globale**: Non è presente una libreria di state management globale (come Redux o Zustand) per semplicità. Lo stato dell'utente autenticato è gestito nel componente radice `App.tsx` e passato tramite props.
 - **Event Bus**: È stato introdotto un semplice sistema di eventi custom (`window.dispatchEvent('EP_DataUpdated')`) per notificare i componenti (es. `Header` per le notifiche) quando i dati vengono modificati in altre parti dell'app.
-- **PWA Dinamica**: La gestione del file `manifest.json` (essenziale per l'installazione dell'app) è ibrida. Esiste un file statico di fallback, ma `App.tsx` genera a runtime un manifest "virtuale" (Blob) che inietta il logo aziendale caricato in Firestore come icona dell'app.
+- **PWA Dinamica**: La gestione del file `manifest.json` (essenziale per l'installazione dell'app) è ibrida. Esiste un file statico di fallback (`public/manifest.json`), ma `App.tsx` genera a runtime un manifest "virtuale" (Blob URL) che inietta il logo aziendale recuperato da Firestore come icona dell'app e forza il nome a "EP v1".
 
 ### 3.3. Routing
 

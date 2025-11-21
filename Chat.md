@@ -154,8 +154,8 @@ Revisione Roadmap, congelamento feature, polishing grafico (UI/UX) e correzione 
 Personalizzazione Branding e Identità PWA.
 
 ### Riepilogo delle Attività
-1.  **Identità Visiva Dinamica**:
+1.  **Identità Visiva Dinamica (PWA & Branding)**:
     - Implementata logica in `App.tsx` per iniettare il logo aziendale (recuperato da Firestore) come Favicon e Apple Touch Icon a runtime.
     - **Manifest Dinamico**: Creato un sistema che genera un `manifest.json` "virtuale" (Blob URL) contenente il logo personalizzato dell'utente. Questo permette all'app installata su desktop/mobile di avere l'icona corretta dell'attività invece di quella di default.
-2.  **Naming Cohesion**: Standardizzato il nome dell'app installata in "EP v1".
-3.  **PDF Layout**: Perfezionato l'allineamento e le spaziature nella testata dei documenti PDF (Fatture/Preventivi) per migliorare la leggibilità e la resa estetica.
+    - **Naming**: Forzato il nome dell'applicazione installata a **"EP v1"** sia nel manifest statico che in quello dinamico.
+2.  **PDF Layout**: Perfezionato l'allineamento e le spaziature nella testata dei documenti PDF (Fatture/Preventivi) per migliorare la leggibilità e la resa estetica.

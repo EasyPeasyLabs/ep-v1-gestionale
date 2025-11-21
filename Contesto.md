@@ -117,7 +117,7 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
 - **Planner Verifiche Periodiche**: Sistema CRUD per definire controlli ricorrenti (scadenze, pagamenti, materiali).
 - **Notifiche Server-Side**: Implementate Cloud Functions e Cloud Scheduler per inviare notifiche push su mobile anche quando l'app è chiusa (PWA Ready).
 - **Gestione Costi e Controllo di Gestione**: Categorizzazione Avanzata dei costi, Imputazione Costi per Sede/Commessa, Reportistica.
-- **Identità PWA Dinamica**: L'icona dell'app installata (Desktop/Mobile) e la Favicon si aggiornano automaticamente utilizzando il logo caricato nelle Impostazioni.
+- **Identità PWA Dinamica**: L'icona dell'app installata (Desktop/Mobile) e la Favicon si aggiornano automaticamente utilizzando il logo caricato nelle Impostazioni. Nome app: "EP v1".
 - **Stop & Polish (UX/UI)**:
     - Refactoring Design System (ombre, transizioni, pulsanti).
     - Nuove animazioni di transizione pagina (`slide-up-fade`).

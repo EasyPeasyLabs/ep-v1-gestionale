@@ -71,6 +71,7 @@ const App: React.FC = () => {
                   appleLink.href = info.logoBase64;
 
                   // 3. Genera Manifest Dinamico per installazione PWA
+                  // Questo sovrascrive il manifest.json statico permettendo di usare il logo e il nome personalizzati
                   const manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement;
                   if (manifestLink) {
                       const dynamicManifest = {
