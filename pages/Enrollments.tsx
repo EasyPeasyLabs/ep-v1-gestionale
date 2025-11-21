@@ -29,6 +29,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Filter State
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active'>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'name_desc'>('date_desc');
     
     // Apply initial params if present
     useEffect(() => {
@@ -275,11 +276,20 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         return true;
     });
 
-    // Sort: Pending first, then Active
+    // Sorting Logic
     filteredEnrollments.sort((a, b) => {
-        if (a.status === EnrollmentStatus.Pending && b.status !== EnrollmentStatus.Pending) return -1;
-        if (a.status !== EnrollmentStatus.Pending && b.status === EnrollmentStatus.Pending) return 1;
-        return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+        switch (sortOrder) {
+            case 'date_asc':
+                return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+            case 'date_desc':
+                return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+            case 'name_asc':
+                return a.childName.localeCompare(b.childName);
+            case 'name_desc':
+                return b.childName.localeCompare(a.childName);
+            default:
+                return 0;
+        }
     });
 
     return (
@@ -303,19 +313,36 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     <button onClick={() => setStatusFilter('pending')} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>In Attesa</button>
                 </div>
 
-                {/* Search */}
-                <div className="relative w-full md:max-w-xs">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <SearchIcon />
+                <div className="flex gap-2 w-full md:w-auto">
+                    {/* Search */}
+                    <div className="relative w-full md:w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <SearchIcon />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Cerca..."
+                            className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{borderColor: 'var(--md-divider)'}}
+                        />
                     </div>
-                    <input
-                        type="text"
-                        placeholder="Cerca bambino, corso..."
-                        className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{borderColor: 'var(--md-divider)'}}
-                    />
+
+                    {/* Sort */}
+                    <div className="w-full md:w-48">
+                        <select 
+                            value={sortOrder} 
+                            onChange={(e) => setSortOrder(e.target.value as any)} 
+                            className="block w-full bg-white border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                            style={{borderColor: 'var(--md-divider)'}}
+                        >
+                            <option value="date_desc">Più Recenti</option>
+                            <option value="date_asc">Meno Recenti</option>
+                            <option value="name_asc">Nome Allievo (A-Z)</option>
+                            <option value="name_desc">Nome Allievo (Z-A)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 

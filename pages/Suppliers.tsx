@@ -236,6 +236,8 @@ const Suppliers: React.FC = () => {
     // Delete/Restore State
     const [supplierToProcess, setSupplierToProcess] = useState<{id: string, action: 'delete' | 'restore' | 'permanent'} | null>(null);
 
+    // Sort State
+    const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc'>('name_asc');
 
     const fetchSuppliers = useCallback(async () => {
         try {
@@ -316,6 +318,17 @@ const Suppliers: React.FC = () => {
         return !s.isDeleted;
     });
 
+    // Sorting
+    filteredSuppliers.sort((a, b) => {
+        const nameA = a.companyName;
+        const nameB = b.companyName;
+        if (sortOrder === 'name_asc') {
+            return nameA.localeCompare(nameB);
+        } else {
+            return nameB.localeCompare(nameA);
+        }
+    });
+
 
   return (
     <div>
@@ -353,6 +366,21 @@ const Suppliers: React.FC = () => {
             </div>
         )}
 
+        {/* Sorting Controls */}
+        <div className="mt-6 flex justify-end">
+            <div className="w-48">
+                <select 
+                    value={sortOrder} 
+                    onChange={(e) => setSortOrder(e.target.value as any)} 
+                    className="block w-full bg-white border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                    style={{borderColor: 'var(--md-divider)'}}
+                >
+                    <option value="name_asc">Nome (A-Z)</option>
+                    <option value="name_desc">Nome (Z-A)</option>
+                </select>
+            </div>
+        </div>
+
         {isModalOpen && (
             <Modal onClose={handleCloseModal} size="2xl">
                 <SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={handleCloseModal} />
@@ -376,7 +404,7 @@ const Suppliers: React.FC = () => {
         )}
 
 
-        <div className="mt-8">
+        <div className="mt-4">
             {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
              error ? <p className="text-center text-red-500 py-8">{error}</p> :
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

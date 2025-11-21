@@ -149,6 +149,9 @@ const Activities: React.FC = () => {
     // Delete State
     const [activityToDelete, setActivityToDelete] = useState<string | null>(null);
 
+    // Sort State
+    const [sortOrder, setSortOrder] = useState<'created_desc' | 'created_asc' | 'title_asc' | 'title_desc'>('created_desc');
+
     const fetchActivitiesData = useCallback(async () => {
         setLoading(true);
         try {
@@ -218,6 +221,22 @@ const Activities: React.FC = () => {
         );
     });
 
+    // Sorting
+    filteredActivities.sort((a, b) => {
+        switch (sortOrder) {
+            case 'created_asc':
+                return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+            case 'created_desc':
+                return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+            case 'title_asc':
+                return a.title.localeCompare(b.title);
+            case 'title_desc':
+                return b.title.localeCompare(a.title);
+            default:
+                return 0;
+        }
+    });
+
     return (
         <div>
             <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
@@ -233,8 +252,8 @@ const Activities: React.FC = () => {
                 </button>
             </div>
 
-            <div className="mb-6">
-                <div className="relative max-w-md">
+            <div className="mb-6 flex flex-col md:flex-row gap-4">
+                <div className="relative flex-1">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <SearchIcon />
                     </div>
@@ -246,6 +265,20 @@ const Activities: React.FC = () => {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         style={{borderColor: 'var(--md-divider)'}}
                     />
+                </div>
+                
+                <div className="w-full md:w-48">
+                    <select 
+                        value={sortOrder} 
+                        onChange={(e) => setSortOrder(e.target.value as any)} 
+                        className="block w-full bg-white border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                        style={{borderColor: 'var(--md-divider)'}}
+                    >
+                        <option value="created_desc">Più Recenti</option>
+                        <option value="created_asc">Meno Recenti</option>
+                        <option value="title_asc">Titolo (A-Z)</option>
+                        <option value="title_desc">Titolo (Z-A)</option>
+                    </select>
                 </div>
             </div>
 
@@ -263,6 +296,7 @@ const Activities: React.FC = () => {
                                         <span className="text-[10px] uppercase font-bold tracking-wide text-gray-700 bg-gray-200 px-2 py-1 rounded-full">
                                             {act.category}
                                         </span>
+                                        {act.createdAt && <span className="text-[9px] text-gray-400">{new Date(act.createdAt).toLocaleDateString()}</span>}
                                     </div>
                                     <h3 className="text-lg font-bold text-gray-800 mb-1">{act.title}</h3>
                                     {act.theme && (

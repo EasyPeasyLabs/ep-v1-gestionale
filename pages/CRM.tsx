@@ -4,11 +4,14 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions } from '../services/financeService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient } from '../types';
+import { getCommunicationLogs, logCommunication, deleteCommunicationLog } from '../services/crmService';
+import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
 import PlusIcon from '../components/icons/PlusIcon';
+import RestoreIcon from '../components/icons/RestoreIcon';
+import TrashIcon from '../components/icons/TrashIcon';
 
 // --- Icons ---
 const MailIcon = () => (
@@ -55,8 +58,14 @@ const FreeCommunicationModal: React.FC<{
     clients: Client[];
     suppliers: Supplier[];
     onClose: () => void;
-}> = ({ clients, suppliers, onClose }) => {
-    const [channel, setChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
+    onSuccess: () => void; // Callback to refresh logs
+    initialData?: {
+        subject: string;
+        message: string;
+        channel: 'email' | 'whatsapp' | 'sms';
+    } | null;
+}> = ({ clients, suppliers, onClose, onSuccess, initialData }) => {
+    const [channel, setChannel] = useState<'email' | 'whatsapp' | 'sms'>(initialData?.channel || 'email');
     const [recipientType, setRecipientType] = useState<'clients' | 'suppliers' | 'manual'>('clients');
     
     // Selection State
@@ -68,8 +77,8 @@ const FreeCommunicationModal: React.FC<{
     const [manualContact, setManualContact] = useState('');
 
     // Content State
-    const [subject, setSubject] = useState('');
-    const [message, setMessage] = useState('');
+    const [subject, setSubject] = useState(initialData?.subject || '');
+    const [message, setMessage] = useState(initialData?.message || '');
     const [signature, setSignature] = useState('Lo Staff di Easy Peasy');
 
     // Reset selection on type change
@@ -84,7 +93,7 @@ const FreeCommunicationModal: React.FC<{
         setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
-    const handleSend = () => {
+    const handleSend = async () => {
         const recipients: { name: string; contact: string }[] = [];
 
         // 1. Gather Recipients
@@ -119,18 +128,16 @@ const FreeCommunicationModal: React.FC<{
 
         const fullMessage = `${message}\n\n${signature}`;
 
+        // 2. Execute Opening Links
         if (channel === 'email') {
-            // Email: Use BCC for multiple recipients
             const bccList = recipients.map(r => r.contact).join(',');
             const mailtoLink = `mailto:?bcc=${bccList}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(fullMessage)}`;
             window.open(mailtoLink, '_blank');
         } else if (channel === 'whatsapp') {
-            // WhatsApp: Warn about popups for multiple
             if (recipients.length > 1) {
                 const confirm = window.confirm(`Stai per inviare messaggi a ${recipients.length} destinatari su WhatsApp. Potrebbero aprirsi più finestre. Continuare?`);
                 if (!confirm) return;
             }
-
             recipients.forEach((r) => {
                 const cleanPhone = r.contact.replace(/[^0-9]/g, '');
                 const waMessage = `*${subject}*\n\n${fullMessage}`;
@@ -138,23 +145,36 @@ const FreeCommunicationModal: React.FC<{
                 window.open(waLink, '_blank');
             });
         } else if (channel === 'sms') {
-            // SMS: Sequential for multiple (limitations of sms: protocol)
              if (recipients.length > 1) {
                 const confirm = window.confirm(`Stai per inviare SMS a ${recipients.length} destinatari. Dovrai confermare l'invio per ogni singolo messaggio. Continuare?`);
                 if (!confirm) return;
             }
-
             recipients.forEach((r) => {
                 const cleanPhone = r.contact.replace(/[^0-9]/g, '');
-                // Nota: il protocollo sms: varia leggermente tra iOS e Android per il body, ma questo è il formato più standard
                 const smsLink = `sms:${cleanPhone}?body=${encodeURIComponent(fullMessage)}`;
                 window.open(smsLink, '_blank');
             });
         }
+
+        // 3. Log to Database
+        try {
+            await logCommunication({
+                date: new Date().toISOString(),
+                channel,
+                subject,
+                message: fullMessage,
+                recipients: recipients.map(r => r.name),
+                recipientCount: recipients.length,
+                type: 'manual'
+            });
+            onSuccess(); // Refresh archive
+        } catch (e) {
+            console.error("Failed to log communication:", e);
+        }
+
         onClose();
     };
 
-    // Filter lists
     const getFilteredList = () => {
         if (recipientType === 'clients') {
             return clients.filter(c => {
@@ -302,7 +322,7 @@ const FreeCommunicationModal: React.FC<{
                 <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
                 <button onClick={handleSend} className="md-btn md-btn-raised md-btn-green md-btn-sm">
                     <span className="mr-2"><SendIcon /></span>
-                    Invia {channel === 'email' ? `Email (${recipientType === 'manual' ? 1 : selectedIds.length})` : channel === 'whatsapp' ? `WhatsApp (${recipientType === 'manual' ? 1 : selectedIds.length})` : `SMS (${recipientType === 'manual' ? 1 : selectedIds.length})`}
+                    Invia {channel === 'email' ? `Email` : channel === 'whatsapp' ? `WhatsApp` : `SMS`}
                 </button>
             </div>
         </div>
@@ -316,7 +336,8 @@ const CommunicationModal: React.FC<{
     data: ExpiringEnrollment | PendingRent;
     type: 'client' | 'supplier';
     onClose: () => void;
-}> = ({ data, type, onClose }) => {
+    onSuccess: () => void;
+}> = ({ data, type, onClose, onSuccess }) => {
     const [channel, setChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
@@ -345,12 +366,10 @@ const CommunicationModal: React.FC<{
             recipientEmail = supplier.email;
             recipientPhone = supplier.phone;
         } else {
-             // Fallback parsing description if supplier logic fails
              recipientName = "Fornitore";
         }
     }
 
-    // Apply Templates logic
     const applyTemplate = (key: string) => {
         if (type === 'client') {
              const item = data as ExpiringEnrollment;
@@ -367,7 +386,6 @@ const CommunicationModal: React.FC<{
                 setSubject(''); setMessage('');
              }
         } else {
-            // Supplier Template (Only one default really)
             const item = data as PendingRent;
             const desc = item.transaction.description;
             if (key === 'payment') {
@@ -377,7 +395,6 @@ const CommunicationModal: React.FC<{
         }
     };
 
-    // Initial Load
     useEffect(() => {
         let defaultKey = 'custom';
         if (type === 'client') {
@@ -395,14 +412,12 @@ const CommunicationModal: React.FC<{
         applyTemplate(key);
     };
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (channel === 'email') {
             const mailtoLink = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
             window.open(mailtoLink, '_blank');
         } else if (channel === 'whatsapp') {
-            // Clean phone number
             const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
-            // For WhatsApp, we combine Subject (Bold) and Message
             const fullMessage = `*${subject}*\n\n${message}`;
             const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(fullMessage)}`;
             window.open(waLink, '_blank');
@@ -412,6 +427,23 @@ const CommunicationModal: React.FC<{
             const smsLink = `sms:${cleanPhone}?body=${encodeURIComponent(fullMessage)}`;
             window.open(smsLink, '_blank');
         }
+
+        // Log
+        try {
+            await logCommunication({
+                date: new Date().toISOString(),
+                channel,
+                subject,
+                message: message,
+                recipients: [recipientName],
+                recipientCount: 1,
+                type: type === 'client' ? 'renewal' : 'payment'
+            });
+            onSuccess();
+        } catch (e) {
+            console.error("Failed to log", e);
+        }
+
         onClose();
     };
 
@@ -423,7 +455,6 @@ const CommunicationModal: React.FC<{
             </div>
 
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
-                {/* Channel Selector */}
                 <div className="flex space-x-4 mb-4">
                     <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${channel === 'email' ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500' : 'hover:bg-gray-50'}`}>
                         <input type="radio" name="channel" value="email" checked={channel === 'email'} onChange={() => setChannel('email')} className="sr-only" />
@@ -453,7 +484,6 @@ const CommunicationModal: React.FC<{
                     </div>
                 )}
 
-                {/* Subject Field - Always Visible */}
                 <div className="md-input-group">
                     <input 
                         type="text" 
@@ -477,12 +507,6 @@ const CommunicationModal: React.FC<{
                         style={{borderColor: 'var(--md-divider)'}}
                     ></textarea>
                 </div>
-
-                {channel === 'whatsapp' && (
-                    <p className="text-xs text-gray-500 italic">
-                        Nota: Su WhatsApp, il "Titolo" verrà inviato in grassetto prima del messaggio.
-                    </p>
-                )}
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
@@ -499,12 +523,18 @@ const CommunicationModal: React.FC<{
 
 const CRM: React.FC = () => {
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'overview' | 'archive'>('overview');
+    
     const [expiringEnrollments, setExpiringEnrollments] = useState<ExpiringEnrollment[]>([]);
     const [pendingRents, setPendingRents] = useState<PendingRent[]>([]);
     
-    // Data required for free communication
     const [allClients, setAllClients] = useState<Client[]>([]);
     const [allSuppliers, setAllSuppliers] = useState<Supplier[]>([]);
+    const [communicationLogs, setCommunicationLogs] = useState<CommunicationLog[]>([]);
+
+    // Search & Sort State for Archive
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'subject_asc' | 'subject_desc'>('date_desc');
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -513,25 +543,25 @@ const CRM: React.FC = () => {
 
     // Free Communication Modal State
     const [isFreeCommModalOpen, setIsFreeCommModalOpen] = useState(false);
+    const [reuseData, setReuseData] = useState<{subject: string, message: string, channel: 'email' | 'whatsapp' | 'sms'} | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollments, transactions, clients, suppliers] = await Promise.all([
+            const [enrollments, transactions, clients, suppliers, logs] = await Promise.all([
                 getAllEnrollments(),
                 getTransactions(),
                 getClients(),
-                getSuppliers()
+                getSuppliers(),
+                getCommunicationLogs()
             ]);
 
             setAllClients(clients);
             setAllSuppliers(suppliers);
+            setCommunicationLogs(logs);
 
             // 1. Process Expiring Enrollments
             const today = new Date();
-            const next30Days = new Date();
-            next30Days.setDate(today.getDate() + 30);
-
             const expiring: ExpiringEnrollment[] = [];
             enrollments.forEach(enr => {
                 if (enr.status === EnrollmentStatus.Active) {
@@ -540,12 +570,8 @@ const CRM: React.FC = () => {
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
                     let reason: 'expiry' | 'lessons' | null = null;
-
-                    if (diffDays >= 0 && diffDays <= 30) {
-                        reason = 'expiry';
-                    } else if (enr.lessonsRemaining <= 2) {
-                        reason = 'lessons';
-                    }
+                    if (diffDays >= 0 && diffDays <= 30) reason = 'expiry';
+                    else if (enr.lessonsRemaining <= 2) reason = 'lessons';
 
                     if (reason) {
                         expiring.push({
@@ -563,15 +589,9 @@ const CRM: React.FC = () => {
             const rents: PendingRent[] = [];
             transactions.forEach(t => {
                 if (t.status === TransactionStatus.Pending && t.category === TransactionCategory.Rent) {
-                    // Try to match supplier from description or external metadata if available
-                    // Usually rent description is "Nolo Sede: LocationName - Month/Year"
                     const supplier = suppliers.find(s => t.description.toLowerCase().includes(s.companyName.toLowerCase())) 
                                      || suppliers.find(s => s.locations.some(l => t.description.includes(l.name)));
-                    
-                    rents.push({
-                        transaction: t,
-                        supplier: supplier
-                    });
+                    rents.push({ transaction: t, supplier: supplier });
                 }
             });
             setPendingRents(rents);
@@ -593,108 +613,249 @@ const CRM: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    const handleReuseCommunication = (log: CommunicationLog) => {
+        setReuseData({
+            subject: log.subject,
+            message: log.message.split('\n\nLo Staff di Easy Peasy')[0], // Rimuovi firma se presente per evitare duplicati
+            channel: log.channel
+        });
+        setIsFreeCommModalOpen(true);
+    };
+
+    const handleDeleteLog = async (id: string) => {
+        if (confirm("Vuoi eliminare questo log dalla cronologia?")) {
+            await deleteCommunicationLog(id);
+            fetchData();
+        }
+    };
+
+    // Filter and Sort Logic for Archive
+    const filteredLogs = communicationLogs.filter(log => {
+        const term = searchTerm.toLowerCase();
+        return (
+            (log.subject || '').toLowerCase().includes(term) ||
+            (log.message || '').toLowerCase().includes(term) ||
+            (log.recipients || []).join(' ').toLowerCase().includes(term)
+        );
+    });
+
+    filteredLogs.sort((a, b) => {
+        switch (sortOrder) {
+            case 'date_asc':
+                return new Date(a.date).getTime() - new Date(b.date).getTime();
+            case 'date_desc':
+                return new Date(b.date).getTime() - new Date(a.date).getTime();
+            case 'subject_asc':
+                return (a.subject || '').localeCompare(b.subject || '');
+            case 'subject_desc':
+                return (b.subject || '').localeCompare(a.subject || '');
+            default:
+                return 0;
+        }
+    });
+
     return (
         <div>
             <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <div>
                     <h1 className="text-3xl font-bold">CRM</h1>
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
-                        Gestione relazioni clienti, rinnovi e comunicazioni fornitori.
+                        Gestione relazioni clienti, rinnovi e archivio comunicazioni.
                     </p>
                 </div>
-                <button onClick={() => setIsFreeCommModalOpen(true)} className="md-btn md-btn-raised md-btn-green">
+                <button onClick={() => { setReuseData(null); setIsFreeCommModalOpen(true); }} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
                     <span className="ml-2">Nuova Comunicazione</span>
                 </button>
             </div>
 
+            <div className="mt-6 border-b mb-6" style={{borderColor: 'var(--md-divider)'}}>
+                <nav className="-mb-px flex space-x-6 overflow-x-auto">
+                    <button onClick={() => setActiveTab('overview')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
+                    <button onClick={() => setActiveTab('archive')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'archive' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Archivio Comunicazioni</button>
+                </nav>
+            </div>
+
             {loading ? (
                 <div className="flex justify-center py-12"><Spinner /></div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    
-                    {/* COLUMN 1: Client Renewals */}
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-bold" style={{ color: 'var(--md-primary)' }}>Rinnovi Iscrizioni ({expiringEnrollments.length})</h2>
+                <>
+                {activeTab === 'overview' ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
+                        {/* COLUMN 1: Client Renewals */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold" style={{ color: 'var(--md-primary)' }}>Rinnovi Iscrizioni ({expiringEnrollments.length})</h2>
+                            </div>
+                            
+                            {expiringEnrollments.length === 0 ? (
+                                <div className="md-card p-8 text-center text-gray-400 italic">
+                                    Nessuna iscrizione in scadenza nei prossimi 30 giorni.
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {expiringEnrollments.map((item, idx) => (
+                                        <div key={idx} className="md-card p-4 border-l-4 flex flex-col sm:flex-row justify-between items-start gap-4 hover:shadow-md transition-shadow" style={{ borderLeftColor: 'var(--md-primary)' }}>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h3 className="font-bold text-gray-800">{item.enrollment.childName}</h3>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.reason === 'lessons' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                        {item.reason === 'lessons' ? 'Lezioni Finite' : 'In Scadenza'}
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-gray-600">
+                                                    Cliente: {item.client 
+                                                        ? (item.client.clientType === ClientType.Parent ? `${(item.client as ParentClient).firstName} ${(item.client as ParentClient).lastName}` : (item.client as InstitutionalClient).companyName)
+                                                        : 'N/D'}
+                                                </p>
+                                                <div className="mt-2 text-xs text-gray-500 grid grid-cols-2 gap-2">
+                                                    <span>Scadenza: <strong>{new Date(item.enrollment.endDate).toLocaleDateString()}</strong></span>
+                                                    <span>Residuo: <strong>{item.enrollment.lessonsRemaining} lez.</strong></span>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleOpenModal(item, 'client')}
+                                                className="md-btn md-btn-flat text-sm whitespace-nowrap self-center"
+                                                style={{ color: 'var(--md-primary)' }}
+                                            >
+                                                <span className="mr-1"><ChatIcon /></span> Contatta
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
+
+                        {/* COLUMN 2: Supplier Payments */}
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-xl font-bold text-amber-900">Pagamenti Noli ({pendingRents.length})</h2>
+                            </div>
+
+                            {pendingRents.length === 0 ? (
+                                <div className="md-card p-8 text-center text-gray-400 italic">
+                                    Nessun nolo in attesa di pagamento.
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    {pendingRents.map((item, idx) => (
+                                        <div key={idx} className="md-card p-4 border-l-4 border-amber-500 flex flex-col sm:flex-row justify-between items-start gap-4 hover:shadow-md transition-shadow">
+                                            <div className="flex-1">
+                                                <h3 className="font-bold text-gray-800 mb-1">{item.transaction.description}</h3>
+                                                <p className="text-sm text-gray-600">
+                                                    Fornitore: {item.supplier ? item.supplier.companyName : 'Sconosciuto'}
+                                                </p>
+                                                <div className="mt-2 flex items-center gap-3">
+                                                    <span className="text-lg font-bold text-red-600">€ {item.transaction.amount.toFixed(2)}</span>
+                                                    <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Da Saldare</span>
+                                                </div>
+                                                <p className="text-xs text-gray-400 mt-1">Rif: {new Date(item.transaction.date).toLocaleDateString()}</p>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleOpenModal(item, 'supplier')}
+                                                className="md-btn md-btn-flat text-amber-600 text-sm whitespace-nowrap self-center"
+                                            >
+                                                <span className="mr-1"><ChatIcon /></span> Contatta
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="md-card p-0 animate-fade-in overflow-hidden">
                         
-                        {expiringEnrollments.length === 0 ? (
-                            <div className="md-card p-8 text-center text-gray-400 italic">
-                                Nessuna iscrizione in scadenza nei prossimi 30 giorni.
+                        {/* Toolbar di Ricerca e Ordinamento */}
+                        <div className="p-4 border-b bg-white flex flex-col md:flex-row gap-4 justify-between items-center">
+                             <div className="relative w-full md:w-72">
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <SearchIcon />
+                                </div>
+                                <input
+                                    type="text"
+                                    placeholder="Cerca per oggetto, messaggio, destinatario..."
+                                    className="block w-full bg-gray-50 border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    style={{borderColor: 'var(--md-divider)'}}
+                                />
                             </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {expiringEnrollments.map((item, idx) => (
-                                    <div key={idx} className="md-card p-4 border-l-4 flex flex-col sm:flex-row justify-between items-start gap-4 hover:shadow-md transition-shadow" style={{ borderLeftColor: 'var(--md-primary)' }}>
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <h3 className="font-bold text-gray-800">{item.enrollment.childName}</h3>
-                                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.reason === 'lessons' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                    {item.reason === 'lessons' ? 'Lezioni Finite' : 'In Scadenza'}
-                                                </span>
-                                            </div>
-                                            <p className="text-sm text-gray-600">
-                                                Cliente: {item.client 
-                                                    ? (item.client.clientType === ClientType.Parent ? `${(item.client as ParentClient).firstName} ${(item.client as ParentClient).lastName}` : (item.client as InstitutionalClient).companyName)
-                                                    : 'N/D'}
-                                            </p>
-                                            <div className="mt-2 text-xs text-gray-500 grid grid-cols-2 gap-2">
-                                                <span>Scadenza: <strong>{new Date(item.enrollment.endDate).toLocaleDateString()}</strong></span>
-                                                <span>Residuo: <strong>{item.enrollment.lessonsRemaining} lez.</strong></span>
-                                            </div>
-                                        </div>
-                                        <button 
-                                            onClick={() => handleOpenModal(item, 'client')}
-                                            className="md-btn md-btn-flat text-sm whitespace-nowrap self-center"
-                                            style={{ color: 'var(--md-primary)' }}
-                                        >
-                                            <span className="mr-1"><ChatIcon /></span> Contatta
-                                        </button>
-                                    </div>
-                                ))}
+                            <div className="w-full md:w-48">
+                                <select
+                                    value={sortOrder}
+                                    onChange={(e) => setSortOrder(e.target.value as any)}
+                                    className="block w-full bg-gray-50 border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500"
+                                    style={{borderColor: 'var(--md-divider)'}}
+                                >
+                                    <option value="date_desc">Data (Recenti)</option>
+                                    <option value="date_asc">Data (Meno recenti)</option>
+                                    <option value="subject_asc">Oggetto (A-Z)</option>
+                                    <option value="subject_desc">Oggetto (Z-A)</option>
+                                </select>
                             </div>
-                        )}
-                    </div>
-
-                    {/* COLUMN 2: Supplier Payments */}
-                    <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-xl font-bold text-amber-900">Pagamenti Noli ({pendingRents.length})</h2>
                         </div>
 
-                        {pendingRents.length === 0 ? (
-                            <div className="md-card p-8 text-center text-gray-400 italic">
-                                Nessun nolo in attesa di pagamento.
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                {pendingRents.map((item, idx) => (
-                                    <div key={idx} className="md-card p-4 border-l-4 border-amber-500 flex flex-col sm:flex-row justify-between items-start gap-4 hover:shadow-md transition-shadow">
-                                        <div className="flex-1">
-                                            <h3 className="font-bold text-gray-800 mb-1">{item.transaction.description}</h3>
-                                            <p className="text-sm text-gray-600">
-                                                Fornitore: {item.supplier ? item.supplier.companyName : 'Sconosciuto'}
-                                            </p>
-                                            <div className="mt-2 flex items-center gap-3">
-                                                <span className="text-lg font-bold text-red-600">€ {item.transaction.amount.toFixed(2)}</span>
-                                                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Da Saldare</span>
-                                            </div>
-                                            <p className="text-xs text-gray-400 mt-1">Rif: {new Date(item.transaction.date).toLocaleDateString()}</p>
-                                        </div>
-                                        <button 
-                                            onClick={() => handleOpenModal(item, 'supplier')}
-                                            className="md-btn md-btn-flat text-amber-600 text-sm whitespace-nowrap self-center"
-                                        >
-                                            <span className="mr-1"><ChatIcon /></span> Contatta
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead className="bg-gray-50 border-b">
+                                    <tr>
+                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Data</th>
+                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Canale</th>
+                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Oggetto / Contenuto</th>
+                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Destinatari</th>
+                                        <th className="p-4 text-right text-xs font-semibold text-gray-500 uppercase">Azioni</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {filteredLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-gray-50">
+                                            <td className="p-4 text-sm whitespace-nowrap">
+                                                {new Date(log.date).toLocaleString('it-IT')}
+                                            </td>
+                                            <td className="p-4">
+                                                {log.channel === 'email' && <span className="text-indigo-600 bg-indigo-50 px-2 py-1 rounded text-xs flex items-center w-fit gap-1"><MailIcon/> Email</span>}
+                                                {log.channel === 'whatsapp' && <span className="text-green-600 bg-green-50 px-2 py-1 rounded text-xs flex items-center w-fit gap-1"><ChatIcon/> WA</span>}
+                                                {log.channel === 'sms' && <span className="text-blue-600 bg-blue-50 px-2 py-1 rounded text-xs flex items-center w-fit gap-1"><SmsIcon/> SMS</span>}
+                                            </td>
+                                            <td className="p-4 max-w-xs">
+                                                <div className="font-bold text-gray-800 truncate">{log.subject || '(Nessun Oggetto)'}</div>
+                                                <div className="text-xs text-gray-500 truncate">{log.message}</div>
+                                            </td>
+                                            <td className="p-4 text-sm">
+                                                {log.recipientCount > 1 ? (
+                                                    <span className="font-medium">{log.recipientCount} Destinatari</span>
+                                                ) : (
+                                                    <span className="text-gray-700">{log.recipients[0]}</span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-right flex justify-end gap-2">
+                                                <button 
+                                                    onClick={() => handleReuseCommunication(log)}
+                                                    className="md-icon-btn text-green-600 bg-green-50 hover:bg-green-100" 
+                                                    title="Riusa Contenuto"
+                                                >
+                                                    <RestoreIcon />
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteLog(log.id)}
+                                                    className="md-icon-btn delete" 
+                                                    title="Elimina Log"
+                                                >
+                                                    <TrashIcon />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {filteredLogs.length === 0 && (
+                                        <tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">Nessuna comunicazione trovata.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-
-                </div>
+                )}
+                </>
             )}
 
             {/* Event-Driven Modal */}
@@ -703,7 +864,8 @@ const CRM: React.FC = () => {
                     <CommunicationModal 
                         data={modalData} 
                         type={modalType} 
-                        onClose={() => setIsModalOpen(false)} 
+                        onClose={() => setIsModalOpen(false)}
+                        onSuccess={fetchData} 
                     />
                 </Modal>
             )}
@@ -714,7 +876,9 @@ const CRM: React.FC = () => {
                     <FreeCommunicationModal 
                         clients={allClients}
                         suppliers={allSuppliers}
+                        initialData={reuseData}
                         onClose={() => setIsFreeCommModalOpen(false)}
+                        onSuccess={fetchData}
                     />
                 </Modal>
             )}

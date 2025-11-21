@@ -90,6 +90,9 @@ const ActivityLog: React.FC = () => {
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
 
+    // Sort State
+    const [sortOrder, setSortOrder] = useState<'time_asc' | 'time_desc'>('time_asc');
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -117,9 +120,6 @@ const ActivityLog: React.FC = () => {
                     }
                 }
             });
-
-            // Sort by time
-            dailyLessons.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
             // Fetch existing assignments
             const lessonIds = dailyLessons.map(l => l.lessonId);
@@ -150,6 +150,21 @@ const ActivityLog: React.FC = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Sorting Effect
+    useEffect(() => {
+        setLessons(prev => {
+            const sorted = [...prev];
+            sorted.sort((a, b) => {
+                if (sortOrder === 'time_asc') {
+                    return a.startTime.localeCompare(b.startTime);
+                } else {
+                    return b.startTime.localeCompare(a.startTime);
+                }
+            });
+            return sorted;
+        });
+    }, [sortOrder]);
 
     const handleDateChange = (offset: number) => {
         const date = new Date(selectedDate);
@@ -202,7 +217,7 @@ const ActivityLog: React.FC = () => {
                 )}
             </div>
 
-            {/* Navigazione Data */}
+            {/* Navigazione Data & Filtri */}
             <div className="md-card p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center space-x-4">
                     <button onClick={() => handleDateChange(-1)} className="md-btn md-btn-flat text-2xl font-bold">&lt;</button>
@@ -219,12 +234,26 @@ const ActivityLog: React.FC = () => {
                     </div>
                     <button onClick={() => handleDateChange(1)} className="md-btn md-btn-flat text-2xl font-bold">&gt;</button>
                 </div>
-                <button 
-                    onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} 
-                    className="text-sm text-gray-600 font-medium hover:underline"
-                >
-                    Torna a Oggi
-                </button>
+                
+                <div className="flex items-center gap-4 w-full sm:w-auto">
+                    <button 
+                        onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} 
+                        className="text-sm text-gray-600 font-medium hover:underline whitespace-nowrap"
+                    >
+                        Torna a Oggi
+                    </button>
+                    <div className="w-full sm:w-40">
+                        <select 
+                            value={sortOrder} 
+                            onChange={(e) => setSortOrder(e.target.value as any)} 
+                            className="block w-full bg-white border rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                            style={{borderColor: 'var(--md-divider)'}}
+                        >
+                            <option value="time_asc">Orario (Cresc)</option>
+                            <option value="time_desc">Orario (Decr)</option>
+                        </select>
+                    </div>
+                </div>
             </div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (

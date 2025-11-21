@@ -159,3 +159,22 @@ Personalizzazione Branding e Identità PWA.
     - **Manifest Dinamico**: Creato un sistema che genera un `manifest.json` "virtuale" (Blob URL) contenente il logo personalizzato dell'utente. Questo permette all'app installata su desktop/mobile di avere l'icona corretta dell'attività invece di quella di default.
     - **Naming**: Forzato il nome dell'applicazione installata a **"EP v1"** sia nel manifest statico che in quello dinamico.
 2.  **PDF Layout**: Perfezionato l'allineamento e le spaziature nella testata dei documenti PDF (Fatture/Preventivi) per migliorare la leggibilità e la resa estetica.
+
+---
+
+## Sessione 12 (3 Giugno 2024)
+
+### Obiettivo della Sessione
+Potenziamento del CRM con storico comunicazioni e analisi architetturale per l'espansione web (Sito Vetrina).
+
+### Riepilogo delle Attività
+1.  **Archivio Comunicazioni (CRM)**:
+    -   **Backend**: Creato il modello `CommunicationLog` e il servizio `crmService` per tracciare ogni messaggio inviato.
+    -   **Frontend**: Riorganizzata la pagina CRM in tab ("Panoramica" e "Archivio").
+    -   **Funzionalità**: Implementato il salvataggio automatico post-invio e la funzione "Riusa" per duplicare messaggi precedenti.
+    -   **UX**: Aggiunti filtri di ricerca (per oggetto, messaggio, destinatario) e ordinamento (cronologico/alfabetico) nell'archivio.
+
+2.  **Consulenza Architetturale (Sito Web)**:
+    -   Analizzata la fattibilità di un sito vetrina per iscrizioni e pagamenti automatici.
+    -   **Strategia Definita**: Utilizzo di un secondo progetto Vercel per il frontend pubblico.
+    -   **Sicurezza**: Adozione di Vercel Functions (o Cloud Functions) come middleware per gestire le scritture su Firebase (iscrizioni) tramite Admin SDK, mantenendo le regole di sicurezza del database "chiuse" al pubblico.

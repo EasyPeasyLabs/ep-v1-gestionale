@@ -194,6 +194,20 @@ export interface Notification {
     filterContext?: any;
 }
 
+// --- CRM / Communications ---
+export interface CommunicationLog {
+    id: string;
+    date: string; // ISO String
+    channel: 'email' | 'whatsapp' | 'sms';
+    subject: string;
+    message: string;
+    recipients: string[]; // Array di nomi o stringa descrittiva
+    recipientCount: number;
+    type: 'manual' | 'renewal' | 'payment' | 'other';
+}
+
+export type CommunicationLogInput = Omit<CommunicationLog, 'id'>;
+
 // --- Finance ---
 export enum TransactionType {
     Income = 'income',

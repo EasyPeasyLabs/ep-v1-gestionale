@@ -312,8 +312,9 @@ const Clients: React.FC = () => {
     // Delete/Restore State
     const [clientToProcess, setClientToProcess] = useState<{id: string, action: 'delete' | 'restore' | 'permanent'} | null>(null);
     
-    // Search State
+    // Search & Sort State
     const [searchTerm, setSearchTerm] = useState('');
+    const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc'>('name_asc');
 
     const fetchClientsData = useCallback(async () => {
         try {
@@ -450,6 +451,23 @@ const Clients: React.FC = () => {
         }
     });
 
+    // Sorting Logic
+    filteredClients.sort((a, b) => {
+        const nameA = a.clientType === ClientType.Parent 
+            ? `${(a as ParentClient).lastName} ${(a as ParentClient).firstName}` 
+            : (a as InstitutionalClient).companyName;
+        
+        const nameB = b.clientType === ClientType.Parent 
+            ? `${(b as ParentClient).lastName} ${(b as ParentClient).firstName}` 
+            : (b as InstitutionalClient).companyName;
+
+        if (sortOrder === 'name_asc') {
+            return nameA.localeCompare(nameB);
+        } else {
+            return nameB.localeCompare(nameA);
+        }
+    });
+
     // Funzione per calcolare lo stile del bordo dell'avatar
     const getAvatarBorderStyle = (client: Client) => {
         // Solo per genitori con figli
@@ -536,18 +554,35 @@ const Clients: React.FC = () => {
                         <span className="ml-2 font-bold">MODALITÀ CESTINO:</span> Stai visualizzando i clienti eliminati. Puoi ripristinarli o eliminarli definitivamente.
                     </div>
                 )}
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <SearchIcon />
+                
+                <div className="flex flex-col md:flex-row gap-4">
+                    {/* Search Bar */}
+                    <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <SearchIcon />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="Cerca per nome, cognome, azienda, telefono, indirizzo, città..."
+                            className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={{borderColor: 'var(--md-divider)'}}
+                        />
                     </div>
-                    <input
-                        type="text"
-                        placeholder="Cerca per nome, cognome, azienda, telefono, indirizzo, città..."
-                        className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{borderColor: 'var(--md-divider)'}}
-                    />
+
+                    {/* Sort Control */}
+                    <div className="w-full md:w-48">
+                        <select 
+                            value={sortOrder} 
+                            onChange={(e) => setSortOrder(e.target.value as any)} 
+                            className="block w-full bg-white border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                            style={{borderColor: 'var(--md-divider)'}}
+                        >
+                            <option value="name_asc">Nome (A-Z)</option>
+                            <option value="name_desc">Nome (Z-A)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
