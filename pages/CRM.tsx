@@ -6,6 +6,7 @@ import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getCommunicationLogs, logCommunication, deleteCommunicationLog, getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../services/crmService';
 import { getCommunicationTemplates } from '../services/settingsService';
+import { uploadCampaignFile } from '../services/storageService';
 import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -14,6 +15,7 @@ import PlusIcon from '../components/icons/PlusIcon';
 import RestoreIcon from '../components/icons/RestoreIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
+import UploadIcon from '../components/icons/UploadIcon';
 
 // --- Icons ---
 const MailIcon = () => (
@@ -225,6 +227,7 @@ const CampaignWizard: React.FC<{
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
     const [mediaLinks, setMediaLinks] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
     
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [recipientType, setRecipientType] = useState<'clients' | 'suppliers'>('clients');
@@ -250,6 +253,23 @@ const CampaignWizard: React.FC<{
                 : item.companyName,
             contact: channel === 'email' ? item.email : item.phone
         }));
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        try {
+            const url = await uploadCampaignFile(file);
+            // Aggiungi l'URL al campo esistente, separato da a capo se c'è già testo
+            setMediaLinks(prev => prev ? `${prev}\n${url}` : url);
+        } catch (error) {
+            console.error("Errore caricamento file:", error);
+            alert("Errore durante il caricamento del file.");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleFinish = () => {
@@ -328,9 +348,31 @@ const CampaignWizard: React.FC<{
                         <div className="md-input-group">
                             <textarea rows={5} value={message} onChange={e => setMessage(e.target.value)} className="w-full p-2 border rounded bg-white" placeholder="Testo del messaggio..."></textarea>
                         </div>
+                        
+                        {/* Media Links with Upload Button */}
                         <div className="md-input-group">
-                            <input type="text" value={mediaLinks} onChange={e => setMediaLinks(e.target.value)} className="md-input" placeholder=" " />
-                            <label className="md-input-label">Link Immagini/Audio/Video (Opzionale)</label>
+                            <label className="block text-xs text-gray-500 mb-1">Allegati Multimediali (Immagini, Audio, Video)</label>
+                            <div className="flex gap-2 items-center">
+                                <input 
+                                    type="text" 
+                                    value={mediaLinks} 
+                                    onChange={e => setMediaLinks(e.target.value)} 
+                                    className="md-input flex-1" 
+                                    placeholder="Incolla link o carica file..." 
+                                />
+                                <label className={`cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-2 rounded border border-gray-300 flex items-center ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                    {isUploading ? <Spinner /> : <UploadIcon />}
+                                    <span className="ml-2 text-xs hidden sm:inline">{isUploading ? 'Caricamento...' : 'Carica File'}</span>
+                                    <input 
+                                        type="file" 
+                                        className="hidden" 
+                                        accept="image/*,video/*,audio/*"
+                                        onChange={handleFileUpload}
+                                        disabled={isUploading}
+                                    />
+                                </label>
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1">Supporta: JPG, PNG, MP3, MP4. Il file verrà caricato e trasformato in un link pubblico.</p>
                         </div>
                     </div>
                 )}
@@ -769,30 +811,83 @@ const CRM: React.FC = () => {
                 )}
 
                 {activeTab === 'archive' && (
-                    <div className="md-card p-0 overflow-hidden">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 border-b">
-                                <tr>
-                                    <th className="p-3">Data</th>
-                                    <th className="p-3">Canale</th>
-                                    <th className="p-3">Oggetto</th>
-                                    <th className="p-3">Destinatari</th>
-                                    <th className="p-3 text-right">Azioni</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {communicationLogs.map(log => (
-                                    <tr key={log.id} className="hover:bg-gray-50 border-b last:border-0">
-                                        <td className="p-3 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
-                                        <td className="p-3 capitalize">{log.channel}</td>
-                                        <td className="p-3 max-w-xs truncate font-medium">{log.subject}</td>
-                                        <td className="p-3 text-gray-500">{log.recipientCount} destinatari</td>
-                                        <td className="p-3 text-right"><button onClick={() => deleteCommunicationLog(log.id).then(fetchData)} className="text-gray-400 hover:text-red-600"><TrashIcon/></button></td>
+                    <>
+                        {/* Mobile View: Cards Layout */}
+                        <div className="md:hidden space-y-4">
+                            {communicationLogs.length === 0 ? (
+                                <p className="text-center text-gray-400 py-8">Nessuna comunicazione in archivio.</p>
+                            ) : (
+                                communicationLogs.map(log => (
+                                    <div key={log.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm relative">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">
+                                                    {new Date(log.date).toLocaleDateString()}
+                                                </p>
+                                                <h4 className="font-bold text-gray-900 text-sm line-clamp-1">{log.subject}</h4>
+                                            </div>
+                                            <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ml-2 shrink-0 ${
+                                                log.channel === 'whatsapp' ? 'bg-green-100 text-green-800' : 
+                                                log.channel === 'email' ? 'bg-indigo-100 text-indigo-800' : 
+                                                'bg-gray-100 text-gray-800'
+                                            }`}>
+                                                {log.channel}
+                                            </span>
+                                        </div>
+                                        
+                                        <p className="text-xs text-gray-600 mb-3 line-clamp-3 bg-gray-50 p-2 rounded border border-gray-100">
+                                            {log.message}
+                                        </p>
+
+                                        <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                                            <span className="text-xs font-medium text-gray-500 flex items-center gap-1">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                                {log.recipientCount}
+                                            </span>
+                                            <button 
+                                                onClick={() => deleteCommunicationLog(log.id).then(fetchData)} 
+                                                className="text-gray-400 hover:text-red-600 p-1 transition-colors"
+                                                title="Elimina"
+                                            >
+                                                <TrashIcon />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Desktop View: Table Layout */}
+                        <div className="hidden md:block md-card p-0 overflow-hidden">
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 border-b">
+                                    <tr>
+                                        <th className="p-3">Data</th>
+                                        <th className="p-3">Canale</th>
+                                        <th className="p-3">Oggetto</th>
+                                        <th className="p-3">Destinatari</th>
+                                        <th className="p-3 text-right">Azioni</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {communicationLogs.map(log => (
+                                        <tr key={log.id} className="hover:bg-gray-50">
+                                            <td className="p-3 whitespace-nowrap">{new Date(log.date).toLocaleDateString()}</td>
+                                            <td className="p-3 capitalize">{log.channel}</td>
+                                            <td className="p-3 max-w-xs truncate font-medium">{log.subject}</td>
+                                            <td className="p-3 text-gray-500">{log.recipientCount} destinatari</td>
+                                            <td className="p-3 text-right"><button onClick={() => deleteCommunicationLog(log.id).then(fetchData)} className="text-gray-400 hover:text-red-600"><TrashIcon/></button></td>
+                                        </tr>
+                                    ))}
+                                    {communicationLogs.length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="p-8 text-center text-gray-400">Nessuna comunicazione in archivio.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </>
                 )}
                 </>
             )}
