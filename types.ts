@@ -208,6 +208,48 @@ export interface CommunicationLog {
 
 export type CommunicationLogInput = Omit<CommunicationLog, 'id'>;
 
+// --- Nuovi Tipi per Template e Campagne ---
+
+export interface CommunicationTemplate {
+    id: string; // 'expiry', 'lessons', 'payment'
+    label: string; // Etichetta leggibile
+    subject: string;
+    body: string;
+    signature: string;
+}
+
+export interface CampaignRecipient {
+    id: string;
+    name: string;
+    contact: string; // Email o Telefono
+    type: 'client' | 'supplier';
+}
+
+export interface Campaign {
+    id: string;
+    name: string;
+    channel: 'email' | 'whatsapp';
+    subject: string; // Oggetto (Email) o Titolo (WA)
+    message: string;
+    mediaLinks: string; // Link a immagini/audio
+    recipients: CampaignRecipient[];
+    
+    // Scheduling
+    startDate: string; // ISO Date
+    time: string; // HH:mm
+    frequency: 'once' | 'weekly' | 'monthly';
+    repeatCount: number; // Numero totale di invii previsti
+    
+    // Stato Esecuzione
+    status: 'active' | 'completed' | 'paused';
+    sentCount: number; // Quante volte è stata inviata
+    nextRun: string; // ISO Date del prossimo invio
+    lastRun?: string; // ISO Date ultimo invio
+}
+
+export type CampaignInput = Omit<Campaign, 'id'>;
+
+
 // --- Finance ---
 export enum TransactionType {
     Income = 'income',

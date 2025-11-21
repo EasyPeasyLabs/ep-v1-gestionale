@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, PeriodicCheckInput, CheckCategory, AppointmentType } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck } from '../services/settingsService';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate } from '../types';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate } from '../services/settingsService';
 import { applyTheme, getSavedTheme, defaultTheme } from '../utils/theme';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -9,12 +9,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
-import ChecklistIcon from '../components/icons/ChecklistIcon';
-import ClockIcon from '../components/icons/ClockIcon';
-import BellIcon from '../components/icons/BellIcon';
 import UploadIcon from '../components/icons/UploadIcon';
-import { requestNotificationPermission } from '../services/fcmService';
-import { auth } from '../firebase/config';
 
 
 const SubscriptionForm: React.FC<{
@@ -55,210 +50,51 @@ const SubscriptionForm: React.FC<{
     );
 };
 
-const PeriodicCheckForm: React.FC<{
-    check?: PeriodicCheck | null;
-    onSave: (check: PeriodicCheckInput | PeriodicCheck) => void;
+const TemplateForm: React.FC<{
+    template: CommunicationTemplate;
+    onSave: (t: CommunicationTemplate) => void;
     onCancel: () => void;
-}> = ({ check, onSave, onCancel }) => {
-    const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments);
-    const [subCategory, setSubCategory] = useState<AppointmentType | ''>(check?.subCategory || '');
-    const [selectedDays, setSelectedDays] = useState<number[]>(check?.daysOfWeek || []);
-    const [startTime, setStartTime] = useState(check?.startTime || '09:00');
-    const [endTime, setEndTime] = useState(check?.endTime || '10:00');
-    const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false);
-    const [note, setNote] = useState(check?.note || '');
-    
-    const [isSaving, setIsSaving] = useState(false);
+}> = ({ template, onSave, onCancel }) => {
+    const [subject, setSubject] = useState(template.subject);
+    const [body, setBody] = useState(template.body);
+    const [signature, setSignature] = useState(template.signature);
 
-    const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
-
-    const toggleDay = (dayIndex: number) => {
-        setSelectedDays(prev => 
-            prev.includes(dayIndex) ? prev.filter(d => d !== dayIndex) : [...prev, dayIndex]
-        );
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (selectedDays.length === 0) {
-            alert("Seleziona almeno un giorno della settimana.");
-            return;
-        }
-        setIsSaving(true);
-        
-        const checkData: any = {
-            category,
-            daysOfWeek: selectedDays.sort(),
-            startTime,
-            endTime,
-            pushEnabled,
-            note
-        };
-        if (category === CheckCategory.Appointments && subCategory) {
-            checkData.subCategory = subCategory;
-        } else if (check?.id) {
-            checkData.subCategory = null;
-        }
-
-        try {
-            if (check?.id) { await onSave({ ...checkData, id: check.id }); } 
-            else { await onSave(checkData); }
-        } catch (err) {
-            console.error("Errore salvataggio:", err);
-            alert("Errore durante il salvataggio.");
-        } finally {
-             setIsSaving(false);
-        }
+        onSave({ ...template, subject, body, signature });
     };
+
+    const placeholders = template.id === 'payment' 
+        ? ['{{fornitore}}', '{{descrizione}}']
+        : ['{{cliente}}', '{{bambino}}', '{{data}}'];
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
-                <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Verifica' : 'Nuova Verifica Periodica'}</h2>
+                <h2 className="text-xl font-bold text-gray-800">Modifica Template: {template.label}</h2>
             </div>
-            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
+                <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800">
+                    <strong>Variabili disponibili:</strong> {placeholders.join(', ')}
+                </div>
                 <div className="md-input-group">
-                    <select id="checkCat" value={category} onChange={e => { setCategory(e.target.value as CheckCategory); if (e.target.value !== CheckCategory.Appointments) setSubCategory(''); else setSubCategory(AppointmentType.Generic); }} className="md-input">
-                        {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <label htmlFor="checkCat" className="md-input-label !top-0 !text-xs !text-gray-500">Categoria Controllo</label>
+                    <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " />
+                    <label className="md-input-label">Oggetto / Titolo</label>
                 </div>
-                {category === CheckCategory.Appointments && (
-                    <div className="md-input-group animate-fade-in">
-                        <select id="subCat" value={subCategory} onChange={e => setSubCategory(e.target.value as AppointmentType)} className="md-input">
-                            {Object.values(AppointmentType).map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <label htmlFor="subCat" className="md-input-label !top-0 !text-xs !text-gray-500">Tipo Appuntamento</label>
-                    </div>
-                )}
-                <div>
-                    <label className="block text-xs text-gray-500 mb-2">Giorni della settimana</label>
-                    <div className="flex flex-wrap gap-2">
-                        {daysMap.map((label, idx) => (
-                            <button key={idx} type="button" onClick={() => toggleDay(idx)} className={`w-10 h-10 rounded-full text-xs font-bold transition-colors flex items-center justify-center border ${selectedDays.includes(idx) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300'}`}>
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="md-input-group"><input id="chkStart" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="md-input"/><label htmlFor="chkStart" className="md-input-label !top-0 !text-xs !text-gray-500">Dalle</label></div>
-                    <div className="md-input-group"><input id="chkEnd" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="chkEnd" className="md-input-label !top-0 !text-xs !text-gray-500">Alle</label></div>
-                </div>
-                
                 <div className="md-input-group">
-                    <input type="text" value={note} onChange={e => setNote(e.target.value)} className="md-input" placeholder=" " />
-                    <label className="md-input-label">Note / Dettagli (Opzionale)</label>
+                    <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea>
+                    <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label>
                 </div>
-
-                {/* Sezione Notifiche Push (Pura) */}
-                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
-                    <h4 className="text-sm font-bold text-indigo-900 flex items-center">
-                        <BellIcon /> <span className="ml-2">Notifiche Push</span>
-                    </h4>
-                    
-                    <div className="flex items-center justify-between">
-                        <div className="text-xs text-indigo-800">
-                            <span className="block font-medium">Abilita Notifiche su Dispositivi</span>
-                            <span className="block opacity-75">Ricevi avviso su smartphone anche ad app chiusa.</span>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
-                            <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </label>
-                    </div>
+                <div className="md-input-group">
+                    <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea>
+                    <label className="text-xs text-gray-500 mt-1 block">Firma</label>
                 </div>
-
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button type="submit" disabled={isSaving} className="md-btn md-btn-raised md-btn-green md-btn-sm">{isSaving ? 'Salvataggio...' : 'Salva'}</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button>
             </div>
         </form>
-    );
-};
-
-const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const [checks, setChecks] = useState<PeriodicCheck[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [editingCheck, setEditingCheck] = useState<PeriodicCheck | null>(null);
-
-    const fetchChecks = async () => {
-        setLoading(true);
-        const data = await getPeriodicChecks();
-        setChecks(data);
-        setLoading(false);
-    };
-
-    useEffect(() => { fetchChecks(); }, []);
-
-    const handleSave = async (check: PeriodicCheckInput | PeriodicCheck) => {
-        if ('id' in check) await updatePeriodicCheck(check.id, check);
-        else await addPeriodicCheck(check);
-        setIsFormOpen(false); setEditingCheck(null); fetchChecks();
-        window.dispatchEvent(new Event('EP_DataUpdated'));
-    };
-
-    const handleDelete = async (id: string) => {
-        if (window.confirm("Eliminare questa regola?")) {
-            await deletePeriodicCheck(id);
-            fetchChecks();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        }
-    };
-
-    const daysMapShort = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
-
-    return (
-        <Modal onClose={onClose} size="xl">
-            {isFormOpen ? (
-                <PeriodicCheckForm check={editingCheck} onSave={handleSave} onCancel={() => { setIsFormOpen(false); setEditingCheck(null); }} />
-            ) : (
-                <div className="flex flex-col h-full max-h-[90vh]">
-                    <div className="p-6 pb-4 border-b flex justify-between items-center flex-shrink-0">
-                        <div>
-                            <h2 className="text-xl font-bold">Planner Verifiche Periodiche</h2>
-                            <p className="text-sm text-gray-500">Pianifica i controlli ricorrenti.</p>
-                        </div>
-                        <button onClick={() => setIsFormOpen(true)} className="md-btn md-btn-raised md-btn-green md-btn-sm">
-                            <PlusIcon /> <span className="ml-2">Aggiungi Verifica</span>
-                        </button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-                        {loading ? <Spinner /> : checks.length === 0 ? (
-                            <p className="text-center text-gray-400 italic py-10">Nessuna verifica pianificata.</p>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {checks.map(check => (
-                                    <div key={check.id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 flex flex-col justify-between relative group">
-                                        <div>
-                                            <div className="flex justify-between items-start">
-                                                <span className="text-xs font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-1 rounded mb-2 inline-block">{check.category}</span>
-                                                <div className="flex gap-2">
-                                                    {check.pushEnabled && <span className="text-indigo-500" title="Notifiche Attive"><BellIcon /></span>}
-                                                </div>
-                                            </div>
-                                            <h3 className="font-bold text-gray-800 mb-1">{check.subCategory ? `${check.subCategory}` : check.category}</h3>
-                                            <div className="text-sm text-gray-600 flex items-center gap-2 mb-2"><ClockIcon /> {check.startTime} - {check.endTime}</div>
-                                            <div className="flex gap-1 flex-wrap mb-2">
-                                                {check.daysOfWeek.sort().map(d => <span key={d} className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded border border-gray-200">{daysMapShort[d]}</span>)}
-                                            </div>
-                                            {check.note && <p className="text-xs text-gray-500 italic mt-2">"{check.note}"</p>}
-                                        </div>
-                                        <div className="mt-4 pt-3 border-t flex justify-end gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                                            <button onClick={() => { setEditingCheck(check); setIsFormOpen(true); }} className="md-icon-btn edit"><PencilIcon /></button>
-                                            <button onClick={() => handleDelete(check.id)} className="md-icon-btn delete"><TrashIcon /></button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <div className="p-4 border-t bg-white flex justify-end flex-shrink-0"><button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button></div>
-                </div>
-            )}
-        </Modal>
     );
 };
 
@@ -266,24 +102,32 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
 const Settings: React.FC = () => {
     const [info, setInfo] = useState<CompanyInfo | null>(null);
     const [subscriptions, setSubscriptions] = useState<SubscriptionType[]>([]);
+    const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    
     const [isSubModalOpen, setIsSubModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<SubscriptionType | null>(null);
     const [subToDelete, setSubToDelete] = useState<string | null>(null);
     
+    const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+    const [editingTemplate, setEditingTemplate] = useState<CommunicationTemplate | null>(null);
+
     const [primaryColor, setPrimaryColor] = useState(defaultTheme.primary);
     const [bgColor, setBgColor] = useState(defaultTheme.bgLight);
     
-    const [isChecksModalOpen, setIsChecksModalOpen] = useState(false);
-    const [notifPermission, setNotifPermission] = useState(Notification.permission);
-
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [companyData, subsData] = await Promise.all([getCompanyInfo(), getSubscriptionTypes()]);
-            setInfo(companyData); setSubscriptions(subsData);
+            const [companyData, subsData, templatesData] = await Promise.all([
+                getCompanyInfo(), 
+                getSubscriptionTypes(),
+                getCommunicationTemplates()
+            ]);
+            setInfo(companyData); 
+            setSubscriptions(subsData);
+            setTemplates(templatesData);
             const savedTheme = getSavedTheme();
             setPrimaryColor(savedTheme.primary);
             setBgColor(savedTheme.bg);
@@ -299,7 +143,6 @@ const Settings: React.FC = () => {
             try {
                 setIsSaving(true);
                 await updateCompanyInfo(info); 
-                // Emetti evento per aggiornare sidebar/header
                 window.dispatchEvent(new Event('EP_DataUpdated'));
                 alert("Dati aziendali e Logo salvati con successo!");
             } catch (err) {
@@ -315,7 +158,6 @@ const Settings: React.FC = () => {
         setInfo(prev => prev ? { ...prev, [field]: value } : null);
     };
 
-    // Gestione Upload Logo
     const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
@@ -345,6 +187,18 @@ const Settings: React.FC = () => {
         }
     };
 
+    const handleOpenTemplateModal = (t: CommunicationTemplate) => {
+        setEditingTemplate(t);
+        setIsTemplateModalOpen(true);
+    };
+
+    const handleSaveTemplate = async (t: CommunicationTemplate) => {
+        await saveCommunicationTemplate(t);
+        setIsTemplateModalOpen(false);
+        setEditingTemplate(null);
+        fetchAllData();
+    };
+
     const handleColorChange = (newPrimary: string, newBg: string) => {
         setPrimaryColor(newPrimary);
         setBgColor(newBg);
@@ -355,34 +209,15 @@ const Settings: React.FC = () => {
         handleColorChange(defaultTheme.primary, defaultTheme.bgLight);
     };
 
-    const handleReconnectNotifications = async () => {
-        if(!auth.currentUser) return;
-        const result = await requestNotificationPermission(auth.currentUser.uid);
-        setNotifPermission(Notification.permission);
-        if(result) alert("Servizio Notifiche connesso con successo!");
-        else alert("Connessione fallita o annullata.");
-    };
-
-    const handleTestNotification = () => {
-        if(Notification.permission === 'granted') {
-            new Notification("Test Locale EP v.1", {
-                body: "Se leggi questo messaggio, il tuo browser è configurato correttamente!",
-                icon: info?.logoBase64 || '/lemon_logo_150px.png'
-            });
-        } else {
-            alert("Impossibile inviare test: permessi non concessi.");
-        }
-    };
-
     if (loading) return <div className="mt-8 flex justify-center items-center h-64"><Spinner /></div>;
     if (error) return <p className="text-center text-red-500 py-8">{error}</p>;
 
   return (
     <div>
         <h1 className="text-3xl font-bold">Impostazioni</h1>
-        <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali, listini e integrazioni.</p>
+        <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali e i listini.</p>
 
-        {/* --- SEZIONE SUPERIORE: Impostazioni Generali --- */}
+        {/* --- SEZIONE UNICA: Impostazioni Generali & Listini --- */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
             
             {/* Colonna Sinistra */}
@@ -464,6 +299,7 @@ const Settings: React.FC = () => {
 
             {/* Colonna Destra */}
             <div className="space-y-8">
+                {/* Pacchetti */}
                 <div className="md-card p-6">
                     <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
                         <h2 className="text-lg font-semibold">Pacchetti Lezioni</h2>
@@ -488,59 +324,20 @@ const Settings: React.FC = () => {
                         {subscriptions.length === 0 && <p className="text-sm text-gray-400 italic text-center">Nessun pacchetto definito.</p>}
                     </div>
                 </div>
-            </div>
-        </div>
 
-        {/* --- SEZIONE INFERIORE: Strumenti Operativi & Diagnostica --- */}
-        <div className="mt-10 pt-6 border-t" style={{borderColor: 'var(--md-divider)'}}>
-            <h2 className="text-lg font-bold mb-6 text-gray-700">Strumenti Operativi & Sistema</h2>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Planner Verifiche Periodiche */}
-                <div className="md-card p-6 flex flex-col justify-between bg-gradient-to-r from-indigo-50 to-white border border-indigo-100">
-                    <div>
-                        <h2 className="text-lg font-semibold text-indigo-900">Planner & Controllo</h2>
-                        <p className="text-sm text-indigo-700 mt-1">
-                            Gestisci le verifiche periodiche (pagamenti, materiali, scadenze) e ricevi notifiche push automatiche.
-                        </p>
-                    </div>
-                    <button 
-                        onClick={() => setIsChecksModalOpen(true)} 
-                        className="mt-4 md-btn md-btn-raised md-btn-primary w-full flex justify-center items-center"
-                    >
-                        <ChecklistIcon /> <span className="ml-2">Apri Planner</span>
-                    </button>
-                </div>
-
-                {/* Diagnostica Notifiche */}
-                <div className="md-card p-6 border-l-4 border-indigo-500 bg-white">
-                    <h2 className="text-lg font-semibold text-indigo-900 mb-4">Centro Diagnostica Notifiche</h2>
-                    <div className="space-y-3 mb-6">
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">Permesso Browser:</span>
-                            <span className={`text-sm font-bold ${notifPermission === 'granted' ? 'text-green-600' : 'text-red-600'}`}>
-                                {notifPermission === 'granted' ? 'CONSENTITO ✅' : notifPermission === 'denied' ? 'BLOCCATO ❌' : 'RICHIESTA ⚠️'}
-                            </span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">Stato Servizio:</span>
-                            <span className="text-sm font-medium text-gray-500">Monitoraggio Attivo</span>
-                        </div>
-                    </div>
-                    
-                    {notifPermission === 'denied' && (
-                         <div className="bg-red-50 p-3 rounded border border-red-200 text-xs text-red-700 mb-4">
-                            <strong>ATTENZIONE:</strong> Le notifiche sono state bloccate dal browser. Clicca sull'icona del lucchetto 🔒 o delle impostazioni nella barra degli indirizzi e imposta "Notifiche" su "Consenti", poi ricarica la pagina.
-                        </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <button onClick={handleReconnectNotifications} className="md-btn md-btn-raised md-btn-primary text-xs">
-                            Rinizializza Servizio
-                        </button>
-                        <button onClick={handleTestNotification} className="md-btn md-btn-flat md-btn-primary text-xs border border-indigo-100">
-                            Test Notifica (Locale)
-                        </button>
+                {/* Template Comunicazioni */}
+                <div className="md-card p-6">
+                    <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Template Comunicazioni</h2>
+                    <div className="mt-4 space-y-3">
+                        {templates.map(t => (
+                            <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-100">
+                                <div>
+                                    <p className="font-medium text-sm">{t.label}</p>
+                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">{t.subject}</p>
+                                </div>
+                                <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit"><PencilIcon /></button>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -552,8 +349,10 @@ const Settings: React.FC = () => {
             </Modal>
         )}
 
-        {isChecksModalOpen && (
-            <PeriodicChecksModal onClose={() => setIsChecksModalOpen(false)} />
+        {isTemplateModalOpen && editingTemplate && (
+            <Modal onClose={() => setIsTemplateModalOpen(false)}>
+                <TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} />
+            </Modal>
         )}
 
         <ConfirmModal 

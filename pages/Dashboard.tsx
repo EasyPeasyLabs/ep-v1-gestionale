@@ -292,6 +292,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 title="Lezioni (Mese)" 
                 value={lessonsThisMonth}
                 subtext="Totale erogato questo mese"
+                onClick={() => setCurrentPage && setCurrentPage('ActivityLog')}
                 icon={<ChecklistIcon />}
                 colorClass="bg-emerald-50 text-emerald-600"
             />

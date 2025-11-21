@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, query, orderBy } from '@firebase/firestore';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, PeriodicCheckInput } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, PeriodicCheckInput, CommunicationTemplate } from '../types';
 
 // --- Company Info ---
 const settingsDocRef = doc(db, 'settings', 'companyInfo');
@@ -94,4 +94,52 @@ export const updatePeriodicCheck = async (id: string, check: Partial<PeriodicChe
 export const deletePeriodicCheck = async (id: string): Promise<void> => {
     const checkDoc = doc(db, 'periodicChecks', id);
     await deleteDoc(checkDoc);
+};
+
+// --- Communication Templates ---
+const templatesRef = collection(db, 'communicationTemplates');
+
+// Default Templates se il DB è vuoto
+const defaultTemplates: CommunicationTemplate[] = [
+    {
+        id: 'expiry',
+        label: 'Scadenza Iscrizione',
+        subject: 'Rinnovo Iscrizione in scadenza - {{bambino}}',
+        body: 'Gentile {{cliente}},\n\nTi ricordiamo che l\'iscrizione di {{bambino}} scadrà il {{data}}.\nPer confermare il posto per il prossimo periodo, ti preghiamo di effettuare il rinnovo.',
+        signature: 'A presto,\nEasy Peasy'
+    },
+    {
+        id: 'lessons',
+        label: 'Esaurimento Lezioni',
+        subject: 'Avviso esaurimento lezioni - {{bambino}}',
+        body: 'Gentile {{cliente}},\n\nLe lezioni del pacchetto di {{bambino}} stanno per terminare.\nTi invitiamo a rinnovare l\'iscrizione per non perdere la continuità didattica.',
+        signature: 'A presto,\nEasy Peasy'
+    },
+    {
+        id: 'payment',
+        label: 'Pagamento Fornitore',
+        subject: 'Avviso Pagamento Nolo - {{descrizione}}',
+        body: 'Spett.le {{fornitore}},\n\nVi informiamo che abbiamo preso in carico il pagamento per: {{descrizione}}.\nIl bonifico verrà effettuato nei prossimi giorni.',
+        signature: 'Cordiali saluti,\nAmministrazione Easy Peasy'
+    }
+];
+
+export const getCommunicationTemplates = async (): Promise<CommunicationTemplate[]> => {
+    const snapshot = await getDocs(templatesRef);
+    const templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CommunicationTemplate));
+    
+    // Merge con defaults se mancano
+    const merged = [...defaultTemplates];
+    templates.forEach(t => {
+        const idx = merged.findIndex(d => d.id === t.id);
+        if (idx >= 0) merged[idx] = t;
+        else merged.push(t);
+    });
+    return merged;
+};
+
+export const saveCommunicationTemplate = async (template: CommunicationTemplate): Promise<void> => {
+    // Usiamo setDoc con l'ID specifico (es. 'expiry') per sovrascrivere o creare
+    const docRef = doc(db, 'communicationTemplates', template.id);
+    await setDoc(docRef, template);
 };
