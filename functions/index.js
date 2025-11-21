@@ -11,7 +11,7 @@ const messaging = admin.messaging();
 exports.checkPeriodicNotifications = onSchedule({
     schedule: "* * * * *",
     timeZone: "Europe/Rome",
-    region: "europe-west1",
+    region: "europe-west1", // Standard Firebase region (Belgium)
 }, async (event) => {
     
     // 1. Calcola Ora e Giorno corrente in Italia
@@ -74,16 +74,20 @@ exports.checkPeriodicNotifications = onSchedule({
             // Configurazione Web Push specifica per PWA (Android Chrome & Desktop)
             webpush: {
                 headers: {
-                    Urgency: "high"
+                    Urgency: "high" // Importante per Android Doze mode
                 },
                 notification: {
                     icon: notif.icon,
+                    badge: notif.icon,
                     requireInteraction: true, // La notifica rimane visibile finché l'utente non interagisce
                     // Azioni al click gestite dal Service Worker o fcm_options
                 },
                 fcm_options: {
                     link: "https://ep-v1-gestionale.vercel.app/"
                 }
+            },
+            data: {
+                link: "https://ep-v1-gestionale.vercel.app/" // Fallback data payload
             },
             tokens: tokens // Multicast message
         };

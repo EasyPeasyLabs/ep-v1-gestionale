@@ -114,17 +114,22 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
 - **Logica Assenze e Recuperi**: Implementato un sistema ibrido per gestire le assenze con slittamento (recupero) automatico della lezione alla prima data utile, tenendo conto delle festività.
 - **Registro Attività (Log)**: Creata sezione per assegnare attività didattiche svolte ad ogni singola lezione e storico.
 - **CRM Avanzato (Comunicazioni Libere)**: Implementata modale per invio messaggi massivi o singoli a clienti/fornitori via Email (BCC) o WhatsApp.
-- **Planner Verifiche Periodiche**: Sistema CRUD per definire controlli ricorrenti (scadenze, pagamenti, materiali) con gestione giorni della settimana e abilitazione notifiche Push.
+- **Planner Verifiche Periodiche**: Sistema CRUD per definire controlli ricorrenti (scadenze, pagamenti, materiali).
+- **Notifiche Server-Side**: Implementate Cloud Functions e Cloud Scheduler per inviare notifiche push su mobile anche quando l'app è chiusa (PWA Ready).
+- **Gestione Costi e Controllo di Gestione**: Categorizzazione Avanzata dei costi, Imputazione Costi per Sede/Commessa, Reportistica.
+- **Identità PWA Dinamica**: L'icona dell'app installata (Desktop/Mobile) e la Favicon si aggiornano automaticamente utilizzando il logo caricato nelle Impostazioni.
+- **Stop & Polish (UX/UI)**:
+    - Refactoring Design System (ombre, transizioni, pulsanti).
+    - Nuove animazioni di transizione pagina (`slide-up-fade`).
+    - Restyling Dashboard e Sidebar per look "Premium".
+    - Bugfix del servizio notifiche (connessione VAPID).
 
 ### In Programma
-1.  **Gestione Costi e Controllo di Gestione**
-    - **Categorizzazione Avanzata**: Implementazione dettagliata dei costi Logistici, Amministrativi e Operativi.
-    - **Imputazione Costi**: Collegamento dei costi operativi a lezioni e abbonamenti.
-    - **Analisi Profitto**: Algoritmi per il calcolo della percentuale reale di profitto per abbonamento/cliente.
+1.  **Ottimizzazione Offline Mode**
+    - Miglioramento della cache e della gestione dati senza connessione.
 
-2.  **Integrazione Fiscale e SDI**
-    - **Studio di Fattibilità**: Analisi delle API e dei servizi web dell'Agenzia delle Entrate.
-    - **Integrazione (se fattibile)**: Connessione diretta per l'invio fatture elettroniche.
+2.  **Business Intelligence Avanzata**
+    - **Metriche Avanzate**: Dashboard per KPI qualitativi più profondi (Tasso di fedeltà, LTV cliente).
 
-3.  **Business Intelligence**
-    - **Metriche Avanzate**: Dashboard per KPI qualitativi ed economici più profondi.
+### Sospeso / Posticipato (Decisione Utente)
+- **Integrazione Fiscale e SDI**: Posticipata a data da destinarsi per preservare la stabilità attuale e ridurre la complessità architetturale.

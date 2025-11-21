@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot } from '../types';
-import { getSuppliers, addSupplier, updateSupplier, deleteSupplier } from '../services/supplierService';
+import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import RestoreIcon from '../components/icons/RestoreIcon';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -228,7 +229,12 @@ const Suppliers: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-    const [supplierToDelete, setSupplierToDelete] = useState<string | null>(null);
+    
+    // Trash Mode State
+    const [showTrash, setShowTrash] = useState(false);
+    
+    // Delete/Restore State
+    const [supplierToProcess, setSupplierToProcess] = useState<{id: string, action: 'delete' | 'restore' | 'permanent'} | null>(null);
 
 
     const fetchSuppliers = useCallback(async () => {
@@ -275,20 +281,26 @@ const Suppliers: React.FC = () => {
         }
     };
 
-    const handleDeleteClick = (id: string) => {
-        setSupplierToDelete(id);
+    const handleActionClick = (id: string, action: 'delete' | 'restore' | 'permanent') => {
+        setSupplierToProcess({ id, action });
     };
 
-    const handleConfirmDelete = async () => {
-        if (supplierToDelete) {
+    const handleConfirmAction = async () => {
+        if (supplierToProcess) {
             try {
-                await deleteSupplier(supplierToDelete);
+                if (supplierToProcess.action === 'delete') {
+                    await deleteSupplier(supplierToProcess.id);
+                } else if (supplierToProcess.action === 'restore') {
+                    await restoreSupplier(supplierToProcess.id);
+                } else if (supplierToProcess.action === 'permanent') {
+                    await permanentDeleteSupplier(supplierToProcess.id);
+                }
                 fetchSuppliers();
             } catch (err) {
-                console.error("Errore nell'eliminazione del fornitore:", err);
-                setError("Eliminazione fallita.");
+                console.error("Errore nell'operazione fornitore:", err);
+                setError("Operazione fallita.");
             } finally {
-                setSupplierToDelete(null);
+                setSupplierToProcess(null);
             }
         }
     };
@@ -298,6 +310,11 @@ const Suppliers: React.FC = () => {
         fetchSuppliers();
         return result;
     };
+
+    const filteredSuppliers = suppliers.filter(s => {
+        if (showTrash) return s.isDeleted;
+        return !s.isDeleted;
+    });
 
 
   return (
@@ -312,13 +329,30 @@ const Suppliers: React.FC = () => {
                     <UploadIcon />
                     <span className="ml-2">Importa</span>
                 </button>
-                <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
-                    <PlusIcon />
-                    <span className="ml-2">Aggiungi</span>
+                <button 
+                    onClick={() => setShowTrash(!showTrash)} 
+                    className={`md-btn ${showTrash ? 'bg-gray-200 text-gray-800' : 'md-btn-flat'}`}
+                    title={showTrash ? "Torna alla lista" : "Visualizza Cestino"}
+                >
+                    <TrashIcon />
+                    <span className="ml-2">{showTrash ? "Lista Attivi" : "Cestino"}</span>
                 </button>
+                {!showTrash && (
+                    <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
+                        <PlusIcon />
+                        <span className="ml-2">Aggiungi</span>
+                    </button>
+                )}
             </div>
         </div>
         
+        {showTrash && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mt-6 text-sm flex items-center">
+                <TrashIcon />
+                <span className="ml-2 font-bold">MODALITÀ CESTINO:</span> Stai visualizzando i fornitori eliminati.
+            </div>
+        )}
+
         {isModalOpen && (
             <Modal onClose={handleCloseModal} size="2xl">
                 <SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={handleCloseModal} />
@@ -346,8 +380,8 @@ const Suppliers: React.FC = () => {
             {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
              error ? <p className="text-center text-red-500 py-8">{error}</p> :
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {suppliers.map(supplier => (
-                    <div key={supplier.id} className="md-card p-6 flex flex-col">
+                {filteredSuppliers.map(supplier => (
+                    <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'border-gray-400 opacity-80' : ''}`}>
                         <div className="flex-1">
                             <h2 className="text-lg font-bold">{supplier.companyName}</h2>
                             <p className="text-sm mt-1" style={{color: 'var(--md-text-secondary)'}}>P.IVA: {supplier.vatNumber}</p>
@@ -370,22 +404,53 @@ const Suppliers: React.FC = () => {
                             </div>
                         </div>
                         <div className="mt-4 pt-4 border-t flex justify-end items-center space-x-2" style={{borderColor: 'var(--md-divider)'}}>
-                             <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit" aria-label={`Modifica fornitore ${supplier.companyName}`}><PencilIcon /></button>
-                             <button onClick={() => handleDeleteClick(supplier.id)} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
+                             {showTrash ? (
+                                <>
+                                    <button 
+                                        onClick={() => handleActionClick(supplier.id, 'restore')} 
+                                        className="md-icon-btn text-green-600 hover:bg-green-50" 
+                                        title="Ripristina Fornitore"
+                                    >
+                                        <RestoreIcon />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleActionClick(supplier.id, 'permanent')} 
+                                        className="md-icon-btn text-red-600 hover:bg-red-50" 
+                                        title="Elimina Definitivamente"
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </>
+                             ) : (
+                                <>
+                                    <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit" aria-label={`Modifica fornitore ${supplier.companyName}`}><PencilIcon /></button>
+                                    <button onClick={() => handleActionClick(supplier.id, 'delete')} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
+                                </>
+                             )}
                         </div>
                     </div>
                 ))}
+                {filteredSuppliers.length === 0 && (
+                    <div className="col-span-full text-center py-12 text-gray-500">
+                        {showTrash ? "Cestino vuoto." : "Nessun fornitore trovato."}
+                    </div>
+                )}
             </div>
             }
         </div>
         
         <ConfirmModal 
-            isOpen={!!supplierToDelete}
-            onClose={() => setSupplierToDelete(null)}
-            onConfirm={handleConfirmDelete}
-            title="Elimina Fornitore"
-            message="Sei sicuro di voler eliminare questo fornitore? Tutte le sedi associate verranno perse."
-            isDangerous={true}
+            isOpen={!!supplierToProcess}
+            onClose={() => setSupplierToProcess(null)}
+            onConfirm={handleConfirmAction}
+            title={supplierToProcess?.action === 'restore' ? "Ripristina Fornitore" : supplierToProcess?.action === 'permanent' ? "Elimina Definitivamente" : "Sposta nel Cestino"}
+            message={supplierToProcess?.action === 'restore' 
+                ? "Vuoi ripristinare questo fornitore?" 
+                : supplierToProcess?.action === 'permanent' 
+                ? "Sei sicuro di voler eliminare definitivamente questo fornitore? Tutte le sedi associate verranno perse." 
+                : "Sei sicuro di voler spostare questo fornitore nel cestino?"}
+            isDangerous={supplierToProcess?.action !== 'restore'}
+            confirmText={supplierToProcess?.action === 'restore' ? "Ripristina" : "Elimina"}
         />
     </div>
   );

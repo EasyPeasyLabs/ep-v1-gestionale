@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment } from '../types';
-import { getClients, addClient, updateClient, deleteClient } from '../services/parentService';
+import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import PlusIcon from '../components/icons/PlusIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import RestoreIcon from '../components/icons/RestoreIcon';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
@@ -299,14 +300,17 @@ const Clients: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     
+    // Trash Mode State
+    const [showTrash, setShowTrash] = useState(false);
+
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [viewingClient, setViewingClient] = useState<Client | null>(null);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     
-    // Delete State
-    const [clientToDelete, setClientToDelete] = useState<string | null>(null);
+    // Delete/Restore State
+    const [clientToProcess, setClientToProcess] = useState<{id: string, action: 'delete' | 'restore' | 'permanent'} | null>(null);
     
     // Search State
     const [searchTerm, setSearchTerm] = useState('');
@@ -376,21 +380,27 @@ const Clients: React.FC = () => {
         }
     };
 
-    const handleDeleteClick = (e: React.MouseEvent, id: string) => {
+    const handleActionClick = (e: React.MouseEvent, id: string, action: 'delete' | 'restore' | 'permanent') => {
         e.stopPropagation();
-        setClientToDelete(id);
+        setClientToProcess({ id, action });
     };
 
-    const handleConfirmDelete = async () => {
-        if (clientToDelete) {
+    const handleConfirmAction = async () => {
+        if (clientToProcess) {
             try {
-                await deleteClient(clientToDelete);
+                if (clientToProcess.action === 'delete') {
+                    await deleteClient(clientToProcess.id);
+                } else if (clientToProcess.action === 'restore') {
+                    await restoreClient(clientToProcess.id);
+                } else if (clientToProcess.action === 'permanent') {
+                    await permanentDeleteClient(clientToProcess.id);
+                }
                 fetchClientsData();
             } catch (err) {
-                console.error("Errore eliminazione cliente:", err);
-                alert("Errore durante l'eliminazione.");
+                console.error("Errore operazione cliente:", err);
+                alert("Errore durante l'operazione.");
             } finally {
-                setClientToDelete(null);
+                setClientToProcess(null);
             }
         }
     };
@@ -401,8 +411,14 @@ const Clients: React.FC = () => {
         return result;
     };
 
-    // Search Filter Logic
+    // Filter Logic
     const filteredClients = clients.filter(client => {
+        // 1. Trash Filter
+        const isDeleted = client.isDeleted || false;
+        if (showTrash && !isDeleted) return false;
+        if (!showTrash && isDeleted) return false;
+
+        // 2. Search Filter
         const term = searchTerm.toLowerCase();
         
         // Common fields
@@ -496,14 +512,30 @@ const Clients: React.FC = () => {
                         <UploadIcon />
                         <span className="ml-2">Importa</span>
                     </button>
-                    <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-primary">
-                        <PlusIcon />
-                        <span className="ml-2">Nuovo Cliente</span>
+                    <button 
+                        onClick={() => setShowTrash(!showTrash)} 
+                        className={`md-btn ${showTrash ? 'bg-gray-200 text-gray-800' : 'md-btn-flat'}`}
+                        title={showTrash ? "Torna alla lista" : "Visualizza Cestino"}
+                    >
+                        <TrashIcon />
+                        <span className="ml-2">{showTrash ? "Lista Attivi" : "Cestino"}</span>
                     </button>
+                    {!showTrash && (
+                        <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
+                            <PlusIcon />
+                            <span className="ml-2">Nuovo Cliente</span>
+                        </button>
+                    )}
                 </div>
             </div>
 
             <div className="mb-6">
+                {showTrash && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mb-4 text-sm flex items-center">
+                        <TrashIcon />
+                        <span className="ml-2 font-bold">MODALITÀ CESTINO:</span> Stai visualizzando i clienti eliminati. Puoi ripristinarli o eliminarli definitivamente.
+                    </div>
+                )}
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <SearchIcon />
@@ -525,8 +557,8 @@ const Clients: React.FC = () => {
                 {filteredClients.map(client => (
                     <div 
                         key={client.id} 
-                        onClick={() => handleViewClient(client)}
-                        className="md-card p-6 cursor-pointer hover:shadow-lg transition-all border-t-4 border-transparent hover:border-indigo-500"
+                        onClick={() => !showTrash && handleViewClient(client)}
+                        className={`md-card p-6 hover:shadow-lg transition-all border-t-4 ${showTrash ? 'border-gray-400 opacity-80' : 'border-transparent hover:border-indigo-500 cursor-pointer'}`}
                     >
                         <div className="flex justify-between items-start mb-2">
                             <div className="flex items-center">
@@ -537,8 +569,8 @@ const Clients: React.FC = () => {
                                 >
                                     {/* Inner Avatar - Uses Theme Primary Color */}
                                     <div 
-                                        className="w-full h-full rounded-full flex items-center justify-center text-white font-bold"
-                                        style={{ backgroundColor: 'var(--md-primary)' }}
+                                        className={`w-full h-full rounded-full flex items-center justify-center text-white font-bold ${showTrash ? 'bg-gray-400' : ''}`}
+                                        style={{ backgroundColor: !showTrash ? 'var(--md-primary)' : undefined }}
                                     >
                                         {client.clientType === ClientType.Parent 
                                             ? (client as ParentClient).firstName.charAt(0).toUpperCase()
@@ -594,20 +626,39 @@ const Clients: React.FC = () => {
                             </div>
                         )}
 
-                        <div className="mt-4 flex justify-end pt-2">
-                             <button 
-                                onClick={(e) => handleDeleteClick(e, client.id)} 
-                                className="md-icon-btn delete" 
-                                title="Elimina Cliente"
-                            >
-                                <TrashIcon />
-                            </button>
+                        <div className="mt-4 flex justify-end pt-2 space-x-2">
+                             {showTrash ? (
+                                <>
+                                    <button 
+                                        onClick={(e) => handleActionClick(e, client.id, 'restore')} 
+                                        className="md-icon-btn text-green-600 hover:bg-green-50" 
+                                        title="Ripristina Cliente"
+                                    >
+                                        <RestoreIcon />
+                                    </button>
+                                    <button 
+                                        onClick={(e) => handleActionClick(e, client.id, 'permanent')} 
+                                        className="md-icon-btn text-red-600 hover:bg-red-50" 
+                                        title="Elimina Definitivamente"
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </>
+                             ) : (
+                                <button 
+                                    onClick={(e) => handleActionClick(e, client.id, 'delete')} 
+                                    className="md-icon-btn delete" 
+                                    title="Elimina Cliente"
+                                >
+                                    <TrashIcon />
+                                </button>
+                             )}
                         </div>
                     </div>
                 ))}
                 {filteredClients.length === 0 && (
                     <div className="col-span-full text-center py-12 text-gray-500">
-                        Nessun cliente trovato che corrisponde alla ricerca.
+                        {showTrash ? "Cestino vuoto." : "Nessun cliente trovato che corrisponde alla ricerca."}
                     </div>
                 )}
             </div>
@@ -639,12 +690,17 @@ const Clients: React.FC = () => {
             )}
 
             <ConfirmModal 
-                isOpen={!!clientToDelete}
-                onClose={() => setClientToDelete(null)}
-                onConfirm={handleConfirmDelete}
-                title="Elimina Cliente"
-                message="Sei sicuro di voler eliminare questo cliente? Verranno persi anche i dati storici."
-                isDangerous={true}
+                isOpen={!!clientToProcess}
+                onClose={() => setClientToProcess(null)}
+                onConfirm={handleConfirmAction}
+                title={clientToProcess?.action === 'restore' ? "Ripristina Cliente" : clientToProcess?.action === 'permanent' ? "Eliminazione Definitiva" : "Sposta nel Cestino"}
+                message={clientToProcess?.action === 'restore' 
+                    ? "Vuoi ripristinare questo cliente e renderlo nuovamente attivo?" 
+                    : clientToProcess?.action === 'permanent' 
+                    ? "ATTENZIONE: Questa operazione è irreversibile. Vuoi eliminare definitivamente il cliente e tutti i dati associati?" 
+                    : "Sei sicuro di voler spostare questo cliente nel cestino? Potrai ripristinarlo in seguito."}
+                isDangerous={clientToProcess?.action !== 'restore'}
+                confirmText={clientToProcess?.action === 'restore' ? "Ripristina" : "Elimina"}
             />
         </div>
     );

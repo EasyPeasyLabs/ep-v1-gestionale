@@ -195,7 +195,7 @@ const ActivityLog: React.FC = () => {
                 {selectedLessonIds.length > 0 && (
                     <button 
                         onClick={() => setIsModalOpen(true)} 
-                        className="md-btn md-btn-raised md-btn-primary animate-fade-in"
+                        className="md-btn md-btn-raised md-btn-green animate-fade-in"
                     >
                         Assegna Attività ({selectedLessonIds.length})
                     </button>

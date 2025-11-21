@@ -324,7 +324,7 @@ const Calendar: React.FC = () => {
                   <h1 className="text-3xl font-bold">Calendario</h1>
                   <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Visualizza le lezioni programmate e l'occupazione delle aule.</p>
                 </div>
-                <button onClick={() => handleOpenModal(null, new Date())} className="md-btn md-btn-flat md-btn-primary">
+                <button onClick={() => handleOpenModal(null, new Date())} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon /><span className="ml-2">Lezione Extra</span>
                 </button>
             </div>

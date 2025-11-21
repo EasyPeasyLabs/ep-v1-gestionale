@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -7,15 +8,66 @@
     <link rel="manifest" href="/manifest.json">
     <title>EP v.1 - Gestionale</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              // Mappiamo i colori usati nell'app (indigo/violet) sulle variabili dinamiche del tema
+              indigo: {
+                50: 'var(--theme-50)',
+                100: 'var(--theme-100)',
+                200: 'var(--theme-200)',
+                300: 'var(--theme-300)',
+                400: 'var(--theme-400)',
+                500: 'var(--theme-500)',
+                600: 'var(--theme-600)',
+                700: 'var(--theme-700)',
+                800: 'var(--theme-800)',
+                900: 'var(--theme-900)',
+                950: 'var(--theme-950)',
+              },
+              violet: {
+                50: 'var(--theme-50)',
+                100: 'var(--theme-100)',
+                200: 'var(--theme-200)',
+                300: 'var(--theme-300)',
+                400: 'var(--theme-400)',
+                500: 'var(--theme-500)',
+                600: 'var(--theme-600)',
+                700: 'var(--theme-700)',
+                800: 'var(--theme-800)',
+                900: 'var(--theme-900)',
+                950: 'var(--theme-950)',
+              }
+            }
+          }
+        }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        /* Material Design Color Palette - Default Updated to Grey #757575 */
+        /* Theme Palette Defaults (Grey #757575) - Matches utils/theme.ts */
+        /* These are placeholders until JS overrides them */
+        --theme-50: #fcfcfc;
+        --theme-100: #f5f5f5;
+        --theme-200: #e0e0e0;
+        --theme-300: #bdbdbd;
+        --theme-400: #9e9e9e;
+        --theme-500: #858585;
+        --theme-600: #757575; /* Primary */
+        --theme-700: #616161;
+        --theme-800: #424242;
+        --theme-900: #212121;
+        --theme-950: #171717;
+
+        /* Legacy Variables */
         --md-primary: #757575; 
         --md-primary-dark: #616161;
-        --md-accent: #FF4081; /* Pink */
+        --md-accent: #FF4081;
         
         --md-green: #4CAF50;
         --md-green-dark: #388E3C;
@@ -24,43 +76,44 @@
         --md-blue: #2196F3;
         --md-blue-dark: #1976D2;
 
-        --md-text-primary: #212121;
-        --md-text-secondary: #757575;
+        --md-text-primary: #1f2937;
+        --md-text-secondary: #6b7280;
         --md-text-on-dark: #FFFFFF;
         --md-text-on-light: #212121;
         --md-text-on-primary: #FFFFFF;
 
         --md-bg-light: #f5f5f5;
         --md-bg-card: #FFFFFF;
-        --md-divider: #E0E0E0;
+        --md-divider: #e2e8f0;
       }
 
       body {
-        font-family: 'Roboto', sans-serif;
+        font-family: 'Inter', sans-serif;
         background-color: var(--md-bg-light);
         color: var(--md-text-primary);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
       }
       
-      /* Custom scrollbar for better aesthetics */
-      ::-webkit-scrollbar { width: 8px; height: 8px; }
-      ::-webkit-scrollbar-track { background: #f1f5f9; }
-      ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-      ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-      /* --- MATERIAL DESIGN COMPONENTS --- */
+      /* --- COMPONENTI --- */
 
-      /* Card */
       .md-card {
         background-color: var(--md-bg-card);
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 2px 10px rgba(0,0,0,0.08);
-        transition: box-shadow 0.3s ease-in-out;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.04);
+        transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.2s ease;
       }
-      .md-card:hover {
-        box-shadow: 0 4px 8px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.1);
+      .md-card.cursor-pointer:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0,0,0,0.06), 0 12px 32px rgba(0,0,0,0.05);
       }
 
-      /* Input Field */
       .md-input-group {
         position: relative;
         padding-top: 1.5rem;
@@ -71,10 +124,12 @@
         border: none;
         border-bottom: 1px solid var(--md-divider);
         outline: none;
-        font-size: 1rem;
+        font-size: 0.95rem;
         padding: 0.5rem 0;
         background: transparent;
         transition: border-color 0.2s ease;
+        color: var(--md-text-primary);
+        border-radius: 0;
       }
       .md-input:focus {
         border-bottom-width: 2px;
@@ -87,108 +142,98 @@
         color: var(--md-text-secondary);
         transition: all 0.2s ease;
         pointer-events: none;
+        font-size: 0.95rem;
       }
       .md-input:focus ~ .md-input-label,
       .md-input:not(:placeholder-shown) ~ .md-input-label {
         top: 0.25rem;
         font-size: 0.75rem;
+        font-weight: 600;
         color: var(--md-primary);
       }
       select.md-input {
          padding: 0.5rem 0.25rem;
+         cursor: pointer;
       }
 
-      /* Button */
       .md-btn {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 0 16px;
-        height: 36px;
-        border-radius: 4px;
+        padding: 0 20px;
+        height: 40px;
+        border-radius: 10px;
         border: none;
-        font-family: 'Roboto', sans-serif;
+        font-family: 'Inter', sans-serif;
         font-size: 14px;
-        font-weight: 500;
-        text-transform: uppercase;
-        letter-spacing: 0.089em;
+        font-weight: 600;
+        letter-spacing: 0.01em;
         cursor: pointer;
         outline: none;
         position: relative;
         overflow: hidden;
-        transition: box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         user-select: none;
       }
-      .md-btn-raised {
-        box-shadow: 0 2px 2px 0 rgba(0,0,0,0.14), 0 3px 1px -2px rgba(0,0,0,0.12), 0 1px 5px 0 rgba(0,0,0,0.2);
-      }
-      .md-btn-raised:active:not(:disabled) {
-        box-shadow: 0 4px 5px 0 rgba(0,0,0,0.14), 0 1px 10px 0 rgba(0,0,0,0.12), 0 2px 4px -1px rgba(0,0,0,0.3);
-      }
-       .md-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+      .md-btn:active:not(:disabled) { transform: scale(0.97); }
+      .md-btn:disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(100%); }
+
+      .md-btn-raised { box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+      .md-btn-raised:hover:not(:disabled) { box-shadow: 0 4px 12px rgba(0,0,0,0.12); transform: translateY(-1px); }
 
       .md-btn-primary { background-color: var(--md-primary); color: var(--md-text-on-primary); }
-      .md-btn-primary:hover:not(:disabled) { background-color: var(--md-primary-dark); }
+      .md-btn-primary:hover:not(:disabled) { filter: brightness(110%); }
 
       .md-btn-green { background-color: var(--md-green); color: var(--md-text-on-primary); }
-      .md-btn-green:hover:not(:disabled) { background-color: var(--md-green-dark); }
+      .md-btn-green:hover:not(:disabled) { filter: brightness(110%); }
 
       .md-btn-red { background-color: var(--md-red); color: var(--md-text-on-primary); }
-      .md-btn-red:hover:not(:disabled) { background-color: var(--md-red-dark); }
+      .md-btn-red:hover:not(:disabled) { filter: brightness(110%); }
       
-      .md-btn-flat { background-color: transparent; }
+      .md-btn-flat { background-color: transparent; color: var(--md-text-secondary); }
+      .md-btn-flat:hover:not(:disabled) { background-color: rgba(0,0,0,0.04); color: var(--md-text-primary); }
       .md-btn-flat.md-btn-primary { color: var(--md-primary); }
-      .md-btn-flat:hover:not(:disabled) { background-color: rgba(0,0,0,0.08); }
 
-      /* Small Button Variant */
-      .md-btn-sm {
-        height: 30px;
-        padding: 0 12px;
-        font-size: 13px;
-      }
+      .md-btn-sm { height: 32px; padding: 0 14px; font-size: 13px; border-radius: 8px; }
 
-      /* Icon Button */
       .md-icon-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         background: transparent;
         border: none;
         padding: 8px;
         border-radius: 50%;
         cursor: pointer;
         outline: none;
-        transition: background-color 0.2s ease;
+        transition: all 0.2s ease;
+        color: var(--md-text-secondary);
       }
-      .md-icon-btn:hover:not(:disabled) { background-color: rgba(0,0,0,0.08); }
-      .md-icon-btn.edit { color: var(--md-blue); }
-      .md-icon-btn.delete { color: var(--md-red); }
-      .md-icon-btn.download { color: var(--md-text-secondary); }
+      .md-icon-btn:hover:not(:disabled) { background-color: rgba(0,0,0,0.05); color: var(--md-text-primary); transform: scale(1.05); }
+      .md-icon-btn.edit:hover { color: var(--md-blue); background-color: #E3F2FD; }
+      .md-icon-btn.delete:hover { color: var(--md-red); background-color: #FFEBEE; }
+      .md-icon-btn.download:hover { color: var(--md-green); background-color: #E8F5E9; }
 
-      /* Badge */
-      .md-badge {
-        padding: 0.25em 0.6em;
-        font-size: 75%;
-        font-weight: 700;
-        line-height: 1;
-        text-align: center;
-        white-space: nowrap;
-        vertical-align: baseline;
-        border-radius: 9999px; /* pill */
-      }
-
-      /* Animation for dropdowns */
       @keyframes fade-in-down {
         from { opacity: 0; transform: translateY(-10px); }
         to { opacity: 1; transform: translateY(0); }
       }
-      .animate-fade-in-down { animation: fade-in-down 0.2s ease-out; }
+      .animate-fade-in-down { animation: fade-in-down 0.2s ease-out forwards; }
       
-      @keyframes fade-in {
-         from { opacity: 0; }
-         to { opacity: 1; }
+      @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+      .animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+
+      @keyframes scale-in {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
       }
-      .animate-fade-in { animation: fade-in 0.3s ease-out; }
+      .animate-scale-in { animation: scale-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+      @keyframes slide-up-fade {
+        0% { opacity: 0; transform: translateY(10px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      .animate-slide-up { animation: slide-up-fade 0.3s cubic-bezier(0.2, 0.0, 0.2, 1) forwards; }
 
     </style>
   <script type="importmap">

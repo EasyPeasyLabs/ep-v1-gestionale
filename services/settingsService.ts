@@ -6,19 +6,30 @@ import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, Pe
 
 // --- Company Info ---
 const settingsDocRef = doc(db, 'settings', 'companyInfo');
+
+// LOGO DEFAULT (Lemon Icon SVG in Base64)
+const DEFAULT_LOGO_BASE64 = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cGF0aCBkPSJNODUgNDUgQzg1IDY3IDY3IDg1IDQ1IDg1IEMyMyA4NSA1IDY3IDUgNDUgQzUgMjMgMjMgNSA0NSA1IEM1NSA1IDY1IDkgNzMgMTUgTDg1IDUgWiIgZmlsbD0iI0ZERDgzbSIvPjxwYXRoIGQ9Ik03MyAxNSBMODUgNSBMODUgMjAgWiIgZmlsbD0iIzQzQTA0NyIvPjx0ZXh0IHg9IjQ1IiB5PSI1NSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjMwIiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iI0ZGRiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+RVA8L3RleHQ+PC9zdmc+";
+
 const defaultCompanyInfo: Omit<CompanyInfo, 'id'> = {
     denomination: 'EASY PEASY',
     name: 'ILARIA TAVANI',
     vatNumber: 'IT 09038130721',
     address: 'VIA CHIANCARO 2 N, 70010 ADELFIA (BARI)',
     email: 'labeasypeasy@gmail.com',
-    phone: '(+39) 340 523 4353'
+    phone: '(+39) 340 523 4353',
+    logoBase64: DEFAULT_LOGO_BASE64
 };
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
     const docSnap = await getDoc(settingsDocRef);
     if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as CompanyInfo;
+        const data = docSnap.data() as CompanyInfo;
+        // Se manca il logo nel DB, usa quello di default
+        return { 
+            id: docSnap.id, 
+            ...data, 
+            logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64 
+        };
     } else {
         await setDoc(settingsDocRef, defaultCompanyInfo);
         return { id: 'companyInfo', ...defaultCompanyInfo };

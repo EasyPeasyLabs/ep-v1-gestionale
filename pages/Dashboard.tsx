@@ -10,22 +10,41 @@ import { EnrollmentStatus, Notification, TransactionType, TransactionStatus } fr
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
-import ChecklistIcon from '../components/icons/ChecklistIcon'; // Per action_required
-import FinanceIcon from '../components/icons/FinanceIcon'; // Per payment_required (alternativa)
+import ChecklistIcon from '../components/icons/ChecklistIcon';
+import FinanceIcon from '../components/icons/FinanceIcon';
 import { Page } from '../App';
+import ClientsIcon from '../components/icons/ClientsIcon';
+import SuppliersIcon from '../components/icons/SuppliersIcon';
 
-const StatCard: React.FC<{ title: string; value: string | React.ReactNode; subtext?: string; onClick?: () => void }> = ({ title, value, subtext, onClick }) => (
+// Premium Stat Card 2.0
+const StatCard: React.FC<{ 
+    title: string; 
+    value: string | React.ReactNode; 
+    subtext?: string; 
+    onClick?: () => void;
+    icon: React.ReactNode;
+    colorClass?: string; // bg-color + text-color classes for icon bubble
+}> = ({ title, value, subtext, onClick, icon, colorClass = 'bg-gray-100 text-gray-600' }) => (
   <div 
-    className={`md-card p-6 ${onClick ? 'cursor-pointer hover:shadow-lg transition-shadow' : ''}`} 
+    className={`md-card p-6 flex flex-col justify-between h-full relative overflow-hidden ${onClick ? 'cursor-pointer hover:translate-y-[-2px] transition-transform' : ''}`} 
     onClick={onClick}
   >
-    <h3 className="text-sm font-medium" style={{ color: 'var(--md-text-secondary)'}}>{title}</h3>
-    <div className="text-3xl font-semibold mt-2" style={{ color: 'var(--md-text-primary)'}}>{value}</div>
+    <div className="flex justify-between items-start z-10">
+        <div>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
+            <div className="text-3xl font-bold mt-3 text-gray-800 tracking-tight">{value}</div>
+        </div>
+        <div className={`p-3 rounded-xl ${colorClass} shadow-sm`}>
+            {icon}
+        </div>
+    </div>
     {subtext && (
-      <p className="text-sm mt-2 text-gray-500">
+      <div className="text-xs font-medium text-gray-400 mt-4 pt-3 border-t border-gray-50 z-10">
         {subtext}
-      </p>
+      </div>
     )}
+    {/* Background decoration */}
+    <div className={`absolute -bottom-4 -right-4 w-24 h-24 rounded-full opacity-5 ${colorClass.split(' ')[0]}`}></div>
   </div>
 );
 
@@ -74,7 +93,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           getAllEnrollments(),
           getLessons(),
           getTransactions(),
-          getNotifications() // Centralized notifications
+          getNotifications()
         ]);
         
         setClientCount(clients.length);
@@ -82,7 +101,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setNotifications(notifs);
 
         // 1. Calcolo Clienti e Fornitori Attivi
-        // Includiamo sia Active che Pending perchè occupano posti
         const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
         
         const activeClientIds = new Set(activeOrPendingEnrollments.map(e => e.clientId));
@@ -97,7 +115,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         const currentYear = now.getFullYear();
         
         let lessonsCount = 0;
-        // Conta lezioni da iscrizioni (solo attive per l'erogazione effettiva)
         enrollments.filter(e => e.status === EnrollmentStatus.Active).forEach(enr => {
             if(enr.appointments) {
                 enr.appointments.forEach(app => {
@@ -108,7 +125,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 });
             }
         });
-        // Conta lezioni manuali
         manualLessons.forEach(ml => {
             const d = new Date(ml.date);
             if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
@@ -122,7 +138,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
         suppliers.forEach(s => {
             s.locations.forEach(l => {
-                // Inizializza gli slot disponibili basandosi sulla disponibilità definita
                 if(l.availability && l.availability.length > 0) {
                     l.availability.forEach(slot => {
                         const key = `${l.id}-${slot.dayOfWeek}-${slot.startTime}`;
@@ -143,7 +158,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             });
         });
 
-        // Calcola occupazione per ogni slot
         activeOrPendingEnrollments.forEach(enr => {
             if(enr.appointments && enr.appointments.length > 0) {
                 const firstApp = enr.appointments[0];
@@ -224,7 +238,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     fetchData();
     
     const handleDataUpdate = () => {
-        // In un'app reale rifarebbe il fetch. Qui per semplicità ricarichiamo tutto.
         fetchData();
     };
     window.addEventListener('EP_DataUpdated', handleDataUpdate);
@@ -242,9 +255,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   };
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold" style={{ color: 'var(--md-text-primary)'}}>Dashboard</h1>
-      <p className="mt-1" style={{ color: 'var(--md-text-secondary)'}}>Benvenuta, Ilaria! Ecco una panoramica della tua attività.</p>
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
+            <p className="mt-1 text-gray-500">Benvenuta, Ilaria! Ecco una panoramica.</p>
+          </div>
+      </div>
       
       {loading ? (
         <div className="flex justify-center items-center h-64">
@@ -252,128 +269,151 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         </div>
       ) : (
         <>
-          {/* ROW 1: Stat Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
+          {/* ROW 1: Premium Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-fade-in">
             <StatCard 
                 title="Clienti" 
                 onClick={() => setCurrentPage && setCurrentPage('Enrollments')}
-                subtext="Clicca per gestire le iscrizioni"
+                subtext="Gestisci Iscrizioni"
                 value={
-                    <div className="flex items-baseline">
+                    <div className="flex items-baseline gap-2">
                         <span>{clientCount}</span>
-                        <span className="ml-3 text-sm font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full relative -top-1">
-                            {activeClientCount} Attivi
-                        </span>
+                        {activeClientCount > 0 && (
+                            <span className="text-sm font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
+                                {activeClientCount} Attivi
+                            </span>
+                        )}
                     </div>
                 } 
+                icon={<ClientsIcon />}
+                colorClass="bg-blue-50 text-blue-600"
             />
             <StatCard 
-                title="Lezioni Erogate" 
-                value={
-                    <div className="flex items-baseline">
-                        <span>{lessonsThisMonth}</span>
-                        <span className="ml-3 text-sm font-medium text-gray-500 relative -top-1">
-                            mese in corso
-                        </span>
-                    </div>
-                } 
+                title="Lezioni (Mese)" 
+                value={lessonsThisMonth}
+                subtext="Totale erogato questo mese"
+                icon={<ChecklistIcon />}
+                colorClass="bg-emerald-50 text-emerald-600"
             />
             <StatCard 
                 title="Fornitori" 
                 value={
-                    <div className="flex items-baseline">
+                    <div className="flex items-baseline gap-2">
                         <span>{supplierCount}</span>
-                        <span className="ml-3 text-sm font-medium text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full relative -top-1">
-                            {activeSupplierCount} Attivi
-                        </span>
+                        {activeSupplierCount > 0 && (
+                            <span className="text-sm font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">
+                                {activeSupplierCount} Attivi
+                            </span>
+                        )}
                     </div>
                 } 
+                icon={<SuppliersIcon />}
+                colorClass="bg-indigo-50 text-indigo-600"
             />
-            <StatCard title="Tasso di Rinnovo" value="N/D" />
+            <StatCard 
+                title="Azioni Richieste" 
+                value={notifications.length}
+                subtext={notifications.length > 0 ? "Richiedono attenzione" : "Tutto in ordine"}
+                onClick={() => {
+                    // Scroll to alerts or open notifs
+                }}
+                icon={<ExclamationIcon />}
+                colorClass={notifications.length > 0 ? "bg-amber-50 text-amber-600" : "bg-gray-50 text-gray-400"}
+            />
           </div>
 
           {/* ROW 2: 3 Columns - Calendar | Saturation | Alerts */}
-          <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up">
             
             {/* COL 1: Calendario Settimanale */}
-            <div className="md-card p-6">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--md-text-primary)'}}>Calendario Settimanale</h2>
-                <div className="flex justify-between items-end h-32 pb-2">
+            <div className="md-card p-6 border-t-4 border-indigo-500">
+                <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    Questa Settimana
+                </h2>
+                <div className="flex justify-between items-end h-40 pb-2 px-2">
                     {weekDays.map((day, idx) => {
                         const isToday = new Date().toDateString() === day.date.toDateString();
                         return (
-                            <div key={idx} className="flex flex-col items-center space-y-2 w-full">
-                                <div className={`text-xs font-medium ${isToday ? 'text-indigo-600' : 'text-gray-500'}`}>{day.dayName}</div>
-                                <div className="relative w-full flex justify-center items-end h-20">
+                            <div key={idx} className="flex flex-col items-center space-y-2 w-full group cursor-default">
+                                <div className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-indigo-600' : 'text-gray-400'}`}>{day.dayName}</div>
+                                <div className="relative w-full flex justify-center items-end h-28">
                                     <div 
-                                        className={`w-6 rounded-t-md transition-all duration-500 ${isToday ? 'bg-indigo-50' : 'bg-indigo-200'}`}
-                                        style={{ height: `${Math.min((day.count / 10) * 100, 100)}%`, minHeight: day.count > 0 ? '10%' : '4px' }}
+                                        className={`w-3 sm:w-4 rounded-t-full transition-all duration-500 ${isToday ? 'bg-indigo-500 shadow-lg shadow-indigo-200' : 'bg-indigo-100 group-hover:bg-indigo-200'}`}
+                                        style={{ height: `${Math.max(10, Math.min((day.count / 8) * 100, 100))}%` }}
                                     ></div>
                                 </div>
-                                <div className="font-bold text-sm">{day.count}</div>
+                                <div className={`font-bold text-sm ${isToday ? 'text-indigo-700' : 'text-gray-600'}`}>{day.count}</div>
                             </div>
                         );
                     })}
                 </div>
-                <p className="text-xs text-center text-gray-400 mt-2">Lezioni per giorno (settimana corrente)</p>
             </div>
 
             {/* COL 2: Saturazione */}
-            <div className="md-card p-6 flex flex-col">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--md-text-primary)'}}>Saturazione</h2>
+            <div className="md-card p-6 flex flex-col border-t-4 border-pink-500">
+                <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    Saturazione Aule
+                </h2>
                 
-                <div className="flex-1 overflow-y-auto max-h-96 pr-2 space-y-5">
+                <div className="flex-1 overflow-y-auto max-h-80 pr-2 space-y-5 custom-scrollbar">
                     {locationOccupancy.map((slot, idx) => (
-                        <div key={idx} className="w-full">
-                            <div className="flex items-center mb-1">
-                                <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: slot.color }}></div>
-                                <span className="font-bold text-sm text-gray-700 mr-2">{slot.dayName}</span>
-                                <span className="text-xs font-medium text-gray-500 truncate flex-1">{slot.locationName} ({slot.startTime}-{slot.endTime})</span>
-                            </div>
-                            <div className="flex justify-between items-end mb-1">
-                                <span className="text-lg font-bold" style={{ color: slot.occupancyPercent > 90 ? '#e11d48' : slot.color }}>
-                                    {slot.occupancyPercent}%
+                        <div key={idx} className="w-full group">
+                            <div className="flex items-center mb-1.5 justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shadow-sm" style={{ backgroundColor: slot.color }}>
+                                        {slot.dayName}
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold text-gray-700">{slot.locationName}</span>
+                                        <span className="text-[10px] text-gray-400">{slot.startTime} - {slot.endTime}</span>
+                                    </div>
+                                </div>
+                                <span className="text-xs font-bold px-2 py-1 rounded bg-gray-50 text-gray-600">
+                                    {slot.occupied}/{slot.capacity}
                                 </span>
-                                <span className="text-xs font-medium text-gray-500">
-                                    {slot.occupied} / {slot.capacity} occupati
-                                </span>
                             </div>
-                            <div className="w-full bg-gray-100 rounded-full h-2">
+                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
                                 <div 
-                                    className="h-2 rounded-full transition-all duration-500" 
+                                    className="h-2 rounded-full transition-all duration-1000 ease-out" 
                                     style={{ width: `${slot.occupancyPercent}%`, backgroundColor: slot.color }}
                                 ></div>
                             </div>
                         </div>
                     ))}
                     {locationOccupancy.length === 0 && (
-                            <p className="text-xs text-gray-400 italic text-center mt-4">
-                                Nessuna disponibilità configurata o nessuna iscrizione.
-                            </p>
+                            <div className="h-full flex flex-col items-center justify-center text-gray-400">
+                                <p className="text-sm italic">Nessun dato di occupazione.</p>
+                            </div>
                     )}
                 </div>
             </div>
 
             {/* COL 3: Avvisi */}
-            <div className="md-card p-6 flex flex-col">
-                <h2 className="text-lg font-semibold mb-4" style={{ color: 'var(--md-text-primary)'}}>Avvisi ({notifications.length})</h2>
-                <div className="flex-grow overflow-y-auto max-h-64">
+            <div className="md-card p-6 flex flex-col border-t-4 border-amber-500">
+                <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+                    Avvisi & Scadenze
+                </h2>
+                <div className="flex-grow overflow-y-auto max-h-80 custom-scrollbar">
                     {notifications.length === 0 ? (
-                        <div className="h-full flex items-center justify-center">
-                             <p className="text-sm italic" style={{ color: 'var(--md-text-secondary)'}}>Nessuna notifica da leggere.</p>
+                        <div className="h-full flex flex-col items-center justify-center">
+                             <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mb-3">
+                                <span className="text-2xl">✨</span>
+                             </div>
+                             <p className="text-sm font-medium text-green-800">Tutto in regola!</p>
+                             <p className="text-xs text-green-600 mt-1">Nessuna scadenza imminente.</p>
                         </div>
                     ) : (
                         <ul className="space-y-3">
                             {notifications.map((notif, index) => (
                                 <li 
                                     key={index} 
-                                    className="flex items-start space-x-3 p-2 rounded hover:bg-gray-50 border-b border-gray-100 last:border-0 cursor-pointer"
+                                    className="flex items-start space-x-3 p-3 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all border border-gray-100 cursor-pointer group"
                                     onClick={() => setCurrentPage && notif.linkPage && setCurrentPage(notif.linkPage as Page)}
                                 >
-                                    <div className="flex-shrink-0 mt-0.5">
+                                    <div className="flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
                                         {getNotificationIcon(notif.type)}
                                     </div>
-                                    <div className="text-sm text-gray-700">
+                                    <div className="text-sm text-gray-700 leading-relaxed">
                                         {notif.message}
                                     </div>
                                 </li>

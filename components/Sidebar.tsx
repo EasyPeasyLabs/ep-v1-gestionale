@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Page } from '../App';
 // FIX: Corrected Firebase import path.
 import { User } from '@firebase/auth';
@@ -12,10 +12,11 @@ import CRMIcon from './icons/CRMIcon';
 import ChecklistIcon from './icons/ChecklistIcon';
 import ClipboardIcon from './icons/ClipboardIcon';
 import BookOpenIcon from './icons/BookOpenIcon';
+import { getCompanyInfo } from '../services/settingsService';
 
 // Nuova icona Pallone da Calcio per Attività
 const SoccerBallIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <circle cx="12" cy="12" r="10" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 16l-4-3 1.5-4.5h5l1.5 4.5-4 3z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 16v6" />
@@ -28,7 +29,7 @@ const SoccerBallIcon = () => (
 
 // Nuova icona Moneta Euro per Finanza
 const EuroCoinIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <circle cx="12" cy="12" r="10" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.121 15.536c-1.171 1.952-3.07 1.952-4.242 0-1.172-1.953-1.172-5.119 0-7.072 1.171-1.952 3.07-1.952 4.242 0M8 10.5h4m-4 3h4" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 10.5a3.5 3.5 0 0 1 3.5 -3.5h1" />
@@ -46,11 +47,32 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, isOpen, setIsOpen }) => {
+  const [logoSrc, setLogoSrc] = useState<string>('');
+
+  useEffect(() => {
+      const fetchLogo = async () => {
+          try {
+              const info = await getCompanyInfo();
+              if (info.logoBase64) {
+                  setLogoSrc(info.logoBase64);
+              }
+          } catch (e) {
+              console.error("Error loading logo", e);
+          }
+      };
+      fetchLogo();
+      
+      // Ascolta aggiornamenti del logo dalle impostazioni
+      const handleUpdate = () => fetchLogo();
+      window.addEventListener('EP_DataUpdated', handleUpdate);
+      return () => window.removeEventListener('EP_DataUpdated', handleUpdate);
+  }, []);
+
   // Definizione Menu
   const navItems: { page: Page; label: string; icon: React.ReactNode }[] = [
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
-    { page: 'ActivityLog', label: 'Lezioni', icon: <BookOpenIcon /> }, // Ex Registro Attività
+    { page: 'ActivityLog', label: 'Lezioni', icon: <BookOpenIcon /> }, 
     { page: 'Attendance', label: 'Registro Presenze', icon: <ClipboardIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },
     { page: 'Finance', label: 'Finanza', icon: <EuroCoinIcon /> },
@@ -70,39 +92,71 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
     <>
       {/* Backdrop for mobile */}
       <div 
-        className={`fixed inset-0 bg-black bg-opacity-50 z-30 transition-opacity md:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className={`fixed inset-0 bg-slate-900/50 z-30 transition-opacity backdrop-blur-sm md:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={() => setIsOpen(false)}
         aria-hidden="true"
       ></div>
 
-      <nav className={`w-64 bg-white shadow-lg flex-shrink-0 flex flex-col fixed md:relative h-full z-40 transition-transform transform md:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`} style={{ backgroundColor: 'var(--md-bg-card)'}}>
-        <div className="h-16 flex items-center px-4 border-b" style={{ borderColor: 'var(--md-divider)'}}>
+      <nav className={`w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col fixed md:relative h-full z-40 transition-transform transform md:translate-x-0 duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        
+        {/* Header Logo with Image */}
+        <div className="h-20 flex items-center px-6 border-b border-gray-100">
           <div className="flex items-center gap-3">
-             <h1 className="text-xl font-bold tracking-wider" style={{ color: 'var(--md-text-primary)'}}>EP v1</h1>
+             {logoSrc ? (
+                 <img 
+                    src={logoSrc} 
+                    alt="EP Logo" 
+                    className="w-10 h-10 object-contain" 
+                 />
+             ) : (
+                 // Fallback visuale mentre carica
+                 <div className="w-10 h-10 rounded-full bg-gray-200 animate-pulse"></div>
+             )}
+             <div>
+                <h1 className="text-lg font-bold tracking-tight text-gray-800 leading-tight">EP v1</h1>
+                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Gestionale</p>
+             </div>
           </div>
         </div>
-        <ul className="flex-1 px-4 py-6 overflow-y-auto">
-          {navItems.map((item) => (
-            item.page !== 'Profile' && (
-              <li key={item.page}>
-                <button
-                  onClick={() => handleNavClick(item.page)}
-                  className={`w-full flex items-center px-4 py-3 my-1 rounded-lg text-left font-medium transition-all duration-200 ease-in-out
-                    ${currentPage === item.page ? 'text-white' : 'hover:bg-gray-100'}`}
-                  style={currentPage === item.page ? { backgroundColor: 'var(--md-primary)' } : { color: 'var(--md-text-secondary)'}}
-                >
-                  <span className="mr-3">{item.icon}</span>
-                  {item.label}
-                </button>
-              </li>
-            )
-          ))}
+
+        {/* Navigation List */}
+        <ul className="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const isActive = currentPage === item.page;
+            return (
+              item.page !== 'Profile' && (
+                <li key={item.page}>
+                  <button
+                    onClick={() => handleNavClick(item.page)}
+                    className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out group relative
+                      ${isActive 
+                        ? 'bg-indigo-50 text-indigo-700' 
+                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                      }`}
+                  >
+                    <span className={`mr-3 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                        {item.icon}
+                    </span>
+                    {item.label}
+                    
+                    {/* Pill Indicator for Active State */}
+                    {isActive && <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-indigo-600"></div>}
+                  </button>
+                </li>
+              )
+            );
+          })}
         </ul>
-        <div className="p-4 border-t" style={{ borderColor: 'var(--md-divider)'}}>
-          <div className="flex items-center">
-              <div className="overflow-hidden">
-                  <p className="font-semibold text-sm truncate" style={{ color: 'var(--md-text-primary)'}}>{user.email}</p>
-                  <p className="text-xs" style={{ color: 'var(--md-text-secondary)'}}>Amministratore</p>
+
+        {/* Footer Profile */}
+        <div className="p-4 border-t border-gray-100 bg-gray-50/30">
+          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all cursor-pointer" onClick={() => handleNavClick('Profile')}>
+              <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm border border-indigo-200">
+                  {user.email ? user.email.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="overflow-hidden flex-1">
+                  <p className="font-medium text-xs text-gray-900 truncate" title={user.email || ''}>{user.email}</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Admin</p>
               </div>
           </div>
         </div>

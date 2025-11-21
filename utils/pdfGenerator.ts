@@ -50,114 +50,190 @@ export const generateDocumentPDF = async (
     // Colors
     const primaryColor = [63, 81, 181] as [number, number, number]; // Indigo
     const grayColor = [117, 117, 117] as [number, number, number];
+    const lightGrayColor = [220, 220, 220] as [number, number, number];
+    const labelColor = [100, 100, 100] as [number, number, number]; // Grigio scuro per etichette
 
-    // --- HEADER SECTION ---
+    // --- GRID LAYOUT CONSTANTS (Compact 2x5) ---
+    const marginX = 14;
+    const pageWidth = docPdf.internal.pageSize.getWidth();
+    const rightAlignX = pageWidth - marginX;
     
-    // 1. Logo (Top Left)
+    // Column X positions
+    // Col 1: Logo / Label (Starts at marginX = 14)
+    // Col 2: Data (Starts after logo width + gap)
+    const logoSize = 20;
+    const col2X = marginX + logoSize + 4; // 14 + 20 + 4 = 38
+    
+    // Row Y Positions
+    const row1Y = 10;       // Top Row (Logo Start)
+    // Spostiamo la linea divisoria più in basso per farci stare i dati del documento
+    const dividerY = 40;    
+    const row2Y = 45;       // Second Row (Client Data)
+
+    // ============================================================
+    // RIGA 1
+    // Col 1: Logo (20x20)
+    // Col 2: Dati Aziendali
+    // Col 5: Nome Documento + Dati (Right Aligned)
+    // ============================================================
+    
+    // --- Col 1: Logo ---
     try {
-        // Usiamo window.location.origin per costruire un URL assoluto.
-        // Questo è fondamentale perché se l'utente si trova in una rotta come /clients/detail,
-        // un percorso relativo "./logo.png" cercherebbe in /clients/logo.png (che non esiste).
-        const logoUrl = `${window.location.origin}/lemon_logo_150px.png`;
-        const logoBase64 = await loadImage(logoUrl);
-        if (logoBase64) {
-            // x=14, y=10, width=25, height=33 (Richiesta Utente)
-            docPdf.addImage(logoBase64, 'PNG', 14, 10, 25, 33);
+        let logoData = '';
+        if (companyInfo?.logoBase64) {
+            logoData = companyInfo.logoBase64;
+        } else {
+            const logoUrl = `${window.location.origin}/lemon_logo_150px.png`;
+            logoData = await loadImage(logoUrl);
+        }
+
+        if (logoData) {
+            const isJpeg = logoData.substring(0, 30).includes('image/jpeg');
+            const format = isJpeg ? 'JPEG' : 'PNG';
+            docPdf.addImage(logoData, format, marginX, row1Y, logoSize, logoSize);
         }
     } catch (e) {
         console.warn("Logo processing error", e);
     }
 
-    // 2. Company Info (Top Left - Next to Logo)
-    const infoX = 45; // 14 (margin) + 25 (logo) + 6 (gap)
-    const infoStartYs = 18;
-
-    docPdf.setFontSize(10);
-    docPdf.setTextColor(0, 0, 0);
+    // --- Col 2: Dati Aziendali (Custom Layout) ---
+    // Logo Y range: 10 (Top) to 30 (Bottom)
     
     if (companyInfo) {
-        let currentY = infoStartYs;
+        docPdf.setTextColor(0, 0, 0);
 
-        // Denominazione (Bold)
+        // 1. Denominazione (Allineata in alto col logo)
+        // Font Size 12 fa sì che la baseline a row1Y + 4 (14) porti il "tetto" delle maiuscole a circa 10 (Top Logo)
         if (companyInfo.denomination) {
+            docPdf.setFontSize(12); 
             docPdf.setFont("helvetica", "bold");
-            docPdf.text(companyInfo.denomination, infoX, currentY);
-            currentY += 7; // 5 standard + 2 extra point spacing
+            docPdf.text(companyInfo.denomination.toUpperCase(), col2X, row1Y + 4);
         }
         
-        // Ragione Sociale (Normal style)
+        // 2. Nome (Spaziato dalla denominazione)
+        // Baseline a 20. Grande gap rispetto alla riga sopra.
+        docPdf.setFontSize(10);
         docPdf.setFont("helvetica", "normal");
-        docPdf.text(companyInfo.name, infoX, currentY);
-        currentY += 5;
+        docPdf.text(companyInfo.name, col2X, row1Y + 10); 
 
-        docPdf.setFontSize(9);
-        docPdf.text(companyInfo.address, infoX, currentY);
-        currentY += 5;
-        docPdf.text(`P.IVA: ${companyInfo.vatNumber}`, infoX, currentY);
-        currentY += 5;
-        docPdf.text(`Email: ${companyInfo.email}`, infoX, currentY);
-        currentY += 5;
-        docPdf.text(`Tel: ${companyInfo.phone}`, infoX, currentY);
+        // 3. Indirizzo (Intermedio)
+        // Baseline a 25.
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(...grayColor);
+        docPdf.text(`${companyInfo.address} - P.IVA: ${companyInfo.vatNumber}`, col2X, row1Y + 15);
         
+        // 4. Contatti (Allineati col bordo basso del logo)
+        // Baseline a 30 (row1Y + logoSize).
+        docPdf.text(`${companyInfo.email} - ${companyInfo.phone}`, col2X, row1Y + 20);
+
     } else {
-        docPdf.text("Dati Aziendali non configurati", infoX, infoStartYs);
+        docPdf.setFontSize(8);
+        docPdf.text("Dati Aziendali non configurati", col2X, row1Y + 5);
     }
 
-    // 3. Document Title (Top Right)
-    docPdf.setFontSize(20);
+    // --- Col 5: Dati Documento (Right Aligned) ---
+    // TITOLO
+    docPdf.setFontSize(16);
     docPdf.setTextColor(...primaryColor);
     docPdf.setFont("helvetica", "bold");
     const title = type === 'Fattura' && (doc as Invoice).isProForma ? 'FATTURA PRO-FORMA' : type.toUpperCase();
-    // Right align title at x=195
-    docPdf.text(title, 195, 22, { align: 'right' });
+    docPdf.text(title, rightAlignX, row1Y + 8, { align: 'right' });
 
-    // 4. Document Details (Top Right - Below Title)
+    // DETTAGLI (Sotto il titolo, sopra la linea)
+    let docDataY = row1Y + 14;
     const docNumber = type === 'Fattura' ? (doc as Invoice).invoiceNumber : (doc as Quote).quoteNumber;
     const issueDate = formatDate(doc.issueDate);
-    const expiryDate = type === 'Fattura' ? formatDate((doc as Invoice).dueDate) : formatDate((doc as Quote).expiryDate);
     
-    docPdf.setFontSize(10);
+    docPdf.setFontSize(9);
     docPdf.setTextColor(0, 0, 0);
     docPdf.setFont("helvetica", "normal");
+
+    // Numero
+    docPdf.text(`Numero:`, rightAlignX - 35, docDataY, { align: 'left'});
+    docPdf.setFont("helvetica", "bold");
+    docPdf.text(docNumber, rightAlignX, docDataY, { align: 'right' });
+    docDataY += 4;
+
+    // Data
+    docPdf.setFont("helvetica", "normal");
+    docPdf.text(`Data:`, rightAlignX - 35, docDataY, { align: 'left'});
+    docPdf.setFont("helvetica", "bold");
+    docPdf.text(issueDate, rightAlignX, docDataY, { align: 'right' });
+    docDataY += 4;
     
-    docPdf.text(`Numero: ${docNumber}`, 195, 35, { align: 'right' });
-    docPdf.text(`Data: ${issueDate}`, 195, 40, { align: 'right' });
-    
+    // SDI (Solo Fatture)
     if (type === 'Fattura' && (doc as Invoice).sdiCode) {
-        docPdf.text(`SDI/PEC: ${(doc as Invoice).sdiCode}`, 195, 45, { align: 'right' });
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text(`SDI/PEC:`, rightAlignX - 35, docDataY, { align: 'left'});
+        docPdf.text((doc as Invoice).sdiCode || '', rightAlignX, docDataY, { align: 'right' });
     }
 
-    // 5. Client Info (Right - Below Doc Details)
-    const clientY = 60;
+
+    // ============================================================
+    // DIVISORE (Sottile)
+    // ============================================================
+    docPdf.setDrawColor(...lightGrayColor);
+    docPdf.setLineWidth(0.1);
+    docPdf.line(marginX, dividerY, rightAlignX, dividerY);
+
+
+    // ============================================================
+    // RIGA 2
+    // Col 1: Etichetta "CLIENTE" (Grigio, Small, Bold)
+    // Col 2: Dati Cliente
+    // ============================================================
+
+    // --- Col 1: Etichetta ---
+    docPdf.setFontSize(7);
+    docPdf.setTextColor(...labelColor);
     docPdf.setFont("helvetica", "bold");
-    docPdf.text("Intestato a:", 120, clientY);
-    docPdf.setFont("helvetica", "normal");
+    // Determina etichetta corretta
+    const labelText = "CLIENTE"; 
+    docPdf.text(labelText, marginX, row2Y); // Allineato alla baseline del nome
+
+    // --- Col 2: Dati Cliente ---
+    let clientY = row2Y;
+    docPdf.setFontSize(9);
+    docPdf.setTextColor(0, 0, 0);
     
     if (client) {
+        docPdf.setFont("helvetica", "bold");
         if (client.clientType === ClientType.Parent) {
             const p = client as ParentClient;
-            docPdf.text(`${p.firstName} ${p.lastName}`, 120, clientY + 5);
-            docPdf.text(p.address, 120, clientY + 10);
-            docPdf.text(`${p.zipCode} ${p.city} (${p.province})`, 120, clientY + 15);
-            docPdf.text(`CF: ${p.taxCode}`, 120, clientY + 20);
+            docPdf.text(`${p.firstName} ${p.lastName}`, col2X, clientY); // Nome
+            clientY += 6; // Maggiore spazio dopo il nome
+            docPdf.setFont("helvetica", "normal");
+            docPdf.text(p.address, col2X, clientY);
+            clientY += 4;
+            docPdf.text(`${p.zipCode} ${p.city} (${p.province})`, col2X, clientY);
+            clientY += 4;
+            docPdf.text(`CF: ${p.taxCode}`, col2X, clientY);
         } else {
             const i = client as InstitutionalClient;
-            docPdf.text(i.companyName, 120, clientY + 5);
-            docPdf.text(i.address, 120, clientY + 10);
-            docPdf.text(`${i.zipCode} ${i.city} (${i.province})`, 120, clientY + 15);
-            docPdf.text(`P.IVA: ${i.vatNumber}`, 120, clientY + 20);
+            docPdf.text(i.companyName, col2X, clientY);
+            clientY += 6; // Maggiore spazio dopo la ragione sociale
+            docPdf.setFont("helvetica", "normal");
+            docPdf.text(i.address, col2X, clientY);
+            clientY += 4;
+            docPdf.text(`${i.zipCode} ${i.city} (${i.province})`, col2X, clientY);
+            clientY += 4;
+            docPdf.text(`P.IVA: ${i.vatNumber}`, col2X, clientY);
         }
     } else {
-        docPdf.text(doc.clientName, 120, clientY + 5);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text(doc.clientName, col2X, clientY);
     }
 
-    // --- TABLE SECTION ---
-    const tableColumn = ["Descrizione", "Quantità", "Prezzo Unit.", "Totale"];
+
+    // ============================================================
+    // TABELLA ARTICOLI
+    // ============================================================
     
-    // Costruzione righe tabella
+    const tableStartY = 85; // Start closer to header
+
+    const tableColumn = ["Descrizione", "Quantità", "Prezzo Unit.", "Totale"];
     let tableRows: any[] = [];
 
-    // Se esiste un riferimento al documento originale, aggiungilo come prima riga (speciale)
     if (type === 'Fattura' && (doc as Invoice).relatedQuoteNumber) {
         tableRows.push([{
             content: `Rif. ns. documento ${(doc as Invoice).relatedQuoteNumber}`,
@@ -167,7 +243,6 @@ export const generateDocumentPDF = async (
     }
 
     const itemRows = doc.items.map((item: DocumentItem) => {
-        // Se c'è una nota, la aggiungiamo alla descrizione
         const desc = item.notes ? `${item.description}\n${item.notes}` : item.description;
         return [
             desc,
@@ -180,11 +255,12 @@ export const generateDocumentPDF = async (
     tableRows = [...tableRows, ...itemRows];
 
     autoTable(docPdf, {
-        startY: 95,
+        startY: tableStartY,
         head: [tableColumn],
         body: tableRows,
         theme: 'grid',
-        headStyles: { fillColor: primaryColor, textColor: 255 },
+        headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 9 },
+        bodyStyles: { fontSize: 9, cellPadding: 3 },
         columnStyles: {
             0: { cellWidth: 'auto' },
             1: { cellWidth: 20, halign: 'center' },
@@ -194,68 +270,86 @@ export const generateDocumentPDF = async (
     });
 
     // --- TOTALS SECTION ---
-    let finalY = (docPdf as any).lastAutoTable?.finalY || 95;
+    let finalY = (docPdf as any).lastAutoTable?.finalY || tableStartY;
     
     const subtotal = doc.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
     const stampDuty = doc.hasStampDuty ? 2.00 : 0;
     const grandTotal = subtotal + stampDuty;
 
+    // Spacing before totals
+    finalY += 5;
+
     docPdf.setFont("helvetica", "normal");
-    docPdf.text(`Imponibile:`, 140, finalY + 10);
-    docPdf.text(`${formatCurrency(subtotal)}`, 195, finalY + 10, { align: 'right' });
+    docPdf.setFontSize(10);
+    docPdf.text(`Imponibile:`, 140, finalY + 5);
+    docPdf.text(`${formatCurrency(subtotal)}`, rightAlignX, finalY + 5, { align: 'right' });
 
     if (doc.hasStampDuty) {
-        docPdf.text(`Bollo Virtuale:`, 140, finalY + 16);
-        docPdf.text(`${formatCurrency(stampDuty)}`, 195, finalY + 16, { align: 'right' });
-        finalY += 6;
+        docPdf.text(`Bollo Virtuale:`, 140, finalY + 10);
+        docPdf.text(`${formatCurrency(stampDuty)}`, rightAlignX, finalY + 10, { align: 'right' });
+        finalY += 5;
     }
+
+    // Divider line for Total
+    docPdf.setDrawColor(200, 200, 200);
+    docPdf.line(140, finalY + 13, rightAlignX, finalY + 13);
 
     docPdf.setFont("helvetica", "bold");
     docPdf.setFontSize(12);
-    docPdf.text(`TOTALE:`, 140, finalY + 18);
-    docPdf.text(`${formatCurrency(grandTotal)}`, 195, finalY + 18, { align: 'right' });
+    docPdf.text(`TOTALE:`, 140, finalY + 20);
+    docPdf.text(`${formatCurrency(grandTotal)}`, rightAlignX, finalY + 20, { align: 'right' });
 
-    // --- PAYMENT DEADLINE (Bold, under total) ---
-    docPdf.setFontSize(10);
-    const deadlineLabel = type === 'Fattura' ? "Da pagare entro il" : "Validità offerta fino al";
+    // --- PAYMENT DEADLINE ---
+    docPdf.setFontSize(9);
+    docPdf.setFont("helvetica", "normal");
+    docPdf.setTextColor(...grayColor);
+    const expiryDate = type === 'Fattura' ? formatDate((doc as Invoice).dueDate) : formatDate((doc as Quote).expiryDate);
+    const deadlineLabel = type === 'Fattura' ? "Scadenza:" : "Valido fino al:";
+    docPdf.text(`${deadlineLabel} ${expiryDate}`, rightAlignX, finalY + 26, { align: 'right' });
+
+    // --- FOOTER INFO (Payment & Notes) ---
+    finalY += 35; 
     
-    docPdf.text(`${deadlineLabel} ${expiryDate}`, 195, finalY + 24, { align: 'right' });
+    // Check page break for footer
+    if (finalY > docPdf.internal.pageSize.height - 50) {
+        docPdf.addPage();
+        finalY = 20;
+    }
 
-
-    // --- FOOTER INFO ---
-    finalY += 36; 
+    docPdf.setTextColor(0, 0, 0);
     docPdf.setFontSize(10);
     
     // Payment Method
-    docPdf.setFont("helvetica", "bold");
-    docPdf.text("Modalità di Pagamento:", 14, finalY);
-    docPdf.setFont("helvetica", "normal");
-    docPdf.text(`${doc.paymentMethod || 'Non specificato'}`, 60, finalY);
+    if (doc.paymentMethod) {
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text("Modalità di Pagamento:", marginX, finalY);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text(`${doc.paymentMethod}`, marginX + 45, finalY);
+    }
 
-    // Installments Table (if any)
+    // Installments Table
     if (doc.installments && doc.installments.length > 0) {
         finalY += 8;
         docPdf.setFont("helvetica", "bold");
-        docPdf.text("Scadenze Pagamenti", 14, finalY);
+        docPdf.setFontSize(9);
+        docPdf.text("Piano Rateale", marginX, finalY);
         
         const instRows = doc.installments.map((inst: Installment) => [
             inst.description,
             formatDate(inst.dueDate),
             formatCurrency(inst.amount),
-            inst.isPaid ? 'Pagato' : 'Da Pagare'
+            inst.isPaid ? 'Saldato' : 'Da Saldare'
         ]);
 
         autoTable(docPdf, {
-            startY: finalY + 4,
+            startY: finalY + 2,
             head: [['Descrizione', 'Scadenza', 'Importo', 'Stato']],
             body: instRows,
-            theme: 'striped',
-            headStyles: { fillColor: grayColor, textColor: 255, fontSize: 9 },
-            bodyStyles: { fontSize: 9 },
-            columnStyles: {
-                2: { halign: 'right' }
-            },
-            margin: { left: 14, right: 100 } // Compact table on left
+            theme: 'plain',
+            styles: { fontSize: 8, cellPadding: 1 },
+            headStyles: { fontStyle: 'bold', textColor: [100,100,100] },
+            columnStyles: { 2: { halign: 'right' } },
+            margin: { left: marginX, right: 120 } // Keep it compact on left
         });
         finalY = (docPdf as any).lastAutoTable?.finalY || finalY;
     }
@@ -263,48 +357,41 @@ export const generateDocumentPDF = async (
     // --- NOTES BOX ---
     if (doc.notes && doc.notes.trim().length > 0) {
         finalY += 10;
-        
-        if (finalY > 250) {
+        if (finalY > docPdf.internal.pageSize.height - 40) {
             docPdf.addPage();
             finalY = 20;
         }
 
-        // Box Background
-        docPdf.setDrawColor(200, 200, 200);
-        docPdf.setFillColor(245, 245, 245); // Very light gray
-        docPdf.rect(14, finalY, 180, 25, 'FD'); // Fill and Draw
+        // Light background box for notes
+        docPdf.setFillColor(250, 250, 250); 
+        docPdf.setDrawColor(230, 230, 230);
+        docPdf.rect(marginX, finalY, 180, 20, 'FD');
 
         docPdf.setFont("helvetica", "bold");
-        docPdf.setTextColor(0, 0, 0);
-        docPdf.text("Note:", 16, finalY + 6);
+        docPdf.setFontSize(8);
+        docPdf.setTextColor(80, 80, 80);
+        docPdf.text("NOTE:", marginX + 2, finalY + 5);
         
         docPdf.setFont("helvetica", "normal");
-        docPdf.setFontSize(9);
-        
+        docPdf.setTextColor(0, 0, 0);
         const splitNotes = docPdf.splitTextToSize(doc.notes, 175);
-        docPdf.text(splitNotes, 16, finalY + 11);
+        docPdf.text(splitNotes, marginX + 2, finalY + 10);
         
-        finalY += 30;
+        finalY += 25;
     }
 
-
-    // Legal Footer (Regime Forfettario)
+    // Legal Footer
     const footerText = "Operazione senza applicazione dell’IVA ai sensi dell’art. 1, commi da 54 a 89, Legge n. 190/2014.\nOperazione non soggetta a ritenuta alla fonte a titolo di acconto ai sensi dell’art. 1, comma 67, Legge n. 190/2014.";
     
     const pageHeight = docPdf.internal.pageSize.height;
-    if (finalY > pageHeight - 30) {
-        docPdf.addPage();
-    }
-
+    
+    // Ensure footer is at bottom
     docPdf.setFontSize(7);
     docPdf.setTextColor(...grayColor);
-    
     const splitFooter = docPdf.splitTextToSize(footerText, 180);
-    docPdf.text(splitFooter, 14, pageHeight - 20);
-    
-    docPdf.text("Grazie per la preferenza.", 14, pageHeight - 10);
+    docPdf.text(splitFooter, marginX, pageHeight - 15);
 
-    // Filename Construction
+    // Filename
     let filename = "";
     if (type === 'Fattura') {
         const numParts = docNumber.split('-');
@@ -312,9 +399,7 @@ export const generateDocumentPDF = async (
         const dateStr = formatDateForFilename(doc.issueDate);
         const prefix = "FT";
         filename = `${prefix}${shortNum}_${dateStr}`;
-        if ((doc as Invoice).isProForma) {
-            filename += "_PROFORMA";
-        }
+        if ((doc as Invoice).isProForma) filename += "_PROFORMA";
     } else {
         filename = docNumber; 
     }

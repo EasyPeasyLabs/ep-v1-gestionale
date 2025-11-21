@@ -84,7 +84,7 @@ Implementare la gestione delle presenze, il recupero lezioni e l'iscrizione mult
 
 ---
 
-## Sessione 7 (Corrente)
+## Sessione 7 (31 Maggio 2024)
 
 ### Obiettivo della Sessione
 Espandere le funzionalità CRM e introdurre strumenti di pianificazione e controllo operativo (Planner).
@@ -96,15 +96,66 @@ Espandere le funzionalità CRM e introdurre strumenti di pianificazione e contro
     - Implementata la selezione multipla dei destinatari (Clienti, Fornitori o Inserimento Manuale).
     - Supporto per invio massivo tramite **Email (BCC)** per privacy o **WhatsApp** (apertura sequenziale chat).
 
-2.  **Planner Verifiche Periodiche**:
+2.  **Planner Verifiche Periodiche (Frontend)**:
     - Creata una nuova sezione "Pianificazione & Controllo" nel menu **Impostazioni**.
     - Implementato un sistema CRUD (`periodicChecks`) per definire task ricorrenti (es. Controllo Pagamenti, Restituzione Materiali Peek-a-Boo, Appuntamenti Commercialista).
-    - Possibilità di selezionare giorni della settimana multipli e orari.
-    - Integrazione con le API del browser per le **Notifiche Push** (configurabili per ogni verifica).
+    - Configurazione scheduler locale (React) per notifiche a browser aperto.
 
-3.  **Miglioramenti UI**:
-    - Aggiornata l'icona del menu "Finanza" con una moneta Euro.
-    - Aggiunto pulsante "Nuova Comunicazione" ben visibile nell'header della pagina CRM.
+---
 
-### Stato del Progetto
-L'applicazione ora offre strumenti proattivi per la gestione della scuola, permettendo non solo di registrare dati passati (lezioni, pagamenti) ma anche di pianificare attività future e comunicare massivamente con l'utenza.
+## Sessione 8 (1 Giugno 2024)
+
+### Obiettivo della Sessione
+Implementare l'infrastruttura server-side per le notifiche e il Controllo di Gestione.
+
+### Riepilogo delle Attività
+
+1.  **Cloud Functions**: Configurazione e deploy delle funzioni Firebase per lo scheduling delle notifiche.
+2.  **Controllo di Gestione**:
+    - Aggiunta categorizzazione granulare delle spese.
+    - Implementazione sistema di imputazione costi (Centro di Costo: Sede o Iscrizione).
+    - Nuova Dashboard "Reports" in Finanza con analisi profittabilità per sede.
+
+---
+
+## Sessione 9 (1 Giugno 2024)
+
+### Obiettivo della Sessione
+Risoluzione bug critici (Service Worker origin) e aggiornamento Roadmap.
+
+### Riepilogo delle Attività
+1.  **Bug Fix Service Worker**: Risolto errore di registrazione SW modificando l'URL dello script in assoluto (`window.location.origin`).
+2.  **Roadmap Update**: Aggiornata documentazione per riflettere il completamento del modulo Gestione Costi.
+
+---
+
+## Sessione 10 (1 Giugno 2024) - Stop & Polish
+
+### Obiettivo della Sessione
+Revisione Roadmap, congelamento feature, polishing grafico (UI/UX) e correzione bug critici notifiche.
+
+### Riepilogo delle Attività
+1.  **Stop & Polish (UI/UX)**:
+    - **Design System**: Aggiornato `index.html` con ombre più morbide (stile Apple/Stripe), animazioni di pagina (`slide-up-fade`) e pulsanti moderni.
+    - **Sidebar**: Restyling completo con stato attivo "ghost" più leggero, logo gradiente e layout pulito.
+    - **Dashboard**: Nuove "Premium Stat Cards" con icone, bolle colorate e animazioni a cascata.
+    - **Transizioni**: Implementata animazione fluida al cambio pagina in `App.tsx`.
+
+2.  **Bug Fix Notifiche**:
+    - Corretto un bug critico in `services/fcmService.ts` dove la funzione `getToken` falliva nel recuperare la registrazione del Service Worker. Ora viene passato l'oggetto `registration` esplicito ottenuto dalla promise di registrazione.
+
+3.  **Posticipo SDI**: L'integrazione fiscale è stata ufficialmente posticipata per garantire la stabilità e mantenere il focus sull'operatività.
+
+---
+
+## Sessione 11 (2 Giugno 2024)
+
+### Obiettivo della Sessione
+Personalizzazione Branding e Identità PWA.
+
+### Riepilogo delle Attività
+1.  **Identità Visiva Dinamica**:
+    - Implementata logica in `App.tsx` per iniettare il logo aziendale (recuperato da Firestore) come Favicon e Apple Touch Icon a runtime.
+    - **Manifest Dinamico**: Creato un sistema che genera un `manifest.json` "virtuale" (Blob URL) contenente il logo personalizzato dell'utente. Questo permette all'app installata su desktop/mobile di avere l'icona corretta dell'attività invece di quella di default.
+2.  **Naming Cohesion**: Standardizzato il nome dell'app installata in "EP v1".
+3.  **PDF Layout**: Perfezionato l'allineamento e le spaziature nella testata dei documenti PDF (Fatture/Preventivi) per migliorare la leggibilità e la resa estetica.

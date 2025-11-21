@@ -6,6 +6,7 @@ import { auth } from '../firebase/config';
 import { Page } from '../App';
 import { Notification } from '../types';
 import { getNotifications } from '../services/notificationService';
+import { getCompanyInfo } from '../services/settingsService';
 
 import SearchIcon from './icons/SearchIcon';
 import BellIcon from './icons/BellIcon';
@@ -28,6 +29,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
     const [notificationsOpen, setNotificationsOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [loadingNotifications, setLoadingNotifications] = useState(true);
+    const [logoSrc, setLogoSrc] = useState<string>('');
 
     const dropdownRef = useRef<HTMLDivElement>(null);
     const notificationsRef = useRef<HTMLDivElement>(null);
@@ -68,13 +70,27 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
         }
     }, []);
 
+    // Fetch logo function
+    const fetchLogo = useCallback(async () => {
+        try {
+            const info = await getCompanyInfo();
+            if (info.logoBase64) {
+                setLogoSrc(info.logoBase64);
+            }
+        } catch (e) {
+            console.error("Header: Error loading logo", e);
+        }
+    }, []);
+
     // Effect iniziale e listener per eventi globali
     useEffect(() => {
         fetchAndGenerateNotifications();
+        fetchLogo();
 
-        // Ascolta l'evento personalizzato per aggiornare le notifiche quando i dati cambiano altrove
+        // Ascolta l'evento personalizzato per aggiornare le notifiche e il logo quando i dati cambiano altrove
         const handleDataUpdate = () => {
             fetchAndGenerateNotifications();
+            fetchLogo();
         };
 
         window.addEventListener('EP_DataUpdated', handleDataUpdate);
@@ -82,7 +98,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
         return () => {
             window.removeEventListener('EP_DataUpdated', handleDataUpdate);
         };
-    }, [fetchAndGenerateNotifications]);
+    }, [fetchAndGenerateNotifications, fetchLogo]);
 
 
   return (
@@ -91,6 +107,17 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
         <button onClick={onMenuClick} className="md:hidden mr-4 md-icon-btn" aria-label="Apri menu">
           <MenuIcon />
         </button>
+        
+        {/* Mobile Logo - Visible only on small screens when Sidebar is hidden */}
+        <div className="md:hidden flex items-center mr-4">
+             {logoSrc ? (
+                 <img src={logoSrc} alt="Logo" className="w-8 h-8 object-contain" />
+             ) : (
+                 <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+             )}
+             <span className="ml-2 font-bold text-gray-700 text-sm">EP v1</span>
+        </div>
+
         <div className="relative hidden md:block w-full max-w-xs">
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             <SearchIcon />

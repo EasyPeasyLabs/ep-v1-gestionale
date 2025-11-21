@@ -49,6 +49,8 @@ export interface Enrollment {
   status: EnrollmentStatus;
 }
 
+export type EnrollmentInput = Omit<Enrollment, 'id'>;
+
 export enum ClientType {
   Parent = 'Parent',
   Institutional = 'Institutional',
@@ -63,6 +65,7 @@ interface ClientBase {
   province: string;
   email: string;
   phone: string;
+  isDeleted?: boolean; // Soft Delete flag
 }
 
 export interface ParentClient extends ClientBase {
@@ -82,19 +85,9 @@ export interface InstitutionalClient extends ClientBase {
 }
 
 export type Client = ParentClient | InstitutionalClient;
-
-export interface Supplier {
-  id: string;
-  companyName: string; // Ragione Sociale
-  vatNumber: string; // Partita IVA
-  address: string;
-  zipCode: string;
-  city: string;
-  province: string;
-  email: string;
-  phone: string;
-  locations: Location[];
-}
+export type ClientInput = Omit<ParentClient, 'id'> | Omit<InstitutionalClient, 'id'>;
+export type ParentClientInput = Omit<ParentClient, 'id'>;
+export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
 
 export interface AvailabilitySlot {
     dayOfWeek: number; // 0 = Domenica, 1 = Lunedì, ..., 6 = Sabato
@@ -116,6 +109,24 @@ export interface Location {
     availability: AvailabilitySlot[]; // Orari disponibili per le lezioni
 }
 
+export type LocationInput = Omit<Location, 'id'>;
+
+export interface Supplier {
+  id: string;
+  companyName: string; // Ragione Sociale
+  vatNumber: string; // Partita IVA
+  address: string;
+  zipCode: string;
+  city: string;
+  province: string;
+  email: string;
+  phone: string;
+  locations: Location[];
+  isDeleted?: boolean; // Soft Delete flag
+}
+
+export type SupplierInput = Omit<Supplier, 'id'>;
+
 export interface CompanyInfo {
     id: string;
     denomination?: string; // Denominazione (es. Brand name)
@@ -124,6 +135,7 @@ export interface CompanyInfo {
     address: string;
     email: string;
     phone: string;
+    logoBase64?: string; // Logo in formato Base64
 }
 
 export interface SubscriptionType {
@@ -133,6 +145,8 @@ export interface SubscriptionType {
     lessons: number;
     durationInDays: number; // Es. 30 per mensile, 90 per trimestrale
 }
+
+export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
 
 export interface Lesson {
     id: string;
@@ -146,6 +160,8 @@ export interface Lesson {
     locationColor?: string; // Denormalizzato per UI
 }
 
+export type LessonInput = Omit<Lesson, 'id'>;
+
 // --- Registro Attività (Libreria) ---
 export interface Activity {
     id: string;
@@ -154,178 +170,167 @@ export interface Activity {
     theme: string; // Filo conduttore
     description: string;
     materials: string;
-    links: string;
-    createdAt: string; // ISO String
+    links?: string;
+    createdAt?: string;
 }
 
-// --- Registro Attività (Storico/Log) ---
+export type ActivityInput = Omit<Activity, 'id'>;
+
 export interface LessonActivity {
     id: string;
-    lessonId: string; // Link all'appointment.lessonId
-    activityIds: string[]; // Array di ID attività svolte
-    date: string; // Denormalizzato per query facili
-    note?: string; // Eventuali note specifiche per quella lezione
+    lessonId: string;
+    activityIds: string[];
+    date: string;
 }
 
-// --- Finanza ---
+// --- Notifications ---
+export interface Notification {
+    id: string;
+    type: 'expiry' | 'payment_required' | 'action_required' | 'low_lessons';
+    message: string;
+    clientId?: string;
+    date: string;
+    linkPage?: string;
+    filterContext?: any;
+}
 
+// --- Finance ---
 export enum TransactionType {
     Income = 'income',
     Expense = 'expense',
 }
 
-export enum TransactionStatus {
-    Pending = 'pending',     // Addebitato ma non ancora pagato (es. Nolo calcolato)
-    Completed = 'completed', // Pagamento effettuato/Incassato
-}
-
 export enum TransactionCategory {
-    // Income
-    Sales = 'Vendite Abbonamenti',
-    OtherIncome = 'Altre Entrate',
-    // Expense
+    Sales = 'Vendite',
     Rent = 'Nolo Sedi',
-    Materials = 'Materiali Didattici',
+    Salaries = 'Stipendi',
+    Equipment = 'Attrezzature',
     Marketing = 'Marketing',
+    Utilities = 'Utenze',
+    Taxes = 'Tasse',
+    // Nuove Categorie Avanzate
     Fuel = 'Carburante',
-    Transport = 'Trasporti',
-    Taxes = 'Imposte e Tasse',
-    Admin = 'Costi Amministrativi',
+    Transport = 'Trasporti/Viaggi',
+    VehicleMaintenance = 'Manutenzione Veicolo',
+    Insurance = 'Assicurazione',
+    ProfessionalServices = 'Consulenze/Commercialista',
+    Software = 'Software/Servizi',
+    Materials = 'Materiali Didattici',
     Training = 'Formazione',
+    OtherIncome = 'Altri Ricavi',
     OtherExpense = 'Altre Spese',
 }
 
 export enum PaymentMethod {
-    BankTransfer = 'Bonifico Bancario',
-    CreditCard = 'Carta di Credito',
+    BankTransfer = 'Bonifico',
     Cash = 'Contanti',
+    CreditCard = 'Carta di Credito',
     PayPal = 'PayPal',
     Other = 'Altro',
 }
 
+export enum TransactionStatus {
+    Pending = 'pending',
+    Completed = 'completed',
+}
+
 export interface Transaction {
     id: string;
-    date: string; // ISO String
+    date: string;
     description: string;
     amount: number;
     type: TransactionType;
     category: TransactionCategory;
     paymentMethod: PaymentMethod;
-    status: TransactionStatus; // Nuovo campo per gestire "Addebitato" vs "Pagato"
-    relatedDocumentId?: string; // Es. id iscrizione o fattura
+    status: TransactionStatus;
+    relatedDocumentId?: string;
+    // Cost Allocation (Controllo di Gestione)
+    allocationType?: 'general' | 'location' | 'enrollment'; // Dove imputare il costo
+    allocationId?: string; // ID della Sede o dell'Iscrizione
+    allocationName?: string; // Nome denormalizzato per display rapido
+    isDeleted?: boolean; // Soft Delete
 }
 
+export type TransactionInput = Omit<Transaction, 'id'>;
+
 export enum DocumentStatus {
-    Draft = 'Bozza',
-    Sent = 'Inviato',
-    Paid = 'Pagato',
-    Overdue = 'Scaduto',
-    Cancelled = 'Annullato',
-    Converted = 'Convertito',
+    Draft = 'draft',
+    Sent = 'sent',
+    Paid = 'paid',
+    Overdue = 'overdue',
+    Cancelled = 'cancelled',
+    Converted = 'converted',
 }
 
 export interface DocumentItem {
     description: string;
     quantity: number;
     price: number;
-    notes?: string; // Note specifiche per la riga
+    notes?: string;
 }
 
 export interface Installment {
+    description: string;
     amount: number;
-    dueDate: string; // ISO String
-    description: string; // es. "Acconto", "Saldo"
+    dueDate: string;
     isPaid: boolean;
 }
 
-export interface Invoice {
+interface DocumentBase {
     id: string;
-    invoiceNumber: string;
     clientId: string;
-    clientName: string; // Denormalizzato
-    issueDate: string; // ISO String
-    dueDate: string; // ISO String
+    clientName: string;
+    issueDate: string;
     items: DocumentItem[];
     totalAmount: number;
     status: DocumentStatus;
-    isProForma: boolean;
-    sdiCode?: string; // Codice SDI Agenzia Entrate
+    notes?: string;
     paymentMethod?: PaymentMethod;
     installments?: Installment[];
-    hasStampDuty?: boolean; // Se ha bollo virtuale > 77€
-    notes?: string; // Note generali documento (box in fondo)
-    relatedQuoteNumber?: string; // Riferimento al preventivo di origine
-}
-
-export interface Quote {
-    id: string;
-    quoteNumber: string;
-    clientId: string;
-    clientName: string; // Denormalizzato
-    issueDate: string; // ISO String
-    expiryDate: string; // ISO String
-    items: DocumentItem[];
-    totalAmount: number;
-    status: DocumentStatus;
-    paymentMethod?: PaymentMethod;
-    installments?: Installment[]; // Piano rateale proposto
     hasStampDuty?: boolean;
-    notes?: string; // Note generali documento (box in fondo)
+    isDeleted?: boolean; // Soft Delete
 }
 
-// --- Notifiche ---
-export interface Notification {
-  id: string; 
-  type: 'expiry' | 'low_lessons' | 'payment_required' | 'action_required';
-  message: string;
-  clientId?: string; // Opzionale perché non tutte le notifiche sono legate a un cliente
-  date: string; // ISO string
-  linkPage?: string; // Opzionale: pagina di destinazione al click
-  filterContext?: any; // Dati per pre-filtrare la pagina di destinazione
+export interface Invoice extends DocumentBase {
+    invoiceNumber: string;
+    dueDate: string;
+    sdiCode?: string;
+    isProForma?: boolean;
+    relatedQuoteNumber?: string;
 }
 
-// --- Verifiche Periodiche (Planner) ---
+export interface Quote extends DocumentBase {
+    quoteNumber: string;
+    expiryDate: string;
+}
+
+export type InvoiceInput = Omit<Invoice, 'id'>;
+export type QuoteInput = Omit<Quote, 'id'>;
+
+// --- Settings / Checks ---
 export enum CheckCategory {
-    Payments = 'Scadenze Pagamenti',
-    Enrollments = 'Scadenze Iscrizioni',
-    Transactions = 'Registrazione Transazioni',
-    Documents = 'Preventivi e Fatture',
-    Materials = 'Restituzione Materiali (Peek-a-Boo)',
-    Appointments = 'Appuntamenti'
+    Payments = 'Pagamenti',
+    Documents = 'Documenti',
+    Materials = 'Materiali',
+    Maintenance = 'Manutenzione',
+    Appointments = 'Appuntamenti',
 }
 
 export enum AppointmentType {
-    NewClient = 'Nuovi Potenziali Clienti',
-    NewSupplier = 'Nuovi Fornitori',
-    Accountant = 'Commercialista',
-    Generic = 'Generico'
+    Generic = 'Generico',
+    Lesson = 'Lezione',
+    Meeting = 'Riunione',
 }
 
 export interface PeriodicCheck {
     id: string;
     category: CheckCategory;
-    subCategory?: AppointmentType; // Opzionale, usato solo se category è Appointments
-    daysOfWeek: number[]; // 0=Domenica, 1=Lunedì... Array di giorni selezionati
-    startTime: string; // HH:mm
-    endTime: string; // HH:mm
+    subCategory?: AppointmentType | string | null;
+    daysOfWeek: number[];
+    startTime: string;
+    endTime: string;
     pushEnabled: boolean;
     note?: string;
 }
 
-
-// --- Tipi di Input per Firestore (senza 'id') ---
-export type ParentClientInput = Omit<ParentClient, 'id'>;
-export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
-export type ClientInput = ParentClientInput | InstitutionalClientInput;
-
-export type SupplierInput = Omit<Supplier, 'id'>;
-export type LocationInput = Omit<Location, 'id'>;
-export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
-export type LessonInput = Omit<Lesson, 'id'>;
-export type EnrollmentInput = Omit<Enrollment, 'id'>;
-export type ActivityInput = Omit<Activity, 'id'>;
-
-export type TransactionInput = Omit<Transaction, 'id'>;
-export type InvoiceInput = Omit<Invoice, 'id'>;
-export type QuoteInput = Omit<Quote, 'id'>;
 export type PeriodicCheckInput = Omit<PeriodicCheck, 'id'>;

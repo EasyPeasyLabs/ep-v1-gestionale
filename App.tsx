@@ -21,6 +21,7 @@ import Activities from './pages/Activities';
 import ActivityLog from './pages/ActivityLog';
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission } from './services/fcmService';
+import { getCompanyInfo } from './services/settingsService';
 
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'Activities' | 'ActivityLog';
 
@@ -45,6 +46,74 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Gestione Icona Dinamica PWA e Favicon basata sul logo aziendale
+  useEffect(() => {
+      const updateAppIdentity = async () => {
+          try {
+              const info = await getCompanyInfo();
+              if (info && info.logoBase64) {
+                  // 1. Aggiorna Favicon
+                  let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+                  if (!link) {
+                      link = document.createElement('link');
+                      link.rel = 'icon';
+                      document.head.appendChild(link);
+                  }
+                  link.href = info.logoBase64;
+
+                  // 2. Aggiorna Apple Touch Icon (iOS)
+                  let appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement;
+                  if (!appleLink) {
+                      appleLink = document.createElement('link');
+                      appleLink.rel = 'apple-touch-icon';
+                      document.head.appendChild(appleLink);
+                  }
+                  appleLink.href = info.logoBase64;
+
+                  // 3. Genera Manifest Dinamico per installazione PWA
+                  const manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement;
+                  if (manifestLink) {
+                      const dynamicManifest = {
+                          short_name: "EP v1",
+                          name: "EP v1",
+                          gcm_sender_id: "103953800507",
+                          start_url: ".",
+                          display: "standalone",
+                          theme_color: "#757575", 
+                          background_color: "#f5f5f5",
+                          icons: [
+                              {
+                                  src: info.logoBase64,
+                                  type: "image/png",
+                                  sizes: "192x192",
+                                  purpose: "any maskable"
+                              },
+                              {
+                                  src: info.logoBase64,
+                                  type: "image/png",
+                                  sizes: "512x512",
+                                  purpose: "any maskable"
+                              }
+                          ]
+                      };
+                      const stringManifest = JSON.stringify(dynamicManifest);
+                      const blob = new Blob([stringManifest], {type: 'application/json'});
+                      const manifestURL = URL.createObjectURL(blob);
+                      manifestLink.href = manifestURL;
+                  }
+              }
+          } catch (e) {
+              console.error("Errore aggiornamento icona app:", e);
+          }
+      };
+
+      updateAppIdentity();
+      
+      // Ascolta aggiornamenti dalle impostazioni
+      window.addEventListener('EP_DataUpdated', updateAppIdentity);
+      return () => window.removeEventListener('EP_DataUpdated', updateAppIdentity);
+  }, []);
+
   // Funzione di navigazione centralizzata che supporta parametri
   const handleNavigation = (page: Page, params?: any) => {
       setCurrentPage(page);
@@ -53,34 +122,42 @@ const App: React.FC = () => {
 
   const renderContent = () => {
     if (!user) return null; // Should not happen if user is logged in
-    switch (currentPage) {
-      case 'Dashboard':
-        return <Dashboard setCurrentPage={handleNavigation} />;
-      case 'Enrollments':
-        return <Enrollments initialParams={pageParams} />;
-      case 'Attendance':
-        return <Attendance />;
-      case 'Activities':
-        return <Activities />;
-      case 'ActivityLog':
-        return <ActivityLog />;
-      case 'Clients':
-        return <Clients />;
-      case 'Suppliers':
-        return <Suppliers />;
-      case 'Calendar':
-        return <Calendar />;
-      case 'CRM':
-        return <CRM />;
-      case 'Finance':
-        return <Finance initialParams={pageParams} />;
-      case 'Settings':
-        return <Settings />;
-      case 'Profile':
-        return <Profile user={user} />;
-      default:
-        return <Dashboard setCurrentPage={handleNavigation} />;
-    }
+    
+    // Use a key to force remounting and trigger the animation
+    return (
+        <div key={currentPage} className="animate-slide-up h-full">
+            {(() => {
+                switch (currentPage) {
+                  case 'Dashboard':
+                    return <Dashboard setCurrentPage={handleNavigation} />;
+                  case 'Enrollments':
+                    return <Enrollments initialParams={pageParams} />;
+                  case 'Attendance':
+                    return <Attendance />;
+                  case 'Activities':
+                    return <Activities />;
+                  case 'ActivityLog':
+                    return <ActivityLog />;
+                  case 'Clients':
+                    return <Clients />;
+                  case 'Suppliers':
+                    return <Suppliers />;
+                  case 'Calendar':
+                    return <Calendar />;
+                  case 'CRM':
+                    return <CRM />;
+                  case 'Finance':
+                    return <Finance initialParams={pageParams} />;
+                  case 'Settings':
+                    return <Settings />;
+                  case 'Profile':
+                    return <Profile user={user} />;
+                  default:
+                    return <Dashboard setCurrentPage={handleNavigation} />;
+                }
+            })()}
+        </div>
+    );
   };
 
   if (loadingAuth) {
@@ -92,7 +169,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen" style={{ backgroundColor: 'var(--md-bg-light)', color: 'var(--md-text-primary)'}}>
+    <div className="flex h-screen bg-slate-50 text-gray-900 font-sans">
       {/* Scheduler locale come fallback per quando il browser è aperto */}
       <NotificationScheduler />
       
@@ -103,14 +180,14 @@ const App: React.FC = () => {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
         <Header 
             user={user} 
             setCurrentPage={(page) => handleNavigation(page)} 
             onNavigate={handleNavigation}
             onMenuClick={() => setIsSidebarOpen(true)} 
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-6 lg:p-8">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 scroll-smooth">
           {renderContent()}
         </main>
       </div>

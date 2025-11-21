@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
@@ -18,6 +19,7 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
         email: data.email,
         phone: data.phone,
         locations: data.locations || [],
+        isDeleted: data.isDeleted || false
     };
 };
 
@@ -27,7 +29,7 @@ export const getSuppliers = async (): Promise<Supplier[]> => {
 };
 
 export const addSupplier = async (supplier: SupplierInput): Promise<string> => {
-    const docRef = await addDoc(supplierCollectionRef, supplier);
+    const docRef = await addDoc(supplierCollectionRef, { ...supplier, isDeleted: false });
     return docRef.id;
 };
 
@@ -37,7 +39,20 @@ export const updateSupplier = async (id: string, supplier: Partial<SupplierInput
     await updateDoc(supplierDoc, { ...supplier });
 };
 
+// Soft Delete: sposta nel cestino
 export const deleteSupplier = async (id: string): Promise<void> => {
+    const supplierDoc = doc(db, 'suppliers', id);
+    await updateDoc(supplierDoc, { isDeleted: true });
+};
+
+// Ripristina dal cestino
+export const restoreSupplier = async (id: string): Promise<void> => {
+    const supplierDoc = doc(db, 'suppliers', id);
+    await updateDoc(supplierDoc, { isDeleted: false });
+};
+
+// Hard Delete: elimina fisicamente
+export const permanentDeleteSupplier = async (id: string): Promise<void> => {
     const supplierDoc = doc(db, 'suppliers', id);
     await deleteDoc(supplierDoc);
 };

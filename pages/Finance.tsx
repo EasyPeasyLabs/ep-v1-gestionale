@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment, Invoice, Quote, InvoiceInput, QuoteInput, DocumentStatus, DocumentItem, Client, ClientType, Installment, Supplier, TransactionStatus } from '../types';
-import { getTransactions, addTransaction, deleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, deleteTransactionByRelatedId, updateTransaction, calculateRentTransactions, batchAddTransactions } from '../services/financeService';
+import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment, Invoice, Quote, InvoiceInput, QuoteInput, DocumentStatus, DocumentItem, Client, ClientType, Installment, Supplier, TransactionStatus, Location, EnrollmentStatus } from '../types';
+import { getTransactions, addTransaction, deleteTransaction, restoreTransaction, permanentDeleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, restoreInvoice, permanentDeleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, restoreQuote, permanentDeleteQuote, deleteTransactionByRelatedId, updateTransaction, calculateRentTransactions, batchAddTransactions } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
@@ -12,19 +12,20 @@ import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import RestoreIcon from '../components/icons/RestoreIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import CalculatorIcon from '../components/icons/CalculatorIcon';
 import { Chart, registerables, TooltipItem } from 'chart.js';
 Chart.register(...registerables);
 
-type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes';
+type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes' | 'reports';
 
 interface FinanceProps {
     initialParams?: {
         tab?: Tab;
         invoiceStatus?: DocumentStatus;
         transactionStatus?: 'pending' | 'completed';
-        searchTerm?: string; // Anche se non implementato in tutti i tab, lo prepariamo
+        searchTerm?: string; 
     };
 }
 
@@ -63,9 +64,11 @@ const ConvertIcon = () => (
 
 const TransactionForm: React.FC<{
     initialData?: Transaction | null;
+    suppliers: Supplier[];
+    enrollments: Enrollment[];
     onSave: (transaction: TransactionInput | Transaction) => void;
     onCancel: () => void;
-}> = ({ initialData, onSave, onCancel }) => {
+}> = ({ initialData, suppliers, enrollments, onSave, onCancel }) => {
     const [description, setDescription] = useState(initialData?.description || '');
     const [amount, setAmount] = useState(initialData?.amount || 0);
     const [date, setDate] = useState(initialData?.date.split('T')[0] || new Date().toISOString().split('T')[0]);
@@ -73,10 +76,49 @@ const TransactionForm: React.FC<{
     const [category, setCategory] = useState<TransactionCategory>(initialData?.category || TransactionCategory.OtherExpense);
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod || PaymentMethod.BankTransfer);
     const [status, setStatus] = useState<TransactionStatus>(initialData?.status || TransactionStatus.Completed);
+    
+    // Allocation Fields
+    const [allocationType, setAllocationType] = useState<'general' | 'location' | 'enrollment'>(initialData?.allocationType || 'general');
+    const [allocationId, setAllocationId] = useState(initialData?.allocationId || '');
+
+    const allLocations = useMemo(() => {
+        const locs: { id: string; name: string; supplierName: string }[] = [];
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                locs.push({ id: l.id, name: l.name, supplierName: s.companyName });
+            });
+        });
+        return locs;
+    }, [suppliers]);
+
+    const activeEnrollments = useMemo(() => {
+        return enrollments.filter(e => e.status === 'Active' || e.status === 'Pending');
+    }, [enrollments]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const data = { description, amount: Number(amount), date: new Date(date).toISOString(), type, category, paymentMethod, status };
+        let allocationName = undefined;
+        
+        if (allocationType === 'location') {
+            const loc = allLocations.find(l => l.id === allocationId);
+            if (loc) allocationName = loc.name;
+        } else if (allocationType === 'enrollment') {
+            const enr = activeEnrollments.find(e => e.id === allocationId);
+            if (enr) allocationName = enr.childName;
+        }
+
+        const data: any = { 
+            description, 
+            amount: Number(amount), 
+            date: new Date(date).toISOString(), 
+            type, 
+            category, 
+            paymentMethod, 
+            status,
+            allocationType,
+            allocationId: allocationType === 'general' ? undefined : allocationId,
+            allocationName: allocationType === 'general' ? undefined : allocationName
+        };
         
         if (initialData) {
             onSave({ ...data, id: initialData.id } as Transaction);
@@ -129,6 +171,47 @@ const TransactionForm: React.FC<{
                         <label htmlFor="status" className="md-input-label !top-0 !text-xs !text-gray-500">Stato</label>
                     </div>
                 </div>
+
+                {type === TransactionType.Expense && (
+                    <div className="bg-gray-50 p-4 rounded-md border border-gray-200 mt-4 animate-fade-in">
+                        <h4 className="text-sm font-bold text-gray-700 mb-3">Imputazione Costo (Opzionale)</h4>
+                        <div className="space-y-3">
+                            <div className="md-input-group">
+                                <select value={allocationType} onChange={e => { setAllocationType(e.target.value as any); setAllocationId(''); }} className="md-input">
+                                    <option value="general">Generale (Costi Fissi/Aziendali)</option>
+                                    <option value="location">Sede Specifica (Costi Diretti)</option>
+                                    <option value="enrollment">Iscrizione/Allievo (Materiali)</option>
+                                </select>
+                                <label className="md-input-label !top-0 !text-xs !text-gray-500">Imputa a</label>
+                            </div>
+
+                            {allocationType === 'location' && (
+                                <div className="md-input-group animate-fade-in">
+                                    <select value={allocationId} onChange={e => setAllocationId(e.target.value)} className="md-input">
+                                        <option value="">Seleziona Sede...</option>
+                                        {allLocations.map(l => (
+                                            <option key={l.id} value={l.id}>{l.name} ({l.supplierName})</option>
+                                        ))}
+                                    </select>
+                                    <label className="md-input-label !top-0 !text-xs !text-gray-500">Sede di Riferimento</label>
+                                </div>
+                            )}
+
+                            {allocationType === 'enrollment' && (
+                                <div className="md-input-group animate-fade-in">
+                                    <select value={allocationId} onChange={e => setAllocationId(e.target.value)} className="md-input">
+                                        <option value="">Seleziona Allievo...</option>
+                                        {activeEnrollments.map(e => (
+                                            <option key={e.id} value={e.id}>{e.childName} - {e.subscriptionName}</option>
+                                        ))}
+                                    </select>
+                                    <label className="md-input-label !top-0 !text-xs !text-gray-500">Iscrizione di Riferimento</label>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
@@ -152,7 +235,6 @@ const DocumentForm: React.FC<{
     const [status, setStatus] = useState<DocumentStatus>(initialData?.status || DocumentStatus.Draft);
     const [notes, setNotes] = useState(initialData?.notes || '');
     
-    // New Fields
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initialData?.paymentMethod || PaymentMethod.BankTransfer);
     const [installments, setInstallments] = useState<Installment[]>(initialData?.installments || []);
     const [sdiCode, setSdiCode] = useState((type === 'invoice' ? (initialData as Invoice)?.sdiCode : '') || '');
@@ -181,7 +263,6 @@ const DocumentForm: React.FC<{
     const stampDuty = hasStampDuty ? 2.00 : 0;
     const totalAmount = subtotal + stampDuty;
 
-    // Installments Logic
     const addInstallment = () => setInstallments([...installments, { description: 'Rata', amount: 0, dueDate: dueDate, isPaid: false }]);
     const removeInstallment = (index: number) => setInstallments(installments.filter((_, i) => i !== index));
     const updateInstallment = (index: number, field: keyof Installment, value: any) => {
@@ -313,14 +394,12 @@ const DocumentForm: React.FC<{
                     <button type="button" onClick={addItem} className="text-sm text-indigo-600 font-medium flex items-center mt-2"><PlusIcon /> Aggiungi Riga</button>
                 </div>
 
-                {/* Totals */}
                  <div className="text-right mt-4 space-y-1">
                     <p className="text-sm text-gray-600">Imponibile: {subtotal.toFixed(2)}€</p>
                     {hasStampDuty && <p className="text-sm text-gray-600">+ Bollo Virtuale: 2.00€</p>}
                     <p className="text-lg font-bold">Totale: {totalAmount.toFixed(2)}€</p>
                 </div>
 
-                {/* Payment Section */}
                 <div className="mt-6 pt-4 border-t">
                     <h3 className="font-semibold mb-3">Pagamenti</h3>
                     <div className="md-input-group mb-4">
@@ -347,7 +426,6 @@ const DocumentForm: React.FC<{
                     </div>
                 </div>
                 
-                {/* Notes Section */}
                  <div className="mt-6 pt-4 border-t">
                     <h3 className="font-semibold mb-2">Note Documento</h3>
                     <p className="text-xs text-gray-500 mb-2">Queste note appariranno in un box dedicato nel PDF.</p>
@@ -361,7 +439,6 @@ const DocumentForm: React.FC<{
                     />
                 </div>
 
-                {/* SDI Field - Moved here */}
                 {type === 'invoice' && (
                      <div className="md-input-group mt-4">
                          <input 
@@ -378,7 +455,6 @@ const DocumentForm: React.FC<{
                      </div>
                 )}
 
-                {/* Status Field */}
                  <div className="md-input-group mt-4">
                     <select id="status" value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="md-input">
                         {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
@@ -399,14 +475,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [activeTab, setActiveTab] = useState<Tab>('overview');
     const [transactionFilter, setTransactionFilter] = useState<'all' | TransactionType>('all');
     const [invoiceFilter, setInvoiceFilter] = useState<'all' | DocumentStatus>('all');
+    const [showTrash, setShowTrash] = useState(false);
     
-    // Handle initialParams
     useEffect(() => {
         if (initialParams) {
             if (initialParams.tab) setActiveTab(initialParams.tab);
             if (initialParams.invoiceStatus) setInvoiceFilter(initialParams.invoiceStatus);
-            // Se volessimo filtrare anche le transazioni, potremmo usare transactionStatus ma qui il filtro è income/expense
-            // Tuttavia, i "pending" sono gestiti in un blocco separato che è sempre visibile in 'transactions' tab.
         }
     }, [initialParams]);
 
@@ -427,13 +501,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [editingDoc, setEditingDoc] = useState<Invoice | Quote | null>(null);
     const [quoteToConvertId, setQuoteToConvertId] = useState<string | null>(null);
 
-    const [deleteId, setDeleteId] = useState<string | null>(null);
-    const [deleteType, setDeleteType] = useState<'transaction' | 'invoice' | 'quote' | null>(null);
+    const [itemToProcess, setItemToProcess] = useState<{id: string, type: 'transaction'|'invoice'|'quote', action: 'delete'|'restore'|'permanent'} | null>(null);
     
     const monthlyChartRef = useRef<HTMLCanvasElement>(null);
     const enrollmentsChartRef = useRef<HTMLCanvasElement>(null);
     const expensesDoughnutRef = useRef<HTMLCanvasElement>(null);
     const incomeDoughnutRef = useRef<HTMLCanvasElement>(null);
+    const reportsDoughnutRef = useRef<HTMLCanvasElement>(null);
 
 
     const fetchAllData = useCallback(async () => {
@@ -460,17 +534,18 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
-    // Derived state for Transactions
+    // Use active items for Dashboard/Calculations
+    const activeTransactions = useMemo(() => transactions.filter(t => !t.isDeleted), [transactions]);
+    
     const completedTransactions = useMemo(() => 
-        transactions.filter(t => !t.status || t.status === TransactionStatus.Completed), 
-    [transactions]);
+        activeTransactions.filter(t => !t.status || t.status === TransactionStatus.Completed), 
+    [activeTransactions]);
 
     const pendingTransactions = useMemo(() => 
-        transactions.filter(t => t.status === TransactionStatus.Pending), 
-    [transactions]);
+        activeTransactions.filter(t => t.status === TransactionStatus.Pending), 
+    [activeTransactions]);
 
 
-    // Handlers for Transactions
     const handleOpenTransModal = (transaction: Transaction | null = null) => {
         setEditingTransaction(transaction);
         setIsTransModalOpen(true);
@@ -500,7 +575,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const handleGenerateRent = async () => {
         setLoading(true);
         try {
-            const newTransactions = calculateRentTransactions(enrollments, suppliers, transactions);
+            // calculateRentTransactions needs active transactions to avoid dups
+            const newTransactions = calculateRentTransactions(enrollments, suppliers, activeTransactions);
             
             if (newTransactions.length > 0) {
                 await batchAddTransactions(newTransactions);
@@ -528,7 +604,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     };
 
 
-    // Handlers for Documents (Invoices/Quotes)
     const handleOpenDocModal = (type: 'invoice' | 'quote', doc: Invoice | Quote | null = null) => {
         setDocType(type);
         setEditingDoc(doc);
@@ -670,26 +745,35 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         fetchAllData(); 
     };
 
-    const handleDeleteRequest = (id: string, type: 'transaction' | 'invoice' | 'quote') => {
-        setDeleteId(id);
-        setDeleteType(type);
+    const handleActionClick = (id: string, type: 'transaction' | 'invoice' | 'quote', action: 'delete' | 'restore' | 'permanent') => {
+        setItemToProcess({ id, type, action });
     };
 
-    const handleConfirmDelete = async () => {
-        if (!deleteId || !deleteType) return;
+    const handleConfirmAction = async () => {
+        if (!itemToProcess) return;
+        const { id, type, action } = itemToProcess;
         try {
-            if (deleteType === 'transaction') await deleteTransaction(deleteId);
-            else if (deleteType === 'invoice') await deleteInvoice(deleteId);
-            else if (deleteType === 'quote') await deleteQuote(deleteId);
+            if (type === 'transaction') {
+                if (action === 'delete') await deleteTransaction(id);
+                else if (action === 'restore') await restoreTransaction(id);
+                else await permanentDeleteTransaction(id);
+            } else if (type === 'invoice') {
+                if (action === 'delete') await deleteInvoice(id);
+                else if (action === 'restore') await restoreInvoice(id);
+                else await permanentDeleteInvoice(id);
+            } else if (type === 'quote') {
+                if (action === 'delete') await deleteQuote(id);
+                else if (action === 'restore') await restoreQuote(id);
+                else await permanentDeleteQuote(id);
+            }
             
             await fetchAllData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
             console.error(e);
-            setError("Errore durante l'eliminazione.");
+            setError("Errore durante l'operazione.");
         } finally {
-            setDeleteId(null);
-            setDeleteType(null);
+            setItemToProcess(null);
         }
     };
 
@@ -705,7 +789,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     };
 
 
-    // --- CHART LOGIC (Uses ONLY Completed Transactions) ---
+    // --- CHART LOGIC (Uses ONLY Completed Active Transactions) ---
     const now = new Date();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
@@ -714,7 +798,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const annualIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
     const annualExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
     
-    const overdueAmount = invoices.filter(inv => inv.status === DocumentStatus.Overdue).reduce((sum, inv) => sum + inv.totalAmount, 0);
+    const overdueAmount = invoices.filter(inv => !inv.isDeleted && inv.status === DocumentStatus.Overdue).reduce((sum, inv) => sum + inv.totalAmount, 0);
 
     const COEFFICIENTE_REDDITIVITA = 0.78, ALIQUOTA_INPS = 0.2623, ALIQUOTA_IMPOSTA = 0.05;
     const imponibileLordo = annualIncome * COEFFICIENTE_REDDITIVITA;
@@ -724,7 +808,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const utileNettoPrevisto = annualIncome - annualExpense - contributiInpsStimati - impostaSostitutivaStimata;
 
     useEffect(() => {
-        if (activeTab !== 'overview') return;
+        if (activeTab !== 'overview' && activeTab !== 'reports') return; 
+        
         const last6Months = [...Array(6)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return { month: d.getMonth(), year: d.getFullYear() }; }).reverse();
         const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' }));
         const monthlyIncomeData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
@@ -735,7 +820,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         const incomeByCategory = completedTransactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
 
 
-        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart;
+        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart, reportsDoughnut: Chart;
         
         const percentageTooltip = {
             callbacks: {
@@ -749,28 +834,91 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             }
         };
 
-        if (monthlyChartRef.current) { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (enrollmentsChartRef.current) { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (expensesDoughnutRef.current) { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
-        if (incomeDoughnutRef.current) { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
+        if (monthlyChartRef.current && activeTab === 'overview') { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
+        if (enrollmentsChartRef.current && activeTab === 'overview') { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
+        if (expensesDoughnutRef.current && activeTab === 'overview') { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
+        if (incomeDoughnutRef.current && activeTab === 'overview') { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
         
+        if (reportsDoughnutRef.current && activeTab === 'reports') {
+             reportsDoughnut = new Chart(reportsDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip } } }); 
+        }
+
         return () => { 
             if (monthlyChart) monthlyChart.destroy(); 
             if (enrollmentsChart) enrollmentsChart.destroy(); 
             if (expensesDoughnut) expensesDoughnut.destroy(); 
             if (incomeDoughnut) incomeDoughnut.destroy();
+            if (reportsDoughnut) reportsDoughnut.destroy();
         };
-    }, [completedTransactions, enrollments, activeTab]); // Changed dependency to completedTransactions
+    }, [completedTransactions, enrollments, activeTab]); 
 
-    const filteredTransactions = completedTransactions.filter(t => {
+    // Filtered Lists for Tables (respecting Trash toggle)
+    const displayedTransactions = transactions.filter(t => {
+        if (showTrash) return t.isDeleted;
+        if (t.isDeleted) return false;
         if (transactionFilter === 'all') return true;
         return t.type === transactionFilter;
     });
 
-    const filteredInvoices = invoices.filter(inv => {
+    const displayedInvoices = invoices.filter(inv => {
+        if (showTrash) return inv.isDeleted;
+        if (inv.isDeleted) return false;
         if (invoiceFilter === 'all') return true;
         return inv.status === invoiceFilter;
     });
+
+    const displayedQuotes = quotes.filter(q => {
+        if (showTrash) return q.isDeleted;
+        if (q.isDeleted) return false;
+        return true; // No specific filter for quotes currently
+    });
+
+    // --- REPORTS LOGIC ---
+    const calculateLocationProfit = () => {
+        const locationStats: Record<string, { name: string, revenue: number, costs: number }> = {};
+        
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                locationStats[l.id] = { name: `${l.name} (${s.companyName})`, revenue: 0, costs: 0 };
+            });
+        });
+
+        enrollments.forEach(enr => {
+            if (enr.status === EnrollmentStatus.Active && locationStats[enr.locationId]) {
+                locationStats[enr.locationId].revenue += (enr.price || 0);
+            }
+        });
+
+        completedTransactions.forEach(t => {
+            if (t.type === TransactionType.Expense) {
+                if (t.allocationType === 'location' && t.allocationId && locationStats[t.allocationId]) {
+                    locationStats[t.allocationId].costs += t.amount;
+                }
+                else if (t.category === TransactionCategory.Rent && !t.allocationId) {
+                    for (const locId in locationStats) {
+                        if (t.description.includes(locationStats[locId].name.split('(')[0].trim())) {
+                            locationStats[locId].costs += t.amount;
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        return Object.values(locationStats).map(s => ({
+            ...s,
+            profit: s.revenue - s.costs,
+            margin: s.revenue > 0 ? ((s.revenue - s.costs) / s.revenue) * 100 : 0
+        })).sort((a, b) => b.profit - a.profit);
+    };
+
+    const locationProfits = useMemo(() => calculateLocationProfit(), [enrollments, completedTransactions, suppliers]);
+    
+    const totalOperatingCosts = completedTransactions
+        .filter(t => t.type === TransactionType.Expense && t.category !== TransactionCategory.Taxes)
+        .reduce((sum, t) => sum + t.amount, 0);
+        
+    const ebitda = annualIncome - totalOperatingCosts;
 
 
     const renderContent = () => {
@@ -842,13 +990,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                             <button onClick={() => setTransactionFilter(TransactionType.Income)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Entrate</button>
                             <button onClick={() => setTransactionFilter(TransactionType.Expense)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Uscite</button>
                         </div>
-                        <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm">
-                            <CalculatorIcon /> <span className="ml-2">Calcola Nolo Sedi</span>
-                        </button>
+                        {!showTrash && (
+                            <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm">
+                                <CalculatorIcon /> <span className="ml-2">Calcola Nolo Sedi</span>
+                            </button>
+                        )}
                     </div>
 
                     {/* Pending Transactions Section */}
-                    {pendingTransactions.length > 0 && (
+                    {!showTrash && pendingTransactions.length > 0 && (
                         <div className="mb-6 border-2 border-amber-200 bg-amber-50 rounded-lg overflow-hidden">
                             <div className="p-4 bg-amber-100 border-b border-amber-200 flex justify-between items-center">
                                 <h3 className="text-sm font-bold text-amber-900 flex items-center">
@@ -870,7 +1020,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                             >
                                                 Salda
                                             </button>
-                                             <button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete text-amber-700"><TrashIcon/></button>
+                                             <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete text-amber-700"><TrashIcon/></button>
                                         </div>
                                     </div>
                                 ))}
@@ -879,8 +1029,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                     )}
 
                     <div className="md:hidden space-y-3 p-4 pt-0">
-                        {filteredTransactions.map(t => (
-                            <div key={t.id} className="md-card p-4">
+                        {displayedTransactions.map(t => (
+                            <div key={t.id} className={`md-card p-4 ${t.isDeleted ? 'opacity-75 border-red-200 bg-red-50' : ''}`}>
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <p className="font-semibold">{t.description}</p>
@@ -890,12 +1040,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                     <p className={`font-bold text-lg ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</p>
                                 </div>
                                 <div className="text-right mt-2 space-x-2">
-                                     <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit" aria-label="Modifica transazione"><PencilIcon/></button>
-                                     <button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete" aria-label="Elimina transazione"><TrashIcon/></button>
+                                     {showTrash ? (
+                                        <>
+                                            <button onClick={() => handleActionClick(t.id, 'transaction', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
+                                            <button onClick={() => handleActionClick(t.id, 'transaction', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
+                                        </>
+                                     ) : (
+                                        <>
+                                            <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit"><PencilIcon/></button>
+                                            <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete"><TrashIcon/></button>
+                                        </>
+                                     )}
                                 </div>
                             </div>
                         ))}
-                         {filteredTransactions.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nessuna transazione registrata.</p>}
+                         {displayedTransactions.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nessuna transazione registrata.</p>}
                     </div>
                     <table className="w-full text-left hidden md:table">
                         <thead>
@@ -903,24 +1062,39 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 <th className="p-4 font-medium">Data</th>
                                 <th className="p-4 font-medium">Descrizione</th>
                                 <th className="p-4 font-medium">Categoria</th>
+                                <th className="p-4 font-medium">Imputazione</th>
                                 <th className="p-4 text-right font-medium">Importo</th>
                                 <th className="p-4 font-medium">Azioni</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredTransactions.map(t => (
-                                <tr key={t.id} className="border-b hover:bg-gray-50" style={{borderColor: 'var(--md-divider)'}}>
+                            {displayedTransactions.map(t => (
+                                <tr key={t.id} className={`border-b hover:bg-gray-50 ${t.isDeleted ? 'bg-red-50' : ''}`} style={{borderColor: 'var(--md-divider)'}}>
                                     <td className="p-4 text-sm">{new Date(t.date).toLocaleDateString()}</td>
                                     <td className="p-4 font-medium">{t.description}</td>
                                     <td className="p-4 text-sm">{t.category}</td>
+                                    <td className="p-4 text-xs text-gray-500">
+                                        {t.allocationType === 'location' ? `Sede: ${t.allocationName || '...'}` : 
+                                         t.allocationType === 'enrollment' ? `Iscrizione: ${t.allocationName || '...'}` : 
+                                         '-'}
+                                    </td>
                                     <td className={`p-4 text-right font-semibold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</td>
-                                    <td className="p-4">
-                                        <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit mr-2"><PencilIcon/></button>
-                                        <button onClick={() => handleDeleteRequest(t.id, 'transaction')} className="md-icon-btn delete"><TrashIcon/></button>
+                                    <td className="p-4 flex space-x-2">
+                                        {showTrash ? (
+                                            <>
+                                                <button onClick={() => handleActionClick(t.id, 'transaction', 'restore')} className="md-icon-btn text-green-600" title="Ripristina"><RestoreIcon/></button>
+                                                <button onClick={() => handleActionClick(t.id, 'transaction', 'permanent')} className="md-icon-btn text-red-600" title="Elimina per sempre"><TrashIcon/></button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit"><PencilIcon/></button>
+                                                <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete"><TrashIcon/></button>
+                                            </>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
-                             {filteredTransactions.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-gray-500">Nessuna transazione registrata.</td></tr>}
+                             {displayedTransactions.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna transazione trovata.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -974,8 +1148,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredInvoices.map(inv => (
-                                    <tr key={inv.id} className="border-b hover:bg-gray-50" style={{borderColor: 'var(--md-divider)'}}>
+                                {displayedInvoices.map(inv => (
+                                    <tr key={inv.id} className={`border-b hover:bg-gray-50 ${inv.isDeleted ? 'bg-red-50' : ''}`} style={{borderColor: 'var(--md-divider)'}}>
                                         <td className="p-4 font-medium">
                                             {inv.invoiceNumber} 
                                             {inv.isProForma && <span className="ml-2 bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded">PRO-FORMA</span>}
@@ -986,6 +1160,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                         <td className="p-4 text-center">
                                              <select 
                                                 value={inv.status} 
+                                                disabled={inv.isDeleted}
                                                 onChange={(e) => handleUpdateStatus(inv.id, e.target.value as DocumentStatus, 'invoice')}
                                                 className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none cursor-pointer ${inv.status === DocumentStatus.Paid ? 'bg-green-100 text-green-800' : inv.status === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800' : inv.status === DocumentStatus.Overdue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}
                                             >
@@ -993,23 +1168,32 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                             </select>
                                         </td>
                                         <td className="p-4 flex items-center space-x-2">
-                                            <button onClick={() => handleDownloadPDF(inv, 'Fattura')} className="md-icon-btn download" title="Scarica PDF"><DownloadIcon /></button>
-                                            <button onClick={() => handleOpenDocModal('invoice', inv)} className="md-icon-btn edit" title="Modifica"><PencilIcon /></button>
-                                            <button onClick={() => handleDeleteRequest(inv.id, 'invoice')} className="md-icon-btn delete" title="Elimina"><TrashIcon /></button>
-                                            {inv.isProForma && (
-                                                <button onClick={() => handleMakeInvoiceFinal(inv)} className="md-icon-btn text-indigo-600" title="Rendi Definitiva"><ConvertIcon /></button>
+                                            {showTrash ? (
+                                                <>
+                                                    <button onClick={() => handleActionClick(inv.id, 'invoice', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
+                                                    <button onClick={() => handleActionClick(inv.id, 'invoice', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleDownloadPDF(inv, 'Fattura')} className="md-icon-btn download" title="Scarica PDF"><DownloadIcon /></button>
+                                                    <button onClick={() => handleOpenDocModal('invoice', inv)} className="md-icon-btn edit" title="Modifica"><PencilIcon /></button>
+                                                    <button onClick={() => handleActionClick(inv.id, 'invoice', 'delete')} className="md-icon-btn delete" title="Elimina"><TrashIcon /></button>
+                                                    {inv.isProForma && (
+                                                        <button onClick={() => handleMakeInvoiceFinal(inv)} className="md-icon-btn text-indigo-600" title="Rendi Definitiva"><ConvertIcon /></button>
+                                                    )}
+                                                </>
                                             )}
                                         </td>
                                     </tr>
                                 ))}
-                                {filteredInvoices.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna fattura trovata con questo filtro.</td></tr>}
+                                {displayedInvoices.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna fattura trovata.</td></tr>}
                             </tbody>
                         </table>
                     </div>
                     {/* Mobile View Invoices */}
                     <div className="md:hidden p-4 space-y-4">
-                        {filteredInvoices.map(inv => (
-                            <div key={inv.id} className="border rounded-lg p-4 shadow-sm">
+                        {displayedInvoices.map(inv => (
+                            <div key={inv.id} className={`border rounded-lg p-4 shadow-sm ${inv.isDeleted ? 'bg-red-50 opacity-75' : ''}`}>
                                 <div className="flex justify-between mb-2">
                                     <div>
                                         <span className="font-bold block">{inv.invoiceNumber}</span>
@@ -1022,20 +1206,30 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 <div className="flex justify-between items-center">
                                      <select 
                                         value={inv.status} 
+                                        disabled={inv.isDeleted}
                                         onChange={(e) => handleUpdateStatus(inv.id, e.target.value as DocumentStatus, 'invoice')}
                                         className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none ${inv.status === DocumentStatus.Paid ? 'bg-green-100 text-green-800' : inv.status === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800' : inv.status === DocumentStatus.Overdue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}
                                     >
                                         {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                     <div className="flex space-x-2">
-                                         <button onClick={() => handleDownloadPDF(inv, 'Fattura')} className="md-icon-btn download"><DownloadIcon /></button>
-                                         <button onClick={() => handleOpenDocModal('invoice', inv)} className="md-icon-btn edit"><PencilIcon /></button>
-                                         <button onClick={() => handleDeleteRequest(inv.id, 'invoice')} className="md-icon-btn delete"><TrashIcon /></button>
+                                         {showTrash ? (
+                                            <>
+                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
+                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
+                                            </>
+                                         ) : (
+                                            <>
+                                                <button onClick={() => handleDownloadPDF(inv, 'Fattura')} className="md-icon-btn download"><DownloadIcon /></button>
+                                                <button onClick={() => handleOpenDocModal('invoice', inv)} className="md-icon-btn edit"><PencilIcon /></button>
+                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'delete')} className="md-icon-btn delete"><TrashIcon /></button>
+                                            </>
+                                         )}
                                     </div>
                                 </div>
                             </div>
                         ))}
-                         {filteredInvoices.length === 0 && <p className="text-center text-gray-500">Nessuna fattura trovata con questo filtro.</p>}
+                         {displayedInvoices.length === 0 && <p className="text-center text-gray-500">Nessuna fattura trovata.</p>}
                     </div>
                 </div>
             );
@@ -1054,8 +1248,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {quotes.map(q => (
-                                    <tr key={q.id} className="border-b hover:bg-gray-50" style={{borderColor: 'var(--md-divider)'}}>
+                                {displayedQuotes.map(q => (
+                                    <tr key={q.id} className={`border-b hover:bg-gray-50 ${q.isDeleted ? 'bg-red-50' : ''}`} style={{borderColor: 'var(--md-divider)'}}>
                                         <td className="p-4 font-medium">{q.quoteNumber}</td>
                                         <td className="p-4 text-sm">{new Date(q.issueDate).toLocaleDateString()}</td>
                                         <td className="p-4">{q.clientName}</td>
@@ -1063,6 +1257,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                         <td className="p-4 text-center">
                                             <select 
                                                 value={q.status} 
+                                                disabled={q.isDeleted}
                                                 onChange={(e) => handleUpdateStatus(q.id, e.target.value as DocumentStatus, 'quote')}
                                                 className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none cursor-pointer ${q.status === DocumentStatus.Converted ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-800'}`}
                                             >
@@ -1070,28 +1265,37 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                             </select>
                                         </td>
                                         <td className="p-4 flex items-center space-x-2">
-                                            <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="md-icon-btn download" title="Scarica PDF"><DownloadIcon /></button>
-                                            <button onClick={() => handleOpenDocModal('quote', q)} className="md-icon-btn edit" title="Modifica"><PencilIcon /></button>
-                                            <button onClick={() => handleDeleteRequest(q.id, 'quote')} className="md-icon-btn delete" title="Elimina"><TrashIcon /></button>
-                                            <button 
-                                                onClick={() => handleConvertQuoteToInvoice(q)} 
-                                                className={`md-icon-btn ${q.status === DocumentStatus.Converted ? 'text-gray-300 cursor-not-allowed' : 'text-green-600'}`} 
-                                                title="Converti in Fattura"
-                                                disabled={q.status === DocumentStatus.Converted}
-                                            >
-                                                <ConvertIcon />
-                                            </button>
+                                            {showTrash ? (
+                                                <>
+                                                    <button onClick={() => handleActionClick(q.id, 'quote', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
+                                                    <button onClick={() => handleActionClick(q.id, 'quote', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="md-icon-btn download" title="Scarica PDF"><DownloadIcon /></button>
+                                                    <button onClick={() => handleOpenDocModal('quote', q)} className="md-icon-btn edit" title="Modifica"><PencilIcon /></button>
+                                                    <button onClick={() => handleActionClick(q.id, 'quote', 'delete')} className="md-icon-btn delete" title="Elimina"><TrashIcon /></button>
+                                                    <button 
+                                                        onClick={() => handleConvertQuoteToInvoice(q)} 
+                                                        className={`md-icon-btn ${q.status === DocumentStatus.Converted ? 'text-gray-300 cursor-not-allowed' : 'text-green-600'}`} 
+                                                        title="Converti in Fattura"
+                                                        disabled={q.status === DocumentStatus.Converted}
+                                                    >
+                                                        <ConvertIcon />
+                                                    </button>
+                                                </>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
-                                {quotes.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessun preventivo presente.</td></tr>}
+                                {displayedQuotes.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessun preventivo presente.</td></tr>}
                             </tbody>
                         </table>
                      </div>
                      {/* Mobile View Quotes */}
                     <div className="md:hidden p-4 space-y-4">
-                        {quotes.map(q => (
-                            <div key={q.id} className="border rounded-lg p-4 shadow-sm">
+                        {displayedQuotes.map(q => (
+                            <div key={q.id} className={`border rounded-lg p-4 shadow-sm ${q.isDeleted ? 'bg-red-50 opacity-75' : ''}`}>
                                 <div className="flex justify-between mb-2">
                                     <span className="font-bold">{q.quoteNumber}</span>
                                     <span className="font-bold text-lg">{q.totalAmount.toFixed(2)}€</span>
@@ -1101,26 +1305,108 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 <div className="flex justify-between items-center">
                                      <select 
                                         value={q.status} 
+                                        disabled={q.isDeleted}
                                         onChange={(e) => handleUpdateStatus(q.id, e.target.value as DocumentStatus, 'quote')}
                                         className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none ${q.status === DocumentStatus.Converted ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-800'}`}
                                     >
                                         {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
                                     </select>
                                     <div className="flex space-x-2">
-                                         <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="md-icon-btn download"><DownloadIcon /></button>
-                                         <button onClick={() => handleOpenDocModal('quote', q)} className="md-icon-btn edit"><PencilIcon /></button>
-                                         <button onClick={() => handleDeleteRequest(q.id, 'quote')} className="md-icon-btn delete"><TrashIcon /></button>
-                                          <button 
-                                                onClick={() => handleConvertQuoteToInvoice(q)} 
-                                                className={`md-icon-btn ${q.status === DocumentStatus.Converted ? 'text-gray-300 cursor-not-allowed' : 'text-green-600'}`} 
-                                                disabled={q.status === DocumentStatus.Converted}
-                                            >
-                                                <ConvertIcon />
-                                            </button>
+                                         {showTrash ? (
+                                            <>
+                                                <button onClick={() => handleActionClick(q.id, 'quote', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
+                                                <button onClick={() => handleActionClick(q.id, 'quote', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
+                                            </>
+                                         ) : (
+                                            <>
+                                                <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="md-icon-btn download"><DownloadIcon /></button>
+                                                <button onClick={() => handleOpenDocModal('quote', q)} className="md-icon-btn edit"><PencilIcon /></button>
+                                                <button onClick={() => handleActionClick(q.id, 'quote', 'delete')} className="md-icon-btn delete"><TrashIcon /></button>
+                                                <button 
+                                                        onClick={() => handleConvertQuoteToInvoice(q)} 
+                                                        className={`md-icon-btn ${q.status === DocumentStatus.Converted ? 'text-gray-300 cursor-not-allowed' : 'text-green-600'}`} 
+                                                        disabled={q.status === DocumentStatus.Converted}
+                                                    >
+                                                        <ConvertIcon />
+                                                    </button>
+                                            </>
+                                         )}
                                     </div>
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+            );
+            case 'reports': return (
+                <div className="space-y-6 animate-fade-in">
+                    {/* KPI Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="md-card p-6 border-t-4 border-indigo-500">
+                            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">Fatturato Annuo (Competenza)</h3>
+                            <p className="text-3xl font-bold text-indigo-900">{annualIncome.toFixed(2)}€</p>
+                            <p className="text-xs text-gray-400 mt-1">Valore contratti attivati nel {currentYear}</p>
+                        </div>
+                        <div className="md-card p-6 border-t-4 border-pink-500">
+                            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">Costi Operativi (OPEX)</h3>
+                            <p className="text-3xl font-bold text-pink-900">{totalOperatingCosts.toFixed(2)}€</p>
+                            <p className="text-xs text-gray-400 mt-1">Escluso Tasse e INPS</p>
+                        </div>
+                        <div className="md-card p-6 border-t-4 border-green-500">
+                            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">EBITDA (Margine Op. Lordo)</h3>
+                            <p className="text-3xl font-bold text-green-900">{ebitda.toFixed(2)}€</p>
+                            <p className={`text-xs font-bold mt-1 ${ebitda > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {annualIncome > 0 ? ((ebitda / annualIncome) * 100).toFixed(1) : '0'}% dei Ricavi
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Tabella Profitto per Sede */}
+                        <div className="lg:col-span-2 md-card p-6">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">Analisi Profitto per Sede</h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead>
+                                        <tr className="bg-gray-50 border-b">
+                                            <th className="p-3 font-semibold text-gray-600">Sede Operativa</th>
+                                            <th className="p-3 font-semibold text-gray-600 text-right">Ricavi</th>
+                                            <th className="p-3 font-semibold text-gray-600 text-right">Costi Imputati</th>
+                                            <th className="p-3 font-semibold text-gray-600 text-right">Margine</th>
+                                            <th className="p-3 font-semibold text-gray-600 text-right">%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {locationProfits.map((loc, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50">
+                                                <td className="p-3 font-medium">{loc.name}</td>
+                                                <td className="p-3 text-right">{loc.revenue.toFixed(2)}€</td>
+                                                <td className="p-3 text-right text-red-600">{loc.costs.toFixed(2)}€</td>
+                                                <td className={`p-3 text-right font-bold ${loc.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {loc.profit.toFixed(2)}€
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${loc.margin > 20 ? 'bg-green-100 text-green-800' : loc.margin > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                                                        {loc.margin.toFixed(1)}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {locationProfits.length === 0 && (
+                                            <tr><td colSpan={5} className="p-6 text-center text-gray-400 italic">Nessun dato disponibile.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Chart Costi */}
+                        <div className="md-card p-6">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">Distribuzione Costi</h3>
+                            <div className="h-64 relative">
+                                <canvas ref={reportsDoughnutRef}></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
@@ -1134,23 +1420,39 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
               <h1 className="text-3xl font-bold">Finanza</h1>
               <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Monitora costi, ricavi, fatture e pagamenti.</p>
             </div>
-            <div className="flex space-x-2">
-                {activeTab === 'transactions' && (
+            <div className="flex items-center space-x-2">
+                <button 
+                    onClick={() => setShowTrash(!showTrash)} 
+                    className={`md-btn ${showTrash ? 'bg-gray-200 text-gray-800' : 'md-btn-flat'}`}
+                    title={showTrash ? "Torna alla lista" : "Visualizza Cestino"}
+                >
+                    <TrashIcon />
+                    <span className="ml-2 hidden sm:inline">{showTrash ? "Lista Attivi" : "Cestino"}</span>
+                </button>
+                {!showTrash && activeTab === 'transactions' && (
                     <button onClick={() => handleOpenTransModal()} className="md-btn md-btn-raised md-btn-green">
-                        <PlusIcon /> <span className="ml-2">Nuova Transazione</span>
+                        <PlusIcon /> <span className="ml-2 hidden sm:inline">Nuova Transazione</span>
                     </button>
                 )}
-                {(activeTab === 'invoices' || activeTab === 'quotes') && (
-                     <button onClick={() => handleOpenDocModal(activeTab === 'invoices' ? 'invoice' : 'quote')} className="md-btn md-btn-raised md-btn-primary">
-                        <PlusIcon /> <span className="ml-2">{activeTab === 'invoices' ? 'Nuova Fattura' : 'Nuovo Preventivo'}</span>
+                {!showTrash && (activeTab === 'invoices' || activeTab === 'quotes') && (
+                     <button onClick={() => handleOpenDocModal(activeTab === 'invoices' ? 'invoice' : 'quote')} className="md-btn md-btn-raised md-btn-green">
+                        <PlusIcon /> <span className="ml-2 hidden sm:inline">{activeTab === 'invoices' ? 'Nuova Fattura' : 'Nuovo Preventivo'}</span>
                     </button>
                 )}
             </div>
         </div>
 
+        {showTrash && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mt-6 text-sm flex items-center animate-fade-in">
+                <TrashIcon />
+                <span className="ml-2 font-bold">MODALITÀ CESTINO:</span> Stai visualizzando elementi eliminati.
+            </div>
+        )}
+
         <div className="mt-6 border-b" style={{borderColor: 'var(--md-divider)'}}>
             <nav className="-mb-px flex space-x-6 overflow-x-auto">
                 <button onClick={() => setActiveTab('overview')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
+                <button onClick={() => setActiveTab('reports')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'reports' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Controllo di Gestione</button>
                 <button onClick={() => setActiveTab('transactions')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'transactions' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Transazioni</button>
                 <button onClick={() => setActiveTab('invoices')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'invoices' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Fatture</button>
                 <button onClick={() => setActiveTab('quotes')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'quotes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Preventivi</button>
@@ -1166,7 +1468,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         
          {isTransModalOpen && (
             <Modal onClose={handleCloseTransModal}>
-                <TransactionForm initialData={editingTransaction} onSave={handleSaveTransaction} onCancel={handleCloseTransModal}/>
+                <TransactionForm 
+                    initialData={editingTransaction} 
+                    suppliers={suppliers}
+                    enrollments={enrollments}
+                    onSave={handleSaveTransaction} 
+                    onCancel={handleCloseTransModal}
+                />
             </Modal>
         )}
 
@@ -1182,12 +1490,17 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         )}
 
         <ConfirmModal 
-            isOpen={!!deleteId}
-            onClose={() => { setDeleteId(null); setDeleteType(null); }}
-            onConfirm={handleConfirmDelete}
-            title={deleteType === 'transaction' ? "Elimina Transazione" : deleteType === 'invoice' ? "Elimina Fattura" : "Elimina Preventivo"}
-            message="Sei sicuro di voler eliminare questo elemento? L'azione non può essere annullata."
-            isDangerous={true}
+            isOpen={!!itemToProcess}
+            onClose={() => setItemToProcess(null)}
+            onConfirm={handleConfirmAction}
+            title={itemToProcess?.action === 'delete' ? "Sposta nel Cestino" : itemToProcess?.action === 'restore' ? "Ripristina Elemento" : "Eliminazione Definitiva"}
+            message={itemToProcess?.action === 'delete' 
+                ? "Sei sicuro di voler spostare questo elemento nel cestino? Potrai ripristinarlo in seguito." 
+                : itemToProcess?.action === 'restore' 
+                ? "Vuoi ripristinare questo elemento?" 
+                : "ATTENZIONE: Questa operazione è irreversibile. Vuoi eliminare definitivamente questo elemento?"}
+            isDangerous={itemToProcess?.action !== 'restore'}
+            confirmText={itemToProcess?.action === 'restore' ? "Ripristina" : itemToProcess?.action === 'delete' ? "Sposta nel Cestino" : "Elimina per sempre"}
         />
     </div>
   );

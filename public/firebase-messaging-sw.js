@@ -1,6 +1,6 @@
 
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.22.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
 // Configurazione Firebase identica a quella dell'app
 const firebaseConfig = {
@@ -23,9 +23,11 @@ messaging.onBackgroundMessage(function(payload) {
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: '/lemon_logo_150px.png', 
-    badge: '/lemon_logo_150px.png',
-    data: payload.data
+    // UPDATE: Percorso relativo per supportare hosting in sottocartelle
+    icon: './lemon_logo_150px.png', 
+    badge: './lemon_logo_150px.png',
+    data: payload.data,
+    tag: 'ep-notification' // Raggruppa notifiche simili
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
@@ -36,14 +38,16 @@ self.addEventListener('notificationclick', function(event) {
   console.log('[firebase-messaging-sw.js] Notification click received.');
   event.notification.close();
 
-  const urlToOpen = event.notification.data?.url || '/';
+  // URL di destinazione (default alla root relativa se non specificato)
+  const urlToOpen = event.notification.data?.link || './';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
       // Se c'è già una tab aperta, usala
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
-        if (client.url.includes(urlToOpen) && 'focus' in client) {
+        // Controlla se l'URL corrisponde alla base dell'app
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
           return client.focus();
         }
       }

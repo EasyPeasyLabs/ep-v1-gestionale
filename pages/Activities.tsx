@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, ActivityInput } from '../types';
 import { getActivities, addActivity, updateActivity, deleteActivity } from '../services/activityService';
@@ -226,7 +227,7 @@ const Activities: React.FC = () => {
                         Libreria di idee, materiali e piani didattici.
                     </p>
                 </div>
-                <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-primary">
+                <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
                     <span className="ml-2">Nuova Attività</span>
                 </button>

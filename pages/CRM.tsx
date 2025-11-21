@@ -23,6 +23,12 @@ const ChatIcon = () => (
     </svg>
 );
 
+const SmsIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+    </svg>
+);
+
 const SendIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -50,7 +56,7 @@ const FreeCommunicationModal: React.FC<{
     suppliers: Supplier[];
     onClose: () => void;
 }> = ({ clients, suppliers, onClose }) => {
-    const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
+    const [channel, setChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
     const [recipientType, setRecipientType] = useState<'clients' | 'suppliers' | 'manual'>('clients');
     
     // Selection State
@@ -118,7 +124,7 @@ const FreeCommunicationModal: React.FC<{
             const bccList = recipients.map(r => r.contact).join(',');
             const mailtoLink = `mailto:?bcc=${bccList}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(fullMessage)}`;
             window.open(mailtoLink, '_blank');
-        } else {
+        } else if (channel === 'whatsapp') {
             // WhatsApp: Warn about popups for multiple
             if (recipients.length > 1) {
                 const confirm = window.confirm(`Stai per inviare messaggi a ${recipients.length} destinatari su WhatsApp. Potrebbero aprirsi più finestre. Continuare?`);
@@ -130,6 +136,19 @@ const FreeCommunicationModal: React.FC<{
                 const waMessage = `*${subject}*\n\n${fullMessage}`;
                 const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waMessage)}`;
                 window.open(waLink, '_blank');
+            });
+        } else if (channel === 'sms') {
+            // SMS: Sequential for multiple (limitations of sms: protocol)
+             if (recipients.length > 1) {
+                const confirm = window.confirm(`Stai per inviare SMS a ${recipients.length} destinatari. Dovrai confermare l'invio per ogni singolo messaggio. Continuare?`);
+                if (!confirm) return;
+            }
+
+            recipients.forEach((r) => {
+                const cleanPhone = r.contact.replace(/[^0-9]/g, '');
+                // Nota: il protocollo sms: varia leggermente tra iOS e Android per il body, ma questo è il formato più standard
+                const smsLink = `sms:${cleanPhone}?body=${encodeURIComponent(fullMessage)}`;
+                window.open(smsLink, '_blank');
             });
         }
         onClose();
@@ -180,6 +199,11 @@ const FreeCommunicationModal: React.FC<{
                         <input type="radio" name="free-channel" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} className="sr-only" />
                         <ChatIcon />
                         <span className="ml-2 font-medium">WhatsApp</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center p-3 border rounded-lg cursor-pointer transition-all ${channel === 'sms' ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500 text-blue-700' : 'hover:bg-gray-50'}`}>
+                        <input type="radio" name="free-channel" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} className="sr-only" />
+                        <SmsIcon />
+                        <span className="ml-2 font-medium">SMS</span>
                     </label>
                 </div>
 
@@ -276,9 +300,9 @@ const FreeCommunicationModal: React.FC<{
 
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
                 <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button onClick={handleSend} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
+                <button onClick={handleSend} className="md-btn md-btn-raised md-btn-green md-btn-sm">
                     <span className="mr-2"><SendIcon /></span>
-                    Invia {channel === 'email' ? `Email (${recipientType === 'manual' ? 1 : selectedIds.length})` : `WhatsApp (${recipientType === 'manual' ? 1 : selectedIds.length})`}
+                    Invia {channel === 'email' ? `Email (${recipientType === 'manual' ? 1 : selectedIds.length})` : channel === 'whatsapp' ? `WhatsApp (${recipientType === 'manual' ? 1 : selectedIds.length})` : `SMS (${recipientType === 'manual' ? 1 : selectedIds.length})`}
                 </button>
             </div>
         </div>
@@ -293,7 +317,7 @@ const CommunicationModal: React.FC<{
     type: 'client' | 'supplier';
     onClose: () => void;
 }> = ({ data, type, onClose }) => {
-    const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
+    const [channel, setChannel] = useState<'email' | 'whatsapp' | 'sms'>('email');
     const [subject, setSubject] = useState('');
     const [message, setMessage] = useState('');
     const [templateKey, setTemplateKey] = useState('custom');
@@ -375,13 +399,18 @@ const CommunicationModal: React.FC<{
         if (channel === 'email') {
             const mailtoLink = `mailto:${recipientEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
             window.open(mailtoLink, '_blank');
-        } else {
+        } else if (channel === 'whatsapp') {
             // Clean phone number
             const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
             // For WhatsApp, we combine Subject (Bold) and Message
             const fullMessage = `*${subject}*\n\n${message}`;
             const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(fullMessage)}`;
             window.open(waLink, '_blank');
+        } else if (channel === 'sms') {
+            const cleanPhone = recipientPhone.replace(/[^0-9]/g, '');
+            const fullMessage = `${subject}\n\n${message}`;
+            const smsLink = `sms:${cleanPhone}?body=${encodeURIComponent(fullMessage)}`;
+            window.open(smsLink, '_blank');
         }
         onClose();
     };
@@ -405,6 +434,11 @@ const CommunicationModal: React.FC<{
                         <input type="radio" name="channel" value="whatsapp" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} className="sr-only" />
                         <ChatIcon />
                         <span className="ml-2 font-medium">WhatsApp</span>
+                    </label>
+                    <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${channel === 'sms' ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'hover:bg-gray-50'}`}>
+                        <input type="radio" name="channel" value="sms" checked={channel === 'sms'} onChange={() => setChannel('sms')} className="sr-only" />
+                        <SmsIcon />
+                        <span className="ml-2 font-medium">SMS</span>
                     </label>
                 </div>
 
@@ -455,7 +489,7 @@ const CommunicationModal: React.FC<{
                 <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
                 <button onClick={handleSend} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
                     <span className="mr-2"><SendIcon /></span>
-                    Invia {channel === 'email' ? 'Email' : 'WhatsApp'}
+                    Invia {channel === 'email' ? 'Email' : channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
                 </button>
             </div>
         </div>
@@ -568,7 +602,7 @@ const CRM: React.FC = () => {
                         Gestione relazioni clienti, rinnovi e comunicazioni fornitori.
                     </p>
                 </div>
-                <button onClick={() => setIsFreeCommModalOpen(true)} className="md-btn md-btn-raised md-btn-primary">
+                <button onClick={() => setIsFreeCommModalOpen(true)} className="md-btn md-btn-raised md-btn-green">
                     <PlusIcon />
                     <span className="ml-2">Nuova Comunicazione</span>
                 </button>

@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
@@ -24,7 +25,7 @@ export const getClients = async (): Promise<Client[]> => {
 };
 
 export const addClient = async (client: ClientInput): Promise<string> => {
-    const docRef = await addDoc(clientCollectionRef, client);
+    const docRef = await addDoc(clientCollectionRef, { ...client, isDeleted: false });
     return docRef.id;
 };
 
@@ -33,7 +34,20 @@ export const updateClient = async (id: string, client: Partial<ClientInput>): Pr
     await updateDoc(clientDoc, client);
 };
 
+// Soft Delete: sposta nel cestino
 export const deleteClient = async (id: string): Promise<void> => {
+    const clientDoc = doc(db, 'clients', id);
+    await updateDoc(clientDoc, { isDeleted: true });
+};
+
+// Ripristina dal cestino
+export const restoreClient = async (id: string): Promise<void> => {
+    const clientDoc = doc(db, 'clients', id);
+    await updateDoc(clientDoc, { isDeleted: false });
+};
+
+// Hard Delete: elimina fisicamente
+export const permanentDeleteClient = async (id: string): Promise<void> => {
     const clientDoc = doc(db, 'clients', id);
     await deleteDoc(clientDoc);
 };

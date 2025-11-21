@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, PeriodicCheckInput, CheckCategory, AppointmentType } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck } from '../services/settingsService';
-import { applyTheme, getSavedTheme } from '../utils/theme';
+import { applyTheme, getSavedTheme, defaultTheme } from '../utils/theme';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -12,6 +12,7 @@ import TrashIcon from '../components/icons/TrashIcon';
 import ChecklistIcon from '../components/icons/ChecklistIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
+import UploadIcon from '../components/icons/UploadIcon';
 import { requestNotificationPermission } from '../services/fcmService';
 import { auth } from '../firebase/config';
 
@@ -66,6 +67,7 @@ const PeriodicCheckForm: React.FC<{
     const [endTime, setEndTime] = useState(check?.endTime || '10:00');
     const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false);
     const [note, setNote] = useState(check?.note || '');
+    
     const [isSaving, setIsSaving] = useState(false);
 
     const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
@@ -143,23 +145,30 @@ const PeriodicCheckForm: React.FC<{
                     <div className="md-input-group"><input id="chkStart" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="md-input"/><label htmlFor="chkStart" className="md-input-label !top-0 !text-xs !text-gray-500">Dalle</label></div>
                     <div className="md-input-group"><input id="chkEnd" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="chkEnd" className="md-input-label !top-0 !text-xs !text-gray-500">Alle</label></div>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded border border-gray-200">
-                    <div className="flex items-center">
-                        <BellIcon />
-                        <div className="ml-3">
-                            <span className="block text-sm font-medium text-gray-900">Notifiche Push</span>
-                            <span className="block text-xs text-gray-500">Avviso su mobile anche ad app chiusa.</span>
-                        </div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
-                </div>
+                
                 <div className="md-input-group">
                     <input type="text" value={note} onChange={e => setNote(e.target.value)} className="md-input" placeholder=" " />
                     <label className="md-input-label">Note / Dettagli (Opzionale)</label>
                 </div>
+
+                {/* Sezione Notifiche Push (Pura) */}
+                <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
+                    <h4 className="text-sm font-bold text-indigo-900 flex items-center">
+                        <BellIcon /> <span className="ml-2">Notifiche Push</span>
+                    </h4>
+                    
+                    <div className="flex items-center justify-between">
+                        <div className="text-xs text-indigo-800">
+                            <span className="block font-medium">Abilita Notifiche su Dispositivi</span>
+                            <span className="block opacity-75">Ricevi avviso su smartphone anche ad app chiusa.</span>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="sr-only peer" />
+                            <div className="w-9 h-5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                </div>
+
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
@@ -212,7 +221,7 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                             <h2 className="text-xl font-bold">Planner Verifiche Periodiche</h2>
                             <p className="text-sm text-gray-500">Pianifica i controlli ricorrenti.</p>
                         </div>
-                        <button onClick={() => setIsFormOpen(true)} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
+                        <button onClick={() => setIsFormOpen(true)} className="md-btn md-btn-raised md-btn-green md-btn-sm">
                             <PlusIcon /> <span className="ml-2">Aggiungi Verifica</span>
                         </button>
                     </div>
@@ -226,7 +235,9 @@ const PeriodicChecksModal: React.FC<{ onClose: () => void }> = ({ onClose }) => 
                                         <div>
                                             <div className="flex justify-between items-start">
                                                 <span className="text-xs font-bold uppercase text-indigo-600 bg-indigo-50 px-2 py-1 rounded mb-2 inline-block">{check.category}</span>
-                                                {check.pushEnabled && <span className="text-indigo-500" title="Notifiche Attive"><BellIcon /></span>}
+                                                <div className="flex gap-2">
+                                                    {check.pushEnabled && <span className="text-indigo-500" title="Notifiche Attive"><BellIcon /></span>}
+                                                </div>
                                             </div>
                                             <h3 className="font-bold text-gray-800 mb-1">{check.subCategory ? `${check.subCategory}` : check.category}</h3>
                                             <div className="text-sm text-gray-600 flex items-center gap-2 mb-2"><ClockIcon /> {check.startTime} - {check.endTime}</div>
@@ -261,8 +272,10 @@ const Settings: React.FC = () => {
     const [isSubModalOpen, setIsSubModalOpen] = useState(false);
     const [editingSub, setEditingSub] = useState<SubscriptionType | null>(null);
     const [subToDelete, setSubToDelete] = useState<string | null>(null);
-    const [primaryColor, setPrimaryColor] = useState('#3F51B5');
-    const [bgColor, setBgColor] = useState('#f5f5f5');
+    
+    const [primaryColor, setPrimaryColor] = useState(defaultTheme.primary);
+    const [bgColor, setBgColor] = useState(defaultTheme.bgLight);
+    
     const [isChecksModalOpen, setIsChecksModalOpen] = useState(false);
     const [notifPermission, setNotifPermission] = useState(Notification.permission);
 
@@ -286,7 +299,9 @@ const Settings: React.FC = () => {
             try {
                 setIsSaving(true);
                 await updateCompanyInfo(info); 
-                alert("Dati aziendali salvati con successo!");
+                // Emetti evento per aggiornare sidebar/header
+                window.dispatchEvent(new Event('EP_DataUpdated'));
+                alert("Dati aziendali e Logo salvati con successo!");
             } catch (err) {
                 console.error(err);
                 alert("Errore durante il salvataggio.");
@@ -298,6 +313,18 @@ const Settings: React.FC = () => {
 
     const handleInfoChange = (field: keyof CompanyInfo, value: string) => {
         setInfo(prev => prev ? { ...prev, [field]: value } : null);
+    };
+
+    // Gestione Upload Logo
+    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                handleInfoChange('logoBase64', reader.result as string);
+            };
+            reader.readAsDataURL(file);
+        }
     };
 
     const handleOpenSubModal = (sub: SubscriptionType | null = null) => { setEditingSub(sub); setIsSubModalOpen(true); };
@@ -325,9 +352,7 @@ const Settings: React.FC = () => {
     };
 
     const handleResetTheme = () => {
-        const defPrimary = '#3F51B5';
-        const defBg = '#f5f5f5';
-        handleColorChange(defPrimary, defBg);
+        handleColorChange(defaultTheme.primary, defaultTheme.bgLight);
     };
 
     const handleReconnectNotifications = async () => {
@@ -342,7 +367,7 @@ const Settings: React.FC = () => {
         if(Notification.permission === 'granted') {
             new Notification("Test Locale EP v.1", {
                 body: "Se leggi questo messaggio, il tuo browser è configurato correttamente!",
-                icon: '/lemon_logo_150px.png'
+                icon: info?.logoBase64 || '/lemon_logo_150px.png'
             });
         } else {
             alert("Impossibile inviare test: permessi non concessi.");
@@ -357,10 +382,137 @@ const Settings: React.FC = () => {
         <h1 className="text-3xl font-bold">Impostazioni</h1>
         <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali, listini e integrazioni.</p>
 
+        {/* --- SEZIONE SUPERIORE: Impostazioni Generali --- */}
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
             {/* Colonna Sinistra */}
             <div className="space-y-8">
-                {/* Diagnostica Notifiche (NUOVO) */}
+                <div className="md-card p-6">
+                    <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Dati Aziendali & Logo</h2>
+                    {info && (
+                        <div className="mt-4 space-y-4">
+                            {/* Logo Upload Section */}
+                            <div className="flex items-center space-x-4 mb-4">
+                                <div className="w-16 h-16 border rounded-lg overflow-hidden flex items-center justify-center bg-gray-50">
+                                    {info.logoBase64 ? (
+                                        <img src={info.logoBase64} alt="Logo Anteprima" className="w-full h-full object-contain" />
+                                    ) : (
+                                        <span className="text-xs text-gray-400">No Logo</span>
+                                    )}
+                                </div>
+                                <div className="flex-1">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Logo Applicazione</label>
+                                    <label className="cursor-pointer inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50">
+                                        <UploadIcon />
+                                        <span className="ml-2">Carica Immagine</span>
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+                                    </label>
+                                    <p className="text-[10px] text-gray-500 mt-1">Consigliato: PNG trasparente, max 200KB.</p>
+                                </div>
+                            </div>
+
+                            <div className="md-input-group"><input id="infoDenom" type="text" value={info.denomination || ''} onChange={(e) => handleInfoChange('denomination', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoDenom" className="md-input-label">Denominazione</label></div>
+                            <div className="md-input-group"><input id="infoName" type="text" value={info.name || ''} onChange={(e) => handleInfoChange('name', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
+                            <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber || ''} onChange={(e) => handleInfoChange('vatNumber', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA / C.F.</label></div>
+                            <div className="md-input-group"><input id="infoAddress" type="text" value={info.address || ''} onChange={(e) => handleInfoChange('address', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoAddress" className="md-input-label">Indirizzo Sede</label></div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div className="md-input-group"><input id="infoEmail" type="email" value={info.email || ''} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
+                                <div className="md-input-group"><input id="infoPhone" type="tel" value={info.phone || ''} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
+                            </div>
+                            <div className="flex justify-end pt-4">
+                                <button onClick={handleSaveInfo} disabled={isSaving} className="md-btn md-btn-raised md-btn-primary">
+                                    {isSaving ? 'Salvataggio...' : 'Salva Modifiche'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="md-card p-6">
+                    <h2 className="text-lg font-semibold border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>Personalizzazione Tema</h2>
+                    <div className="grid grid-cols-1 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Colore Primario</label>
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="color" 
+                                    value={primaryColor} 
+                                    onChange={(e) => handleColorChange(e.target.value, bgColor)} 
+                                    className="h-10 w-20 rounded border cursor-pointer"
+                                />
+                                <span className="text-xs text-gray-500">{primaryColor}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium mb-1">Colore Sfondo</label>
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="color" 
+                                    value={bgColor} 
+                                    onChange={(e) => handleColorChange(primaryColor, e.target.value)} 
+                                    className="h-10 w-20 rounded border cursor-pointer"
+                                />
+                                <span className="text-xs text-gray-500">{bgColor}</span>
+                            </div>
+                        </div>
+                        <button onClick={handleResetTheme} className="md-btn md-btn-flat md-btn-sm text-gray-500 mt-2 self-start">
+                            Ripristina Default
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Colonna Destra */}
+            <div className="space-y-8">
+                <div className="md-card p-6">
+                    <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
+                        <h2 className="text-lg font-semibold">Pacchetti Lezioni</h2>
+                        <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-raised md-btn-green md-btn-sm"><PlusIcon /> Nuovo</button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                        {subscriptions.map(sub => (
+                            <div key={sub.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-100">
+                                <div>
+                                    <p className="font-medium">{sub.name}</p>
+                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="font-bold text-sm">{sub.price}€</span>
+                                    <div className="flex space-x-1">
+                                        <button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon /></button>
+                                        <button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {subscriptions.length === 0 && <p className="text-sm text-gray-400 italic text-center">Nessun pacchetto definito.</p>}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {/* --- SEZIONE INFERIORE: Strumenti Operativi & Diagnostica --- */}
+        <div className="mt-10 pt-6 border-t" style={{borderColor: 'var(--md-divider)'}}>
+            <h2 className="text-lg font-bold mb-6 text-gray-700">Strumenti Operativi & Sistema</h2>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Planner Verifiche Periodiche */}
+                <div className="md-card p-6 flex flex-col justify-between bg-gradient-to-r from-indigo-50 to-white border border-indigo-100">
+                    <div>
+                        <h2 className="text-lg font-semibold text-indigo-900">Planner & Controllo</h2>
+                        <p className="text-sm text-indigo-700 mt-1">
+                            Gestisci le verifiche periodiche (pagamenti, materiali, scadenze) e ricevi notifiche push automatiche.
+                        </p>
+                    </div>
+                    <button 
+                        onClick={() => setIsChecksModalOpen(true)} 
+                        className="mt-4 md-btn md-btn-raised md-btn-primary w-full flex justify-center items-center"
+                    >
+                        <ChecklistIcon /> <span className="ml-2">Apri Planner</span>
+                    </button>
+                </div>
+
+                {/* Diagnostica Notifiche */}
                 <div className="md-card p-6 border-l-4 border-indigo-500 bg-white">
                     <h2 className="text-lg font-semibold text-indigo-900 mb-4">Centro Diagnostica Notifiche</h2>
                     <div className="space-y-3 mb-6">
@@ -391,94 +543,12 @@ const Settings: React.FC = () => {
                         </button>
                     </div>
                 </div>
-
-                <div className="md-card p-6">
-                    <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Dati Aziendali</h2>
-                    {info && (
-                        <div className="mt-4 space-y-4">
-                            <div className="md-input-group"><input id="infoDenom" type="text" value={info.denomination || ''} onChange={(e) => handleInfoChange('denomination', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoDenom" className="md-input-label">Denominazione</label></div>
-                            <div className="md-input-group"><input id="infoName" type="text" value={info.name || ''} onChange={(e) => handleInfoChange('name', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
-                            <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber || ''} onChange={(e) => handleInfoChange('vatNumber', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA</label></div>
-                            <div className="md-input-group"><input id="infoAddr" type="text" value={info.address || ''} onChange={(e) => handleInfoChange('address', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoAddr" className="md-input-label">Indirizzo</label></div>
-                            <div className="md-input-group"><input id="infoEmail" type="email" value={info.email || ''} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
-                            <div className="md-input-group"><input id="infoPhone" type="text" value={info.phone || ''} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
-                            <div className="pt-4 flex justify-end">
-                                <button onClick={handleSaveInfo} disabled={isSaving} className="md-btn md-btn-raised md-btn-green">
-                                    {isSaving ? <Spinner /> : 'Salva Modifiche'}
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Colonna Destra */}
-            <div className="space-y-8">
-                <div className="md-card p-6 bg-indigo-50 border border-indigo-100">
-                    <div className="flex justify-between items-center border-b border-indigo-200 pb-3 mb-4">
-                        <div className="flex items-center gap-2">
-                            <ChecklistIcon />
-                            <h2 className="text-lg font-semibold text-indigo-900">Pianificazione & Controllo</h2>
-                        </div>
-                    </div>
-                    <p className="text-sm text-indigo-800 mb-6">
-                        Gestisci scadenze, controlli ricorrenti e appuntamenti importanti per la tua attività.
-                    </p>
-                    <button onClick={() => setIsChecksModalOpen(true)} className="w-full md-btn md-btn-raised md-btn-primary flex items-center justify-center">
-                        <span className="mr-2"><ClockIcon /></span> Gestisci Verifiche Periodiche
-                    </button>
-                </div>
-
-                <div className="md-card p-6">
-                    <div className="flex justify-between items-center border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>
-                         <h2 className="text-lg font-semibold">Personalizzazione Interfaccia</h2>
-                         <button onClick={handleResetTheme} className="text-xs text-indigo-600 hover:underline">Ripristina Default</button>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Colore Primario</label>
-                            <div className="flex items-center gap-3">
-                                <input type="color" value={primaryColor} onChange={(e) => handleColorChange(e.target.value, bgColor)} className="h-10 w-16 cursor-pointer border border-gray-300 rounded p-1" />
-                                <span className="text-xs text-gray-500 uppercase">{primaryColor}</span>
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Colore Sfondo</label>
-                            <div className="flex items-center gap-3">
-                                <input type="color" value={bgColor} onChange={(e) => handleColorChange(primaryColor, e.target.value)} className="h-10 w-16 cursor-pointer border border-gray-300 rounded p-1" />
-                                <span className="text-xs text-gray-500 uppercase">{bgColor}</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="md-card p-6">
-                    <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
-                        <h2 className="text-lg font-semibold">Listino Abbonamenti</h2>
-                        <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-flat md-btn-primary text-sm"><PlusIcon/><span className="ml-1">Aggiungi</span></button>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                        {subscriptions.map(sub => (
-                            <div key={sub.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-md">
-                                <div>
-                                    <p className="font-semibold">{sub.name}</p>
-                                    <p className="text-sm" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni / {sub.durationInDays} giorni - {sub.price}€</p>
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                    <button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon/></button>
-                                    <button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon/></button>
-                                </div>
-                            </div>
-                        ))}
-                        {subscriptions.length === 0 && <p className="text-sm text-center py-6" style={{color: 'var(--md-text-secondary)'}}>Nessun pacchetto definito.</p>}
-                    </div>
-                </div>
             </div>
         </div>
 
         {isSubModalOpen && (
             <Modal onClose={() => setIsSubModalOpen(false)}>
-                <SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)}/>
+                <SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} />
             </Modal>
         )}
 
@@ -491,10 +561,9 @@ const Settings: React.FC = () => {
             onClose={() => setSubToDelete(null)}
             onConfirm={handleConfirmDelete}
             title="Elimina Pacchetto"
-            message="Sei sicuro di voler eliminare questo pacchetto abbonamento?"
+            message="Sei sicuro di voler eliminare questo pacchetto? Non sarà più selezionabile per le nuove iscrizioni."
             isDangerous={true}
         />
-
     </div>
   );
 };
