@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, Enrollment, ParentRating, ChildRating } from '../types';
 import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import PlusIcon from '../components/icons/PlusIcon';
@@ -15,13 +15,141 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importClientsFromExcel } from '../services/importService';
 
-// --- Sub-Components ---
+// Internal Star Icon
+const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => (
+    <svg 
+        onClick={onClick} 
+        xmlns="http://www.w3.org/2000/svg" 
+        className={`h-5 w-5 ${filled ? 'text-yellow-400' : 'text-gray-300'} ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${className}`} 
+        viewBox="0 0 20 20" 
+        fill="currentColor"
+    >
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+    </svg>
+);
+
+// Helper for rating row
+const RatingRow: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
+    <div className="flex justify-between items-center mb-1 bg-white p-2 rounded border border-gray-100">
+        <span className="text-xs text-gray-600 font-medium">{label}</span>
+        <div className="flex space-x-1 items-center">
+            <span className="text-xs font-bold text-gray-400 mr-2">{value}/5</span>
+            {[1,2,3,4,5].map(star => (
+                <StarIcon key={star} filled={star <= value} onClick={() => onChange(star)} className="w-4 h-4" />
+            ))}
+        </div>
+    </div>
+);
+
+// Child Editor Component (Nested Form)
+const ChildEditor: React.FC<{ 
+    child: Child | null; 
+    onSave: (child: Child) => void; 
+    onCancel: () => void; 
+}> = ({ child, onSave, onCancel }) => {
+    const [name, setName] = useState(child?.name || '');
+    const [age, setAge] = useState(child?.age || '');
+    const [notes, setNotes] = useState(child?.notes || '');
+    const [tags, setTags] = useState<string[]>(child?.tags || []);
+    const [tagInput, setTagInput] = useState('');
+    const [rating, setRating] = useState<ChildRating>(child?.rating || {
+        learning: 0, behavior: 0, attendance: 0, hygiene: 0
+    });
+    const [activeTab, setActiveTab] = useState<'info' | 'rating'>('info');
+
+    const handleAddTag = () => {
+        if (tagInput.trim()) {
+            if (!tags.includes(tagInput.trim())) setTags([...tags, tagInput.trim()]);
+            setTagInput('');
+        }
+    };
+
+    const handleRemoveTag = (tag: string) => setTags(tags.filter(t => t !== tag));
+
+    const handleRatingChange = (field: keyof ChildRating, value: number) => {
+        setRating(prev => ({ ...prev, [field]: value }));
+    };
+
+    const handleSave = () => {
+        if (!name.trim()) return;
+        onSave({
+            id: child?.id || Date.now().toString(),
+            name,
+            age,
+            notes,
+            tags,
+            rating
+        });
+    };
+
+    return (
+        <div className="flex flex-col h-full bg-white">
+            <div className="p-4 border-b bg-indigo-50 flex justify-between items-center">
+                <h3 className="font-bold text-indigo-900">{child ? 'Modifica Figlio' : 'Nuovo Figlio'}</h3>
+                <div className="flex space-x-1">
+                    <button onClick={() => setActiveTab('info')} className={`px-3 py-1 text-xs rounded-md ${activeTab === 'info' ? 'bg-white text-indigo-600 font-bold shadow-sm' : 'text-indigo-600 hover:bg-indigo-100'}`}>Dati</button>
+                    <button onClick={() => setActiveTab('rating')} className={`px-3 py-1 text-xs rounded-md ${activeTab === 'rating' ? 'bg-white text-indigo-600 font-bold shadow-sm' : 'text-indigo-600 hover:bg-indigo-100'}`}>Rating</button>
+                </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {activeTab === 'info' && (
+                    <>
+                        <div className="md-input-group"><input type="text" value={name} onChange={e => setName(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Nome</label></div>
+                        <div className="md-input-group"><input type="text" value={age} onChange={e => setAge(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Età</label></div>
+                        
+                        {/* Tags */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Tag</label>
+                            <div className="flex gap-2 mb-2">
+                                <input type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTag())} placeholder="Es. #Timido" className="md-input flex-1" />
+                                <button type="button" onClick={handleAddTag} className="md-btn md-btn-flat bg-gray-100 text-gray-600"><PlusIcon/></button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map(tag => (
+                                    <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                        {tag}
+                                        <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1 text-indigo-900 font-bold">&times;</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {activeTab === 'rating' && (
+                    <>
+                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-4">
+                            <h4 className="font-bold text-gray-800 mb-3 text-xs uppercase tracking-wide">Valutazione Figlio</h4>
+                            <div className="space-y-1">
+                                <RatingRow label="1. Reattività Apprendimento" value={rating.learning} onChange={(v) => handleRatingChange('learning', v)} />
+                                <RatingRow label="2. Buona Condotta" value={rating.behavior} onChange={(v) => handleRatingChange('behavior', v)} />
+                                <RatingRow label="3. Tasso Assenza (Affidabilità)" value={rating.attendance} onChange={(v) => handleRatingChange('attendance', v)} />
+                                <RatingRow label="4. Assenza Problemi Igienici/Disturbi" value={rating.hygiene} onChange={(v) => handleRatingChange('hygiene', v)} />
+                            </div>
+                        </div>
+                        <div className="md-input-group">
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Note (Markdown)</label>
+                            <textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-md bg-white text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="- Note sul bambino..."></textarea>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3">
+                <button onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Indietro</button>
+                <button onClick={handleSave} className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Figlio</button>
+            </div>
+        </div>
+    );
+};
 
 const ClientForm: React.FC<{ 
     client?: Client | null; 
     onSave: (client: ClientInput | Client) => void; 
     onCancel: () => void; 
 }> = ({ client, onSave, onCancel }) => {
+    const [activeTab, setActiveTab] = useState<'info' | 'rating'>('info');
     const [clientType, setClientType] = useState<ClientType>(client?.clientType || ClientType.Parent);
     
     // Common fields
@@ -38,29 +166,50 @@ const ClientForm: React.FC<{
     const [taxCode, setTaxCode] = useState((client as ParentClient)?.taxCode || '');
     const [children, setChildren] = useState<Child[]>((client as ParentClient)?.children || []);
     
-    // Child input state
-    const [newChildName, setNewChildName] = useState('');
-    const [newChildAge, setNewChildAge] = useState('');
+    // Enterprise Fields (Parent)
+    const [notes, setNotes] = useState((client as ParentClient)?.notes || '');
+    const [tagInput, setTagInput] = useState('');
+    const [tags, setTags] = useState<string[]>((client as ParentClient)?.tags || []);
+    const [rating, setRating] = useState<ParentRating>((client as ParentClient)?.rating || {
+        availability: 0,
+        complaints: 0,
+        churnRate: 0,
+        distance: 0
+    });
 
     // Institutional fields
     const [companyName, setCompanyName] = useState((client as InstitutionalClient)?.companyName || '');
     const [vatNumber, setVatNumber] = useState((client as InstitutionalClient)?.vatNumber || '');
 
-    const handleAddChild = () => {
-        if (newChildName.trim()) {
-            const newChild: Child = {
-                id: Date.now().toString(), // Temp ID
-                name: newChildName,
-                age: newChildAge
-            };
-            setChildren([...children, newChild]);
-            setNewChildName('');
-            setNewChildAge('');
+    // Child Editing State
+    const [editingChildId, setEditingChildId] = useState<string | null>(null);
+    const [isAddingChild, setIsAddingChild] = useState(false);
+
+    const handleSaveChild = (child: Child) => {
+        if (editingChildId) {
+            setChildren(children.map(c => c.id === editingChildId ? child : c));
+            setEditingChildId(null);
+        } else {
+            setChildren([...children, child]);
+            setIsAddingChild(false);
         }
     };
 
     const handleRemoveChild = (childId: string) => {
         setChildren(children.filter(c => c.id !== childId));
+    };
+
+    const handleAddTag = () => {
+        if (tagInput.trim()) {
+            if (!tags.includes(tagInput.trim())) setTags([...tags, tagInput.trim()]);
+            setTagInput('');
+        }
+    };
+
+    const handleRemoveTag = (tag: string) => setTags(tags.filter(t => t !== tag));
+
+    const handleRatingChange = (field: keyof ParentRating, value: number) => {
+        setRating(prev => ({ ...prev, [field]: value }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -76,7 +225,10 @@ const ClientForm: React.FC<{
                 firstName,
                 lastName,
                 taxCode,
-                children
+                children,
+                notes,
+                tags,
+                rating
             };
         } else {
             clientData = {
@@ -96,10 +248,34 @@ const ClientForm: React.FC<{
         }
     };
 
+    // Helper to calculate average child rating
+    const getChildRatingAvg = (r?: ChildRating) => {
+        if (!r) return 0;
+        const sum = r.learning + r.behavior + r.attendance + r.hygiene;
+        return sum > 0 ? (sum / 4).toFixed(1) : 0;
+    };
+
+    // Render Child Editor Overlay
+    if (isAddingChild || editingChildId) {
+        const childToEdit = editingChildId ? children.find(c => c.id === editingChildId) || null : null;
+        return <ChildEditor 
+            child={childToEdit} 
+            onSave={handleSaveChild} 
+            onCancel={() => { setIsAddingChild(false); setEditingChildId(null); }} 
+        />;
+    }
+
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
-                <h2 className="text-xl font-bold text-gray-800">{client ? 'Modifica Cliente' : 'Nuovo Cliente'}</h2>
+                <h2 className="text-xl font-bold text-gray-800 mb-3">{client ? 'Modifica Cliente' : 'Nuovo Cliente'}</h2>
+                
+                {clientType === ClientType.Parent && (
+                    <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+                        <button type="button" onClick={() => setActiveTab('info')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === 'info' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Anagrafica</button>
+                        <button type="button" onClick={() => setActiveTab('rating')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === 'rating' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Valutazione & Note</button>
+                    </div>
+                )}
             </div>
             
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
@@ -113,90 +289,120 @@ const ClientForm: React.FC<{
                     </div>
                 )}
 
-                {clientType === ClientType.Parent ? (
-                    <>
+                {activeTab === 'info' && (
+                    <div className="space-y-4 animate-fade-in">
+                        {clientType === ClientType.Parent ? (
+                            <>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="md-input-group"><input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Nome</label></div>
+                                    <div className="md-input-group"><input type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Cognome</label></div>
+                                </div>
+                                <div className="md-input-group"><input type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Codice Fiscale</label></div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="md-input-group"><input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Ragione Sociale</label></div>
+                                <div className="md-input-group"><input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">P.IVA / Codice Fiscale</label></div>
+                            </>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="md-input-group"><input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Nome</label></div>
-                            <div className="md-input-group"><input type="text" value={lastName} onChange={e => setLastName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Cognome</label></div>
+                            <div className="md-input-group"><input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Email</label></div>
+                            <div className="md-input-group"><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
                         </div>
-                        <div className="md-input-group"><input type="text" value={taxCode} onChange={e => setTaxCode(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Codice Fiscale</label></div>
-                    </>
-                ) : (
-                    <>
-                        <div className="md-input-group"><input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Ragione Sociale</label></div>
-                        <div className="md-input-group"><input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">P.IVA / Codice Fiscale</label></div>
-                    </>
-                )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="md-input-group"><input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Email</label></div>
-                    <div className="md-input-group"><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
-                </div>
-
-                <div className="md-input-group"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Indirizzo</label></div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="md-input-group"><input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">CAP</label></div>
-                    <div className="col-span-2 md-input-group"><input type="text" value={city} onChange={e => setCity(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Città</label></div>
-                </div>
-                <div className="md-input-group"><input type="text" value={province} onChange={e => setProvince(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Provincia</label></div>
-
-                {/* Children Management for Parents */}
-                {clientType === ClientType.Parent && (
-                    <div className="mt-6 pt-4 border-t border-gray-200">
-                        <h3 className="text-md font-semibold text-indigo-700 mb-3">Gestione Figli</h3>
+                        <div className="md-input-group"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Indirizzo</label></div>
                         
-                        {/* Add Child Inputs */}
-                        <div className="flex items-end gap-2 bg-gray-50 p-3 rounded-md mb-3">
-                            <div className="flex-1">
-                                <label className="text-xs text-gray-500">Nome Figlio</label>
-                                <input 
-                                    type="text" 
-                                    value={newChildName} 
-                                    onChange={e => setNewChildName(e.target.value)}
-                                    className="w-full border-b border-gray-300 bg-transparent focus:border-indigo-500 outline-none py-1"
-                                />
-                            </div>
-                            <div className="w-24">
-                                <label className="text-xs text-gray-500">Età</label>
-                                <input 
-                                    type="text" 
-                                    value={newChildAge} 
-                                    onChange={e => setNewChildAge(e.target.value)}
-                                    className="w-full border-b border-gray-300 bg-transparent focus:border-indigo-500 outline-none py-1"
-                                />
-                            </div>
-                            <button 
-                                type="button" 
-                                onClick={handleAddChild}
-                                className="bg-indigo-600 text-white p-1.5 rounded shadow hover:bg-indigo-700 transition-colors"
-                                title="Aggiungi Figlio"
-                            >
-                                <PlusIcon />
-                            </button>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="md-input-group"><input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">CAP</label></div>
+                            <div className="col-span-2 md-input-group"><input type="text" value={city} onChange={e => setCity(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Città</label></div>
                         </div>
+                        <div className="md-input-group"><input type="text" value={province} onChange={e => setProvince(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Provincia</label></div>
 
-                        {/* Children List */}
-                        <div className="space-y-2">
-                            {children.map(child => (
-                                <div key={child.id} className="flex justify-between items-center bg-white border border-gray-200 p-2 rounded shadow-sm">
-                                    <div>
-                                        <p className="font-medium text-sm">{child.name}</p>
-                                        <p className="text-xs text-gray-500">{child.age}</p>
-                                    </div>
+                        {/* Children Management for Parents */}
+                        {clientType === ClientType.Parent && (
+                            <div className="mt-6 pt-4 border-t border-gray-200">
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-md font-semibold text-indigo-700">Gestione Figli</h3>
                                     <button 
                                         type="button" 
-                                        onClick={() => handleRemoveChild(child.id)}
-                                        className="text-red-500 hover:bg-red-50 p-1 rounded"
-                                        title="Rimuovi"
+                                        onClick={() => setIsAddingChild(true)}
+                                        className="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 rounded text-xs font-bold flex items-center"
                                     >
-                                        <TrashIcon />
+                                        <PlusIcon /> Aggiungi
                                     </button>
                                 </div>
-                            ))}
-                            {children.length === 0 && (
-                                <p className="text-sm text-gray-400 italic text-center">Nessun figlio registrato.</p>
-                            )}
+
+                                {/* Children List */}
+                                <div className="space-y-2">
+                                    {children.map(child => {
+                                        const avg = getChildRatingAvg(child.rating);
+                                        return (
+                                            <div key={child.id} className="flex justify-between items-center bg-white border border-gray-200 p-2 rounded shadow-sm hover:shadow-md transition-shadow">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
+                                                        {child.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-sm">{child.name}</p>
+                                                        <p className="text-xs text-gray-500">{child.age}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {Number(avg) > 0 && (
+                                                        <span className="text-xs bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded font-bold border border-yellow-100 flex items-center">
+                                                            {avg} <StarIcon filled={true} className="w-3 h-3 ml-0.5" />
+                                                        </span>
+                                                    )}
+                                                    <button type="button" onClick={() => setEditingChildId(child.id)} className="md-icon-btn edit text-blue-500"><PencilIcon /></button>
+                                                    <button type="button" onClick={() => handleRemoveChild(child.id)} className="md-icon-btn delete text-red-500"><TrashIcon /></button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {children.length === 0 && (
+                                        <p className="text-sm text-gray-400 italic text-center py-2">Nessun figlio registrato.</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'rating' && clientType === ClientType.Parent && (
+                    <div className="space-y-6 animate-fade-in">
+                        {/* Rating Section */}
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <h4 className="font-bold text-gray-800 mb-3 text-sm uppercase tracking-wide border-b pb-1 border-gray-200">Affidabilità Genitore</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                                <RatingRow label="1. Disponibilità oraria/giornaliera" value={rating.availability} onChange={(v) => handleRatingChange('availability', v)} />
+                                <RatingRow label="2. Predisposizione alle lamentele" value={rating.complaints} onChange={(v) => handleRatingChange('complaints', v)} />
+                                <RatingRow label="3. Tasso abbandoni/ritorni" value={rating.churnRate} onChange={(v) => handleRatingChange('churnRate', v)} />
+                                <RatingRow label="4. Distanza dalla sede scelta" value={rating.distance} onChange={(v) => handleRatingChange('distance', v)} />
+                            </div>
+                        </div>
+
+                        {/* Tags Section */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Tag Genitore</label>
+                            <div className="flex gap-2 mb-2">
+                                <input type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTag())} placeholder="Es. #PagamentoPuntuale" className="md-input flex-1" />
+                                <button type="button" onClick={handleAddTag} className="md-btn md-btn-flat bg-gray-100 text-gray-600"><PlusIcon/></button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map(tag => (
+                                    <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                        {tag}
+                                        <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1 text-indigo-900 font-bold">&times;</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Notes Section */}
+                        <div className="md-input-group">
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Note Genitore (Markdown)</label>
+                            <textarea rows={6} value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-md bg-white text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="- Scrivi qui le tue note..."></textarea>
                         </div>
                     </div>
                 )}
@@ -215,6 +421,13 @@ const ClientDetail: React.FC<{
     onBack: () => void; 
     onEdit: () => void; 
 }> = ({ client, onBack, onEdit }) => {
+    // Helper to calculate average child rating
+    const getChildRatingAvg = (r?: ChildRating) => {
+        if (!r) return 0;
+        const sum = r.learning + r.behavior + r.attendance + r.hygiene;
+        return sum > 0 ? (sum / 4).toFixed(1) : 0;
+    };
+
     return (
         <div className="flex flex-col h-full">
              <div className="flex justify-between items-center mb-6 border-b pb-4 flex-shrink-0">
@@ -260,26 +473,115 @@ const ClientDetail: React.FC<{
                 </div>
 
                 {client.clientType === ClientType.Parent && (
-                    <div className="md-card p-6">
+                    <>
+                    <div className="md-card p-6 mb-6">
                         <h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Figli Registrati</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 gap-4">
                             {(client as ParentClient).children && (client as ParentClient).children.length > 0 ? (
-                                (client as ParentClient).children.map((child) => (
-                                    <div key={child.id} className="flex items-center p-3 bg-gray-50 rounded-lg border border-gray-100">
-                                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold mr-3">
-                                            {child.name.charAt(0).toUpperCase()}
+                                (client as ParentClient).children.map((child) => {
+                                    const avg = getChildRatingAvg(child.rating);
+                                    return (
+                                        <div key={child.id} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center">
+                                                    <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold mr-3 text-lg">
+                                                        {child.name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-bold text-gray-800 text-lg">{child.name}</p>
+                                                        <p className="text-xs text-gray-500">{child.age}</p>
+                                                    </div>
+                                                </div>
+                                                {Number(avg) > 0 && (
+                                                    <div className="bg-white px-3 py-1 rounded border border-yellow-100 shadow-sm flex items-center">
+                                                        <span className="font-bold text-yellow-700 mr-1">{avg}</span>
+                                                        <StarIcon filled={true} className="w-4 h-4" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Child Details */}
+                                            <div className="mt-3 pl-14">
+                                                {/* Child Ratings */}
+                                                {child.rating && (
+                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                                                        <div className="text-xs text-gray-600 bg-white p-1.5 rounded border border-gray-100">Apprend: <strong>{child.rating.learning}/5</strong></div>
+                                                        <div className="text-xs text-gray-600 bg-white p-1.5 rounded border border-gray-100">Condotta: <strong>{child.rating.behavior}/5</strong></div>
+                                                        <div className="text-xs text-gray-600 bg-white p-1.5 rounded border border-gray-100">Presenza: <strong>{child.rating.attendance}/5</strong></div>
+                                                        <div className="text-xs text-gray-600 bg-white p-1.5 rounded border border-gray-100">Igiene: <strong>{child.rating.hygiene}/5</strong></div>
+                                                    </div>
+                                                )}
+
+                                                {/* Child Tags */}
+                                                {child.tags && child.tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 mb-2">
+                                                        {child.tags.map(tag => (
+                                                            <span key={tag} className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-100">
+                                                                #{tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Child Notes */}
+                                                {child.notes && (
+                                                    <p className="text-xs text-gray-600 italic bg-yellow-50 p-2 rounded border border-yellow-100">
+                                                        "{child.notes}"
+                                                    </p>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800">{child.name}</p>
-                                            <p className="text-xs text-gray-500">{child.age}</p>
-                                        </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             ) : (
                                 <p className="text-gray-400 italic text-sm">Nessun figlio registrato.</p>
                             )}
                         </div>
                     </div>
+
+                    <div className="md-card p-6 mb-6">
+                        <h4 className="font-bold text-gray-800 mb-4 border-b pb-2">Affidabilità & Note Genitore</h4>
+                        
+                        {(client as ParentClient).tags && (client as ParentClient).tags!.length > 0 && (
+                            <div className="mb-4">
+                                <div className="flex flex-wrap gap-2">
+                                    {(client as ParentClient).tags!.map(tag => (
+                                        <span key={tag} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded text-xs font-semibold">
+                                            #{tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {(client as ParentClient).rating && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-gray-50 p-4 rounded-lg">
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-gray-600">Disponibilità</span>
+                                    <div className="flex items-center"><span className="text-xs font-bold mr-1">{(client as ParentClient).rating!.availability}/5</span> <StarIcon filled={true} className="w-3 h-3 text-yellow-500" /></div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-gray-600">Predisposizione Lamentele</span>
+                                    <div className="flex items-center"><span className="text-xs font-bold mr-1">{(client as ParentClient).rating!.complaints}/5</span> <StarIcon filled={true} className="w-3 h-3 text-yellow-500" /></div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-gray-600">Abbandoni/Ritorni</span>
+                                    <div className="flex items-center"><span className="text-xs font-bold mr-1">{(client as ParentClient).rating!.churnRate}/5</span> <StarIcon filled={true} className="w-3 h-3 text-yellow-500" /></div>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-gray-600">Distanza Sede</span>
+                                    <div className="flex items-center"><span className="text-xs font-bold mr-1">{(client as ParentClient).rating!.distance}/5</span> <StarIcon filled={true} className="w-3 h-3 text-yellow-500" /></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {(client as ParentClient).notes && (
+                            <div className="bg-yellow-50 p-4 rounded border border-yellow-100 text-sm text-gray-700 whitespace-pre-wrap">
+                                {(client as ParentClient).notes}
+                            </div>
+                        )}
+                    </div>
+                    </>
                 )}
             </div>
 
@@ -626,7 +928,19 @@ const Clients: React.FC = () => {
                             </div>
                         </div>
                         
-                        <div className="mt-4 space-y-1 text-sm text-gray-600">
+                        {/* Tags display in card */}
+                        {client.clientType === ClientType.Parent && (client as ParentClient).tags && (client as ParentClient).tags!.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-2 mb-2">
+                                {(client as ParentClient).tags!.slice(0, 3).map(tag => (
+                                    <span key={tag} className="text-[9px] bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded-full border border-indigo-100">
+                                        #{tag}
+                                    </span>
+                                ))}
+                                {(client as ParentClient).tags!.length > 3 && <span className="text-[9px] text-gray-400">...</span>}
+                            </div>
+                        )}
+                        
+                        <div className="mt-2 space-y-1 text-sm text-gray-600">
                              <div className="flex items-center">
                                 <span className="w-5 text-center mr-2">✉️</span>
                                 <span className="truncate">{client.email}</span>

@@ -29,24 +29,18 @@ interface FinanceProps {
     };
 }
 
-const StatCard: React.FC<{ title: string; value: string; color: string; onClick?: () => void }> = ({ title, value, color, onClick }) => (
-  <div 
-    className={`md-card p-4 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
-    style={{borderColor: color}}
-    onClick={onClick}
-  >
-    <h3 className="text-sm font-medium" style={{color: 'var(--md-text-secondary)'}}>{title}</h3>
-    <p className="text-2xl font-semibold mt-1">{value}</p>
-  </div>
+// --- ICONS ---
+const TrendingUpIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+    </svg>
 );
 
-const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div className="md-card p-6">
-        <h3 className="text-lg font-semibold mb-4">{title}</h3>
-        <div className="h-64">
-            {children}
-        </div>
-    </div>
+const PieChartIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+    </svg>
 );
 
 const DownloadIcon = () => (
@@ -59,6 +53,41 @@ const ConvertIcon = () => (
      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
     </svg>
+);
+
+// --- COMPONENTS ---
+
+const StatCard: React.FC<{ title: string; value: string; color: string; onClick?: () => void }> = ({ title, value, color, onClick }) => (
+  <div 
+    className={`md-card p-4 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
+    style={{borderColor: color}}
+    onClick={onClick}
+  >
+    <h3 className="text-sm font-medium" style={{color: 'var(--md-text-secondary)'}}>{title}</h3>
+    <p className="text-2xl font-semibold mt-1">{value}</p>
+  </div>
+);
+
+const KpiCard: React.FC<{ title: string; value: string; subtext?: string; icon: React.ReactNode; trend?: 'up' | 'down' | 'neutral' }> = ({ title, value, subtext, icon, trend }) => (
+    <div className="md-card p-5 flex items-start justify-between">
+        <div>
+            <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">{title}</p>
+            <h3 className="text-2xl font-bold text-gray-800 mt-1">{value}</h3>
+            {subtext && <p className="text-xs text-gray-400 mt-2">{subtext}</p>}
+        </div>
+        <div className={`p-3 rounded-full ${trend === 'up' ? 'bg-green-50 text-green-600' : trend === 'down' ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'}`}>
+            {icon}
+        </div>
+    </div>
+);
+
+const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+    <div className="md-card p-6">
+        <h3 className="text-lg font-semibold mb-4">{title}</h3>
+        <div className="h-64">
+            {children}
+        </div>
+    </div>
 );
 
 
@@ -874,6 +903,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     });
 
     // --- REPORTS LOGIC ---
+    
+    // 1. Profit per Location
     const calculateLocationProfit = () => {
         const locationStats: Record<string, { name: string, revenue: number, costs: number }> = {};
         
@@ -912,7 +943,67 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         })).sort((a, b) => b.profit - a.profit);
     };
 
+    // 2. Advanced Financial Analytics (CAGR, ROS, ARPU, Burn Rate)
+    const calculateAdvancedMetrics = () => {
+        // CAGR Logic
+        // Formula: (EndValue / StartValue)^(1/n) - 1
+        // We use Annual Revenue.
+        const incomeTransactions = completedTransactions.filter(t => t.type === TransactionType.Income);
+        if (incomeTransactions.length < 2) return { cagr: 0, ros: 0, arpu: 0, burnRate: 0, dataInsufficient: true };
+
+        // Sort chronologically
+        incomeTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        
+        const firstDate = new Date(incomeTransactions[0].date);
+        const lastDate = new Date(incomeTransactions[incomeTransactions.length - 1].date);
+        
+        // Get years involved
+        const startYear = firstDate.getFullYear();
+        const endYear = lastDate.getFullYear();
+        const yearDiff = endYear - startYear;
+
+        let cagr = 0;
+        let dataInsufficient = false;
+
+        if (yearDiff >= 1) {
+            const startYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === startYear).reduce((acc, t) => acc + t.amount, 0);
+            const endYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === endYear).reduce((acc, t) => acc + t.amount, 0);
+            
+            if (startYearRevenue > 0) {
+                cagr = (Math.pow(endYearRevenue / startYearRevenue, 1 / yearDiff) - 1) * 100;
+            }
+        } else {
+            // If less than a year, we can't calculate true CAGR. We mark it.
+            dataInsufficient = true;
+        }
+
+        // ROS (Return on Sales) = Net Profit / Revenue
+        const totalRevenue = annualIncome;
+        const totalExpense = annualExpense;
+        const netProfit = totalRevenue - totalExpense;
+        const ros = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+        // ARPU (Average Revenue Per User)
+        // Monthly Revenue / Active Enrollments
+        const activeEnrollmentsCount = enrollments.filter(e => e.status === EnrollmentStatus.Active).length;
+        const arpu = activeEnrollmentsCount > 0 && monthlyIncome > 0 ? monthlyIncome / activeEnrollmentsCount : 0;
+
+        // Burn Rate (Average Monthly Expense)
+        // We calculate average over the last 6 months or available data
+        const expenseTransactions = completedTransactions.filter(t => t.type === TransactionType.Expense);
+        let burnRate = 0;
+        if (expenseTransactions.length > 0) {
+             // Find distinct months in expense transactions
+             const months = new Set(expenseTransactions.map(t => t.date.substring(0, 7))); // YYYY-MM
+             const totalExp = expenseTransactions.reduce((acc, t) => acc + t.amount, 0);
+             burnRate = months.size > 0 ? totalExp / months.size : 0;
+        }
+
+        return { cagr, ros, arpu, burnRate, dataInsufficient };
+    };
+
     const locationProfits = useMemo(() => calculateLocationProfit(), [enrollments, completedTransactions, suppliers]);
+    const advancedMetrics = useMemo(() => calculateAdvancedMetrics(), [completedTransactions, enrollments, annualIncome, annualExpense, monthlyIncome]);
     
     const totalOperatingCosts = completedTransactions
         .filter(t => t.type === TransactionType.Expense && t.category !== TransactionCategory.Taxes)
@@ -1340,7 +1431,40 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             );
             case 'reports': return (
                 <div className="space-y-6 animate-fade-in">
-                    {/* KPI Cards */}
+                    {/* Advanced Financial Indicators - NEW SECTION */}
+                    <h2 className="text-lg font-bold text-gray-800">Analisi Finanziaria Avanzata</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <KpiCard 
+                            title="CAGR (Crescita Annua)" 
+                            value={advancedMetrics.dataInsufficient ? "N/A" : `${advancedMetrics.cagr.toFixed(1)}%`}
+                            subtext={advancedMetrics.dataInsufficient ? "Dati insufficienti (< 2 anni)" : "Tasso di crescita composto"}
+                            icon={<TrendingUpIcon />}
+                            trend={advancedMetrics.cagr > 0 ? 'up' : 'down'}
+                        />
+                        <KpiCard 
+                            title="ROS (Margine Vendite)" 
+                            value={`${advancedMetrics.ros.toFixed(1)}%`}
+                            subtext="Profitto Netto / Fatturato"
+                            icon={<PieChartIcon />}
+                            trend={advancedMetrics.ros > 20 ? 'up' : advancedMetrics.ros > 0 ? 'neutral' : 'down'}
+                        />
+                        <KpiCard 
+                            title="ARPU (Ricavo Medio)" 
+                            value={`${advancedMetrics.arpu.toFixed(2)}€`}
+                            subtext="Per Utente / Mese"
+                            icon={<CalculatorIcon />}
+                            trend={'neutral'}
+                        />
+                        <KpiCard 
+                            title="Monthly Burn Rate" 
+                            value={`${advancedMetrics.burnRate.toFixed(2)}€`}
+                            subtext="Spesa media mensile"
+                            icon={<TrashIcon />} // Using existing trash icon as a symbol for 'burn'/expense
+                            trend={'down'} // High burn rate is generally bad
+                        />
+                    </div>
+
+                    {/* KPI Cards - Existing */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="md-card p-6 border-t-4 border-indigo-500">
                             <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">Fatturato Annuo (Competenza)</h3>

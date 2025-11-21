@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot } from '../types';
+import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -13,8 +13,36 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importSuppliersFromExcel } from '../services/importService';
 
+// Internal Star Icon
+const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => (
+    <svg 
+        onClick={onClick} 
+        xmlns="http://www.w3.org/2000/svg" 
+        className={`h-5 w-5 ${filled ? 'text-yellow-400' : 'text-gray-300'} ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${className}`} 
+        viewBox="0 0 20 20" 
+        fill="currentColor"
+    >
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+    </svg>
+);
+
+// Helper for rating row
+const RatingRow: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
+    <div className="flex justify-between items-center mb-1 bg-white p-2 rounded border border-gray-100">
+        <span className="text-xs text-gray-600 font-medium">{label}</span>
+        <div className="flex space-x-1 items-center">
+            <span className="text-xs font-bold text-gray-400 mr-2">{value}/5</span>
+            {[1,2,3,4,5].map(star => (
+                <StarIcon key={star} filled={star <= value} onClick={() => onChange(star)} className="w-4 h-4" />
+            ))}
+        </div>
+    </div>
+);
 
 const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Location) => void; onCancel: () => void; }> = ({ location, onSave, onCancel }) => {
+    const [activeTab, setActiveTab] = useState<'info' | 'schedule' | 'rating'>('info');
+
+    // Basic Info
     const [name, setName] = useState(location?.name || '');
     const [address, setAddress] = useState(location?.address || '');
     const [zipCode, setZipCode] = useState(location?.zipCode || '');
@@ -23,10 +51,21 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     const [capacity, setCapacity] = useState(location?.capacity || 0);
     const [rentalCost, setRentalCost] = useState(location?.rentalCost || 0);
     const [distance, setDistance] = useState(location?.distance || 0);
-    const [color, setColor] = useState(location?.color || '#a855f7'); // default purple
+    const [color, setColor] = useState(location?.color || '#a855f7');
     
-    // Availability State
+    // Availability
     const [availability, setAvailability] = useState<AvailabilitySlot[]>(location?.availability || []);
+
+    // Advanced Rating & Details
+    const [notes, setNotes] = useState(location?.notes || '');
+    const [tagInput, setTagInput] = useState('');
+    const [tags, setTags] = useState<string[]>(location?.tags || []);
+    
+    const initialRating: LocationRating = location?.rating || {
+        cost: 0, distance: 0, parking: 0, availability: 0, safety: 0, 
+        environment: 0, distractions: 0, modifiability: 0, prestige: 0
+    };
+    const [rating, setRating] = useState<LocationRating>(initialRating);
 
     const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
@@ -44,76 +83,144 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
         setAvailability(newSlots);
     };
 
+    const handleAddTag = () => {
+        if (tagInput.trim()) {
+            if (!tags.includes(tagInput.trim())) setTags([...tags, tagInput.trim()]);
+            setTagInput('');
+        }
+    };
+
+    const handleRemoveTag = (tag: string) => setTags(tags.filter(t => t !== tag));
+
+    const handleRatingChange = (field: keyof LocationRating, value: number) => {
+        setRating(prev => ({ ...prev, [field]: value }));
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave({
             id: location?.id || Date.now().toString(), name, address, zipCode, city, province,
             capacity: Number(capacity), rentalCost: Number(rentalCost), distance: Number(distance), color,
-            availability
+            availability,
+            notes, tags, rating
         });
     };
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100" style={{borderColor: 'var(--md-divider)'}}>
-                <h3 className="text-lg font-bold text-gray-800">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
+                <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+                    <button type="button" onClick={() => setActiveTab('info')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === 'info' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Anagrafica</button>
+                    <button type="button" onClick={() => setActiveTab('schedule')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === 'schedule' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Orari</button>
+                    <button type="button" onClick={() => setActiveTab('rating')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === 'rating' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Qualità & Rating</button>
+                </div>
             </div>
             
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                    <div className="md:col-span-2 md-input-group"><input id="locName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locName" className="md-input-label">Nome Sede</label></div>
-                    <div><label className="text-xs text-gray-500 block mb-1">Colore</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-8 rounded-md border cursor-pointer" style={{borderColor: 'var(--md-divider)'}}/></div>
-                </div>
-                <div className="md-input-group"><input id="locAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locAddr" className="md-input-label">Indirizzo</label></div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="md-input-group"><input id="locZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locZip" className="md-input-label">CAP</label></div>
-                    <div className="col-span-2 md-input-group"><input id="locCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locCity" className="md-input-label">Città</label></div>
-                </div>
-                <div className="md-input-group"><input id="locProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locProv" className="md-input-label">Provincia</label></div>
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="md-input-group"><input id="locCap" type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCap" className="md-input-label">Capienza</label></div>
-                    <div className="md-input-group"><input id="locCost" type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCost" className="md-input-label">Nolo (€)</label></div>
-                    <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
-                </div>
+                {activeTab === 'info' && (
+                    <div className="space-y-4 animate-fade-in">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                            <div className="md:col-span-2 md-input-group"><input id="locName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locName" className="md-input-label">Nome Sede</label></div>
+                            <div><label className="text-xs text-gray-500 block mb-1">Colore</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-8 rounded-md border cursor-pointer" style={{borderColor: 'var(--md-divider)'}}/></div>
+                        </div>
+                        <div className="md-input-group"><input id="locAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locAddr" className="md-input-label">Indirizzo</label></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="md-input-group"><input id="locZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locZip" className="md-input-label">CAP</label></div>
+                            <div className="col-span-2 md-input-group"><input id="locCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locCity" className="md-input-label">Città</label></div>
+                        </div>
+                        <div className="md-input-group"><input id="locProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locProv" className="md-input-label">Provincia</label></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="md-input-group"><input id="locCap" type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCap" className="md-input-label">Capienza</label></div>
+                            <div className="md-input-group"><input id="locCost" type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCost" className="md-input-label">Nolo (€)</label></div>
+                            <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
+                        </div>
+                    </div>
+                )}
 
-                <div className="mt-6">
-                    <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-semibold text-sm text-indigo-700">Disponibilità Oraria</h4>
-                        <button type="button" onClick={handleAddSlot} className="text-xs flex items-center text-indigo-600 font-medium hover:bg-indigo-50 px-2 py-1 rounded">
-                            <PlusIcon /> Aggiungi Slot
-                        </button>
+                {activeTab === 'schedule' && (
+                    <div className="animate-fade-in">
+                        <div className="flex justify-between items-center mb-2">
+                            <h4 className="font-semibold text-sm text-indigo-700">Disponibilità Oraria</h4>
+                            <button type="button" onClick={handleAddSlot} className="text-xs flex items-center text-indigo-600 font-medium hover:bg-indigo-50 px-2 py-1 rounded">
+                                <PlusIcon /> Aggiungi Slot
+                            </button>
+                        </div>
+                        <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                            {availability.length === 0 && <p className="text-xs text-gray-400 italic text-center">Nessun orario definito.</p>}
+                            {availability.map((slot, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                    <select 
+                                        value={slot.dayOfWeek} 
+                                        onChange={e => handleSlotChange(index, 'dayOfWeek', Number(e.target.value))}
+                                        className="text-sm border-gray-300 rounded-md py-1 px-2 flex-1"
+                                    >
+                                        {daysOfWeek.map((day, i) => <option key={i} value={i}>{day}</option>)}
+                                    </select>
+                                    <input 
+                                        type="time" 
+                                        value={slot.startTime} 
+                                        onChange={e => handleSlotChange(index, 'startTime', e.target.value)}
+                                        className="text-sm border-gray-300 rounded-md py-1 px-2 w-24"
+                                    />
+                                    <span className="text-gray-400">-</span>
+                                    <input 
+                                        type="time" 
+                                        value={slot.endTime} 
+                                        onChange={e => handleSlotChange(index, 'endTime', e.target.value)}
+                                        className="text-sm border-gray-300 rounded-md py-1 px-2 w-24"
+                                    />
+                                    <button type="button" onClick={() => handleRemoveSlot(index)} className="text-red-500 hover:bg-red-50 p-1 rounded">
+                                        <TrashIcon />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                    <div className="space-y-2 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                        {availability.length === 0 && <p className="text-xs text-gray-400 italic text-center">Nessun orario definito.</p>}
-                        {availability.map((slot, index) => (
-                            <div key={index} className="flex items-center gap-2">
-                                <select 
-                                    value={slot.dayOfWeek} 
-                                    onChange={e => handleSlotChange(index, 'dayOfWeek', Number(e.target.value))}
-                                    className="text-sm border-gray-300 rounded-md py-1 px-2 flex-1"
-                                >
-                                    {daysOfWeek.map((day, i) => <option key={i} value={i}>{day}</option>)}
-                                </select>
-                                <input 
-                                    type="time" 
-                                    value={slot.startTime} 
-                                    onChange={e => handleSlotChange(index, 'startTime', e.target.value)}
-                                    className="text-sm border-gray-300 rounded-md py-1 px-2 w-24"
-                                />
-                                <span className="text-gray-400">-</span>
-                                <input 
-                                    type="time" 
-                                    value={slot.endTime} 
-                                    onChange={e => handleSlotChange(index, 'endTime', e.target.value)}
-                                    className="text-sm border-gray-300 rounded-md py-1 px-2 w-24"
-                                />
-                                <button type="button" onClick={() => handleRemoveSlot(index)} className="text-red-500 hover:bg-red-50 p-1 rounded">
-                                    <TrashIcon />
-                                </button>
+                )}
+
+                {activeTab === 'rating' && (
+                    <div className="space-y-6 animate-fade-in">
+                        {/* 9-Points Rating */}
+                        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <h4 className="font-bold text-gray-800 mb-3 text-sm uppercase tracking-wide border-b pb-1 border-gray-200">Parametri di Valutazione</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                                <RatingRow label="1. Costo nolo / gratuità" value={rating.cost} onChange={(v) => handleRatingChange('cost', v)} />
+                                <RatingRow label="2. Distanza sede aziendale" value={rating.distance} onChange={(v) => handleRatingChange('distance', v)} />
+                                <RatingRow label="3. Facilità parcheggio" value={rating.parking} onChange={(v) => handleRatingChange('parking', v)} />
+                                <RatingRow label="4. Disponibilità oraria" value={rating.availability} onChange={(v) => handleRatingChange('availability', v)} />
+                                <RatingRow label="5. Ambienti a norma (0-6)" value={rating.safety} onChange={(v) => handleRatingChange('safety', v)} />
+                                <RatingRow label="6. Ampiezza / Luce / Clima" value={rating.environment} onChange={(v) => handleRatingChange('environment', v)} />
+                                <RatingRow label="7. Assenza distrazioni" value={rating.distractions} onChange={(v) => handleRatingChange('distractions', v)} />
+                                <RatingRow label="8. Modifica layout" value={rating.modifiability} onChange={(v) => handleRatingChange('modifiability', v)} />
+                                <RatingRow label="9. Prestigio / Network" value={rating.prestige} onChange={(v) => handleRatingChange('prestige', v)} />
                             </div>
-                        ))}
+                        </div>
+
+                        {/* Tags */}
+                        <div>
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Tag Sede</label>
+                            <div className="flex gap-2 mb-2">
+                                <input type="text" value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTag())} placeholder="Es. #AmpioGiardino" className="md-input flex-1" />
+                                <button type="button" onClick={handleAddTag} className="md-btn md-btn-flat bg-gray-100 text-gray-600"><PlusIcon/></button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map(tag => (
+                                    <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                        {tag}
+                                        <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1 text-indigo-900 font-bold">&times;</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Notes */}
+                        <div className="md-input-group">
+                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Note (Markdown)</label>
+                            <textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-md bg-white text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="- Accessibile disabili..."></textarea>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
             
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
@@ -126,6 +233,9 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
 
 
 const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: SupplierInput | Supplier) => void; onCancel: () => void; }> = ({ supplier, onSave, onCancel }) => {
+    const [activeTab, setActiveTab] = useState<'general' | 'details'>('general');
+    
+    // General
     const [companyName, setCompanyName] = useState(supplier?.companyName || '');
     const [vatNumber, setVatNumber] = useState(supplier?.vatNumber || '');
     const [address, setAddress] = useState(supplier?.address || '');
@@ -135,6 +245,13 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
     const [email, setEmail] = useState(supplier?.email || '');
     const [phone, setPhone] = useState(supplier?.phone || '');
     const [locations, setLocations] = useState<Location[]>(supplier?.locations || []);
+    
+    // Details (Notes, Tags, Rating)
+    const [notes, setNotes] = useState(supplier?.notes || '');
+    const [tagInput, setTagInput] = useState('');
+    const [tags, setTags] = useState<string[]>(supplier?.tags || []);
+    const [rating, setRating] = useState<SupplierRating>(supplier?.rating || { responsiveness: 0, partnership: 0, negotiation: 0 });
+
     const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
     const [editingLocation, setEditingLocation] = useState<Location | null>(null);
 
@@ -149,61 +266,194 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
     const handleEditLocation = (location: Location) => { setEditingLocation(location); setIsLocationModalOpen(true); };
     const handleRemoveLocation = (id: string) => { setLocations(locations.filter(l => l.id !== id)); };
 
+    const handleAddTag = () => {
+        if (tagInput.trim()) {
+            if (!tags.includes(tagInput.trim())) {
+                setTags([...tags, tagInput.trim()]);
+            }
+            setTagInput('');
+        }
+    };
+
+    const handleRemoveTag = (tag: string) => {
+        setTags(tags.filter(t => t !== tag));
+    };
+
+    const handleRatingChange = (field: keyof SupplierRating, value: number) => {
+        setRating(prev => ({ ...prev, [field]: value }));
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const supplierData = { companyName, vatNumber, address, zipCode, city, province, email, phone, locations };
+        const supplierData = { 
+            companyName, vatNumber, address, zipCode, city, province, email, phone, locations,
+            notes, tags, rating
+        };
         if (supplier?.id) { onSave({ ...supplierData, id: supplier.id }); } 
         else { onSave(supplierData as SupplierInput); }
+    };
+
+    // Helper per calcolare media rating location
+    const getLocAvg = (r: LocationRating | undefined) => {
+        if (!r) return 0;
+        const vals = Object.values(r).filter(v => typeof v === 'number');
+        const sum = vals.reduce((a, b) => a + b, 0);
+        return vals.length ? (sum / vals.length).toFixed(1) : 0;
     };
 
     return (
         <>
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex flex-wrap gap-2 justify-between items-center" style={{borderColor: 'var(--md-divider)'}}>
-                <h2 className="text-xl font-bold text-gray-800">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
-                <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-sm flex-shrink-0">
-                    <PlusIcon/> <span className="ml-1 hidden sm:inline">Aggiungi Sede</span>
-                </button>
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100" style={{borderColor: 'var(--md-divider)'}}>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-gray-800">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
+                    <div className="flex space-x-2 bg-gray-100 p-1 rounded-lg">
+                        <button type="button" onClick={() => setActiveTab('general')} className={`px-3 py-1 text-sm rounded-md transition-all ${activeTab === 'general' ? 'bg-white shadow-sm font-bold text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Anagrafica</button>
+                        <button type="button" onClick={() => setActiveTab('details')} className={`px-3 py-1 text-sm rounded-md transition-all ${activeTab === 'details' ? 'bg-white shadow-sm font-bold text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Valutazione & Note</button>
+                    </div>
+                </div>
+                
+                {activeTab === 'general' && (
+                    <button type="button" onClick={() => { setEditingLocation(null); setIsLocationModalOpen(true); }} className="md-btn md-btn-flat md-btn-primary text-xs mb-2">
+                        <PlusIcon/> <span className="ml-1">Aggiungi Sede</span>
+                    </button>
+                )}
             </div>
 
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="md-input-group"><input id="supName" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supName" className="md-input-label">Ragione Sociale</label></div>
-                    <div className="md-input-group"><input id="supVat" type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supVat" className="md-input-label">Partita IVA</label></div>
-                </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="md-input-group"><input id="supEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supEmail" className="md-input-label">Email</label></div>
-                    <div className="md-input-group"><input id="supPhone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supPhone" className="md-input-label">Telefono</label></div>
-                </div>
-                <div className="md-input-group"><input id="supAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supAddr" className="md-input-label">Indirizzo Sede Legale</label></div>
-                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="md-input-group"><input id="supZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supZip" className="md-input-label">CAP</label></div>
-                    <div className="col-span-2 md-input-group"><input id="supCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supCity" className="md-input-label">Città</label></div>
-                </div>
-                <div className="md-input-group"><input id="supProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supProv" className="md-input-label">Provincia</label></div>
-                
-                 <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
-                    <h3 className="text-md font-semibold">Sedi Operative</h3>
-                    <div className="mt-2 space-y-2">
-                    {locations.length > 0 ? locations.map((loc) => (
-                        <div key={loc.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
-                            <div className="flex items-center">
-                                <span className="w-3 h-3 rounded-full mr-3 border" style={{ backgroundColor: loc.color }}></span>
-                                <div>
-                                    <p className="text-sm font-medium">{loc.name}</p>
-                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>
-                                        {loc.city} - {loc.availability?.length || 0} slot orari definiti
-                                    </p>
+                {activeTab === 'general' ? (
+                    <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="md-input-group"><input id="supName" type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supName" className="md-input-label">Ragione Sociale</label></div>
+                            <div className="md-input-group"><input id="supVat" type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supVat" className="md-input-label">Partita IVA</label></div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="md-input-group"><input id="supEmail" type="email" value={email} onChange={e => setEmail(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supEmail" className="md-input-label">Email</label></div>
+                            <div className="md-input-group"><input id="supPhone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supPhone" className="md-input-label">Telefono</label></div>
+                        </div>
+                        <div className="md-input-group"><input id="supAddr" type="text" value={address} onChange={e => setAddress(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supAddr" className="md-input-label">Indirizzo Sede Legale</label></div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="md-input-group"><input id="supZip" type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supZip" className="md-input-label">CAP</label></div>
+                            <div className="col-span-2 md-input-group"><input id="supCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supCity" className="md-input-label">Città</label></div>
+                        </div>
+                        <div className="md-input-group"><input id="supProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" "/><label htmlFor="supProv" className="md-input-label">Provincia</label></div>
+                        
+                        <div className="pt-4 border-t mt-4" style={{borderColor: 'var(--md-divider)'}}>
+                            <h3 className="text-md font-semibold mb-2">Sedi Operative</h3>
+                            <div className="mt-2 space-y-2">
+                            {locations.length > 0 ? locations.map((loc) => {
+                                const avg = getLocAvg(loc.rating);
+                                return (
+                                <div key={loc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-100 hover:shadow-sm transition-shadow">
+                                    <div className="flex items-center">
+                                        <span className="w-3 h-3 rounded-full mr-3 border" style={{ backgroundColor: loc.color }}></span>
+                                        <div>
+                                            <p className="text-sm font-bold text-gray-800">{loc.name}</p>
+                                            <p className="text-xs text-gray-500">
+                                                {loc.city} • {loc.availability?.length || 0} orari
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        {Number(avg) > 0 && (
+                                            <div className="flex items-center text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded border border-yellow-100">
+                                                {avg} <StarIcon filled={true} className="w-3 h-3 ml-1" />
+                                            </div>
+                                        )}
+                                        <div className="flex items-center space-x-1">
+                                            <button type="button" onClick={() => handleEditLocation(loc)} className="md-icon-btn edit" aria-label={`Modifica sede ${loc.name}`}><PencilIcon/></button>
+                                            <button type="button" onClick={() => handleRemoveLocation(loc.id)} className="md-icon-btn delete" aria-label={`Elimina sede ${loc.name}`}><TrashIcon/></button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <button type="button" onClick={() => handleEditLocation(loc)} className="md-icon-btn edit" aria-label={`Modifica sede ${loc.name}`}><PencilIcon/></button>
-                                <button type="button" onClick={() => handleRemoveLocation(loc.id)} className="md-icon-btn delete" aria-label={`Elimina sede ${loc.name}`}><TrashIcon/></button>
+                            )}) : <p className="text-sm text-center py-4 text-gray-400 bg-gray-50 rounded-md border border-dashed">Nessuna sede operativa aggiunta.</p>}
                             </div>
                         </div>
-                    )) : <p className="text-sm text-center py-4" style={{color: 'var(--md-text-secondary)'}}>Nessuna sede operativa aggiunta.</p>}
-                    </div>
-                </div>
+                    </>
+                ) : (
+                    <>
+                        {/* Tags Section */}
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Tag Fornitore</label>
+                            <div className="flex gap-2 mb-2">
+                                <input 
+                                    type="text" 
+                                    value={tagInput}
+                                    onChange={e => setTagInput(e.target.value)}
+                                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                                    placeholder="Aggiungi tag..." 
+                                    className="md-input flex-1"
+                                />
+                                <button type="button" onClick={handleAddTag} className="md-btn md-btn-flat bg-gray-100 text-gray-600"><PlusIcon/></button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map(tag => (
+                                    <span key={tag} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                        {tag}
+                                        <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-indigo-200 hover:bg-indigo-300 text-indigo-900">
+                                            &times;
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Ratings Section */}
+                        <div className="mb-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                            <h4 className="font-semibold text-gray-800 mb-3">Valutazione Affidabilità Fornitore</h4>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-sm text-gray-600">Reattività (Problemi)</span>
+                                        <span className="text-sm font-bold text-gray-800">{rating.responsiveness}/5</span>
+                                    </div>
+                                    <div className="flex space-x-1">
+                                        {[1,2,3,4,5].map(star => (
+                                            <StarIcon key={star} filled={star <= rating.responsiveness} onClick={() => handleRatingChange('responsiveness', star)} />
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-sm text-gray-600">Partnership (Promozioni)</span>
+                                        <span className="text-sm font-bold text-gray-800">{rating.partnership}/5</span>
+                                    </div>
+                                    <div className="flex space-x-1">
+                                        {[1,2,3,4,5].map(star => (
+                                            <StarIcon key={star} filled={star <= rating.partnership} onClick={() => handleRatingChange('partnership', star)} />
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between mb-1">
+                                        <span className="text-sm text-gray-600">Flessibilità (Rinegoziazione)</span>
+                                        <span className="text-sm font-bold text-gray-800">{rating.negotiation}/5</span>
+                                    </div>
+                                    <div className="flex space-x-1">
+                                        {[1,2,3,4,5].map(star => (
+                                            <StarIcon key={star} filled={star <= rating.negotiation} onClick={() => handleRatingChange('negotiation', star)} />
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Notes Section */}
+                        <div className="md-input-group">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Note Fornitore (Markdown)</label>
+                            <textarea 
+                                rows={6} 
+                                value={notes} 
+                                onChange={e => setNotes(e.target.value)} 
+                                className="w-full p-3 border rounded-md bg-white text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                placeholder="- Scrivi qui le tue note..."
+                            ></textarea>
+                        </div>
+                    </>
+                )}
 
             </div>
              <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
@@ -329,13 +579,20 @@ const Suppliers: React.FC = () => {
         }
     });
 
+    // Helper to calculate average rating
+    const getAverageRating = (rating?: SupplierRating) => {
+        if (!rating) return 0;
+        const sum = (rating.responsiveness || 0) + (rating.partnership || 0) + (rating.negotiation || 0);
+        return sum > 0 ? (sum / 3).toFixed(1) : 0;
+    };
+
 
   return (
     <div>
         <div className="flex flex-wrap gap-4 justify-between items-center">
             <div>
               <h1 className="text-3xl font-bold">Fornitori</h1>
-              <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci i fornitori e le loro sedi.</p>
+              <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci i fornitori, le sedi e le valutazioni.</p>
             </div>
              <div className="flex items-center space-x-2 flex-wrap">
                  <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat">
@@ -408,56 +665,80 @@ const Suppliers: React.FC = () => {
             {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
              error ? <p className="text-center text-red-500 py-8">{error}</p> :
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredSuppliers.map(supplier => (
-                    <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'border-gray-400 opacity-80' : ''}`}>
-                        <div className="flex-1">
-                            <h2 className="text-lg font-bold">{supplier.companyName}</h2>
-                            <p className="text-sm mt-1" style={{color: 'var(--md-text-secondary)'}}>P.IVA: {supplier.vatNumber}</p>
-                            <div className="mt-4 text-sm space-y-1" style={{color: 'var(--md-text-secondary)'}}>
-                                <p className="truncate"><strong>Email:</strong> {supplier.email}</p>
-                                <p><strong>Tel:</strong> {supplier.phone}</p>
-                                <p><strong>Sede:</strong> {supplier.address}, {supplier.city} ({supplier.province})</p>
+                {filteredSuppliers.map(supplier => {
+                    const avgRating = getAverageRating(supplier.rating);
+                    return (
+                        <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'border-gray-400 opacity-80' : ''}`}>
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start">
+                                    <h2 className="text-lg font-bold">{supplier.companyName}</h2>
+                                    {Number(avgRating) > 0 && (
+                                        <div className="flex items-center bg-yellow-50 px-2 py-1 rounded border border-yellow-100" title={`Reattività: ${supplier.rating?.responsiveness}, Partnership: ${supplier.rating?.partnership}, Flessibilità: ${supplier.rating?.negotiation}`}>
+                                            <span className="text-sm font-bold text-yellow-700 mr-1">{avgRating}</span>
+                                            <StarIcon filled={true} className="w-4 h-4" />
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <p className="text-sm mt-1" style={{color: 'var(--md-text-secondary)'}}>P.IVA: {supplier.vatNumber}</p>
+                                
+                                {/* Tags */}
+                                {supplier.tags && supplier.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2 mb-3">
+                                        {supplier.tags.map(tag => (
+                                            <span key={tag} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full border border-gray-200">
+                                                #{tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="mt-3 text-sm space-y-1" style={{color: 'var(--md-text-secondary)'}}>
+                                    <p className="truncate"><strong>Email:</strong> {supplier.email}</p>
+                                    <p><strong>Tel:</strong> {supplier.phone}</p>
+                                    <p><strong>Sede:</strong> {supplier.address}, {supplier.city} ({supplier.province})</p>
+                                </div>
+                                <div className="mt-4 pt-4 border-t" style={{borderColor: 'var(--md-divider)'}}>
+                                    <h4 className="font-semibold text-sm">Sedi Operative ({supplier.locations.length})</h4>
+                                    <ul className="text-xs mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
+                                    {supplier.locations.slice(0, 3).map(loc => (
+                                        <li key={loc.id} className="flex items-center">
+                                            <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: loc.color }}></span>
+                                            {loc.name} - {loc.address}, {loc.city}
+                                        </li>
+                                    ))}
+                                    {supplier.locations.length > 3 && <li className="text-xs text-gray-400">...e altre {supplier.locations.length - 3}.</li>}
+                                    </ul>
+                                </div>
                             </div>
-                            <div className="mt-4 pt-4 border-t" style={{borderColor: 'var(--md-divider)'}}>
-                                <h4 className="font-semibold text-sm">Sedi Operative ({supplier.locations.length})</h4>
-                                <ul className="text-xs mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
-                                {supplier.locations.slice(0, 3).map(loc => (
-                                    <li key={loc.id} className="flex items-center">
-                                        <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: loc.color }}></span>
-                                        {loc.name} - {loc.address}, {loc.city}
-                                    </li>
-                                ))}
-                                {supplier.locations.length > 3 && <li className="text-xs text-gray-400">...e altre {supplier.locations.length - 3}.</li>}
-                                </ul>
+                            <div className="mt-4 pt-4 border-t flex justify-end items-center space-x-2" style={{borderColor: 'var(--md-divider)'}}>
+                                 {showTrash ? (
+                                    <>
+                                        <button 
+                                            onClick={() => handleActionClick(supplier.id, 'restore')} 
+                                            className="md-icon-btn text-green-600 hover:bg-green-50" 
+                                            title="Ripristina Fornitore"
+                                        >
+                                            <RestoreIcon />
+                                        </button>
+                                        <button 
+                                            onClick={() => handleActionClick(supplier.id, 'permanent')} 
+                                            className="md-icon-btn text-red-600 hover:bg-red-50" 
+                                            title="Elimina Definitivamente"
+                                        >
+                                            <TrashIcon />
+                                        </button>
+                                    </>
+                                 ) : (
+                                    <>
+                                        <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit" aria-label={`Modifica fornitore ${supplier.companyName}`}><PencilIcon /></button>
+                                        <button onClick={() => handleActionClick(supplier.id, 'delete')} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
+                                    </>
+                                 )}
                             </div>
                         </div>
-                        <div className="mt-4 pt-4 border-t flex justify-end items-center space-x-2" style={{borderColor: 'var(--md-divider)'}}>
-                             {showTrash ? (
-                                <>
-                                    <button 
-                                        onClick={() => handleActionClick(supplier.id, 'restore')} 
-                                        className="md-icon-btn text-green-600 hover:bg-green-50" 
-                                        title="Ripristina Fornitore"
-                                    >
-                                        <RestoreIcon />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleActionClick(supplier.id, 'permanent')} 
-                                        className="md-icon-btn text-red-600 hover:bg-red-50" 
-                                        title="Elimina Definitivamente"
-                                    >
-                                        <TrashIcon />
-                                    </button>
-                                </>
-                             ) : (
-                                <>
-                                    <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit" aria-label={`Modifica fornitore ${supplier.companyName}`}><PencilIcon /></button>
-                                    <button onClick={() => handleActionClick(supplier.id, 'delete')} className="md-icon-btn delete" aria-label={`Elimina fornitore ${supplier.companyName}`}><TrashIcon /></button>
-                                </>
-                             )}
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
                 {filteredSuppliers.length === 0 && (
                     <div className="col-span-full text-center py-12 text-gray-500">
                         {showTrash ? "Cestino vuoto." : "Nessun fornitore trovato."}

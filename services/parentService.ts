@@ -7,12 +7,39 @@ import { Client, ClientInput, ClientType, ParentClient } from '../types';
 const clientCollectionRef = collection(db, 'clients');
 
 const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
-    const client = { id: doc.id, ...doc.data() } as Client;
+    const data = doc.data();
+    const client = { id: doc.id, ...data } as Client;
     
-    // Assicura che `children` sia sempre un array, anche se non presente in Firestore
+    // Assicura che `children` sia sempre un array e abbia i nuovi campi
     if (client.clientType === ClientType.Parent) {
         if (!client.children) {
             client.children = [];
+        } else {
+            // Map existing children to new structure with defaults if missing
+            client.children = client.children.map((c: any) => ({
+                ...c,
+                notes: c.notes || '',
+                tags: c.tags || [],
+                rating: c.rating || {
+                    learning: 0,
+                    behavior: 0,
+                    attendance: 0,
+                    hygiene: 0
+                }
+            }));
+        }
+        
+        // Default values for new Parent fields (safety check)
+        const parent = client as ParentClient;
+        if (!parent.notes) parent.notes = '';
+        if (!parent.tags) parent.tags = [];
+        if (!parent.rating) {
+            parent.rating = {
+                availability: 0,
+                complaints: 0,
+                churnRate: 0,
+                distance: 0
+            };
         }
     }
     

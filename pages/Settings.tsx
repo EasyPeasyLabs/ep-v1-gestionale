@@ -32,10 +32,10 @@ const SubscriptionForm: React.FC<{
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
-                <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Pacchetto' : 'Nuovo Pacchetto'}</h2>
+                <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2>
             </div>
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
-                <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Pacchetto</label></div>
+                <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Abbonamento</label></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div>
                     <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div>
@@ -299,10 +299,10 @@ const Settings: React.FC = () => {
 
             {/* Colonna Destra */}
             <div className="space-y-8">
-                {/* Pacchetti */}
+                {/* Pacchetti / Abbonamenti */}
                 <div className="md-card p-6">
                     <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
-                        <h2 className="text-lg font-semibold">Pacchetti Lezioni</h2>
+                        <h2 className="text-lg font-semibold">Abbonamenti</h2>
                         <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-raised md-btn-green md-btn-sm"><PlusIcon /> Nuovo</button>
                     </div>
                     <div className="mt-4 space-y-3">
@@ -321,7 +321,7 @@ const Settings: React.FC = () => {
                                 </div>
                             </div>
                         ))}
-                        {subscriptions.length === 0 && <p className="text-sm text-gray-400 italic text-center">Nessun pacchetto definito.</p>}
+                        {subscriptions.length === 0 && <p className="text-sm text-gray-400 italic text-center">Nessun abbonamento definito.</p>}
                     </div>
                 </div>
 
@@ -359,8 +359,8 @@ const Settings: React.FC = () => {
             isOpen={!!subToDelete}
             onClose={() => setSubToDelete(null)}
             onConfirm={handleConfirmDelete}
-            title="Elimina Pacchetto"
-            message="Sei sicuro di voler eliminare questo pacchetto? Non sarà più selezionabile per le nuove iscrizioni."
+            title="Elimina Abbonamento"
+            message="Sei sicuro di voler eliminare questo abbonamento? Non sarà più selezionabile per le nuove iscrizioni."
             isDangerous={true}
         />
     </div>

@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
-import { Supplier, SupplierInput } from '../types';
+import { Supplier, SupplierInput, Location } from '../types';
 
 const supplierCollectionRef = collection(db, 'suppliers');
 
@@ -18,8 +18,21 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
         province: data.province,
         email: data.email,
         phone: data.phone,
-        locations: data.locations || [],
-        isDeleted: data.isDeleted || false
+        locations: (data.locations || []).map((loc: any) => ({
+            ...loc,
+            // Ensure new fields have defaults for existing data
+            notes: loc.notes || '',
+            tags: loc.tags || [],
+            rating: loc.rating || { 
+                cost: 0, distance: 0, parking: 0, availability: 0, 
+                safety: 0, environment: 0, distractions: 0, modifiability: 0, prestige: 0 
+            }
+        })),
+        isDeleted: data.isDeleted || false,
+        // New Fields mapping with safe defaults
+        notes: data.notes || '',
+        tags: data.tags || [],
+        rating: data.rating || { responsiveness: 0, partnership: 0, negotiation: 0 }
     };
 };
 

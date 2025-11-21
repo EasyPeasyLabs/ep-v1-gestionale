@@ -1,8 +1,20 @@
 
+export interface ChildRating {
+    learning: number;       // 1. Reattività nell'apprendimento
+    behavior: number;       // 2. Buona condotta
+    attendance: number;     // 3. Tasso di assenza
+    hygiene: number;        // 4. Assenza di problemi igienici/disturbi
+}
+
 export interface Child {
   id: string; // ID temporaneo per la UI, generato al momento della creazione
   name: string;
   age: string; // Età in formato testo, es: "3 anni", "18 mesi"
+  
+  // New Enterprise Features for Child
+  notes?: string;
+  tags?: string[];
+  rating?: ChildRating;
 }
 
 export enum EnrollmentStatus {
@@ -68,12 +80,24 @@ interface ClientBase {
   isDeleted?: boolean; // Soft Delete flag
 }
 
+export interface ParentRating {
+    availability: number;   // 1. Disponibilità oraria/giornaliera
+    complaints: number;     // 2. Predisposizione alle lamentele
+    churnRate: number;      // 3. Tasso di abbandoni/ritorni
+    distance: number;       // 4. Distanza dalla sede scelta
+}
+
 export interface ParentClient extends ClientBase {
   clientType: ClientType.Parent;
   firstName: string;
   lastName: string;
   taxCode: string; // Codice Fiscale
   children: Child[];
+  
+  // New Enterprise Features
+  notes?: string;
+  tags?: string[];
+  rating?: ParentRating;
 }
 
 export interface InstitutionalClient extends ClientBase {
@@ -95,6 +119,18 @@ export interface AvailabilitySlot {
     endTime: string; // HH:mm
 }
 
+export interface LocationRating {
+    cost: number;           // 1. Costo nolo / gratuità
+    distance: number;       // 2. Distanza dalla sede aziendale
+    parking: number;        // 3. Facilità parcheggio
+    availability: number;   // 4. Disponibilità oraria
+    safety: number;         // 5. Ambienti a norma (0-6 anni)
+    environment: number;    // 6. Ampiezza, luce, clima
+    distractions: number;   // 7. Assenza distrazioni
+    modifiability: number;  // 8. Modifica layout
+    prestige: number;       // 9. Prestigio sede / network
+}
+
 export interface Location {
     id: string; // ID temporaneo per la UI o da Firestore
     name: string; // Nome Sede
@@ -107,9 +143,20 @@ export interface Location {
     distance: number; // Distanza in km
     color: string; // Colore esadecimale per il calendario
     availability: AvailabilitySlot[]; // Orari disponibili per le lezioni
+    
+    // New Enterprise Features for Location
+    notes?: string; 
+    tags?: string[]; 
+    rating?: LocationRating;
 }
 
 export type LocationInput = Omit<Location, 'id'>;
+
+export interface SupplierRating {
+    responsiveness: number; // Reattività nel risolvere problemi (1-5)
+    partnership: number;    // Predisposizione alla partnership (1-5)
+    negotiation: number;    // Disponibilità a rinegoziare (1-5)
+}
 
 export interface Supplier {
   id: string;
@@ -123,6 +170,11 @@ export interface Supplier {
   phone: string;
   locations: Location[];
   isDeleted?: boolean; // Soft Delete flag
+  
+  // New Enterprise Features
+  notes?: string; // Markdown notes
+  tags?: string[]; // Array of tags
+  rating?: SupplierRating; // Structured rating
 }
 
 export type SupplierInput = Omit<Supplier, 'id'>;
