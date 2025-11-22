@@ -223,6 +223,7 @@ export interface Activity {
     description: string;
     materials: string;
     links?: string;
+    attachments?: string[]; // URL dei file caricati (immagini, video, audio)
     createdAt?: string;
 }
 

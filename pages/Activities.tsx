@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, ActivityInput } from '../types';
 import { getActivities, addActivity, updateActivity, deleteActivity } from '../services/activityService';
+import { uploadActivityAttachment } from '../services/storageService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -9,12 +10,21 @@ import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import SearchIcon from '../components/icons/SearchIcon';
+import UploadIcon from '../components/icons/UploadIcon';
 
 // --- Helper per estrarre URL ---
 const extractFirstUrl = (text: string): string | null => {
     if (!text) return null;
     const match = text.match(/(https?:\/\/[^\s]+)/g);
     return match ? match[0] : null;
+};
+
+// --- Helper per icona file ---
+const FileIcon: React.FC<{ type: string }> = ({ type }) => {
+    if (type.includes('image')) return <span>🖼️</span>;
+    if (type.includes('video')) return <span>🎥</span>;
+    if (type.includes('audio')) return <span>🎵</span>;
+    return <span>📄</span>;
 };
 
 // --- Componenti Interni ---
@@ -30,6 +40,8 @@ const ActivityForm: React.FC<{
     const [description, setDescription] = useState(activity?.description || '');
     const [materials, setMaterials] = useState(activity?.materials || '');
     const [links, setLinks] = useState(activity?.links || '');
+    const [attachments, setAttachments] = useState<string[]>(activity?.attachments || []);
+    const [isUploading, setIsUploading] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -40,6 +52,7 @@ const ActivityForm: React.FC<{
             description,
             materials,
             links,
+            attachments,
             createdAt: activity?.createdAt || new Date().toISOString()
         };
         
@@ -48,6 +61,33 @@ const ActivityForm: React.FC<{
         } else {
             onSave(data);
         }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        setIsUploading(true);
+        const newUrls: string[] = [];
+
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const url = await uploadActivityAttachment(files[i]);
+                newUrls.push(url);
+            }
+            setAttachments(prev => [...prev, ...newUrls]);
+        } catch (error) {
+            console.error("Errore caricamento file:", error);
+            alert("Errore durante il caricamento dei file.");
+        } finally {
+            setIsUploading(false);
+            // Reset input value to allow re-uploading same file if needed
+            e.target.value = '';
+        }
+    };
+
+    const handleRemoveAttachment = (urlToRemove: string) => {
+        setAttachments(prev => prev.filter(url => url !== urlToRemove));
     };
 
     const detectedLink = extractFirstUrl(links);
@@ -104,7 +144,7 @@ const ActivityForm: React.FC<{
                 </div>
 
                 <div className="md-input-group">
-                    <label className="block text-xs text-gray-500 mb-1">Link e Risorse</label>
+                    <label className="block text-xs text-gray-500 mb-1">Link Esterni</label>
                     <textarea 
                         rows={2}
                         value={links} 
@@ -122,6 +162,57 @@ const ActivityForm: React.FC<{
                         >
                             🔗 Apri collegamento rilevato ↗
                         </a>
+                    )}
+                </div>
+
+                {/* ALLEGATI MULTIMEDIALI */}
+                <div className="md-input-group pt-2 border-t border-dashed border-gray-200">
+                    <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Allegati Multimediali</label>
+                    
+                    <div className="flex items-center gap-3 mb-3">
+                        <label className={`cursor-pointer inline-flex items-center px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors text-sm font-medium ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                            {isUploading ? <Spinner /> : <UploadIcon />}
+                            <span className="ml-2">{isUploading ? 'Caricamento...' : 'Carica File'}</span>
+                            <input 
+                                type="file" 
+                                multiple
+                                accept="image/*,video/*,audio/mp3,audio/mpeg"
+                                className="hidden" 
+                                onChange={handleFileUpload}
+                                disabled={isUploading}
+                            />
+                        </label>
+                        <span className="text-[10px] text-gray-400">
+                            Supporta: Immagini, Video, MP3
+                        </span>
+                    </div>
+
+                    {/* Lista Allegati */}
+                    {attachments.length > 0 && (
+                        <div className="grid grid-cols-1 gap-2">
+                            {attachments.map((url, index) => {
+                                // Rileva tipo file dall'URL (approssimativo, basato su token o estensione se visibile, 
+                                // ma qui Firebase Storage usa token opachi. Usiamo estensione o generico)
+                                const isImage = url.includes('.jpg') || url.includes('.png') || url.includes('.jpeg') || url.includes('token='); // Assunzione safe
+                                
+                                return (
+                                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-md text-sm">
+                                        <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-700 hover:text-indigo-600 truncate flex-1">
+                                            <span className="text-lg">📎</span>
+                                            <span className="truncate">Allegato {index + 1}</span>
+                                        </a>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => handleRemoveAttachment(url)} 
+                                            className="ml-2 text-red-400 hover:text-red-600 p-1"
+                                            title="Rimuovi"
+                                        >
+                                            <TrashIcon />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
             </div>
@@ -288,6 +379,7 @@ const Activities: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredActivities.map(act => {
                         const linkUrl = extractFirstUrl(act.links);
+                        const hasAttachments = act.attachments && act.attachments.length > 0;
                         
                         return (
                             <div key={act.id} className="md-card flex flex-col h-full hover:shadow-lg transition-shadow relative group border-t-4 border-gray-400">
@@ -306,7 +398,7 @@ const Activities: React.FC = () => {
                                         {act.description || "Nessuna descrizione."}
                                     </p>
                                     
-                                    {(act.materials || act.links) && (
+                                    {(act.materials || act.links || hasAttachments) && (
                                         <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
                                             {act.materials && <p className="truncate">📦 {act.materials}</p>}
                                             {act.links && (
@@ -316,13 +408,29 @@ const Activities: React.FC = () => {
                                                         target="_blank" 
                                                         rel="noopener noreferrer" 
                                                         className="truncate text-gray-600 hover:underline hover:text-gray-900 flex items-center font-medium"
-                                                        onClick={(e) => e.stopPropagation()} // Evita conflitti se il card avesse un click
+                                                        onClick={(e) => e.stopPropagation()} 
                                                     >
-                                                        🔗 Risorse disponibili (Apri)
+                                                        🔗 Link Esterno (Apri)
                                                     </a>
                                                 ) : (
                                                     <p className="truncate text-gray-600">🔗 Risorse disponibili</p>
                                                 )
+                                            )}
+                                            {hasAttachments && (
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {act.attachments!.map((url, idx) => (
+                                                        <a 
+                                                            key={idx} 
+                                                            href={url} 
+                                                            target="_blank" 
+                                                            rel="noopener noreferrer" 
+                                                            className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 hover:bg-indigo-100 flex items-center gap-1"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            📎 File {idx + 1}
+                                                        </a>
+                                                    ))}
+                                                </div>
                                             )}
                                         </div>
                                     )}

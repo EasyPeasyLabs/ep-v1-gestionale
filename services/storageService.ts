@@ -14,3 +14,15 @@ export const uploadCampaignFile = async (file: File): Promise<string> => {
     // Ottieni l'URL pubblico
     return await getDownloadURL(snapshot.ref);
 };
+
+export const uploadActivityAttachment = async (file: File): Promise<string> => {
+    // Crea un percorso univoco: activities/{timestamp}_{nomefile}
+    const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    const storageRef = ref(storage, `activities/${fileName}`);
+    
+    // Carica il file
+    const snapshot = await uploadBytes(storageRef, file);
+    
+    // Ottieni l'URL pubblico
+    return await getDownloadURL(snapshot.ref);
+};
