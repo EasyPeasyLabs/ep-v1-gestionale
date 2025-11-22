@@ -178,3 +178,48 @@ Potenziamento del CRM con storico comunicazioni e analisi architetturale per l'e
     -   Analizzata la fattibilità di un sito vetrina per iscrizioni e pagamenti automatici.
     -   **Strategia Definita**: Utilizzo di un secondo progetto Vercel per il frontend pubblico.
     -   **Sicurezza**: Adozione di Vercel Functions (o Cloud Functions) come middleware per gestire le scritture su Firebase (iscrizioni) tramite Admin SDK, mantenendo le regole di sicurezza del database "chiuse" al pubblico.
+
+---
+
+## Sessione 13 (4 Giugno 2024)
+
+### Obiettivo della Sessione
+Implementazione del sistema di Rating avanzato per i Figli (Enterprise Features) e Dashboard Qualitativa.
+
+### Riepilogo delle Attività
+1.  **Rating & Profilazione Figli**:
+    -   Aggiornato il modello dati per includere rating a stelle su 4 parametri (Apprendimento, Condotta, Assenza, Igiene), Tags e Note.
+    -   Implementato `ChildEditor` nella scheda cliente per gestire questi dati in modo dettagliato.
+2.  **Dashboard Qualità**:
+    -   Creata una nuova Tab "Qualità & Rating" nella Dashboard principale.
+    -   Sviluppata logica per calcolare medie aggregate di rating per Genitori, Figli, Fornitori e Sedi.
+3.  **Insights Automatici**:
+    -   Aggiunta logica condizionale per generare "massime" riassuntive nelle card della dashboard (es. "Bravi ma con troppe assenze" o "Sedi belle ma costose") basate sulla combinazione dei punteggi.
+
+---
+
+## Sessione 14 (5 Giugno 2024)
+
+### Obiettivo della Sessione
+Ottimizzazione del flusso finanziario per i pagamenti iscrizioni via Bonifico.
+
+### Riepilogo delle Attività
+1.  **Automazione Finanziaria Iscrizioni**:
+    -   Modificata la funzione `executePayment` in `Enrollments.tsx`.
+    -   Alla conferma del pagamento con Bonifico, il sistema ora:
+        1.  Genera una **Fattura** con stato `Paid`.
+        2.  Crea una singola **Transazione** di entrata collegata direttamente alla fattura (`relatedDocumentId`).
+    -   Questo flusso garantisce la corretta tracciabilità fiscale ed evita la duplicazione delle entrate nel bilancio.
+
+---
+
+## Sessione 15 (6 Giugno 2024)
+
+### Obiettivo della Sessione
+Introduzione del "Capitale Iniziale" nel sistema finanziario.
+
+### Riepilogo delle Attività
+1.  **Capitale Iniziale (Budget di Partenza)**:
+    -   Aggiornato il modello `types.ts` aggiungendo la categoria `TransactionCategory.Capital`.
+    -   Abilitata la selezione di questa categoria nel form delle transazioni di Entrata in `Finance.tsx`.
+    -   **Logica Fiscale**: Modificato il calcolo del "Fatturato Annuo" per la proiezione fiscale: le entrate marcate come "Capitale Iniziale" vengono escluse dal calcolo dell'imponibile, in quanto non costituiscono ricavo soggetto a tassazione nel regime forfettario, pur contribuendo al saldo cassa positivo.

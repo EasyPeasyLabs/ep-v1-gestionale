@@ -51,6 +51,7 @@ I dati della mia ragione sociale sono: "Rag.Soc. EasyPeasy".
   - **Costi per la formazione**: per il titolare (unico dipendente).
 - La scuola registra costi, ricavi, entrate, uscite, forme di pagamento, sistema SDI.
 - La scuola produce ed emette preventivi e fatture, con possibilità di generare e stampare PDF da inviare via email.
+- **Gestione Capitale Iniziale**: Sistema per registrare un budget di partenza (positivo) da cui sottrarre le spese iniziali prima dell'arrivo delle prime entrate.
 
 #### 6. Sistema di Promemoria e Alert
 - Un sistema di "promemoria" per gestire scadenze fiscali, commerciali, di pagamento (attive e passive), di iscrizione, obsolescenza materiali.
@@ -123,6 +124,12 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
     - Nuove animazioni di transizione pagina (`slide-up-fade`).
     - Restyling Dashboard e Sidebar per look "Premium".
     - Bugfix del servizio notifiche (connessione VAPID).
+- **Gestione Qualità & Rating (Enterprise)**:
+    - Implementato sistema di valutazione a stelle (1-5), tag e note per i **Figli** (Apprendimento, Condotta, Assenze, Igiene).
+    - Nuova Tab "Qualità & Rating" nella Dashboard con aggregazione dati e "Insights/Massime" automatiche (es. "Sedi belle ma costose").
+- **Automazione Finanziaria Iscrizioni**:
+    - La registrazione del pagamento di un'iscrizione (Bonifico) ora genera automaticamente la relativa fattura (Saldata) e crea una singola transazione finanziaria collegata univocamente.
+- **Gestione Capitale Iniziale**: Aggiunta categoria "Capitale Iniziale" nel sistema Finanziario per gestire il budget di partenza senza impattare sul calcolo del fatturato fiscale.
 
 ### In Programma
 1.  **Ottimizzazione Offline Mode**

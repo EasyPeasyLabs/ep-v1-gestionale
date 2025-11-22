@@ -238,7 +238,7 @@ export interface LessonActivity {
 // --- Notifications ---
 export interface Notification {
     id: string;
-    type: 'expiry' | 'payment_required' | 'action_required' | 'low_lessons';
+    type: 'expiry' | 'payment_required' | 'action_required' | 'low_lessons' | 'sdi_deadline' | 'accountant_send';
     message: string;
     clientId?: string;
     date: string;
@@ -309,6 +309,7 @@ export enum TransactionType {
 }
 
 export enum TransactionCategory {
+    Capital = 'Capitale Iniziale',
     Sales = 'Vendite',
     Rent = 'Nolo Sedi',
     Salaries = 'Stipendi',
@@ -364,10 +365,14 @@ export type TransactionInput = Omit<Transaction, 'id'>;
 export enum DocumentStatus {
     Draft = 'draft',
     Sent = 'sent',
-    Paid = 'paid',
+    Paid = 'paid', // Pagata (Cash/Altro, no SDI flow)
     Overdue = 'overdue',
     Cancelled = 'cancelled',
     Converted = 'converted',
+    
+    // Stati SDI
+    PendingSDI = 'pending_sdi', // "Da sigillare (SDI)" - Pagamento ricevuto, attesa SDI
+    SealedSDI = 'sealed_sdi',   // "Sigillata! (SDI)" - Registrata su SDI
 }
 
 export interface DocumentItem {

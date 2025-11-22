@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus } from '../types';
+import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
-import { addTransaction, deleteTransactionByRelatedId } from '../services/financeService';
+import { addTransaction, deleteTransactionByRelatedId, addInvoice } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -132,32 +132,56 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         console.log(`[DEBUG] Executing Payment for ${enr.id}`);
         setLoading(true);
         try {
-            // 1. Set Enrollment Active
+            const amount = enr.price !== undefined ? enr.price : 0;
+            const client = clients.find(c => c.id === enr.clientId);
+            const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
+
+            // 1. GENERAZIONE AUTOMATICA FATTURA (DA SIGILLARE)
+            // La fattura viene creata come 'PendingSDI' (Da Sigillare) per il bonifico.
+            const invoiceInput: InvoiceInput = {
+                clientId: enr.clientId,
+                clientName: clientName,
+                issueDate: new Date().toISOString(), // Corrispondenza data bonifico
+                dueDate: new Date().toISOString(), // Già pagata
+                status: DocumentStatus.PendingSDI, // STATO AGGIORNATO
+                paymentMethod: PaymentMethod.BankTransfer,
+                items: [{
+                    description: `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`,
+                    quantity: 1,
+                    price: amount,
+                    notes: 'Generata automaticamente da iscrizione'
+                }],
+                totalAmount: amount,
+                hasStampDuty: amount > 77, 
+                notes: `Rif. Iscrizione ${enr.childName}`,
+                invoiceNumber: '' 
+            };
+
+            const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
+            console.log(`[DEBUG] Fattura generata: ${invoiceNumber} (Pending SDI)`);
+
+            // 2. Aggiorna Stato Iscrizione -> Active
             await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
             
-            // 2. Create Transaction
-            const amount = enr.price !== undefined ? enr.price : 0;
-            
-            if (amount === 0) {
-                console.warn("Attenzione: Prezzo iscrizione non trovato o zero. Transazione generata a 0.");
+            // 3. Crea Transazione (COLLEGATA ALLA FATTURA)
+            if (amount > 0) {
+                await addTransaction({
+                    date: new Date().toISOString(),
+                    description: `Incasso Fattura ${invoiceNumber} (Bonifico) - Iscrizione ${enr.childName}`,
+                    amount: amount, 
+                    type: TransactionType.Income,
+                    category: TransactionCategory.Sales,
+                    paymentMethod: PaymentMethod.BankTransfer,
+                    status: TransactionStatus.Completed,
+                    relatedDocumentId: invoiceId, 
+                });
             }
 
-            await addTransaction({
-                date: new Date().toISOString(),
-                description: `Incasso Iscrizione ${enr.childName} - ${enr.subscriptionName}`,
-                amount: amount, 
-                type: TransactionType.Income,
-                category: TransactionCategory.Sales,
-                paymentMethod: PaymentMethod.Other,
-                status: TransactionStatus.Completed,
-                relatedDocumentId: enr.id,
-            });
-
-            console.log("[DEBUG] Transazione creata correttamente.");
+            console.log("[DEBUG] Transazione e Fattura create correttamente.");
 
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert(`Pagamento registrato con successo! È stata generata una transazione di ${amount}€.`);
+            alert(`Pagamento registrato con Bonifico!\nÈ stata generata la Fattura n. ${invoiceNumber} in stato 'Da sigillare (SDI)'.\nRicorda di registrarla entro 12 giorni.`);
         } catch(err) {
             console.error("[DEBUG] Errore Pagamento:", err);
             setError("Errore nel processare il pagamento. Controlla la console.");
@@ -167,11 +191,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
-        const priceMsg = enr.price ? `${enr.price}€` : '0€ (Prezzo non definito)';
+        const priceMsg = enr.price ? `${enr.price}€` : '0€';
         setConfirmState({
             isOpen: true,
-            title: "Conferma Pagamento",
-            message: `Confermi il pagamento per l'iscrizione di ${enr.childName}? Verrà registrata una transazione di entrata di ${priceMsg}.`,
+            title: "Conferma Pagamento Bonifico",
+            message: `Confermi il pagamento tramite Bonifico per l'iscrizione di ${enr.childName}? \n\nVerrà generata automaticamente una FATTURA di ${priceMsg} in stato 'Da sigillare (SDI)'.`,
             isDangerous: false,
             onConfirm: () => executePayment(enr)
         });
@@ -183,9 +207,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setLoading(true);
         try {
             await updateEnrollment(enr.id, { status: EnrollmentStatus.Pending });
-            await deleteTransactionByRelatedId(enr.id);
+            // Nota: La revoca dell'iscrizione NON elimina la fattura emessa per ragioni di tracciabilità fiscale.
+            // La fattura deve essere gestita (annullata/nota di credito) manualmente in Finanza se necessario.
+            
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
+            alert("Iscrizione revocata. Ricorda di gestire l'eventuale fattura emessa nella sezione Finanza.");
         } catch(err) {
             console.error("[DEBUG] Errore Revoca:", err);
             setError("Errore durante la revoca del pagamento.");
@@ -198,7 +225,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setConfirmState({
             isOpen: true,
             title: "Revoca Pagamento",
-            message: `Attenzione: Vuoi annullare il pagamento per ${enr.childName}? L'iscrizione tornerà 'In Attesa' e la transazione registrata verrà eliminata.`,
+            message: `Attenzione: L'iscrizione tornerà 'In Attesa'.\nNOTA: La fattura eventualmente emessa NON verrà eliminata automaticamente.`,
             isDangerous: true,
             onConfirm: () => executeRevoke(enr)
         });
@@ -237,6 +264,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setLoading(true);
         try {
             await deleteEnrollment(enr.id);
+            // Elimina eventuali transazioni orfane (legacy)
             await deleteTransactionByRelatedId(enr.id);
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
@@ -252,7 +280,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setConfirmState({
             isOpen: true,
             title: "Elimina Iscrizione",
-            message: `Sei sicuro di voler eliminare DEFINITIVAMENTE l'iscrizione di ${enr.childName}? Verranno perse anche le transazioni collegate.`,
+            message: `Sei sicuro di voler eliminare DEFINITIVAMENTE l'iscrizione di ${enr.childName}?`,
             isDangerous: true,
             onConfirm: () => executeDelete(enr)
         });

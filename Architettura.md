@@ -59,8 +59,9 @@ Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato
 
 Il database NoSQL Firestore è strutturato in collection di documenti.
 
-- `clients`: Contiene le anagrafiche dei clienti. Un campo `clientType` (`Parent` o `Institutional`) distingue i due tipi di cliente.
-- `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested).
+- `clients`: Contiene le anagrafiche dei clienti.
+  - **Struttura**: Include un array `children` per i genitori. Ogni oggetto figlio ora contiene anche campi avanzati: `rating` (4 criteri), `tags` (array stringhe) e `notes`.
+- `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested). Anche le location supportano `rating`, `tags` e `notes`.
 - `settings`: Collection che contiene documenti singleton per le impostazioni globali (`companyInfo`).
 - `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
 - `periodicChecks`: Collection per la gestione del planner delle verifiche periodiche.
@@ -68,7 +69,9 @@ Il database NoSQL Firestore è strutturato in collection di documenti.
 - `enrollments`: Collection centrale che lega un allievo a un corso.
   - **Struttura**: Contiene un array `appointments` che elenca tutte le date previste per il corso.
   - **Stato Lezioni**: Ogni oggetto in `appointments` ha un campo `status` (`Scheduled`, `Present`, `Absent`, `Cancelled`) per tracciare la frequenza.
+  - **Automazione Finanziaria**: Il pagamento genera una Fattura e una Transazione collegata a essa.
 - `transactions`: Collection per tutte le transazioni finanziarie.
+  - Supporta nuova categoria `Capital` (Capitale Iniziale) per gestire budget di partenza.
 - `invoices` & `quotes`: Collection per i documenti fiscali.
 - `activities`: Collection "Libreria" delle attività didattiche disponibili.
 - `lesson_activities`: Collection di log che associa una lezione (`lessonId`) a una o più attività svolte (`activityIds`).
@@ -87,11 +90,11 @@ Viene utilizzato il servizio di autenticazione di Firebase per gestire il login 
 
 L'applicazione è suddivisa logicamente nei seguenti moduli:
 
-- **Dashboard**: Vista d'insieme con KPI, grafici finanziari, avvisi e occupazione aule.
-- **Clienti**: Gestione CRUD completa dei clienti.
+- **Dashboard**: Vista d'insieme con KPI, grafici finanziari, avvisi e occupazione aule. Include la tab **Qualità & Rating** per analisi aggregata.
+- **Clienti**: Gestione CRUD completa dei clienti e profilazione dettagliata figli (rating/tag).
 - **Fornitori**: Gestione CRUD completa dei fornitori.
 - **Calendario**: Pianificazione lezioni e visualizzazione occupazione.
-- **Finanza**: Gestione transazioni, fatture, preventivi, automazione pagamenti.
+- **Finanza**: Gestione transazioni, fatture, preventivi, automazione pagamenti e **Capitale Iniziale**.
 - **CRM**: Gestione rinnovi, scadenze e sistema di **Comunicazione Libera** (invio messaggi manuali o massivi a liste di distribuzione via Email/WhatsApp).
 - **Iscrizioni**: Gestione dei contratti attivi, monitoraggio avanzamento lezioni (progress bar).
 - **Registro Presenze**: Modulo per la gestione giornaliera delle lezioni. Permette di segnare assenze e gestire automaticamente i recuperi.

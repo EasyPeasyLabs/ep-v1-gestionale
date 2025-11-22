@@ -92,6 +92,11 @@ export const getNotifications = async (): Promise<Notification[]> => {
     });
 
     // 2. FATTURE
+    // Check per fatture sigillate nel mese corrente (per notifica invio commercialista)
+    let sealedInvoicesCount = 0;
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+
     invoices.forEach(inv => {
         // Fatture Scadute
         if (inv.status === DocumentStatus.Overdue) {
@@ -123,7 +128,65 @@ export const getNotifications = async (): Promise<Notification[]> => {
                 }
             });
         }
+
+        // --- NUOVO: Controllo SDI Pending (12 giorni) ---
+        if (inv.status === DocumentStatus.PendingSDI) {
+            const issueDate = new Date(inv.issueDate);
+            issueDate.setHours(0,0,0,0);
+            
+            // Calcola scadenza (12 giorni o 30 Dicembre)
+            let deadline = new Date(issueDate);
+            deadline.setDate(deadline.getDate() + 12);
+
+            // Regola Dicembre: Se fattura è di Dicembre, max 30 Dicembre
+            if (issueDate.getMonth() === 11) { // Dicembre è 11
+                const dec30 = new Date(issueDate.getFullYear(), 11, 30);
+                if (deadline > dec30) {
+                    deadline = dec30;
+                }
+            }
+
+            const diffTime = deadline.getTime() - today.getTime();
+            const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            notifications.push({
+                id: `inv-sdi-${inv.id}`,
+                type: 'sdi_deadline',
+                message: `SDI: Registra fattura ${inv.invoiceNumber} entro ${daysLeft} giorni!`,
+                clientId: inv.clientId,
+                date: new Date().toISOString(),
+                linkPage: 'Finance',
+                filterContext: {
+                    tab: 'invoices',
+                    invoiceStatus: DocumentStatus.PendingSDI
+                }
+            });
+        }
+
+        // Conteggio Sealed per il mese corrente
+        if (inv.status === DocumentStatus.SealedSDI) {
+            const invDate = new Date(inv.issueDate);
+            if (invDate.getMonth() === currentMonth && invDate.getFullYear() === currentYear) {
+                sealedInvoicesCount++;
+            }
+        }
     });
+
+    // --- NUOVO: Notifica Invio Commercialista ---
+    if (sealedInvoicesCount > 0) {
+        // Mostra sempre se ci sono fatture sigillate nel mese, come promemoria costante
+        notifications.push({
+            id: `accountant-send-${currentMonth}-${currentYear}`,
+            type: 'accountant_send',
+            message: `Trasmettere a commercialista: ${sealedInvoicesCount} fatture sigillate questo mese.`,
+            date: new Date().toISOString(),
+            linkPage: 'Finance',
+            filterContext: {
+                tab: 'invoices',
+                invoiceStatus: DocumentStatus.SealedSDI
+            }
+        });
+    }
 
     // 3. PREVENTIVI
     quotes.forEach(quote => {

@@ -16,6 +16,8 @@ import RestoreIcon from '../components/icons/RestoreIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import CalculatorIcon from '../components/icons/CalculatorIcon';
 import { Chart, registerables, TooltipItem } from 'chart.js';
+import * as XLSX from 'xlsx'; // Import xlsx per export commercialista
+
 Chart.register(...registerables);
 
 type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes' | 'reports';
@@ -84,7 +86,7 @@ const KpiCard: React.FC<{ title: string; value: string; subtext?: string; icon: 
 const ChartCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <div className="md-card p-6">
         <h3 className="text-lg font-semibold mb-4">{title}</h3>
-        <div className="h-64">
+        <div className="h-64 relative">
             {children}
         </div>
     </div>
@@ -156,8 +158,16 @@ const TransactionForm: React.FC<{
         }
     };
 
-    const incomeCategories = Object.values(TransactionCategory).filter(c => [TransactionCategory.Sales, TransactionCategory.OtherIncome].includes(c));
-    const expenseCategories = Object.values(TransactionCategory).filter(c => ![TransactionCategory.Sales, TransactionCategory.OtherIncome].includes(c));
+    const incomeCategories = Object.values(TransactionCategory).filter(c => [TransactionCategory.Capital, TransactionCategory.Sales, TransactionCategory.OtherIncome].includes(c));
+    const expenseCategories = Object.values(TransactionCategory).filter(c => ![TransactionCategory.Capital, TransactionCategory.Sales, TransactionCategory.OtherIncome].includes(c));
+
+    useEffect(() => {
+        if (type === TransactionType.Income && !incomeCategories.includes(category)) {
+            setCategory(TransactionCategory.Sales);
+        } else if (type === TransactionType.Expense && !expenseCategories.includes(category)) {
+            setCategory(TransactionCategory.OtherExpense);
+        }
+    }, [type]);
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
@@ -269,6 +279,9 @@ const DocumentForm: React.FC<{
     const [sdiCode, setSdiCode] = useState((type === 'invoice' ? (initialData as Invoice)?.sdiCode : '') || '');
     const [isProForma, setIsProForma] = useState((type === 'invoice' ? (initialData as Invoice)?.isProForma : false) || false);
     const [relatedQuoteNumber, setRelatedQuoteNumber] = useState((type === 'invoice' ? (initialData as Invoice)?.relatedQuoteNumber : '') || '');
+    
+    // SDI Logic
+    const [isSealed, setIsSealed] = useState(initialData?.status === DocumentStatus.SealedSDI);
 
     useEffect(() => {
         const fetchClientsList = async () => {
@@ -277,6 +290,21 @@ const DocumentForm: React.FC<{
         };
         fetchClientsList();
     }, []);
+
+    // Handle SEAL Toggle
+    const handleSealToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            if (!sdiCode) {
+                alert("Inserisci il Codice SDI prima di sigillare la fattura.");
+                return;
+            }
+            setIsSealed(true);
+            setStatus(DocumentStatus.SealedSDI);
+        } else {
+            setIsSealed(false);
+            setStatus(DocumentStatus.PendingSDI);
+        }
+    };
 
     const handleItemChange = (index: number, field: keyof DocumentItem, value: string | number) => {
         const newItems = [...items];
@@ -316,10 +344,13 @@ const DocumentForm: React.FC<{
             today.setHours(0, 0, 0, 0);
             const expiryDate = new Date(dueDate);
             
+            // Logic for Overdue, but preserving SDI statuses
             if (expiryDate < today && 
                 status !== DocumentStatus.Paid && 
                 status !== DocumentStatus.Cancelled && 
-                status !== DocumentStatus.Converted) {
+                status !== DocumentStatus.Converted &&
+                status !== DocumentStatus.PendingSDI &&
+                status !== DocumentStatus.SealedSDI) {
                 finalStatus = DocumentStatus.Overdue;
             }
         }
@@ -359,7 +390,25 @@ const DocumentForm: React.FC<{
         }
     };
 
-    const canEditSDI = status === DocumentStatus.Draft || status === DocumentStatus.Sent;
+    const canEditSDI = status === DocumentStatus.Draft || status === DocumentStatus.Sent || status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI;
+
+    // Calculate Days Left for Pending SDI
+    let daysLeftSDI = null;
+    if (type === 'invoice' && (status === DocumentStatus.PendingSDI || initialData?.status === DocumentStatus.PendingSDI)) {
+        const issueD = new Date(issueDate);
+        issueD.setHours(0,0,0,0);
+        let deadline = new Date(issueD);
+        deadline.setDate(deadline.getDate() + 12);
+        
+        // Rule Dec 30
+        if(issueD.getMonth() === 11) {
+            const dec30 = new Date(issueD.getFullYear(), 11, 30);
+            if (deadline > dec30) deadline = dec30;
+        }
+        
+        const diffTime = deadline.getTime() - new Date().getTime();
+        daysLeftSDI = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full">
@@ -381,6 +430,25 @@ const DocumentForm: React.FC<{
                                 Da Preventivo: <span className="font-medium">{relatedQuoteNumber}</span>
                             </div>
                         )}
+                    </div>
+                )}
+
+                {/* SDI WARNING BOX */}
+                {type === 'invoice' && daysLeftSDI !== null && !isSealed && (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-2 animate-pulse">
+                        <div className="flex">
+                            <div className="flex-shrink-0">
+                                <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+                            <div className="ml-3">
+                                <p className="text-sm text-yellow-700">
+                                    Fattura in attesa di registrazione SDI.
+                                    <strong className="block">Tempo rimasto: {daysLeftSDI} giorni.</strong>
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -469,18 +537,38 @@ const DocumentForm: React.FC<{
                 </div>
 
                 {type === 'invoice' && (
-                     <div className="md-input-group mt-4">
-                         <input 
-                            id="sdi" 
-                            type="text" 
-                            value={sdiCode} 
-                            onChange={e => setSdiCode(e.target.value)} 
-                            className={`md-input ${!canEditSDI ? 'opacity-50 bg-gray-100 cursor-not-allowed' : ''}`}
-                            placeholder=" "
-                            disabled={!canEditSDI}
-                         />
-                         <label htmlFor="sdi" className="md-input-label">Codice SDI / PEC</label>
-                         {!canEditSDI && <p className="text-xs text-red-500 mt-1">Modificabile solo in bozza o inviato.</p>}
+                     <div className="mt-4 bg-gray-50 p-3 rounded border border-gray-200">
+                         <h4 className="text-sm font-bold text-gray-700 mb-3">Area SDI (Agenzia delle Entrate)</h4>
+                         <div className="md-input-group">
+                             <input 
+                                id="sdi" 
+                                type="text" 
+                                value={sdiCode} 
+                                onChange={e => setSdiCode(e.target.value)} 
+                                className={`md-input ${!canEditSDI ? 'opacity-50 bg-gray-100 cursor-not-allowed' : ''}`}
+                                placeholder=" "
+                                disabled={!canEditSDI}
+                             />
+                             <label htmlFor="sdi" className="md-input-label">Codice SDI / Numero Protocollo</label>
+                         </div>
+                         
+                         {/* Toggle Seal Invoice */}
+                         <div className="mt-4 flex items-center">
+                            <label className="inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    className="sr-only peer" 
+                                    checked={isSealed}
+                                    onChange={handleSealToggle}
+                                    disabled={!sdiCode} // Disabilita se non c'è codice SDI
+                                />
+                                <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                <span className="ms-3 text-sm font-medium text-gray-900">
+                                    {isSealed ? "Fattura Sigillata (Pronta per Commercialista)" : "Sigilla Fattura (Conferma registrazione SDI)"}
+                                </span>
+                            </label>
+                         </div>
+                         {!sdiCode && <p className="text-xs text-gray-500 mt-1 ml-1">Inserisci il codice SDI per sigillare la fattura.</p>}
                      </div>
                 )}
 
@@ -536,7 +624,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const enrollmentsChartRef = useRef<HTMLCanvasElement>(null);
     const expensesDoughnutRef = useRef<HTMLCanvasElement>(null);
     const incomeDoughnutRef = useRef<HTMLCanvasElement>(null);
-    const reportsDoughnutRef = useRef<HTMLCanvasElement>(null);
+    
+    const reportsDoughnutRef = useRef<HTMLCanvasElement>(null); 
+    const profitDoughnutRef = useRef<HTMLCanvasElement>(null); 
+    const efficiencyScatterRef = useRef<HTMLCanvasElement>(null); 
 
 
     const fetchAllData = useCallback(async () => {
@@ -563,7 +654,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
-    // Use active items for Dashboard/Calculations
     const activeTransactions = useMemo(() => transactions.filter(t => !t.isDeleted), [transactions]);
     
     const completedTransactions = useMemo(() => 
@@ -573,6 +663,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const pendingTransactions = useMemo(() => 
         activeTransactions.filter(t => t.status === TransactionStatus.Pending), 
     [activeTransactions]);
+
+    // Find Pending SDI invoices to flag related transactions
+    const pendingSDIInvoiceIds = useMemo(() => {
+        return new Set(invoices.filter(i => i.status === DocumentStatus.PendingSDI).map(i => i.id));
+    }, [invoices]);
 
 
     const handleOpenTransModal = (transaction: Transaction | null = null) => {
@@ -604,7 +699,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const handleGenerateRent = async () => {
         setLoading(true);
         try {
-            // calculateRentTransactions needs active transactions to avoid dups
             const newTransactions = calculateRentTransactions(enrollments, suppliers, activeTransactions);
             
             if (newTransactions.length > 0) {
@@ -652,7 +746,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                 let savedId = '';
                 let finalInvoiceNumber = invData.invoiceNumber;
 
-                const isPaidNow = invData.status === DocumentStatus.Paid;
                 const isUpdate = 'id' in invData;
 
                 if (isUpdate) {
@@ -668,7 +761,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                     await deleteTransactionByRelatedId(savedId);
                 }
 
-                if (isPaidNow) {
+                // Create transaction if PAID or SEALED/PENDING SDI (It's technically paid if via Bonifico)
+                const shouldCreateTransaction = invData.status === DocumentStatus.Paid || 
+                                                invData.status === DocumentStatus.PendingSDI || 
+                                                invData.status === DocumentStatus.SealedSDI;
+
+                if (shouldCreateTransaction) {
                     await addTransaction({
                         date: new Date().toISOString(), 
                         description: `Incasso Fattura ${finalInvoiceNumber || 'PROFORMA'} - ${invData.clientName}`,
@@ -745,7 +843,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                     console.error("Errore nella pulizia delle transazioni precedenti:", e);
                 }
 
-                if (status === DocumentStatus.Paid) {
+                // Logic: Create Transaction if status implies payment received
+                if (status === DocumentStatus.Paid || status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI) {
                     try {
                         await addTransaction({
                             date: new Date().toISOString(),
@@ -817,94 +916,49 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         }
     };
 
+    // --- Export Excel Accountant ---
+    const handleExportAccountantExcel = () => {
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+        const monthName = new Date().toLocaleString('it-IT', { month: 'long' });
 
-    // --- CHART LOGIC (Uses ONLY Completed Active Transactions) ---
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const monthlyIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    const monthlyExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    const annualIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    const annualExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    
-    const overdueAmount = invoices.filter(inv => !inv.isDeleted && inv.status === DocumentStatus.Overdue).reduce((sum, inv) => sum + inv.totalAmount, 0);
+        // Filter invoices: Active and Sealed/Paid/PendingSDI (exclude drafts/cancelled)
+        const relevantInvoices = invoices.filter(inv => 
+            !inv.isDeleted && 
+            inv.status !== DocumentStatus.Draft && 
+            inv.status !== DocumentStatus.Cancelled &&
+            new Date(inv.issueDate).getMonth() === currentMonth &&
+            new Date(inv.issueDate).getFullYear() === currentYear
+        );
 
-    const COEFFICIENTE_REDDITIVITA = 0.78, ALIQUOTA_INPS = 0.2623, ALIQUOTA_IMPOSTA = 0.05;
-    const imponibileLordo = annualIncome * COEFFICIENTE_REDDITIVITA;
-    const contributiInpsStimati = imponibileLordo * ALIQUOTA_INPS;
-    const imponibileNetto = imponibileLordo - contributiInpsStimati;
-    const impostaSostitutivaStimata = imponibileNetto > 0 ? imponibileNetto * ALIQUOTA_IMPOSTA : 0;
-    const utileNettoPrevisto = annualIncome - annualExpense - contributiInpsStimati - impostaSostitutivaStimata;
+        const data = relevantInvoices.map(inv => ({
+            "Numero": inv.invoiceNumber,
+            "Data Emissione": new Date(inv.issueDate).toLocaleDateString('it-IT'),
+            "Cliente": inv.clientName,
+            "Importo": inv.totalAmount,
+            "Stato": inv.status === DocumentStatus.SealedSDI ? "Sigillata" : inv.status === DocumentStatus.PendingSDI ? "In attesa SDI" : inv.status,
+            "Codice SDI": inv.sdiCode || "-"
+        }));
 
-    useEffect(() => {
-        if (activeTab !== 'overview' && activeTab !== 'reports') return; 
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Fatture");
+        XLSX.writeFile(wb, `Fatture emesse - ${monthName} ${currentYear}.xlsx`);
+    };
+
+    // --- Send to Accountant (WhatsApp) ---
+    const handleSendToAccountant = () => {
+        const monthName = new Date().toLocaleString('it-IT', { month: 'long' });
+        const subject = `Invio Fatture ${monthName}`;
+        const message = `Ciao, ti invio in allegato il file excel con le fatture emesse nel mese di ${monthName}.\n\nCordiali saluti,\nIlaria Tavani`;
         
-        const last6Months = [...Array(6)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return { month: d.getMonth(), year: d.getFullYear() }; }).reverse();
-        const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' }));
-        const monthlyIncomeData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
-        const monthlyExpenseData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
-        const monthlyEnrollmentsData = last6Months.map(d => enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length);
-        
-        const expenseByCategory = completedTransactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
-        const incomeByCategory = completedTransactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
-
-
-        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart, reportsDoughnut: Chart;
-        
-        const percentageTooltip = {
-            callbacks: {
-                label: function(context: TooltipItem<'doughnut'>) {
-                    const dataset = context.dataset;
-                    const total = dataset.data.reduce((acc, current) => acc + (typeof current === 'number' ? current : 0), 0);
-                    const currentValue = context.raw as number;
-                    const percentage = total > 0 ? ((currentValue / total) * 100).toFixed(1) : '0';
-                    return `${context.label}: ${currentValue.toFixed(2)}€ (${percentage}%)`;
-                }
-            }
-        };
-
-        if (monthlyChartRef.current && activeTab === 'overview') { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (enrollmentsChartRef.current && activeTab === 'overview') { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (expensesDoughnutRef.current && activeTab === 'overview') { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
-        if (incomeDoughnutRef.current && activeTab === 'overview') { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
-        
-        if (reportsDoughnutRef.current && activeTab === 'reports') {
-             reportsDoughnut = new Chart(reportsDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip } } }); 
-        }
-
-        return () => { 
-            if (monthlyChart) monthlyChart.destroy(); 
-            if (enrollmentsChart) enrollmentsChart.destroy(); 
-            if (expensesDoughnut) expensesDoughnut.destroy(); 
-            if (incomeDoughnut) incomeDoughnut.destroy();
-            if (reportsDoughnut) reportsDoughnut.destroy();
-        };
-    }, [completedTransactions, enrollments, activeTab]); 
-
-    // Filtered Lists for Tables (respecting Trash toggle)
-    const displayedTransactions = transactions.filter(t => {
-        if (showTrash) return t.isDeleted;
-        if (t.isDeleted) return false;
-        if (transactionFilter === 'all') return true;
-        return t.type === transactionFilter;
-    });
-
-    const displayedInvoices = invoices.filter(inv => {
-        if (showTrash) return inv.isDeleted;
-        if (inv.isDeleted) return false;
-        if (invoiceFilter === 'all') return true;
-        return inv.status === invoiceFilter;
-    });
-
-    const displayedQuotes = quotes.filter(q => {
-        if (showTrash) return q.isDeleted;
-        if (q.isDeleted) return false;
-        return true; // No specific filter for quotes currently
-    });
+        // Open whatsapp web with prefilled text
+        const waLink = `https://wa.me/?text=${encodeURIComponent(`*${subject}*\n\n${message}`)}`;
+        window.open(waLink, '_blank');
+    };
 
     // --- REPORTS LOGIC ---
     
-    // 1. Profit per Location
     const calculateLocationProfit = () => {
         const locationStats: Record<string, { name: string, revenue: number, costs: number }> = {};
         
@@ -943,72 +997,152 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         })).sort((a, b) => b.profit - a.profit);
     };
 
-    // 2. Advanced Financial Analytics (CAGR, ROS, ARPU, Burn Rate)
+    const locationProfits = useMemo(() => calculateLocationProfit(), [enrollments, completedTransactions, suppliers]);
+
+    // --- CHART LOGIC ---
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthlyIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    const monthlyExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    
+    const annualIncome = completedTransactions
+        .filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capital && new Date(t.date).getFullYear() === currentYear)
+        .reduce((sum, t) => sum + t.amount, 0);
+        
+    const annualExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+    
+    const overdueAmount = invoices.filter(inv => !inv.isDeleted && inv.status === DocumentStatus.Overdue).reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+    const COEFFICIENTE_REDDITIVITA = 0.78, ALIQUOTA_INPS = 0.2623, ALIQUOTA_IMPOSTA = 0.05;
+    const imponibileLordo = annualIncome * COEFFICIENTE_REDDITIVITA;
+    const contributiInpsStimati = imponibileLordo * ALIQUOTA_INPS;
+    const imponibileNetto = imponibileLordo - contributiInpsStimati;
+    const impostaSostitutivaStimata = imponibileNetto > 0 ? imponibileNetto * ALIQUOTA_IMPOSTA : 0;
+    const utileNettoPrevisto = annualIncome - annualExpense - contributiInpsStimati - impostaSostitutivaStimata;
+
+    useEffect(() => {
+        if (activeTab !== 'overview' && activeTab !== 'reports') return; 
+        
+        const last6Months = [...Array(6)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return { month: d.getMonth(), year: d.getFullYear() }; }).reverse();
+        const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' }));
+        const monthlyIncomeData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
+        const monthlyExpenseData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
+        const monthlyEnrollmentsData = last6Months.map(d => enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length);
+        
+        const expenseByCategory = completedTransactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+        const incomeByCategory = completedTransactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
+
+
+        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart, reportsDoughnut: Chart, profitDoughnut: Chart, efficiencyScatter: Chart;
+        
+        const percentageTooltip = {
+            callbacks: {
+                label: function(context: TooltipItem<'doughnut'>) {
+                    const dataset = context.dataset;
+                    const total = dataset.data.reduce((acc, current) => acc + (typeof current === 'number' ? current : 0), 0);
+                    const currentValue = context.raw as number;
+                    const percentage = total > 0 ? ((currentValue / total) * 100).toFixed(1) : '0';
+                    return `${context.label}: ${currentValue.toFixed(2)}€ (${percentage}%)`;
+                }
+            }
+        };
+
+        if (monthlyChartRef.current && activeTab === 'overview') { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
+        if (enrollmentsChartRef.current && activeTab === 'overview') { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
+        if (expensesDoughnutRef.current && activeTab === 'overview') { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
+        if (incomeDoughnutRef.current && activeTab === 'overview') { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0', '#673AB7'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
+        
+        if (activeTab === 'reports') {
+            if (reportsDoughnutRef.current) {
+                reportsDoughnut = new Chart(reportsDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip } } }); 
+            }
+            if (profitDoughnutRef.current) {
+                const profitableLocations = locationProfits.filter(l => l.profit > 0);
+                profitDoughnut = new Chart(profitDoughnutRef.current, {
+                    type: 'doughnut',
+                    data: {
+                        labels: profitableLocations.map(l => l.name.split('(')[0]),
+                        datasets: [{ data: profitableLocations.map(l => l.profit), backgroundColor: ['#34d399', '#10b981', '#059669', '#6ee7b7', '#a7f3d0', '#047857'] }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip, title: { display: true, text: 'Sedi Profittevoli' } } }
+                });
+            }
+            if (efficiencyScatterRef.current) {
+                const scatterData = locationProfits.map(l => ({ x: l.revenue, y: l.margin }));
+                efficiencyScatter = new Chart(efficiencyScatterRef.current, {
+                    type: 'scatter',
+                    data: { datasets: [{ label: 'Sedi', data: scatterData, backgroundColor: '#6366f1', pointRadius: 6, pointHoverRadius: 8 }] },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: 'Fatturato (€)' }, beginAtZero: true }, y: { title: { display: true, text: 'Margine (%)' }, beginAtZero: true } }, plugins: { tooltip: { callbacks: { label: (context) => { const loc = locationProfits[context.dataIndex]; return `${loc.name.split('(')[0]}: Rev ${context.parsed.x}€, Mar ${context.parsed.y.toFixed(1)}%`; } } }, title: { display: true, text: 'Matrice Efficienza' } } }
+                });
+            }
+        }
+
+        return () => { 
+            if (monthlyChart) monthlyChart.destroy(); 
+            if (enrollmentsChart) enrollmentsChart.destroy(); 
+            if (expensesDoughnut) expensesDoughnut.destroy(); 
+            if (incomeDoughnut) incomeDoughnut.destroy();
+            if (reportsDoughnut) reportsDoughnut.destroy();
+            if (profitDoughnut) profitDoughnut.destroy();
+            if (efficiencyScatter) efficiencyScatter.destroy();
+        };
+    }, [completedTransactions, enrollments, activeTab, locationProfits]); 
+
+    const displayedTransactions = transactions.filter(t => {
+        if (showTrash) return t.isDeleted;
+        if (t.isDeleted) return false;
+        if (transactionFilter === 'all') return true;
+        return t.type === transactionFilter;
+    });
+
+    const displayedInvoices = invoices.filter(inv => {
+        if (showTrash) return inv.isDeleted;
+        if (inv.isDeleted) return false;
+        if (invoiceFilter === 'all') return true;
+        return inv.status === invoiceFilter;
+    });
+
+    const displayedQuotes = quotes.filter(q => {
+        if (showTrash) return q.isDeleted;
+        if (q.isDeleted) return false;
+        return true;
+    });
+
     const calculateAdvancedMetrics = () => {
-        // CAGR Logic
-        // Formula: (EndValue / StartValue)^(1/n) - 1
-        // We use Annual Revenue.
         const incomeTransactions = completedTransactions.filter(t => t.type === TransactionType.Income);
         if (incomeTransactions.length < 2) return { cagr: 0, ros: 0, arpu: 0, burnRate: 0, dataInsufficient: true };
-
-        // Sort chronologically
         incomeTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        
         const firstDate = new Date(incomeTransactions[0].date);
         const lastDate = new Date(incomeTransactions[incomeTransactions.length - 1].date);
-        
-        // Get years involved
         const startYear = firstDate.getFullYear();
         const endYear = lastDate.getFullYear();
         const yearDiff = endYear - startYear;
-
         let cagr = 0;
         let dataInsufficient = false;
-
         if (yearDiff >= 1) {
             const startYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === startYear).reduce((acc, t) => acc + t.amount, 0);
             const endYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === endYear).reduce((acc, t) => acc + t.amount, 0);
-            
-            if (startYearRevenue > 0) {
-                cagr = (Math.pow(endYearRevenue / startYearRevenue, 1 / yearDiff) - 1) * 100;
-            }
-        } else {
-            // If less than a year, we can't calculate true CAGR. We mark it.
-            dataInsufficient = true;
-        }
-
-        // ROS (Return on Sales) = Net Profit / Revenue
+            if (startYearRevenue > 0) { cagr = (Math.pow(endYearRevenue / startYearRevenue, 1 / yearDiff) - 1) * 100; }
+        } else { dataInsufficient = true; }
         const totalRevenue = annualIncome;
         const totalExpense = annualExpense;
         const netProfit = totalRevenue - totalExpense;
         const ros = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-
-        // ARPU (Average Revenue Per User)
-        // Monthly Revenue / Active Enrollments
         const activeEnrollmentsCount = enrollments.filter(e => e.status === EnrollmentStatus.Active).length;
         const arpu = activeEnrollmentsCount > 0 && monthlyIncome > 0 ? monthlyIncome / activeEnrollmentsCount : 0;
-
-        // Burn Rate (Average Monthly Expense)
-        // We calculate average over the last 6 months or available data
         const expenseTransactions = completedTransactions.filter(t => t.type === TransactionType.Expense);
         let burnRate = 0;
         if (expenseTransactions.length > 0) {
-             // Find distinct months in expense transactions
-             const months = new Set(expenseTransactions.map(t => t.date.substring(0, 7))); // YYYY-MM
+             const months = new Set(expenseTransactions.map(t => t.date.substring(0, 7)));
              const totalExp = expenseTransactions.reduce((acc, t) => acc + t.amount, 0);
              burnRate = months.size > 0 ? totalExp / months.size : 0;
         }
-
         return { cagr, ros, arpu, burnRate, dataInsufficient };
     };
 
-    const locationProfits = useMemo(() => calculateLocationProfit(), [enrollments, completedTransactions, suppliers]);
     const advancedMetrics = useMemo(() => calculateAdvancedMetrics(), [completedTransactions, enrollments, annualIncome, annualExpense, monthlyIncome]);
-    
-    const totalOperatingCosts = completedTransactions
-        .filter(t => t.type === TransactionType.Expense && t.category !== TransactionCategory.Taxes)
-        .reduce((sum, t) => sum + t.amount, 0);
-        
+    const totalOperatingCosts = completedTransactions.filter(t => t.type === TransactionType.Expense && t.category !== TransactionCategory.Taxes).reduce((sum, t) => sum + t.amount, 0);
     const ebitda = annualIncome - totalOperatingCosts;
 
 
@@ -1050,11 +1184,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         <ChartCard title="Andamento Mensile (Entrate vs Uscite)"><canvas ref={monthlyChartRef}></canvas></ChartCard>
                         <ChartCard title="Trend Iscrizioni Allievi"><canvas ref={enrollmentsChartRef}></canvas></ChartCard>
                     </div>
-                    
                     <div className="grid grid-cols-1 gap-6">
                         <div className="md-card p-6">
                             <h3 className="text-lg font-semibold">Proiezione Fiscale (Regime Forfettario)</h3>
-                            <p className="text-sm mb-4" style={{color: 'var(--md-text-secondary)'}}>Stima basata sul fatturato (incassato) dell'anno in corso.</p>
+                            <p className="text-sm mb-4" style={{color: 'var(--md-text-secondary)'}}>Stima basata sul fatturato incassato (escluso Capitale Iniziale).</p>
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
                                 <div className="bg-gray-50 p-3 rounded-md"><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>Fatturato Annuo</p><p className="font-bold text-lg">{annualIncome.toFixed(2)}€</p></div>
                                 <div className="bg-gray-50 p-3 rounded-md"><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>Imponibile (78%)</p><p className="font-bold text-lg">{imponibileLordo.toFixed(2)}€</p></div>
@@ -1063,7 +1196,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 <div className="bg-green-50 p-3 rounded-md col-span-2 md:col-span-1"><p className="text-xs text-green-600">Utile Netto</p><p className="font-bold text-lg text-green-800">{utileNettoPrevisto.toFixed(2)}€</p></div>
                             </div>
                         </div>
-                        
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                              <ChartCard title="Ripartizione Ricavi"><canvas ref={incomeDoughnutRef}></canvas></ChartCard>
                              <ChartCard title="Ripartizione Costi"><canvas ref={expensesDoughnutRef}></canvas></ChartCard>
@@ -1073,8 +1205,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             );
             case 'transactions': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
-                    
-                    {/* Controls */}
                     <div className="p-4 md:p-0 md:mb-4 flex flex-wrap justify-between gap-2">
                         <div className="flex space-x-2">
                             <button onClick={() => setTransactionFilter('all')} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutti</button>
@@ -1088,13 +1218,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         )}
                     </div>
 
-                    {/* Pending Transactions Section */}
                     {!showTrash && pendingTransactions.length > 0 && (
                         <div className="mb-6 border-2 border-amber-200 bg-amber-50 rounded-lg overflow-hidden">
                             <div className="p-4 bg-amber-100 border-b border-amber-200 flex justify-between items-center">
-                                <h3 className="text-sm font-bold text-amber-900 flex items-center">
-                                    ⚠️ Noli da Saldare ({pendingTransactions.length})
-                                </h3>
+                                <h3 className="text-sm font-bold text-amber-900 flex items-center">⚠️ Noli da Saldare ({pendingTransactions.length})</h3>
                                 <span className="text-xs text-amber-800">Questi importi non sono ancora inclusi nel bilancio.</span>
                             </div>
                             <div className="divide-y divide-amber-200">
@@ -1105,12 +1232,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                             <p className="text-xs text-amber-700">{new Date(t.date).toLocaleDateString()} - {t.amount.toFixed(2)}€</p>
                                         </div>
                                         <div className="flex items-center space-x-2">
-                                            <button 
-                                                onClick={() => handleConfirmPendingTransaction(t)}
-                                                className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow-sm font-medium transition-colors"
-                                            >
-                                                Salda
-                                            </button>
+                                            <button onClick={() => handleConfirmPendingTransaction(t)} className="text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded shadow-sm font-medium transition-colors">Salda</button>
                                              <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete text-amber-700"><TrashIcon/></button>
                                         </div>
                                     </div>
@@ -1119,111 +1241,75 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         </div>
                     )}
 
-                    <div className="md:hidden space-y-3 p-4 pt-0">
-                        {displayedTransactions.map(t => (
-                            <div key={t.id} className={`md-card p-4 ${t.isDeleted ? 'opacity-75 border-red-200 bg-red-50' : ''}`}>
-                                <div className="flex justify-between items-start">
-                                    <div>
-                                        <p className="font-semibold">{t.description}</p>
-                                        <p className="text-sm" style={{color: 'var(--md-text-secondary)'}}>{t.category}</p>
-                                        <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{new Date(t.date).toLocaleDateString()}</p>
-                                    </div>
-                                    <p className={`font-bold text-lg ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</p>
-                                </div>
-                                <div className="text-right mt-2 space-x-2">
-                                     {showTrash ? (
-                                        <>
-                                            <button onClick={() => handleActionClick(t.id, 'transaction', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
-                                            <button onClick={() => handleActionClick(t.id, 'transaction', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
-                                        </>
-                                     ) : (
-                                        <>
-                                            <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit"><PencilIcon/></button>
-                                            <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete"><TrashIcon/></button>
-                                        </>
-                                     )}
-                                </div>
-                            </div>
-                        ))}
-                         {displayedTransactions.length === 0 && <p className="text-center text-gray-500 text-sm py-4">Nessuna transazione registrata.</p>}
-                    </div>
-                    <table className="w-full text-left hidden md:table">
-                        <thead>
-                            <tr className="border-b" style={{borderColor: 'var(--md-divider)'}}>
-                                <th className="p-4 font-medium">Data</th>
-                                <th className="p-4 font-medium">Descrizione</th>
-                                <th className="p-4 font-medium">Categoria</th>
-                                <th className="p-4 font-medium">Imputazione</th>
-                                <th className="p-4 text-right font-medium">Importo</th>
-                                <th className="p-4 font-medium">Azioni</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {displayedTransactions.map(t => (
-                                <tr key={t.id} className={`border-b hover:bg-gray-50 ${t.isDeleted ? 'bg-red-50' : ''}`} style={{borderColor: 'var(--md-divider)'}}>
-                                    <td className="p-4 text-sm">{new Date(t.date).toLocaleDateString()}</td>
-                                    <td className="p-4 font-medium">{t.description}</td>
-                                    <td className="p-4 text-sm">{t.category}</td>
-                                    <td className="p-4 text-xs text-gray-500">
-                                        {t.allocationType === 'location' ? `Sede: ${t.allocationName || '...'}` : 
-                                         t.allocationType === 'enrollment' ? `Iscrizione: ${t.allocationName || '...'}` : 
-                                         '-'}
-                                    </td>
-                                    <td className={`p-4 text-right font-semibold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€</td>
-                                    <td className="p-4 flex space-x-2">
-                                        {showTrash ? (
-                                            <>
-                                                <button onClick={() => handleActionClick(t.id, 'transaction', 'restore')} className="md-icon-btn text-green-600" title="Ripristina"><RestoreIcon/></button>
-                                                <button onClick={() => handleActionClick(t.id, 'transaction', 'permanent')} className="md-icon-btn text-red-600" title="Elimina per sempre"><TrashIcon/></button>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit"><PencilIcon/></button>
-                                                <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete"><TrashIcon/></button>
-                                            </>
-                                        )}
-                                    </td>
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="border-b" style={{borderColor: 'var(--md-divider)'}}>
+                                    <th className="p-4 font-medium">Data</th>
+                                    <th className="p-4 font-medium">Descrizione</th>
+                                    <th className="p-4 font-medium">Categoria</th>
+                                    <th className="p-4 font-medium">Imputazione</th>
+                                    <th className="p-4 text-right font-medium">Importo</th>
+                                    <th className="p-4 font-medium">Azioni</th>
                                 </tr>
-                            ))}
-                             {displayedTransactions.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna transazione trovata.</td></tr>}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {displayedTransactions.map(t => {
+                                    const isLinkedToPendingSDI = t.relatedDocumentId && pendingSDIInvoiceIds.has(t.relatedDocumentId);
+                                    return (
+                                    <tr key={t.id} className={`border-b hover:bg-gray-50 ${t.isDeleted ? 'bg-red-50' : ''}`} style={{borderColor: 'var(--md-divider)'}}>
+                                        <td className="p-4 text-sm">{new Date(t.date).toLocaleDateString()}</td>
+                                        <td className="p-4 font-medium">{t.description}</td>
+                                        <td className="p-4 text-sm">{t.category}</td>
+                                        <td className="p-4 text-xs text-gray-500">
+                                            {t.allocationType === 'location' ? `Sede: ${t.allocationName || '...'}` : 
+                                             t.allocationType === 'enrollment' ? `Iscrizione: ${t.allocationName || '...'}` : 
+                                             '-'}
+                                        </td>
+                                        <td className={`p-4 text-right font-semibold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€
+                                            {isLinkedToPendingSDI && <span className="text-amber-500 ml-1 font-bold" title="Fattura non ancora sigillata (SDI)">*</span>}
+                                        </td>
+                                        <td className="p-4 flex space-x-2">
+                                            {showTrash ? (
+                                                <>
+                                                    <button onClick={() => handleActionClick(t.id, 'transaction', 'restore')} className="md-icon-btn text-green-600" title="Ripristina"><RestoreIcon/></button>
+                                                    <button onClick={() => handleActionClick(t.id, 'transaction', 'permanent')} className="md-icon-btn text-red-600" title="Elimina per sempre"><TrashIcon/></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleOpenTransModal(t)} className="md-icon-btn edit"><PencilIcon/></button>
+                                                    <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="md-icon-btn delete"><TrashIcon/></button>
+                                                </>
+                                            )}
+                                        </td>
+                                    </tr>
+                                )})}
+                                 {displayedTransactions.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna transazione trovata.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             );
             case 'invoices': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
-                    {/* Filter controls for invoices */}
-                    <div className="p-4 md:p-0 md:mb-4 flex space-x-2 overflow-x-auto pb-2 md:pb-0">
-                         <button 
-                            onClick={() => setInvoiceFilter('all')} 
-                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Tutte
-                        </button>
-                        <button 
-                            onClick={() => setInvoiceFilter(DocumentStatus.Overdue)} 
-                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Overdue ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Scadute
-                        </button>
-                         <button 
-                            onClick={() => setInvoiceFilter(DocumentStatus.Paid)} 
-                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Paid ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Pagate
-                        </button>
-                         <button 
-                            onClick={() => setInvoiceFilter(DocumentStatus.Sent)} 
-                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Inviate
-                        </button>
-                         <button 
-                            onClick={() => setInvoiceFilter(DocumentStatus.Draft)} 
-                            className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Draft ? 'bg-gray-200 text-gray-800 border-gray-300' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-                        >
-                            Bozze
-                        </button>
+                    <div className="p-4 md:p-0 md:mb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex space-x-2 overflow-x-auto pb-2 md:pb-0">
+                             <button onClick={() => setInvoiceFilter('all')} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutte</button>
+                             <button onClick={() => setInvoiceFilter(DocumentStatus.PendingSDI)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.PendingSDI ? 'bg-yellow-100 text-yellow-800 border-yellow-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Da Sigillare (SDI)</button>
+                             <button onClick={() => setInvoiceFilter(DocumentStatus.SealedSDI)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.SealedSDI ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Sigillate (SDI)</button>
+                             <button onClick={() => setInvoiceFilter(DocumentStatus.Overdue)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Overdue ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Scadute</button>
+                        </div>
+                        
+                        {/* Commercialista Buttons */}
+                        <div className="flex space-x-2">
+                            <button onClick={handleExportAccountantExcel} className="md-btn md-btn-flat text-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100">
+                                Export Excel
+                            </button>
+                            <button onClick={handleSendToAccountant} className="md-btn md-btn-flat text-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
+                                Invia WhatsApp
+                            </button>
+                        </div>
                     </div>
 
                     <div className="hidden md:block overflow-x-auto">
@@ -1249,14 +1335,24 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                         <td className="p-4">{inv.clientName}</td>
                                         <td className="p-4 text-right font-semibold">{inv.totalAmount.toFixed(2)}€</td>
                                         <td className="p-4 text-center">
-                                             <select 
-                                                value={inv.status} 
-                                                disabled={inv.isDeleted}
-                                                onChange={(e) => handleUpdateStatus(inv.id, e.target.value as DocumentStatus, 'invoice')}
-                                                className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none cursor-pointer ${inv.status === DocumentStatus.Paid ? 'bg-green-100 text-green-800' : inv.status === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800' : inv.status === DocumentStatus.Overdue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}
-                                            >
-                                                {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                                            </select>
+                                             {inv.status === DocumentStatus.PendingSDI ? (
+                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                                     ⚠️ Da Sigillare (SDI)
+                                                 </span>
+                                             ) : inv.status === DocumentStatus.SealedSDI ? (
+                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                     🔒 Sigillata (SDI)
+                                                 </span>
+                                             ) : (
+                                                 <select 
+                                                    value={inv.status} 
+                                                    disabled={inv.isDeleted}
+                                                    onChange={(e) => handleUpdateStatus(inv.id, e.target.value as DocumentStatus, 'invoice')}
+                                                    className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none cursor-pointer ${inv.status === DocumentStatus.Paid ? 'bg-green-100 text-green-800' : inv.status === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800' : inv.status === DocumentStatus.Overdue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}
+                                                >
+                                                    {Object.values(DocumentStatus).filter(s => s !== DocumentStatus.PendingSDI && s !== DocumentStatus.SealedSDI).map(s => <option key={s} value={s}>{s}</option>)}
+                                                </select>
+                                             )}
                                         </td>
                                         <td className="p-4 flex items-center space-x-2">
                                             {showTrash ? (
@@ -1280,47 +1376,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 {displayedInvoices.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna fattura trovata.</td></tr>}
                             </tbody>
                         </table>
-                    </div>
-                    {/* Mobile View Invoices */}
-                    <div className="md:hidden p-4 space-y-4">
-                        {displayedInvoices.map(inv => (
-                            <div key={inv.id} className={`border rounded-lg p-4 shadow-sm ${inv.isDeleted ? 'bg-red-50 opacity-75' : ''}`}>
-                                <div className="flex justify-between mb-2">
-                                    <div>
-                                        <span className="font-bold block">{inv.invoiceNumber}</span>
-                                        {inv.isProForma && <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-2 py-0.5 rounded">PRO</span>}
-                                    </div>
-                                    <span className="font-bold text-lg">{inv.totalAmount.toFixed(2)}€</span>
-                                </div>
-                                <p className="text-sm mb-1">{inv.clientName}</p>
-                                <p className="text-xs text-gray-500 mb-3">{new Date(inv.issueDate).toLocaleDateString()}</p>
-                                <div className="flex justify-between items-center">
-                                     <select 
-                                        value={inv.status} 
-                                        disabled={inv.isDeleted}
-                                        onChange={(e) => handleUpdateStatus(inv.id, e.target.value as DocumentStatus, 'invoice')}
-                                        className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none ${inv.status === DocumentStatus.Paid ? 'bg-green-100 text-green-800' : inv.status === DocumentStatus.Sent ? 'bg-blue-100 text-blue-800' : inv.status === DocumentStatus.Overdue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}
-                                    >
-                                        {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                    <div className="flex space-x-2">
-                                         {showTrash ? (
-                                            <>
-                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
-                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
-                                            </>
-                                         ) : (
-                                            <>
-                                                <button onClick={() => handleDownloadPDF(inv, 'Fattura')} className="md-icon-btn download"><DownloadIcon /></button>
-                                                <button onClick={() => handleOpenDocModal('invoice', inv)} className="md-icon-btn edit"><PencilIcon /></button>
-                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'delete')} className="md-icon-btn delete"><TrashIcon /></button>
-                                            </>
-                                         )}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                         {displayedInvoices.length === 0 && <p className="text-center text-gray-500">Nessuna fattura trovata.</p>}
                     </div>
                 </div>
             );
@@ -1352,7 +1407,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                                 onChange={(e) => handleUpdateStatus(q.id, e.target.value as DocumentStatus, 'quote')}
                                                 className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none cursor-pointer ${q.status === DocumentStatus.Converted ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-800'}`}
                                             >
-                                                {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                                {Object.values(DocumentStatus).filter(s => s !== DocumentStatus.PendingSDI && s !== DocumentStatus.SealedSDI).map(s => <option key={s} value={s}>{s}</option>)}
                                             </select>
                                         </td>
                                         <td className="p-4 flex items-center space-x-2">
@@ -1366,268 +1421,133 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                                     <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="md-icon-btn download" title="Scarica PDF"><DownloadIcon /></button>
                                                     <button onClick={() => handleOpenDocModal('quote', q)} className="md-icon-btn edit" title="Modifica"><PencilIcon /></button>
                                                     <button onClick={() => handleActionClick(q.id, 'quote', 'delete')} className="md-icon-btn delete" title="Elimina"><TrashIcon /></button>
-                                                    <button 
-                                                        onClick={() => handleConvertQuoteToInvoice(q)} 
-                                                        className={`md-icon-btn ${q.status === DocumentStatus.Converted ? 'text-gray-300 cursor-not-allowed' : 'text-green-600'}`} 
-                                                        title="Converti in Fattura"
-                                                        disabled={q.status === DocumentStatus.Converted}
-                                                    >
-                                                        <ConvertIcon />
-                                                    </button>
+                                                    {q.status !== DocumentStatus.Converted && (
+                                                        <button onClick={() => handleConvertQuoteToInvoice(q)} className="md-icon-btn text-indigo-600" title="Converti in Fattura"><ConvertIcon /></button>
+                                                    )}
                                                 </>
                                             )}
                                         </td>
                                     </tr>
                                 ))}
-                                {displayedQuotes.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessun preventivo presente.</td></tr>}
+                                {displayedQuotes.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessun preventivo trovato.</td></tr>}
                             </tbody>
                         </table>
-                     </div>
-                     {/* Mobile View Quotes */}
-                    <div className="md:hidden p-4 space-y-4">
-                        {displayedQuotes.map(q => (
-                            <div key={q.id} className={`border rounded-lg p-4 shadow-sm ${q.isDeleted ? 'bg-red-50 opacity-75' : ''}`}>
-                                <div className="flex justify-between mb-2">
-                                    <span className="font-bold">{q.quoteNumber}</span>
-                                    <span className="font-bold text-lg">{q.totalAmount.toFixed(2)}€</span>
-                                </div>
-                                <p className="text-sm mb-1">{q.clientName}</p>
-                                <p className="text-xs text-gray-500 mb-3">{new Date(q.issueDate).toLocaleDateString()}</p>
-                                <div className="flex justify-between items-center">
-                                     <select 
-                                        value={q.status} 
-                                        disabled={q.isDeleted}
-                                        onChange={(e) => handleUpdateStatus(q.id, e.target.value as DocumentStatus, 'quote')}
-                                        className={`text-xs font-bold px-2 py-1 rounded-full border-none outline-none ${q.status === DocumentStatus.Converted ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-800'}`}
-                                    >
-                                        {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                                    </select>
-                                    <div className="flex space-x-2">
-                                         {showTrash ? (
-                                            <>
-                                                <button onClick={() => handleActionClick(q.id, 'quote', 'restore')} className="md-icon-btn text-green-600"><RestoreIcon/></button>
-                                                <button onClick={() => handleActionClick(q.id, 'quote', 'permanent')} className="md-icon-btn text-red-600"><TrashIcon/></button>
-                                            </>
-                                         ) : (
-                                            <>
-                                                <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="md-icon-btn download"><DownloadIcon /></button>
-                                                <button onClick={() => handleOpenDocModal('quote', q)} className="md-icon-btn edit"><PencilIcon /></button>
-                                                <button onClick={() => handleActionClick(q.id, 'quote', 'delete')} className="md-icon-btn delete"><TrashIcon /></button>
-                                                <button 
-                                                        onClick={() => handleConvertQuoteToInvoice(q)} 
-                                                        className={`md-icon-btn ${q.status === DocumentStatus.Converted ? 'text-gray-300 cursor-not-allowed' : 'text-green-600'}`} 
-                                                        disabled={q.status === DocumentStatus.Converted}
-                                                    >
-                                                        <ConvertIcon />
-                                                    </button>
-                                            </>
-                                         )}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
                     </div>
                 </div>
             );
             case 'reports': return (
                 <div className="space-y-6 animate-fade-in">
-                    {/* Advanced Financial Indicators - NEW SECTION */}
-                    <h2 className="text-lg font-bold text-gray-800">Analisi Finanziaria Avanzata</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <KpiCard 
-                            title="CAGR (Crescita Annua)" 
-                            value={advancedMetrics.dataInsufficient ? "N/A" : `${advancedMetrics.cagr.toFixed(1)}%`}
-                            subtext={advancedMetrics.dataInsufficient ? "Dati insufficienti (< 2 anni)" : "Tasso di crescita composto"}
+                            title="Margine Operativo (ROS)" 
+                            value={`${advancedMetrics.ros.toFixed(1)}%`} 
+                            subtext="Utile su Fatturato"
                             icon={<TrendingUpIcon />}
-                            trend={advancedMetrics.cagr > 0 ? 'up' : 'down'}
+                            trend={advancedMetrics.ros > 20 ? 'up' : 'neutral'}
                         />
                         <KpiCard 
-                            title="ROS (Margine Vendite)" 
-                            value={`${advancedMetrics.ros.toFixed(1)}%`}
-                            subtext="Profitto Netto / Fatturato"
-                            icon={<PieChartIcon />}
-                            trend={advancedMetrics.ros > 20 ? 'up' : advancedMetrics.ros > 0 ? 'neutral' : 'down'}
+                            title="Burn Rate Mensile" 
+                            value={`${advancedMetrics.burnRate.toFixed(0)}€`} 
+                            subtext="Media Spese Fisse"
+                            icon={<span className="text-xl">🔥</span>}
+                            trend="down"
                         />
                         <KpiCard 
-                            title="ARPU (Ricavo Medio)" 
-                            value={`${advancedMetrics.arpu.toFixed(2)}€`}
-                            subtext="Per Utente / Mese"
-                            icon={<CalculatorIcon />}
-                            trend={'neutral'}
+                            title="Ricavo Medio Utente (ARPU)" 
+                            value={`${advancedMetrics.arpu.toFixed(0)}€`} 
+                            subtext="Mensile per Iscritto"
+                            icon={<span className="text-xl">👤</span>}
+                            trend="up"
                         />
                         <KpiCard 
-                            title="Monthly Burn Rate" 
-                            value={`${advancedMetrics.burnRate.toFixed(2)}€`}
-                            subtext="Spesa media mensile"
-                            icon={<TrashIcon />} // Using existing trash icon as a symbol for 'burn'/expense
-                            trend={'down'} // High burn rate is generally bad
+                            title="EBITDA Stimato" 
+                            value={`${ebitda.toFixed(0)}€`} 
+                            subtext="Utile prima delle tasse"
+                            icon={<span className="text-xl">💰</span>}
+                            trend={ebitda > 0 ? 'up' : 'down'}
                         />
                     </div>
-
-                    {/* KPI Cards - Existing */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div className="md-card p-6 border-t-4 border-indigo-500">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">Fatturato Annuo (Competenza)</h3>
-                            <p className="text-3xl font-bold text-indigo-900">{annualIncome.toFixed(2)}€</p>
-                            <p className="text-xs text-gray-400 mt-1">Valore contratti attivati nel {currentYear}</p>
-                        </div>
-                        <div className="md-card p-6 border-t-4 border-pink-500">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">Costi Operativi (OPEX)</h3>
-                            <p className="text-3xl font-bold text-pink-900">{totalOperatingCosts.toFixed(2)}€</p>
-                            <p className="text-xs text-gray-400 mt-1">Escluso Tasse e INPS</p>
-                        </div>
-                        <div className="md-card p-6 border-t-4 border-green-500">
-                            <h3 className="text-sm font-bold text-gray-500 uppercase mb-2">EBITDA (Margine Op. Lordo)</h3>
-                            <p className="text-3xl font-bold text-green-900">{ebitda.toFixed(2)}€</p>
-                            <p className={`text-xs font-bold mt-1 ${ebitda > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {annualIncome > 0 ? ((ebitda / annualIncome) * 100).toFixed(1) : '0'}% dei Ricavi
-                            </p>
-                        </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <ChartCard title="Ripartizione Spese per Categoria"><canvas ref={reportsDoughnutRef}></canvas></ChartCard>
+                        <ChartCard title="Profitto Generato per Sede"><canvas ref={profitDoughnutRef}></canvas></ChartCard>
                     </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Tabella Profitto per Sede */}
-                        <div className="lg:col-span-2 md-card p-6">
-                            <h3 className="text-lg font-bold text-gray-800 mb-4">Analisi Profitto per Sede</h3>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead>
-                                        <tr className="bg-gray-50 border-b">
-                                            <th className="p-3 font-semibold text-gray-600">Sede Operativa</th>
-                                            <th className="p-3 font-semibold text-gray-600 text-right">Ricavi</th>
-                                            <th className="p-3 font-semibold text-gray-600 text-right">Costi Imputati</th>
-                                            <th className="p-3 font-semibold text-gray-600 text-right">Margine</th>
-                                            <th className="p-3 font-semibold text-gray-600 text-right">%</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {locationProfits.map((loc, idx) => (
-                                            <tr key={idx} className="hover:bg-gray-50">
-                                                <td className="p-3 font-medium">{loc.name}</td>
-                                                <td className="p-3 text-right">{loc.revenue.toFixed(2)}€</td>
-                                                <td className="p-3 text-right text-red-600">{loc.costs.toFixed(2)}€</td>
-                                                <td className={`p-3 text-right font-bold ${loc.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {loc.profit.toFixed(2)}€
-                                                </td>
-                                                <td className="p-3 text-right">
-                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${loc.margin > 20 ? 'bg-green-100 text-green-800' : loc.margin > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
-                                                        {loc.margin.toFixed(1)}%
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {locationProfits.length === 0 && (
-                                            <tr><td colSpan={5} className="p-6 text-center text-gray-400 italic">Nessun dato disponibile.</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Chart Costi */}
-                        <div className="md-card p-6">
-                            <h3 className="text-lg font-bold text-gray-800 mb-4">Distribuzione Costi</h3>
-                            <div className="h-64 relative">
-                                <canvas ref={reportsDoughnutRef}></canvas>
-                            </div>
-                        </div>
-                    </div>
+                    <ChartCard title="Matrice Efficienza (Fatturato vs Margine %)"><canvas ref={efficiencyScatterRef}></canvas></ChartCard>
                 </div>
             );
+            default: return null;
         }
     };
-    
-  return (
-    <div>
-        <div className="flex flex-wrap gap-4 justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold">Finanza</h1>
-              <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Monitora costi, ricavi, fatture e pagamenti.</p>
-            </div>
-            <div className="flex items-center space-x-2">
-                <button 
-                    onClick={() => setShowTrash(!showTrash)} 
-                    className={`md-btn ${showTrash ? 'bg-gray-200 text-gray-800' : 'md-btn-flat'}`}
-                    title={showTrash ? "Torna alla lista" : "Visualizza Cestino"}
-                >
-                    <TrashIcon />
-                    <span className="ml-2 hidden sm:inline">{showTrash ? "Lista Attivi" : "Cestino"}</span>
-                </button>
-                {!showTrash && activeTab === 'transactions' && (
+
+    return (
+        <div>
+            <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
+                <div>
+                    <h1 className="text-3xl font-bold">Finanza</h1>
+                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestione flussi di cassa, fatturazione e controllo di gestione.</p>
+                </div>
+                <div className="flex space-x-2">
+                    <button onClick={() => setIsDocModalOpen(true)} className="md-btn md-btn-raised md-btn-primary">
+                        <PlusIcon /> <span className="ml-2">Nuovo Documento</span>
+                    </button>
                     <button onClick={() => handleOpenTransModal()} className="md-btn md-btn-raised md-btn-green">
-                        <PlusIcon /> <span className="ml-2 hidden sm:inline">Nuova Transazione</span>
+                        <PlusIcon /> <span className="ml-2">Transazione</span>
                     </button>
-                )}
-                {!showTrash && (activeTab === 'invoices' || activeTab === 'quotes') && (
-                     <button onClick={() => handleOpenDocModal(activeTab === 'invoices' ? 'invoice' : 'quote')} className="md-btn md-btn-raised md-btn-green">
-                        <PlusIcon /> <span className="ml-2 hidden sm:inline">{activeTab === 'invoices' ? 'Nuova Fattura' : 'Nuovo Preventivo'}</span>
-                    </button>
-                )}
+                </div>
             </div>
-        </div>
 
-        {showTrash && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mt-6 text-sm flex items-center animate-fade-in">
-                <TrashIcon />
-                <span className="ml-2 font-bold">MODALITÀ CESTINO:</span> Stai visualizzando elementi eliminati.
+            <div className="mt-6 border-b mb-6" style={{borderColor: 'var(--md-divider)'}}>
+                <nav className="-mb-px flex space-x-6 overflow-x-auto">
+                    <button onClick={() => setActiveTab('overview')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
+                    <button onClick={() => setActiveTab('transactions')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'transactions' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Transazioni</button>
+                    <button onClick={() => setActiveTab('invoices')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'invoices' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Fatture</button>
+                    <button onClick={() => setActiveTab('quotes')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'quotes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Preventivi</button>
+                    <button onClick={() => setActiveTab('reports')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'reports' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Controllo di Gestione</button>
+                </nav>
             </div>
-        )}
 
-        <div className="mt-6 border-b" style={{borderColor: 'var(--md-divider)'}}>
-            <nav className="-mb-px flex space-x-6 overflow-x-auto">
-                <button onClick={() => setActiveTab('overview')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
-                <button onClick={() => setActiveTab('reports')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'reports' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Controllo di Gestione</button>
-                <button onClick={() => setActiveTab('transactions')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'transactions' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Transazioni</button>
-                <button onClick={() => setActiveTab('invoices')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'invoices' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Fatture</button>
-                <button onClick={() => setActiveTab('quotes')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'quotes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Preventivi</button>
-            </nav>
-        </div>
-        
-        <div className="mt-8">
-            {loading ? <div className="flex justify-center items-center h-64"><Spinner /></div> : 
+            {loading ? <div className="flex justify-center py-12"><Spinner /></div> : 
              error ? <p className="text-center text-red-500 py-8">{error}</p> :
              renderContent()
             }
+
+            {isTransModalOpen && (
+                <Modal onClose={handleCloseTransModal}>
+                    <TransactionForm 
+                        initialData={editingTransaction} 
+                        suppliers={suppliers}
+                        enrollments={enrollments}
+                        onSave={handleSaveTransaction} 
+                        onCancel={handleCloseTransModal} 
+                    />
+                </Modal>
+            )}
+
+            {isDocModalOpen && (
+                <Modal onClose={handleCloseDocModal} size="2xl">
+                    <DocumentForm 
+                        type={docType} 
+                        initialData={editingDoc} 
+                        onSave={handleSaveDocument} 
+                        onCancel={handleCloseDocModal} 
+                    />
+                </Modal>
+            )}
+
+            <ConfirmModal 
+                isOpen={!!itemToProcess}
+                onClose={() => setItemToProcess(null)}
+                onConfirm={handleConfirmAction}
+                title={itemToProcess?.action === 'restore' ? "Ripristina Elemento" : itemToProcess?.action === 'permanent' ? "Elimina Definitivamente" : "Sposta nel Cestino"}
+                message={itemToProcess?.action === 'restore' 
+                    ? "Vuoi ripristinare questo elemento?" 
+                    : itemToProcess?.action === 'permanent' 
+                    ? "ATTENZIONE: Questa operazione è irreversibile. Vuoi eliminare definitivamente questo elemento?" 
+                    : "Sei sicuro di voler spostare questo elemento nel cestino?"}
+                isDangerous={itemToProcess?.action !== 'restore'}
+                confirmText={itemToProcess?.action === 'restore' ? "Ripristina" : "Elimina"}
+            />
         </div>
-        
-         {isTransModalOpen && (
-            <Modal onClose={handleCloseTransModal}>
-                <TransactionForm 
-                    initialData={editingTransaction} 
-                    suppliers={suppliers}
-                    enrollments={enrollments}
-                    onSave={handleSaveTransaction} 
-                    onCancel={handleCloseTransModal}
-                />
-            </Modal>
-        )}
-
-        {isDocModalOpen && (
-            <Modal onClose={() => handleCloseDocModal()} size="lg">
-                <DocumentForm 
-                    type={docType} 
-                    initialData={editingDoc} 
-                    onSave={handleSaveDocument} 
-                    onCancel={() => handleCloseDocModal()} 
-                />
-            </Modal>
-        )}
-
-        <ConfirmModal 
-            isOpen={!!itemToProcess}
-            onClose={() => setItemToProcess(null)}
-            onConfirm={handleConfirmAction}
-            title={itemToProcess?.action === 'delete' ? "Sposta nel Cestino" : itemToProcess?.action === 'restore' ? "Ripristina Elemento" : "Eliminazione Definitiva"}
-            message={itemToProcess?.action === 'delete' 
-                ? "Sei sicuro di voler spostare questo elemento nel cestino? Potrai ripristinarlo in seguito." 
-                : itemToProcess?.action === 'restore' 
-                ? "Vuoi ripristinare questo elemento?" 
-                : "ATTENZIONE: Questa operazione è irreversibile. Vuoi eliminare definitivamente questo elemento?"}
-            isDangerous={itemToProcess?.action !== 'restore'}
-            confirmText={itemToProcess?.action === 'restore' ? "Ripristina" : itemToProcess?.action === 'delete' ? "Sposta nel Cestino" : "Elimina per sempre"}
-        />
-    </div>
-  );
+    );
 };
 
 export default Finance;
