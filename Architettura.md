@@ -35,6 +35,7 @@ La codebase è organizzata in modo modulare per favorire la manutenibilità e la
 - `/` (root): Contiene i file di configurazione (`index.html`, `tsconfig.json`, `metadata.json`) e il punto di ingresso dell'app (`index.tsx`).
 - `/components`: Contiene componenti React riutilizzabili e "stupidi" (presentazionali), come `Modal.tsx`, `Spinner.tsx`, `Sidebar.tsx`.
   - `/components/icons`: Sotto-cartella per componenti SVG icona.
+  - **Note UI**: Le modali sono progettate con `max-h-[90dvh]` e scroll interno per garantire l'accessibilità su tutti i dispositivi.
 - `/pages`: Contiene i componenti "intelligenti" (container) che rappresentano le pagine principali dell'applicazione, come `Clients.tsx`, `Dashboard.tsx`. Questi componenti gestiscono la logica di business e il recupero dei dati.
 - `/services`: Contiene la logica per la comunicazione con Firebase. Ogni file (es. `parentService.ts`, `supplierService.ts`, `settingsService.ts`) astrae le operazioni CRUD per una specifica collection di Firestore, disaccoppiando la logica di accesso ai dati dalle pagine.
 - `/firebase`: Contiene la configurazione e l'inizializzazione di Firebase (`config.ts`).

@@ -243,3 +243,14 @@ Miglioramento della gestione delle Note con storico strutturato e pulizia UI Cli
 
 2.  **UI Cleanup Clienti**:
     -   Rimossa l'informazione ridondante (testo esteso) del rating dalla card del cliente nella lista, mantenendo solo il badge compatto con le stelle sotto l'etichetta "Genitore" per un look più pulito.
+
+---
+
+## Sessione 17 (7 Giugno 2024)
+
+### Obiettivo della Sessione
+Risoluzione problemi di layout nella modale di iscrizione.
+
+### Riepilogo delle Attività
+1.  **UI Fix Iscrizioni**:
+    -   Aggiornato il componente `EnrollmentForm` per garantire che il contenuto della form sia scrollabile verticalmente (`overflow-y-auto`) mentre l'header e il footer (con i bottoni di azione) rimangono fissi. Questo risolve un problema di usabilità su schermi più piccoli dove i bottoni "Conferma" potevano risultare inaccessibili.

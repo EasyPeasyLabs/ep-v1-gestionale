@@ -9,9 +9,9 @@ import SearchIcon from './icons/SearchIcon';
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
 interface EnrollmentFormProps {
-    parents: ParentClient[]; // Riceve la lista di tutti i genitori
-    initialParent?: ParentClient | null; // Opzionale: genitore preselezionato (es. da Edit o da dettaglio)
-    existingEnrollment?: Enrollment; // Opzionale, per la modifica
+    parents: ParentClient[]; 
+    initialParent?: ParentClient | null; 
+    existingEnrollment?: Enrollment; 
     onSave: (enrollments: EnrollmentInput[]) => void;
     onCancel: () => void;
 }
@@ -33,11 +33,9 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
 
     // --- FILTER STATES ---
-    // Parent Filters
     const [parentSearchTerm, setParentSearchTerm] = useState('');
     const [parentSort, setParentSort] = useState<'surname_asc' | 'surname_desc' | 'name_asc' | 'name_desc'>('surname_asc');
     
-    // Supplier Filters
     const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
     const [supplierSort, setSupplierSort] = useState<'name_asc' | 'name_desc'>('name_asc');
     const [filterDay, setFilterDay] = useState<string>(''); // '' = all
@@ -61,11 +59,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             setSuppliers(suppliersData);
 
             if (!existingEnrollment) {
-                // Valori default solo se nuova iscrizione
                 if (subs.length > 0) setSubscriptionTypeId(subs[0].id);
-                // Non auto-selezioniamo il fornitore per forzare l'uso dei filtri se necessario
             } else {
-                // Se modifica, tentiamo di pre-selezionare lo slot corretto
                 if(existingEnrollment.appointments && existingEnrollment.appointments.length > 0) {
                     const firstApp = existingEnrollment.appointments[0];
                     const appDate = new Date(firstApp.date);
@@ -85,10 +80,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
         fetchData();
     }, [existingEnrollment]);
 
-    // Effetto per gestire il cambio di genitore e resettare i figli se necessario
     useEffect(() => {
         if (!existingEnrollment && currentParent) {
-            // Se cambiamo genitore in creazione, resettiamo i figli
             setSelectedChildIds([]); 
         }
     }, [selectedParentId, existingEnrollment]);
@@ -96,12 +89,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
 
     const handleSupplierChange = (newSupplierId: string) => {
         setSupplierId(newSupplierId);
-        setLocationId(''); // Reset location
+        setLocationId(''); 
         setSelectedSlotIndex(null); 
     };
 
     const toggleChildSelection = (childId: string) => {
-        // Se siamo in modifica, non permettiamo di cambiare il figlio
         if (existingEnrollment) return;
 
         setSelectedChildIds(prev => {
@@ -138,17 +130,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     const filteredSuppliers = useMemo(() => {
         let result = suppliers.filter(s => {
             const term = supplierSearchTerm.toLowerCase();
-            // 1. Text Match (Company or Location Name)
             const textMatch = s.companyName.toLowerCase().includes(term) || 
                               s.locations.some(l => l.name.toLowerCase().includes(term));
             
             if (!textMatch) return false;
 
-            // 2. Day/Time Match
             if (filterDay !== '' || filterTime !== '') {
                 const dayNum = filterDay !== '' ? parseInt(filterDay) : null;
-                
-                // Controlla se il fornitore ha ALMENO una sede con disponibilità compatibile
                 const hasAvailability = s.locations.some(loc => {
                     if (!loc.availability) return false;
                     return loc.availability.some(slot => {
@@ -157,10 +145,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                         return dayOk && timeOk;
                     });
                 });
-                
                 if (!hasAvailability) return false;
             }
-
             return true;
         });
 
@@ -173,7 +159,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     }, [suppliers, supplierSearchTerm, supplierSort, filterDay, filterTime]);
 
 
-    // Helper per generare le date delle lezioni
     const generateAppointments = (startDate: Date, slot: AvailabilitySlot, numLessons: number, locName: string, locColor: string, childName: string): Appointment[] => {
         const appointments: Appointment[] = [];
         let currentDate = new Date(startDate);
@@ -216,7 +201,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
         }
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
-        // Cerca in TUTTI i fornitori, non solo quelli filtrati, per sicurezza in invio
         const selectedSupplier = suppliers.find(s => s.id === supplierId);
         const selectedLocation = selectedSupplier?.locations.find(l => l.id === locationId);
         
@@ -232,7 +216,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
         const enrollmentsToSave: EnrollmentInput[] = [];
 
         selectedChildIds.forEach(childId => {
-            // Assicuriamoci di cercare il figlio nel genitore CORRENTE selezionato
             const childObj = currentParent?.children.find(c => c.id === childId);
             if (!childObj) return;
 
@@ -247,7 +230,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             );
             
             const startDate = appointments.length > 0 ? appointments[0].date : startObj.toISOString();
-            
             const startDateObj = new Date(startDate);
             const endDateObj = new Date(startDateObj);
             endDateObj.setDate(endDateObj.getDate() + (selectedSub.durationInDays || 0));
@@ -289,7 +271,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full w-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">
                     {existingEnrollment ? 'Modifica Iscrizione' : 'Nuova Iscrizione'}
@@ -301,7 +283,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                 
                 {/* 1. SELEZIONE GENITORE */}
                 <div className="space-y-2">
-                    {/* Filter Bar for Parents */}
                     {!existingEnrollment && (
                         <div className="bg-gray-50 p-2 rounded border border-gray-200 flex gap-2 items-center">
                             <div className="relative flex-1">

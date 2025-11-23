@@ -131,6 +131,7 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
     - La registrazione del pagamento di un'iscrizione (Bonifico) ora genera automaticamente la relativa fattura (Saldata) e crea una singola transazione finanziaria collegata univocamente.
 - **Gestione Capitale Iniziale**: Aggiunta categoria "Capitale Iniziale" nel sistema Finanziario per gestire il budget di partenza senza impattare sul calcolo del fatturato fiscale.
 - **Storico Note Strutturato**: Sostituzione dei campi note testuali semplici con un sistema di **Storico Note** (Data + Contenuto) per Genitori, Figli, Fornitori e Sedi.
+- **UI Fix Iscrizioni**: Abilitato scroll verticale nella modale "Nuova Iscrizione" per risolvere problemi di visibilità su schermi piccoli.
 
 ### In Programma
 1.  **Ottimizzazione Offline Mode**
