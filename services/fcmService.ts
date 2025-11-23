@@ -21,8 +21,15 @@ const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null
       
       console.log('[FCM Service] Service Worker registrato con successo. Scope:', registration.scope);
       return registration;
-    } catch (err) {
+    } catch (err: any) {
+      // Suppress specific origin errors in dev environments
+      if (err.message && err.message.includes("scriptURL")) {
+          console.warn('[FCM Service] Service Worker registration skipped due to environment restrictions (Script URL origin mismatch). Push notifications might not work.');
+          return null;
+      }
+      
       console.error('[FCM Service] Errore CRITICO registrazione SW:', err);
+      
       // Tentativo di fallback per percorsi radice se il relativo fallisce (es. deep linking)
       try {
           console.log('[FCM Service] Tento fallback su percorso assoluto...');

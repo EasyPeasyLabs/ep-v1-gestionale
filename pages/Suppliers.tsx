@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating } from '../types';
+import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -12,6 +12,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importSuppliersFromExcel } from '../services/importService';
+import NotesManager from '../components/NotesManager';
 
 // Internal Star Icon
 const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => (
@@ -24,6 +25,22 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
     >
         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
     </svg>
+);
+
+// Generic Legend Component
+const RatingLegend: React.FC = () => (
+    <div className="mt-3 flex items-center justify-end gap-3 text-[10px] text-gray-400 border-t border-dashed border-gray-200 pt-2">
+        <div className="flex items-center">
+            <span className="font-bold mr-1">1</span> 
+            <StarIcon filled={true} className="w-3 h-3 text-yellow-400 mr-1" /> 
+            <span>= pessimo</span>
+        </div>
+        <div className="flex items-center">
+            <span className="font-bold mr-1">5</span> 
+            <StarIcon filled={true} className="w-3 h-3 text-yellow-400 mr-1" /> 
+            <span>= ottimo</span>
+        </div>
+    </div>
 );
 
 // Helper for rating row
@@ -57,7 +74,17 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     const [availability, setAvailability] = useState<AvailabilitySlot[]>(location?.availability || []);
 
     // Advanced Rating & Details
-    const [notes, setNotes] = useState(location?.notes || '');
+    // Note History
+    const initialHistory = location?.notesHistory || [];
+    if (initialHistory.length === 0 && location?.notes) {
+        initialHistory.push({
+            id: 'legacy-loc',
+            date: new Date().toISOString(),
+            content: location.notes
+        });
+    }
+    const [notesHistory, setNotesHistory] = useState<Note[]>(initialHistory);
+
     const [tagInput, setTagInput] = useState('');
     const [tags, setTags] = useState<string[]>(location?.tags || []);
     
@@ -102,7 +129,9 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
             id: location?.id || Date.now().toString(), name, address, zipCode, city, province,
             capacity: Number(capacity), rentalCost: Number(rentalCost), distance: Number(distance), color,
             availability,
-            notes, tags, rating
+            notes: '', // Deprecated
+            notesHistory,
+            tags, rating
         });
     };
 
@@ -195,6 +224,7 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
                                 <RatingRow label="8. Modifica layout" value={rating.modifiability} onChange={(v) => handleRatingChange('modifiability', v)} />
                                 <RatingRow label="9. Prestigio / Network" value={rating.prestige} onChange={(v) => handleRatingChange('prestige', v)} />
                             </div>
+                            <RatingLegend />
                         </div>
 
                         {/* Tags */}
@@ -214,11 +244,12 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
                             </div>
                         </div>
 
-                        {/* Notes */}
-                        <div className="md-input-group">
-                            <label className="block text-xs font-bold text-gray-700 uppercase mb-1">Note (Markdown)</label>
-                            <textarea rows={4} value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border rounded-md bg-white text-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="- Accessibile disabili..."></textarea>
-                        </div>
+                        {/* Notes Manager */}
+                        <NotesManager 
+                            notesHistory={notesHistory}
+                            onSave={setNotesHistory}
+                            label="Note Sede"
+                        />
                     </div>
                 )}
             </div>
@@ -247,7 +278,17 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
     const [locations, setLocations] = useState<Location[]>(supplier?.locations || []);
     
     // Details (Notes, Tags, Rating)
-    const [notes, setNotes] = useState(supplier?.notes || '');
+    // Note History
+    const initialSupplierHistory = supplier?.notesHistory || [];
+    if (initialSupplierHistory.length === 0 && supplier?.notes) {
+        initialSupplierHistory.push({
+            id: 'legacy-sup',
+            date: new Date().toISOString(),
+            content: supplier.notes
+        });
+    }
+    const [notesHistory, setNotesHistory] = useState<Note[]>(initialSupplierHistory);
+
     const [tagInput, setTagInput] = useState('');
     const [tags, setTags] = useState<string[]>(supplier?.tags || []);
     const [rating, setRating] = useState<SupplierRating>(supplier?.rating || { responsiveness: 0, partnership: 0, negotiation: 0 });
@@ -287,7 +328,9 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
         e.preventDefault();
         const supplierData = { 
             companyName, vatNumber, address, zipCode, city, province, email, phone, locations,
-            notes, tags, rating
+            notes: '', // Deprecated
+            notesHistory,
+            tags, rating
         };
         if (supplier?.id) { onSave({ ...supplierData, id: supplier.id }); } 
         else { onSave(supplierData as SupplierInput); }
@@ -439,19 +482,15 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                                     </div>
                                 </div>
                             </div>
+                            <RatingLegend />
                         </div>
 
-                        {/* Notes Section */}
-                        <div className="md-input-group">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Note Fornitore (Markdown)</label>
-                            <textarea 
-                                rows={6} 
-                                value={notes} 
-                                onChange={e => setNotes(e.target.value)} 
-                                className="w-full p-3 border rounded-md bg-white text-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                placeholder="- Scrivi qui le tue note..."
-                            ></textarea>
-                        </div>
+                        {/* Notes Manager */}
+                        <NotesManager 
+                            notesHistory={notesHistory}
+                            onSave={setNotesHistory}
+                            label="Note Fornitore"
+                        />
                     </>
                 )}
 

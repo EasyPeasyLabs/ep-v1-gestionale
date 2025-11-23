@@ -6,13 +6,20 @@ export interface ChildRating {
     hygiene: number;        // 4. Assenza di problemi igienici/disturbi
 }
 
+export interface Note {
+    id: string;
+    date: string;
+    content: string;
+}
+
 export interface Child {
   id: string; // ID temporaneo per la UI, generato al momento della creazione
   name: string;
   age: string; // Età in formato testo, es: "3 anni", "18 mesi"
   
   // New Enterprise Features for Child
-  notes?: string;
+  notes?: string; // Legacy
+  notesHistory?: Note[]; // New History
   tags?: string[];
   rating?: ChildRating;
 }
@@ -95,7 +102,8 @@ export interface ParentClient extends ClientBase {
   children: Child[];
   
   // New Enterprise Features
-  notes?: string;
+  notes?: string; // Legacy
+  notesHistory?: Note[]; // New History
   tags?: string[];
   rating?: ParentRating;
 }
@@ -145,7 +153,8 @@ export interface Location {
     availability: AvailabilitySlot[]; // Orari disponibili per le lezioni
     
     // New Enterprise Features for Location
-    notes?: string; 
+    notes?: string; // Legacy
+    notesHistory?: Note[]; // New History
     tags?: string[]; 
     rating?: LocationRating;
 }
@@ -172,7 +181,8 @@ export interface Supplier {
   isDeleted?: boolean; // Soft Delete flag
   
   // New Enterprise Features
-  notes?: string; // Markdown notes
+  notes?: string; // Markdown notes (Legacy)
+  notesHistory?: Note[]; // New History
   tags?: string[]; // Array of tags
   rating?: SupplierRating; // Structured rating
 }

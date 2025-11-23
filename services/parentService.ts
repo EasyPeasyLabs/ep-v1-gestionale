@@ -12,13 +12,16 @@ const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
     
     // Assicura che `children` sia sempre un array e abbia i nuovi campi
     if (client.clientType === ClientType.Parent) {
-        if (!client.children) {
-            client.children = [];
+        const parent = client as ParentClient;
+        
+        if (!parent.children) {
+            parent.children = [];
         } else {
             // Map existing children to new structure with defaults if missing
-            client.children = client.children.map((c: any) => ({
+            parent.children = parent.children.map((c: any) => ({
                 ...c,
                 notes: c.notes || '',
+                notesHistory: c.notesHistory || [],
                 tags: c.tags || [],
                 rating: c.rating || {
                     learning: 0,
@@ -30,8 +33,8 @@ const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
         }
         
         // Default values for new Parent fields (safety check)
-        const parent = client as ParentClient;
         if (!parent.notes) parent.notes = '';
+        if (!parent.notesHistory) parent.notesHistory = [];
         if (!parent.tags) parent.tags = [];
         if (!parent.rating) {
             parent.rating = {

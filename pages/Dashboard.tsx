@@ -432,10 +432,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
               avg: pAvg,
               count: pCount,
               details: [
-                  { label: 'Disponibilità', value: pCount ? pSums.availability / pCount : 0 },
-                  { label: 'Gestione Lamentele', value: pCount ? pSums.complaints / pCount : 0 },
-                  { label: 'Fedeltà (Churn)', value: pCount ? pSums.churnRate / pCount : 0 },
-                  { label: 'Vicinanza', value: pCount ? pSums.distance / pCount : 0 },
+                  { label: 'Disponibilità variazioni', value: pCount ? pSums.availability / pCount : 0 },
+                  { label: 'Atteggiamento', value: pCount ? pSums.complaints / pCount : 0 },
+                  { label: 'Costanza Iscrizioni', value: pCount ? pSums.churnRate / pCount : 0 },
+                  { label: 'Mobilità', value: pCount ? pSums.distance / pCount : 0 },
               ],
               summary: pSummary
           },
@@ -445,7 +445,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
               details: [
                   { label: 'Apprendimento', value: cCount ? cSums.learning / cCount : 0 },
                   { label: 'Condotta', value: cCount ? cSums.behavior / cCount : 0 },
-                  { label: 'Presenza', value: cCount ? cSums.attendance / cCount : 0 },
+                  { label: 'Assenze', value: cCount ? cSums.attendance / cCount : 0 },
                   { label: 'Igiene/Salute', value: cCount ? cSums.hygiene / cCount : 0 },
               ],
               summary: cSummary
@@ -676,43 +676,48 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           )}
 
           {activeTab === 'ratings' && (
-              <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  <RatingCard 
-                      title="Genitori"
-                      average={ratings.parents.avg}
-                      count={ratings.parents.count}
-                      icon={<ClientsIcon />}
-                      details={ratings.parents.details}
-                      colorClass="bg-blue-50 text-blue-600"
-                      summary={ratings.parents.summary}
-                  />
-                  <RatingCard 
-                      title="Allievi"
-                      average={ratings.children.avg}
-                      count={ratings.children.count}
-                      icon={<span className="text-2xl">🎓</span>}
-                      details={ratings.children.details}
-                      colorClass="bg-emerald-50 text-emerald-600"
-                      summary={ratings.children.summary}
-                  />
-                  <RatingCard 
-                      title="Fornitori"
-                      average={ratings.suppliers.avg}
-                      count={ratings.suppliers.count}
-                      icon={<SuppliersIcon />}
-                      details={ratings.suppliers.details}
-                      colorClass="bg-indigo-50 text-indigo-600"
-                      summary={ratings.suppliers.summary}
-                  />
-                  <RatingCard 
-                      title="Sedi"
-                      average={ratings.locations.avg}
-                      count={ratings.locations.count}
-                      icon={<span className="text-2xl">🏢</span>}
-                      details={ratings.locations.details}
-                      colorClass="bg-pink-50 text-pink-600"
-                      summary={ratings.locations.summary}
-                  />
+              <div className="animate-fade-in">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <RatingCard 
+                        title="Genitori"
+                        average={ratings.parents.avg}
+                        count={ratings.parents.count}
+                        icon={<ClientsIcon />}
+                        details={ratings.parents.details}
+                        colorClass="bg-blue-50 text-blue-600"
+                        summary={ratings.parents.summary}
+                    />
+                    <RatingCard 
+                        title="Allievi"
+                        average={ratings.children.avg}
+                        count={ratings.children.count}
+                        icon={<span className="text-2xl">🎓</span>}
+                        details={ratings.children.details}
+                        colorClass="bg-emerald-50 text-emerald-600"
+                        summary={ratings.children.summary}
+                    />
+                    <RatingCard 
+                        title="Fornitori"
+                        average={ratings.suppliers.avg}
+                        count={ratings.suppliers.count}
+                        icon={<SuppliersIcon />}
+                        details={ratings.suppliers.details}
+                        colorClass="bg-indigo-50 text-indigo-600"
+                        summary={ratings.suppliers.summary}
+                    />
+                    <RatingCard 
+                        title="Sedi"
+                        average={ratings.locations.avg}
+                        count={ratings.locations.count}
+                        icon={<span className="text-2xl">🏢</span>}
+                        details={ratings.locations.details}
+                        colorClass="bg-pink-50 text-pink-600"
+                        summary={ratings.locations.summary}
+                    />
+                </div>
+                <div className="text-center text-xs text-gray-400 flex justify-center items-center gap-2">
+                    <span className="font-bold">Legenda:</span> 1 Stella = Pessimo / 5 Stelle = Ottimo
+                </div>
               </div>
           )}
         </>

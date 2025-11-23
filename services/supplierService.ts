@@ -22,6 +22,7 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
             ...loc,
             // Ensure new fields have defaults for existing data
             notes: loc.notes || '',
+            notesHistory: loc.notesHistory || [],
             tags: loc.tags || [],
             rating: loc.rating || { 
                 cost: 0, distance: 0, parking: 0, availability: 0, 
@@ -31,6 +32,7 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
         isDeleted: data.isDeleted || false,
         // New Fields mapping with safe defaults
         notes: data.notes || '',
+        notesHistory: data.notesHistory || [],
         tags: data.tags || [],
         rating: data.rating || { responsiveness: 0, partnership: 0, negotiation: 0 }
     };
