@@ -41,7 +41,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
+    const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null); // Usato SOLO per EDIT mode
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
 
     // Confirmation Modal State
@@ -87,13 +87,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // --- Actions Handlers ---
 
     const handleNewEnrollment = () => {
-        if (clients.length > 0) {
-            setSelectedClient(clients[0]);
-            setEditingEnrollment(undefined);
-            setIsModalOpen(true);
-        } else {
-            alert("Devi prima creare almeno un Cliente Genitore.");
-        }
+        // Reset selezione per nuova iscrizione
+        setSelectedClient(null); 
+        setEditingEnrollment(undefined);
+        setIsModalOpen(true);
     }
 
     const handleEditClick = (e: React.MouseEvent, client: ParentClient | undefined, enrollment: Enrollment) => {
@@ -440,10 +437,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             )}
 
             {/* Modale Iscrizione */}
-            {isModalOpen && selectedClient && (
+            {isModalOpen && (
                 <Modal onClose={() => setIsModalOpen(false)} size="lg">
                     <EnrollmentForm 
-                        parent={selectedClient} 
+                        parents={clients} 
+                        initialParent={selectedClient}
                         existingEnrollment={editingEnrollment}
                         onSave={handleSaveEnrollment} 
                         onCancel={() => setIsModalOpen(false)} 

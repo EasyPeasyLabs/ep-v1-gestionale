@@ -60,8 +60,10 @@ Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato
 Il database NoSQL Firestore è strutturato in collection di documenti.
 
 - `clients`: Contiene le anagrafiche dei clienti.
-  - **Struttura**: Include un array `children` per i genitori. Ogni oggetto figlio ora contiene anche campi avanzati: `rating` (4 criteri), `tags` (array stringhe) e `notes`.
-- `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested). Anche le location supportano `rating`, `tags` e `notes`.
+  - **Struttura**: Include un array `children` per i genitori. 
+  - **Novità**: Supporto per `notesHistory` (array di oggetti {id, date, content}) sia per il genitore che per i figli, sostituendo la logica della singola stringa note. Supporto campi avanzati figli: `rating` (4 criteri), `tags`.
+- `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested). 
+  - **Novità**: Supporto `notesHistory` anche per Fornitori e Location.
 - `settings`: Collection che contiene documenti singleton per le impostazioni globali (`companyInfo`).
 - `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
 - `periodicChecks`: Collection per la gestione del planner delle verifiche periodiche.
@@ -91,8 +93,8 @@ Viene utilizzato il servizio di autenticazione di Firebase per gestire il login 
 L'applicazione è suddivisa logicamente nei seguenti moduli:
 
 - **Dashboard**: Vista d'insieme con KPI, grafici finanziari, avvisi e occupazione aule. Include la tab **Qualità & Rating** per analisi aggregata.
-- **Clienti**: Gestione CRUD completa dei clienti e profilazione dettagliata figli (rating/tag).
-- **Fornitori**: Gestione CRUD completa dei fornitori.
+- **Clienti**: Gestione CRUD completa dei clienti e profilazione dettagliata figli (rating/tag/storico note).
+- **Fornitori**: Gestione CRUD completa dei fornitori con storico note e sedi.
 - **Calendario**: Pianificazione lezioni e visualizzazione occupazione.
 - **Finanza**: Gestione transazioni, fatture, preventivi, automazione pagamenti e **Capitale Iniziale**.
 - **CRM**: Gestione rinnovi, scadenze e sistema di **Comunicazione Libera** (invio messaggi manuali o massivi a liste di distribuzione via Email/WhatsApp).

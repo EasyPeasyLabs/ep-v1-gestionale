@@ -223,3 +223,23 @@ Introduzione del "Capitale Iniziale" nel sistema finanziario.
     -   Aggiornato il modello `types.ts` aggiungendo la categoria `TransactionCategory.Capital`.
     -   Abilitata la selezione di questa categoria nel form delle transazioni di Entrata in `Finance.tsx`.
     -   **Logica Fiscale**: Modificato il calcolo del "Fatturato Annuo" per la proiezione fiscale: le entrate marcate come "Capitale Iniziale" vengono escluse dal calcolo dell'imponibile, in quanto non costituiscono ricavo soggetto a tassazione nel regime forfettario, pur contribuendo al saldo cassa positivo.
+
+---
+
+## Sessione 16 (6 Giugno 2024 - Parte 2)
+
+### Obiettivo della Sessione
+Miglioramento della gestione delle Note con storico strutturato e pulizia UI Clienti.
+
+### Riepilogo delle Attività
+1.  **Storico Note Strutturato (Data + Contenuto)**:
+    -   Sostituiti i vecchi campi di testo libero "Note" con un nuovo componente `NotesManager` che permette di inserire note multiple, ciascuna con la propria data.
+    -   Aggiornato il Modello Dati (`types.ts`) introducendo l'array `notesHistory` per:
+        -   Genitori (in `Clients.tsx`)
+        -   Figli (in `Clients.tsx`)
+        -   Fornitori (in `Suppliers.tsx`)
+        -   Sedi/Locations (in `Suppliers.tsx`)
+    -   Mantenuta retrocompatibilità: le vecchie note testuali vengono preservate ma visualizzate separatamente o migrate alla prima modifica.
+
+2.  **UI Cleanup Clienti**:
+    -   Rimossa l'informazione ridondante (testo esteso) del rating dalla card del cliente nella lista, mantenendo solo il badge compatto con le stelle sotto l'etichetta "Genitore" per un look più pulito.
