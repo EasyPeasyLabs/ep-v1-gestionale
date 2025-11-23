@@ -20,7 +20,7 @@ import * as XLSX from 'xlsx'; // Import xlsx per export commercialista
 
 Chart.register(...registerables);
 
-type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes' | 'reports';
+type Tab = 'overview' | 'transactions' | 'invoices' | 'quotes' | 'reports' | 'archive';
 
 interface FinanceProps {
     initialParams?: {
@@ -54,6 +54,12 @@ const DownloadIcon = () => (
 const ConvertIcon = () => (
      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+    </svg>
+);
+
+const WhatsAppIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
     </svg>
 );
 
@@ -283,6 +289,10 @@ const DocumentForm: React.FC<{
     // SDI Logic
     const [isSealed, setIsSealed] = useState(initialData?.status === DocumentStatus.SealedSDI);
 
+    // Se la fattura è in stato PendingSDI, blocchiamo la modifica dei dati contabili (Locked Content)
+    // Si può modificare solo l'area SDI
+    const isContentLocked = type === 'invoice' && (initialData?.status === DocumentStatus.PendingSDI || initialData?.status === DocumentStatus.SealedSDI);
+
     useEffect(() => {
         const fetchClientsList = async () => {
             const data = await getClients();
@@ -412,7 +422,8 @@ const DocumentForm: React.FC<{
     }
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        // FIX SCROLLING: Constrain the form height explicitly to allow internal scrolling
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[85vh] overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">
                     {initialData ? 'Modifica' : 'Nuovo'} {type === 'invoice' ? 'Fattura' : 'Preventivo'}
@@ -423,7 +434,7 @@ const DocumentForm: React.FC<{
                 {type === 'invoice' && (
                     <div className="flex flex-wrap items-center gap-4">
                         <div className="flex items-center space-x-2 bg-yellow-50 p-2 rounded border border-yellow-200">
-                            <input type="checkbox" id="proforma" checked={isProForma} onChange={e => setIsProForma(e.target.checked)} className="h-4 w-4 text-indigo-600"/>
+                            <input type="checkbox" id="proforma" checked={isProForma} onChange={e => setIsProForma(e.target.checked)} disabled={isContentLocked} className="h-4 w-4 text-indigo-600"/>
                             <label htmlFor="proforma" className="text-sm font-medium text-gray-700">Fattura Pro-Forma</label>
                         </div>
                         {relatedQuoteNumber && (
@@ -453,8 +464,14 @@ const DocumentForm: React.FC<{
                     </div>
                 )}
 
+                {isContentLocked && (
+                    <div className="bg-gray-100 p-3 rounded border border-gray-300 text-xs text-gray-600 mb-2">
+                        🔒 I dettagli della fattura sono bloccati perché il pagamento è stato ricevuto. Puoi modificare solo le Note e i dati SDI.
+                    </div>
+                )}
+
                 <div className="md-input-group">
-                    <select id="client" value={clientId} onChange={e => setClientId(e.target.value)} required className="md-input">
+                    <select id="client" value={clientId} onChange={e => setClientId(e.target.value)} required className={`md-input ${isContentLocked ? 'bg-gray-50 text-gray-500' : ''}`} disabled={isContentLocked}>
                         <option value="" disabled>Seleziona Cliente</option>
                         {clients.map(c => (
                             <option key={c.id} value={c.id}>
@@ -466,8 +483,8 @@ const DocumentForm: React.FC<{
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="md-input-group"><input id="issueDate" type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} required className="md-input"/><label htmlFor="issueDate" className="md-input-label !top-0 !text-xs !text-gray-500">Data Emissione</label></div>
-                    <div className="md-input-group"><input id="dueDate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required className="md-input"/><label htmlFor="dueDate" className="md-input-label !top-0 !text-xs !text-gray-500">{type === 'invoice' ? 'Scadenza Pagamento' : 'Validità fino al'}</label></div>
+                    <div className="md-input-group"><input id="issueDate" type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} required className={`md-input ${isContentLocked ? 'bg-gray-50 text-gray-500' : ''}`} disabled={isContentLocked}/><label htmlFor="issueDate" className="md-input-label !top-0 !text-xs !text-gray-500">Data Emissione</label></div>
+                    <div className="md-input-group"><input id="dueDate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required className={`md-input ${isContentLocked ? 'bg-gray-50 text-gray-500' : ''}`} disabled={isContentLocked}/><label htmlFor="dueDate" className="md-input-label !top-0 !text-xs !text-gray-500">{type === 'invoice' ? 'Scadenza Pagamento' : 'Validità fino al'}</label></div>
                 </div>
                 
                 <div className="mt-6">
@@ -475,21 +492,22 @@ const DocumentForm: React.FC<{
                     {items.map((item, index) => (
                         <div key={index} className="mb-4 border-b border-gray-100 pb-2">
                             <div className="flex gap-2 items-end">
-                                <div className="flex-grow"><input type="text" placeholder="Descrizione" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className="md-input text-sm" required /></div>
-                                <div className="w-16"><input type="number" placeholder="Qtà" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', Number(e.target.value))} className="md-input text-sm text-center" required min="1"/></div>
-                                <div className="w-24"><input type="number" placeholder="Prezzo" value={item.price} onChange={e => handleItemChange(index, 'price', Number(e.target.value))} className="md-input text-sm text-right" required step="0.01"/></div>
-                                {items.length > 1 && <button type="button" onClick={() => removeItem(index)} className="text-red-500 p-1"><TrashIcon /></button>}
+                                <div className="flex-grow"><input type="text" placeholder="Descrizione" value={item.description} onChange={e => handleItemChange(index, 'description', e.target.value)} className={`md-input text-sm ${isContentLocked ? 'bg-gray-50' : ''}`} disabled={isContentLocked} required /></div>
+                                <div className="w-16"><input type="number" placeholder="Qtà" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', Number(e.target.value))} className={`md-input text-sm text-center ${isContentLocked ? 'bg-gray-50' : ''}`} disabled={isContentLocked} required min="1"/></div>
+                                <div className="w-24"><input type="number" placeholder="Prezzo" value={item.price} onChange={e => handleItemChange(index, 'price', Number(e.target.value))} className={`md-input text-sm text-right ${isContentLocked ? 'bg-gray-50' : ''}`} disabled={isContentLocked} required step="0.01"/></div>
+                                {items.length > 1 && !isContentLocked && <button type="button" onClick={() => removeItem(index)} className="text-red-500 p-1"><TrashIcon /></button>}
                             </div>
                              <input 
                                 type="text" 
                                 placeholder="Note esplicative (opzionale)" 
                                 value={item.notes || ''} 
                                 onChange={e => handleItemChange(index, 'notes', e.target.value)} 
-                                className="md-input text-xs text-gray-500 w-full mt-1 italic bg-transparent border-none focus:ring-0 focus:border-gray-300 pl-1"
+                                className={`md-input text-xs text-gray-500 w-full mt-1 italic bg-transparent border-none focus:ring-0 focus:border-gray-300 pl-1 ${isContentLocked ? 'bg-gray-50' : ''}`}
+                                disabled={isContentLocked}
                             />
                         </div>
                     ))}
-                    <button type="button" onClick={addItem} className="text-sm text-indigo-600 font-medium flex items-center mt-2"><PlusIcon /> Aggiungi Riga</button>
+                    {!isContentLocked && <button type="button" onClick={addItem} className="text-sm text-indigo-600 font-medium flex items-center mt-2"><PlusIcon /> Aggiungi Riga</button>}
                 </div>
 
                  <div className="text-right mt-4 space-y-1">
@@ -501,7 +519,7 @@ const DocumentForm: React.FC<{
                 <div className="mt-6 pt-4 border-t">
                     <h3 className="font-semibold mb-3">Pagamenti</h3>
                     <div className="md-input-group mb-4">
-                         <select id="paymentMethod" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="md-input">
+                         <select id="paymentMethod" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className={`md-input ${isContentLocked ? 'bg-gray-50 text-gray-500' : ''}`} disabled={isContentLocked}>
                             {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
                         <label htmlFor="paymentMethod" className="md-input-label !top-0 !text-xs !text-gray-500">Metodo di Pagamento</label>
@@ -510,14 +528,14 @@ const DocumentForm: React.FC<{
                     <div className="space-y-2">
                          <div className="flex justify-between items-center">
                             <h4 className="text-sm font-medium">Piano Rateale / Scadenze</h4>
-                            <button type="button" onClick={addInstallment} className="text-xs text-indigo-600 font-medium">+ Aggiungi Rata</button>
+                            {!isContentLocked && <button type="button" onClick={addInstallment} className="text-xs text-indigo-600 font-medium">+ Aggiungi Rata</button>}
                         </div>
                         {installments.map((inst, index) => (
                             <div key={index} className="flex gap-2 items-end bg-gray-50 p-2 rounded">
-                                <div className="flex-grow"><input type="text" placeholder="Descrizione (es. Acconto)" value={inst.description} onChange={e => updateInstallment(index, 'description', e.target.value)} className="bg-transparent border-b border-gray-300 w-full text-sm" /></div>
-                                <div className="w-28"><input type="date" value={inst.dueDate.split('T')[0]} onChange={e => updateInstallment(index, 'dueDate', new Date(e.target.value).toISOString())} className="bg-transparent border-b border-gray-300 w-full text-sm" /></div>
-                                <div className="w-20"><input type="number" placeholder="€" value={inst.amount} onChange={e => updateInstallment(index, 'amount', Number(e.target.value))} className="bg-transparent border-b border-gray-300 w-full text-sm text-right" /></div>
-                                <button type="button" onClick={() => removeInstallment(index)} className="text-red-500"><TrashIcon /></button>
+                                <div className="flex-grow"><input type="text" placeholder="Descrizione (es. Acconto)" value={inst.description} onChange={e => updateInstallment(index, 'description', e.target.value)} className="bg-transparent border-b border-gray-300 w-full text-sm" disabled={isContentLocked} /></div>
+                                <div className="w-28"><input type="date" value={inst.dueDate.split('T')[0]} onChange={e => updateInstallment(index, 'dueDate', new Date(e.target.value).toISOString())} className="bg-transparent border-b border-gray-300 w-full text-sm" disabled={isContentLocked} /></div>
+                                <div className="w-20"><input type="number" placeholder="€" value={inst.amount} onChange={e => updateInstallment(index, 'amount', Number(e.target.value))} className="bg-transparent border-b border-gray-300 w-full text-sm text-right" disabled={isContentLocked} /></div>
+                                {!isContentLocked && <button type="button" onClick={() => removeInstallment(index)} className="text-red-500"><TrashIcon /></button>}
                             </div>
                         ))}
                         {installments.length === 0 && <p className="text-xs text-gray-400 italic">Nessuna rata definita (pagamento unico).</p>}
@@ -570,13 +588,13 @@ const DocumentForm: React.FC<{
                                 />
                                 <div className={`relative w-11 h-6 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${!sdiCode ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-300 peer-checked:bg-blue-600'}`}></div>
                                 <span className={`ms-3 text-sm font-bold ${isSealed ? 'text-blue-700' : 'text-gray-500'}`}>
-                                    {isSealed ? "SIGILLATA (SDI)" : "DA SIGILLARE"}
+                                    {isSealed ? "SIGILLATA! (SDI)" : "DA SIGILLARE"}
                                 </span>
                             </label>
                          </div>
                          
                          {!sdiCode && <p className="text-xs text-red-500 mt-2 italic">⚠️ Inserisci il codice SDI per abilitare la sigillatura e importare la transazione.</p>}
-                         {isSealed && <p className="text-xs text-green-600 mt-2 font-medium">✔️ Fattura pronta. Salvando, verrà generata/aggiornata la transazione finanziaria.</p>}
+                         {isSealed && <p className="text-xs text-green-600 mt-2 font-medium">✔️ Fattura pronta. Clicca "Salva" per generare/aggiornare la transazione finanziaria.</p>}
                      </div>
                 )}
 
@@ -619,6 +637,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     
+    // Archive State
+    const [selectedArchiveIds, setSelectedArchiveIds] = useState<string[]>([]);
+
     const [isTransModalOpen, setIsTransModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     
@@ -770,16 +791,20 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                     await deleteTransactionByRelatedId(savedId);
                 }
 
-                // Create transaction if PAID or SEALED/PENDING SDI (It's technically paid if via Bonifico)
+                // Create transaction if PAID or SEALED
+                // NOTE: PendingSDI previously created transactions, but now we strictly follow
+                // the "Seal" logic. If a user sends a bank transfer, they mark as PendingSDI.
+                // We will treat PendingSDI as "Money Received, Waiting for Bureaucracy".
+                // So we DO create the transaction, but SealedSDI ensures it's final.
                 const shouldCreateTransaction = invData.status === DocumentStatus.Paid || 
                                                 invData.status === DocumentStatus.PendingSDI || 
                                                 invData.status === DocumentStatus.SealedSDI;
 
                 if (shouldCreateTransaction) {
                     await addTransaction({
-                        date: invData.issueDate, // IMPORTANT: Usa la data fattura per coerenza contabile (non oggi)
+                        date: invData.issueDate, // IMPORTANT: Usa la data fattura (non oggi) per coerenza contabile
                         description: `Incasso Fattura ${finalInvoiceNumber || 'PROFORMA'} - ${invData.clientName}`,
-                        amount: invData.totalAmount,
+                        amount: invData.totalAmount, // Import values
                         type: TransactionType.Income,
                         category: TransactionCategory.Sales,
                         paymentMethod: invData.paymentMethod || PaymentMethod.BankTransfer,
@@ -925,46 +950,79 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         }
     };
 
-    // --- Export Excel Accountant ---
-    const handleExportAccountantExcel = () => {
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-        const monthName = new Date().toLocaleString('it-IT', { month: 'long' });
-
-        // Filter invoices: Active and Sealed/Paid/PendingSDI (exclude drafts/cancelled)
-        const relevantInvoices = invoices.filter(inv => 
-            !inv.isDeleted && 
-            inv.status !== DocumentStatus.Draft && 
-            inv.status !== DocumentStatus.Cancelled &&
-            new Date(inv.issueDate).getMonth() === currentMonth &&
-            new Date(inv.issueDate).getFullYear() === currentYear
+    // --- Archive Logic ---
+    const handleArchiveToggle = (id: string) => {
+        setSelectedArchiveIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
         );
+    };
 
-        const data = relevantInvoices.map(inv => ({
-            "Numero": inv.invoiceNumber,
+    const handleArchiveSelectAll = () => {
+        const allIds = invoices.filter(i => !i.isDeleted && i.status !== DocumentStatus.Draft && i.status !== DocumentStatus.Cancelled).map(i => i.id);
+        if (selectedArchiveIds.length === allIds.length) {
+            setSelectedArchiveIds([]);
+        } else {
+            setSelectedArchiveIds(allIds);
+        }
+    };
+
+    const getSelectedInvoices = () => {
+        return invoices.filter(i => selectedArchiveIds.includes(i.id));
+    };
+
+    const handleSendDistinta = () => {
+        const selected = getSelectedInvoices();
+        if (selected.length === 0) {
+            alert("Seleziona almeno una fattura.");
+            return;
+        }
+
+        // Find Simona Puddu
+        const supplier = suppliers.find(s => s.companyName.trim().toUpperCase().includes("SIMONA PUDDU"));
+        if (!supplier || !supplier.phone) {
+            alert("Impossibile trovare il contatto WhatsApp del fornitore 'SIMONA PUDDU'. Assicurati che sia registrato tra i fornitori con un numero di telefono.");
+            return;
+        }
+
+        const monthName = new Date().toLocaleString('it-IT', { month: 'long' }).toUpperCase();
+        let message = `*DISTINTA TRASMISSIONE FATTURE - ${monthName}*\n\nEcco l'elenco delle fatture emesse:\n\n`;
+
+        selected.forEach(inv => {
+            const date = new Date(inv.issueDate).toLocaleDateString('it-IT');
+            message += `📄 *FT ${inv.invoiceNumber}* del ${date}\n`;
+            message += `   SDI: ${inv.sdiCode || "N/A"}\n\n`;
+        });
+
+        message += `Totale Fatture: ${selected.length}\n`;
+        message += `Grazie, Ilaria.`;
+
+        const cleanPhone = supplier.phone.replace(/[^0-9]/g, '');
+        const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+        window.open(waLink, '_blank');
+    };
+
+    const handleExportArchiveExcel = () => {
+        const selected = getSelectedInvoices();
+        if (selected.length === 0) {
+            alert("Seleziona almeno una fattura.");
+            return;
+        }
+
+        const data = selected.map(inv => ({
+            "Numero Fattura": inv.invoiceNumber,
             "Data Emissione": new Date(inv.issueDate).toLocaleDateString('it-IT'),
             "Cliente": inv.clientName,
+            "Codice SDI": inv.sdiCode || "",
             "Importo": inv.totalAmount,
-            "Stato": inv.status === DocumentStatus.SealedSDI ? "Sigillata" : inv.status === DocumentStatus.PendingSDI ? "In attesa SDI" : inv.status,
-            "Codice SDI": inv.sdiCode || "-"
+            "Stato": inv.status
         }));
 
         const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Fatture");
-        XLSX.writeFile(wb, `Fatture emesse - ${monthName} ${currentYear}.xlsx`);
+        XLSX.utils.book_append_sheet(wb, ws, "Distinta Fatture");
+        XLSX.writeFile(wb, `Distinta_Trasmissione_Fatture.xlsx`);
     };
 
-    // --- Send to Accountant (WhatsApp) ---
-    const handleSendToAccountant = () => {
-        const monthName = new Date().toLocaleString('it-IT', { month: 'long' });
-        const subject = `Invio Fatture ${monthName}`;
-        const message = `Ciao, ti invio in allegato il file excel con le fatture emesse nel mese di ${monthName}.\n\nCordiali saluti,\nIlaria Tavani`;
-        
-        // Open whatsapp web with prefilled text
-        const waLink = `https://wa.me/?text=${encodeURIComponent(`*${subject}*\n\n${message}`)}`;
-        window.open(waLink, '_blank');
-    };
 
     // --- REPORTS LOGIC ---
     
@@ -1117,6 +1175,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         if (q.isDeleted) return false;
         return true;
     });
+
+    const archiveInvoices = invoices.filter(inv => 
+        !inv.isDeleted && 
+        inv.status !== DocumentStatus.Draft && 
+        inv.status !== DocumentStatus.Cancelled
+    );
 
     const calculateAdvancedMetrics = () => {
         const incomeTransactions = completedTransactions.filter(t => t.type === TransactionType.Income);
@@ -1309,16 +1373,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                              <button onClick={() => setInvoiceFilter(DocumentStatus.SealedSDI)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.SealedSDI ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Sigillate (SDI)</button>
                              <button onClick={() => setInvoiceFilter(DocumentStatus.Overdue)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Overdue ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Scadute</button>
                         </div>
-                        
-                        {/* Commercialista Buttons */}
-                        <div className="flex space-x-2">
-                            <button onClick={handleExportAccountantExcel} className="md-btn md-btn-flat text-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100">
-                                Export Excel
-                            </button>
-                            <button onClick={handleSendToAccountant} className="md-btn md-btn-flat text-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100">
-                                Invia WhatsApp
-                            </button>
-                        </div>
                     </div>
 
                     <div className="hidden md:block overflow-x-auto">
@@ -1383,6 +1437,72 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                     </tr>
                                 ))}
                                 {displayedInvoices.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-500">Nessuna fattura trovata.</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+            case 'archive': return (
+                <div className="md-card p-0 md:p-6 animate-fade-in">
+                    <div className="p-4 md:p-0 md:mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div className="text-sm text-gray-600">
+                            <span className="font-bold">{selectedArchiveIds.length}</span> fatture selezionate
+                        </div>
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={handleArchiveSelectAll} 
+                                className="md-btn md-btn-flat text-xs"
+                            >
+                                {selectedArchiveIds.length === archiveInvoices.length ? "Deseleziona Tutti" : "Seleziona Tutti"}
+                            </button>
+                            <button 
+                                onClick={handleExportArchiveExcel} 
+                                disabled={selectedArchiveIds.length === 0}
+                                className="md-btn md-btn-flat text-green-700 border border-green-200 hover:bg-green-50 text-xs disabled:opacity-50"
+                            >
+                                <DownloadIcon /> <span className="ml-1">Excel</span>
+                            </button>
+                            <button 
+                                onClick={handleSendDistinta} 
+                                disabled={selectedArchiveIds.length === 0}
+                                className="md-btn md-btn-raised md-btn-green text-xs flex items-center disabled:opacity-50"
+                            >
+                                <WhatsAppIcon /> <span className="ml-1">Invia Distinta</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="hidden md:block overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="border-b bg-gray-50" style={{borderColor: 'var(--md-divider)'}}>
+                                    <th className="p-4 w-10"></th>
+                                    <th className="p-4">Numero</th>
+                                    <th className="p-4">Data Emissione</th>
+                                    <th className="p-4">Cliente</th>
+                                    <th className="p-4">Codice SDI</th>
+                                    <th className="p-4 text-right">Importo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {archiveInvoices.map(inv => (
+                                    <tr key={inv.id} className={`border-b hover:bg-gray-50 ${selectedArchiveIds.includes(inv.id) ? 'bg-indigo-50' : ''}`} style={{borderColor: 'var(--md-divider)'}}>
+                                        <td className="p-4 text-center">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={selectedArchiveIds.includes(inv.id)} 
+                                                onChange={() => handleArchiveToggle(inv.id)}
+                                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded cursor-pointer"
+                                            />
+                                        </td>
+                                        <td className="p-4 font-bold text-sm text-gray-700">{inv.invoiceNumber}</td>
+                                        <td className="p-4 text-sm">{new Date(inv.issueDate).toLocaleDateString()}</td>
+                                        <td className="p-4 text-sm">{inv.clientName}</td>
+                                        <td className="p-4 text-sm font-mono text-blue-600">{inv.sdiCode || '-'}</td>
+                                        <td className="p-4 text-right text-sm font-semibold">{inv.totalAmount.toFixed(2)}€</td>
+                                    </tr>
+                                ))}
+                                {archiveInvoices.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nessuna fattura disponibile per l'archivio.</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -1509,6 +1629,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                     <button onClick={() => setActiveTab('overview')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'overview' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Panoramica</button>
                     <button onClick={() => setActiveTab('transactions')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'transactions' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Transazioni</button>
                     <button onClick={() => setActiveTab('invoices')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'invoices' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Fatture</button>
+                    <button onClick={() => setActiveTab('archive')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'archive' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Archivio Fatture</button>
                     <button onClick={() => setActiveTab('quotes')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'quotes' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Preventivi</button>
                     <button onClick={() => setActiveTab('reports')} className={`shrink-0 py-3 px-1 border-b-2 font-medium text-sm ${activeTab === 'reports' ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Controllo di Gestione</button>
                 </nav>
