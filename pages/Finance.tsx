@@ -302,6 +302,7 @@ const DocumentForm: React.FC<{
             setStatus(DocumentStatus.SealedSDI);
         } else {
             setIsSealed(false);
+            // Se deselezionato, torna a "Da Sigillare"
             setStatus(DocumentStatus.PendingSDI);
         }
     };
@@ -537,23 +538,28 @@ const DocumentForm: React.FC<{
                 </div>
 
                 {type === 'invoice' && (
-                     <div className="mt-4 bg-gray-50 p-3 rounded border border-gray-200">
-                         <h4 className="text-sm font-bold text-gray-700 mb-3">Area SDI (Agenzia delle Entrate)</h4>
-                         <div className="md-input-group">
+                     <div className="mt-4 bg-blue-50 p-4 rounded border border-blue-200">
+                         <h4 className="text-sm font-bold text-blue-800 mb-3 uppercase flex items-center gap-2">
+                             <span className="bg-white text-blue-800 rounded-full w-5 h-5 flex items-center justify-center text-xs border border-blue-200">i</span>
+                             Area SDI (Agenzia delle Entrate)
+                         </h4>
+                         
+                         <div className="md-input-group mb-4">
                              <input 
                                 id="sdi" 
                                 type="text" 
                                 value={sdiCode} 
                                 onChange={e => setSdiCode(e.target.value)} 
-                                className={`md-input ${!canEditSDI ? 'opacity-50 bg-gray-100 cursor-not-allowed' : ''}`}
+                                className={`md-input font-bold text-blue-900 ${!canEditSDI ? 'opacity-50 bg-gray-100 cursor-not-allowed' : ''}`}
                                 placeholder=" "
                                 disabled={!canEditSDI}
                              />
-                             <label htmlFor="sdi" className="md-input-label">Codice SDI / Numero Protocollo</label>
+                             <label htmlFor="sdi" className="md-input-label text-blue-700">Codice SDI / Numero Protocollo</label>
                          </div>
                          
                          {/* Toggle Seal Invoice */}
-                         <div className="mt-4 flex items-center">
+                         <div className="flex items-center justify-between bg-white p-3 rounded border border-blue-100 shadow-sm">
+                            <span className="text-sm font-medium text-gray-700">Stato Fattura:</span>
                             <label className="inline-flex items-center cursor-pointer">
                                 <input 
                                     type="checkbox" 
@@ -562,21 +568,24 @@ const DocumentForm: React.FC<{
                                     onChange={handleSealToggle}
                                     disabled={!sdiCode} // Disabilita se non c'è codice SDI
                                 />
-                                <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                                <span className="ms-3 text-sm font-medium text-gray-900">
-                                    {isSealed ? "Fattura Sigillata (Pronta per Commercialista)" : "Sigilla Fattura (Conferma registrazione SDI)"}
+                                <div className={`relative w-11 h-6 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${!sdiCode ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-300 peer-checked:bg-blue-600'}`}></div>
+                                <span className={`ms-3 text-sm font-bold ${isSealed ? 'text-blue-700' : 'text-gray-500'}`}>
+                                    {isSealed ? "SIGILLATA (SDI)" : "DA SIGILLARE"}
                                 </span>
                             </label>
                          </div>
-                         {!sdiCode && <p className="text-xs text-gray-500 mt-1 ml-1">Inserisci il codice SDI per sigillare la fattura.</p>}
+                         
+                         {!sdiCode && <p className="text-xs text-red-500 mt-2 italic">⚠️ Inserisci il codice SDI per abilitare la sigillatura e importare la transazione.</p>}
+                         {isSealed && <p className="text-xs text-green-600 mt-2 font-medium">✔️ Fattura pronta. Salvando, verrà generata/aggiornata la transazione finanziaria.</p>}
                      </div>
                 )}
 
                  <div className="md-input-group mt-4">
-                    <select id="status" value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="md-input">
+                    <select id="status" value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="md-input" disabled={type === 'invoice' && (status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI)}>
                         {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <label htmlFor="status" className="md-input-label !top-0 !text-xs !text-gray-500">Stato Documento</label>
+                    {type === 'invoice' && (status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI) && <p className="text-[10px] text-gray-400 mt-1">Lo stato è gestito dall'area SDI.</p>}
                 </div>
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
@@ -768,7 +777,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
 
                 if (shouldCreateTransaction) {
                     await addTransaction({
-                        date: new Date().toISOString(), 
+                        date: invData.issueDate, // IMPORTANT: Usa la data fattura per coerenza contabile (non oggi)
                         description: `Incasso Fattura ${finalInvoiceNumber || 'PROFORMA'} - ${invData.clientName}`,
                         amount: invData.totalAmount,
                         type: TransactionType.Income,
@@ -847,7 +856,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                 if (status === DocumentStatus.Paid || status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI) {
                     try {
                         await addTransaction({
-                            date: new Date().toISOString(),
+                            date: invoice.issueDate, // Use Invoice Date
                             description: `Incasso Fattura ${invoice.invoiceNumber} - ${invoice.clientName}`,
                             amount: invoice.totalAmount,
                             type: TransactionType.Income,
