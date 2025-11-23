@@ -1,7 +1,8 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note } from '../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
 import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
+import { getAllEnrollments } from '../services/enrollmentService';
 import { importClientsFromExcel } from '../services/importService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -27,6 +28,8 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
     </svg>
 );
+
+const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
 // Helpers
 const getChildRating = (child: Child) => {
@@ -269,10 +272,15 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
 const Clients: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
+    const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [showTrash, setShowTrash] = useState(false);
-    const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc'>('name_asc');
+    const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'surname_asc' | 'surname_desc'>('surname_asc');
+    
+    // Extra Filters
+    const [filterDay, setFilterDay] = useState<string>('');
+    const [filterTime, setFilterTime] = useState<string>('');
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -284,8 +292,12 @@ const Clients: React.FC = () => {
     const fetchClientsData = useCallback(async () => {
         setLoading(true);
         try {
-            const data = await getClients();
-            setClients(data);
+            const [clientsData, enrollmentsData] = await Promise.all([
+                getClients(),
+                getAllEnrollments()
+            ]);
+            setClients(clientsData);
+            setEnrollments(enrollmentsData);
         } catch (err) {
             console.error(err);
         } finally {
@@ -339,23 +351,98 @@ const Clients: React.FC = () => {
         return result;
     };
 
-    const filteredClients = clients
-        .filter(c => showTrash ? c.isDeleted : !c.isDeleted)
-        .filter(c => {
+    const filteredClients = useMemo(() => {
+        let result = clients.filter(c => showTrash ? c.isDeleted : !c.isDeleted);
+
+        result = result.filter(c => {
             const term = searchTerm.toLowerCase();
+            
+            // 1. Base Search
+            let match = false;
             if (c.clientType === ClientType.Parent) {
                 const p = c as ParentClient;
-                return p.firstName.toLowerCase().includes(term) || p.lastName.toLowerCase().includes(term) || p.email.toLowerCase().includes(term);
+                match = p.firstName.toLowerCase().includes(term) || 
+                        p.lastName.toLowerCase().includes(term) || 
+                        p.email.toLowerCase().includes(term) ||
+                        p.children.some(child => child.name.toLowerCase().includes(term));
             } else {
                 const i = c as InstitutionalClient;
-                return i.companyName.toLowerCase().includes(term) || i.email.toLowerCase().includes(term);
+                match = i.companyName.toLowerCase().includes(term) || i.email.toLowerCase().includes(term);
             }
-        })
-        .sort((a, b) => {
-            const nameA = a.clientType === ClientType.Parent ? `${(a as ParentClient).lastName}` : (a as InstitutionalClient).companyName;
-            const nameB = b.clientType === ClientType.Parent ? `${(b as ParentClient).lastName}` : (b as InstitutionalClient).companyName;
-            return sortOrder === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+
+            // 2. Search in Enrollments (Location Name, Supplier)
+            if (!match && term.length > 0) {
+                const clientEnrollments = enrollments.filter(e => e.clientId === c.id);
+                match = clientEnrollments.some(e => 
+                    (e.locationName || '').toLowerCase().includes(term) ||
+                    (e.supplierName || '').toLowerCase().includes(term)
+                );
+            }
+
+            if (!match) return false;
+
+            // 3. Filter by Day / Time (Cross-check with enrollments)
+            if (filterDay !== '' || filterTime !== '') {
+                const clientEnrollments = enrollments.filter(e => e.clientId === c.id && (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending));
+                
+                const hasLesson = clientEnrollments.some(enr => {
+                    if (!enr.appointments) return false;
+                    return enr.appointments.some(app => {
+                        const appDate = new Date(app.date);
+                        const dayMatch = filterDay === '' || appDate.getDay() === parseInt(filterDay);
+                        // Time check: filterTime should be between start and end
+                        const timeMatch = filterTime === '' || (filterTime >= app.startTime && filterTime <= app.endTime);
+                        return dayMatch && timeMatch;
+                    });
+                });
+
+                if (!hasLesson) return false;
+            }
+
+            return true;
         });
+
+        result.sort((a, b) => {
+            let nameA = '', surnameA = '';
+            let nameB = '', surnameB = '';
+
+            if (a.clientType === ClientType.Parent) {
+                nameA = (a as ParentClient).firstName;
+                surnameA = (a as ParentClient).lastName;
+            } else {
+                nameA = (a as InstitutionalClient).companyName;
+                surnameA = (a as InstitutionalClient).companyName; // Fallback
+            }
+
+            if (b.clientType === ClientType.Parent) {
+                nameB = (b as ParentClient).firstName;
+                surnameB = (b as ParentClient).lastName;
+            } else {
+                nameB = (b as InstitutionalClient).companyName;
+                surnameB = (b as InstitutionalClient).companyName;
+            }
+
+            switch (sortOrder) {
+                case 'surname_asc': return surnameA.localeCompare(surnameB);
+                case 'surname_desc': return surnameB.localeCompare(surnameA);
+                case 'name_asc': return nameA.localeCompare(nameB);
+                case 'name_desc': return nameB.localeCompare(nameA);
+                default: return 0;
+            }
+        });
+
+        return result;
+    }, [clients, enrollments, showTrash, searchTerm, sortOrder, filterDay, filterTime]);
+
+    // Helper to extract location colors for a client
+    const getClientLocationColors = (clientId: string) => {
+        const activeEnrollments = enrollments.filter(e => e.clientId === clientId && e.status === EnrollmentStatus.Active);
+        const colors = new Set<string>();
+        activeEnrollments.forEach(e => {
+            if (e.locationColor) colors.add(e.locationColor);
+        });
+        return Array.from(colors);
+    };
 
     return (
         <div>
@@ -371,13 +458,29 @@ const Clients: React.FC = () => {
                 </div>
             </div>
 
-            <div className="mb-6 flex gap-4">
+            <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 flex flex-col lg:flex-row gap-3">
                 <div className="relative flex-1">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-                    <input type="text" placeholder="Cerca..." className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                    <input type="text" placeholder="Cerca Cliente, Figlio, Sede..." className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
-                <div className="w-40">
-                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="block w-full bg-white border rounded-md py-2 px-3 text-sm">
+                <div className="flex gap-2 w-full lg:w-auto">
+                    <select 
+                        value={filterDay}
+                        onChange={(e) => setFilterDay(e.target.value)}
+                        className="flex-1 lg:w-32 block bg-white border rounded-md py-2 px-3 text-sm"
+                    >
+                        <option value="">Giorno...</option>
+                        {daysOfWeekMap.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                    <input 
+                        type="time" 
+                        value={filterTime}
+                        onChange={(e) => setFilterTime(e.target.value)}
+                        className="flex-1 lg:w-28 block bg-white border rounded-md py-2 px-2 text-sm"
+                    />
+                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="flex-1 lg:w-40 block bg-white border rounded-md py-2 px-3 text-sm">
+                        <option value="surname_asc">Cognome (A-Z)</option>
+                        <option value="surname_desc">Cognome (Z-A)</option>
                         <option value="name_asc">Nome (A-Z)</option>
                         <option value="name_desc">Nome (Z-A)</option>
                     </select>
@@ -392,50 +495,65 @@ const Clients: React.FC = () => {
                         const instClient = client as InstitutionalClient;
                         const displayName = isParent ? `${parentClient.firstName} ${parentClient.lastName}` : instClient.companyName;
                         const parentRatingAvg = isParent ? getParentRating(parentClient.rating) : 0;
+                        
+                        const locationColors = getClientLocationColors(client.id);
 
                         return (
-                            <div key={client.id} className={`md-card p-5 flex flex-col cursor-pointer hover:shadow-md transition-shadow ${showTrash ? 'opacity-75' : ''}`} onClick={() => !showTrash && handleOpenModal(client)}>
-                                <div className="flex justify-between items-start mb-2">
-                                    <h3 className="text-lg font-bold text-gray-800 truncate pr-2 flex-1" title={displayName}>{displayName}</h3>
-                                    <div className="flex flex-col items-end gap-1">
-                                        <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${isParent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-                                            {isParent ? 'Genitore' : 'Ente'}
-                                        </span>
-                                        {isParent && Number(parentRatingAvg) > 0 && (
-                                            <span className="text-[9px] font-bold bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 flex items-center">
-                                                {parentRatingAvg} <StarIcon filled={true} className="w-2.5 h-2.5 ml-0.5" />
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                
-                                {isParent && parentClient.children && parentClient.children.length > 0 && (
-                                    <div className="mb-3">
-                                        <p className="text-xs text-gray-500 mb-1"><strong>Figli:</strong></p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {parentClient.children.map(child => {
-                                                const cAvg = getChildRating(child);
-                                                return (
-                                                    <span key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex items-center shadow-sm">
-                                                        {child.name}
-                                                        {Number(cAvg) > 0 && (
-                                                            <span className="ml-1.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
-                                                                {cAvg} <StarIcon filled={true} className="w-2 h-2 ml-0.5" />
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                )
-                                            })}
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                <div className="text-sm text-gray-600 space-y-1 mt-auto">
-                                    <p className="truncate">📧 {client.email}</p>
-                                    <p className="truncate">📞 {client.phone}</p>
+                            <div key={client.id} className={`md-card flex flex-col cursor-pointer hover:shadow-md transition-shadow relative overflow-hidden ${showTrash ? 'opacity-75' : ''}`} onClick={() => !showTrash && handleOpenModal(client)}>
+                                {/* Left Color Tab */}
+                                <div className="absolute left-0 top-0 bottom-0 w-2 flex flex-col">
+                                    {locationColors.length > 0 ? (
+                                        locationColors.map((color, i) => (
+                                            <div key={i} style={{ backgroundColor: color }} className="flex-1" title="Sede Attiva"></div>
+                                        ))
+                                    ) : (
+                                        <div className="flex-1 bg-gray-200"></div>
+                                    )}
                                 </div>
 
-                                <div className="mt-4 pt-3 border-t border-gray-100 flex justify-end space-x-2">
+                                <div className="p-5 pl-6 flex-1 flex flex-col">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h3 className="text-lg font-bold text-gray-800 truncate pr-2 flex-1" title={displayName}>{displayName}</h3>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${isParent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                                                {isParent ? 'Genitore' : 'Ente'}
+                                            </span>
+                                            {isParent && Number(parentRatingAvg) > 0 && (
+                                                <span className="text-[9px] font-bold bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 flex items-center">
+                                                    {parentRatingAvg} <StarIcon filled={true} className="w-2.5 h-2.5 ml-0.5" />
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    {isParent && parentClient.children && parentClient.children.length > 0 && (
+                                        <div className="mb-3">
+                                            <p className="text-xs text-gray-500 mb-1"><strong>Figli:</strong></p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {parentClient.children.map(child => {
+                                                    const cAvg = getChildRating(child);
+                                                    return (
+                                                        <span key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex items-center shadow-sm">
+                                                            {child.name}
+                                                            {Number(cAvg) > 0 && (
+                                                                <span className="ml-1.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
+                                                                    {cAvg} <StarIcon filled={true} className="w-2 h-2 ml-0.5" />
+                                                                </span>
+                                                            )}
+                                                        </span>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    <div className="text-sm text-gray-600 space-y-1 mt-auto">
+                                        <p className="truncate">📧 {client.email}</p>
+                                        <p className="truncate">📞 {client.phone}</p>
+                                    </div>
+                                </div>
+
+                                <div className="px-5 py-3 border-t border-gray-100 flex justify-end space-x-2 bg-gray-50/50 ml-2">
                                     {showTrash ? (
                                         <>
                                             <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'restore'); }} className="md-icon-btn text-green-600 hover:bg-green-50" title="Ripristina"><RestoreIcon /></button>

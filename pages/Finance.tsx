@@ -15,8 +15,9 @@ import TrashIcon from '../components/icons/TrashIcon';
 import RestoreIcon from '../components/icons/RestoreIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import CalculatorIcon from '../components/icons/CalculatorIcon';
+import SearchIcon from '../components/icons/SearchIcon';
 import { Chart, registerables, TooltipItem } from 'chart.js';
-import * as XLSX from 'xlsx'; // Import xlsx per export commercialista
+import * as XLSX from 'xlsx'; 
 
 Chart.register(...registerables);
 
@@ -106,6 +107,7 @@ const TransactionForm: React.FC<{
     onSave: (transaction: TransactionInput | Transaction) => void;
     onCancel: () => void;
 }> = ({ initialData, suppliers, enrollments, onSave, onCancel }) => {
+    // ... (Resto del componente TransactionForm invariato)
     const [description, setDescription] = useState(initialData?.description || '');
     const [amount, setAmount] = useState(initialData?.amount || 0);
     const [date, setDate] = useState(initialData?.date.split('T')[0] || new Date().toISOString().split('T')[0]);
@@ -272,6 +274,7 @@ const DocumentForm: React.FC<{
     onSave: (data: InvoiceInput | QuoteInput) => void;
     onCancel: () => void;
 }> = ({ type, initialData, onSave, onCancel }) => {
+    // ... (Resto del componente DocumentForm invariato)
     const [clients, setClients] = useState<Client[]>([]);
     const [clientId, setClientId] = useState(initialData?.clientId || '');
     const [issueDate, setIssueDate] = useState(initialData?.issueDate.split('T')[0] || new Date().toISOString().split('T')[0]);
@@ -286,11 +289,8 @@ const DocumentForm: React.FC<{
     const [isProForma, setIsProForma] = useState((type === 'invoice' ? (initialData as Invoice)?.isProForma : false) || false);
     const [relatedQuoteNumber, setRelatedQuoteNumber] = useState((type === 'invoice' ? (initialData as Invoice)?.relatedQuoteNumber : '') || '');
     
-    // SDI Logic
     const [isSealed, setIsSealed] = useState(initialData?.status === DocumentStatus.SealedSDI);
 
-    // Se la fattura è in stato PendingSDI, blocchiamo la modifica dei dati contabili (Locked Content)
-    // Si può modificare solo l'area SDI
     const isContentLocked = type === 'invoice' && (initialData?.status === DocumentStatus.PendingSDI || initialData?.status === DocumentStatus.SealedSDI);
 
     useEffect(() => {
@@ -301,7 +301,6 @@ const DocumentForm: React.FC<{
         fetchClientsList();
     }, []);
 
-    // Handle SEAL Toggle
     const handleSealToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) {
             if (!sdiCode) {
@@ -312,7 +311,6 @@ const DocumentForm: React.FC<{
             setStatus(DocumentStatus.SealedSDI);
         } else {
             setIsSealed(false);
-            // Se deselezionato, torna a "Da Sigillare"
             setStatus(DocumentStatus.PendingSDI);
         }
     };
@@ -355,7 +353,6 @@ const DocumentForm: React.FC<{
             today.setHours(0, 0, 0, 0);
             const expiryDate = new Date(dueDate);
             
-            // Logic for Overdue, but preserving SDI statuses
             if (expiryDate < today && 
                 status !== DocumentStatus.Paid && 
                 status !== DocumentStatus.Cancelled && 
@@ -403,7 +400,6 @@ const DocumentForm: React.FC<{
 
     const canEditSDI = status === DocumentStatus.Draft || status === DocumentStatus.Sent || status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI;
 
-    // Calculate Days Left for Pending SDI
     let daysLeftSDI = null;
     if (type === 'invoice' && (status === DocumentStatus.PendingSDI || initialData?.status === DocumentStatus.PendingSDI)) {
         const issueD = new Date(issueDate);
@@ -411,7 +407,6 @@ const DocumentForm: React.FC<{
         let deadline = new Date(issueD);
         deadline.setDate(deadline.getDate() + 12);
         
-        // Rule Dec 30
         if(issueD.getMonth() === 11) {
             const dec30 = new Date(issueD.getFullYear(), 11, 30);
             if (deadline > dec30) deadline = dec30;
@@ -422,7 +417,6 @@ const DocumentForm: React.FC<{
     }
 
     return (
-        // FIX SCROLLING: Constrain the form height explicitly to allow internal scrolling
         <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[85vh] overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">
@@ -445,7 +439,6 @@ const DocumentForm: React.FC<{
                     </div>
                 )}
 
-                {/* SDI WARNING BOX */}
                 {type === 'invoice' && daysLeftSDI !== null && !isSealed && (
                     <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-2 animate-pulse">
                         <div className="flex">
@@ -575,7 +568,6 @@ const DocumentForm: React.FC<{
                              <label htmlFor="sdi" className="md-input-label text-blue-700">Codice SDI / Numero Protocollo</label>
                          </div>
                          
-                         {/* Toggle Seal Invoice */}
                          <div className="flex items-center justify-between bg-white p-3 rounded border border-blue-100 shadow-sm">
                             <span className="text-sm font-medium text-gray-700">Stato Fattura:</span>
                             <label className="inline-flex items-center cursor-pointer">
@@ -584,7 +576,7 @@ const DocumentForm: React.FC<{
                                     className="sr-only peer" 
                                     checked={isSealed}
                                     onChange={handleSealToggle}
-                                    disabled={!sdiCode} // Disabilita se non c'è codice SDI
+                                    disabled={!sdiCode} 
                                 />
                                 <div className={`relative w-11 h-6 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all ${!sdiCode ? 'bg-gray-200 cursor-not-allowed' : 'bg-gray-300 peer-checked:bg-blue-600'}`}></div>
                                 <span className={`ms-3 text-sm font-bold ${isSealed ? 'text-blue-700' : 'text-gray-500'}`}>
@@ -617,16 +609,28 @@ const DocumentForm: React.FC<{
 
 const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [activeTab, setActiveTab] = useState<Tab>('overview');
+    
+    // Unified Filters
     const [transactionFilter, setTransactionFilter] = useState<'all' | TransactionType>('all');
     const [invoiceFilter, setInvoiceFilter] = useState<'all' | DocumentStatus>('all');
     const [showTrash, setShowTrash] = useState(false);
     
+    const [searchTerm, setSearchTerm] = useState('');
+    const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc'>('date_desc');
+
     useEffect(() => {
         if (initialParams) {
             if (initialParams.tab) setActiveTab(initialParams.tab);
             if (initialParams.invoiceStatus) setInvoiceFilter(initialParams.invoiceStatus);
+            if (initialParams.searchTerm) setSearchTerm(initialParams.searchTerm);
         }
     }, [initialParams]);
+
+    // Reset Search and Sort when Tab Changes
+    useEffect(() => {
+        setSearchTerm('');
+        setSortOrder('date_desc');
+    }, [activeTab]);
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -685,573 +689,208 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
     const activeTransactions = useMemo(() => transactions.filter(t => !t.isDeleted), [transactions]);
-    
-    const completedTransactions = useMemo(() => 
-        activeTransactions.filter(t => !t.status || t.status === TransactionStatus.Completed), 
-    [activeTransactions]);
+    const completedTransactions = useMemo(() => activeTransactions.filter(t => !t.status || t.status === TransactionStatus.Completed), [activeTransactions]);
+    const pendingTransactions = useMemo(() => activeTransactions.filter(t => t.status === TransactionStatus.Pending), [activeTransactions]);
+    const pendingSDIInvoiceIds = useMemo(() => new Set(invoices.filter(i => i.status === DocumentStatus.PendingSDI).map(i => i.id)), [invoices]);
 
-    const pendingTransactions = useMemo(() => 
-        activeTransactions.filter(t => t.status === TransactionStatus.Pending), 
-    [activeTransactions]);
+    // --- HANDLERS (Unchanged) ---
+    const handleOpenTransModal = (transaction: Transaction | null = null) => { setEditingTransaction(transaction); setIsTransModalOpen(true); };
+    const handleCloseTransModal = () => { setEditingTransaction(null); setIsTransModalOpen(false); };
+    const handleSaveTransaction = async (transactionData: TransactionInput | Transaction) => { try { if ('id' in transactionData) { const { id, ...data } = transactionData; await updateTransaction(id, data); } else { await addTransaction(transactionData); } handleCloseTransModal(); fetchAllData(); } catch (error) { console.error("Errore salvataggio transazione:", error); alert("Errore durante il salvataggio della transazione."); } };
+    const handleGenerateRent = async () => { setLoading(true); try { const newTransactions = calculateRentTransactions(enrollments, suppliers, activeTransactions); if (newTransactions.length > 0) { await batchAddTransactions(newTransactions); await fetchAllData(); alert(`Generazione completata. Aggiunti ${newTransactions.length} movimenti di nolo in stato 'Da Saldare'.`); } else { alert("Nessuna nuova spesa di nolo da generare."); } } catch (err) { console.error("Errore generazione nolo:", err); alert("Errore durante la generazione delle spese di nolo."); } finally { setLoading(false); } };
+    const handleConfirmPendingTransaction = async (t: Transaction) => { try { await updateTransaction(t.id, { status: TransactionStatus.Completed }); fetchAllData(); } catch (err) { console.error("Errore conferma transazione", err); alert("Impossibile confermare il saldo."); } };
+    const handleOpenDocModal = (type: 'invoice' | 'quote', doc: Invoice | Quote | null = null) => { setDocType(type); setEditingDoc(doc); setIsDocModalOpen(true); };
+    const handleCloseDocModal = () => { setIsDocModalOpen(false); setEditingDoc(null); setQuoteToConvertId(null); };
+    const handleSaveDocument = async (data: InvoiceInput | QuoteInput) => { try { if (docType === 'invoice') { const invData = data as InvoiceInput; let savedId = ''; let finalInvoiceNumber = invData.invoiceNumber; const isUpdate = 'id' in invData; if (isUpdate) { savedId = (invData as any).id; await updateInvoice(savedId, invData); } else { const result = await addInvoice(invData); savedId = result.id; finalInvoiceNumber = result.invoiceNumber; } if (isUpdate) { await deleteTransactionByRelatedId(savedId); } const shouldCreateTransaction = invData.status === DocumentStatus.Paid || invData.status === DocumentStatus.PendingSDI || invData.status === DocumentStatus.SealedSDI; if (shouldCreateTransaction) { await addTransaction({ date: invData.issueDate, description: `Incasso Fattura ${finalInvoiceNumber || 'PROFORMA'} - ${invData.clientName}`, amount: invData.totalAmount, type: TransactionType.Income, category: TransactionCategory.Sales, paymentMethod: invData.paymentMethod || PaymentMethod.BankTransfer, status: TransactionStatus.Completed, relatedDocumentId: savedId }); } if (quoteToConvertId) { await updateQuoteStatus(quoteToConvertId, DocumentStatus.Converted); setQuoteToConvertId(null); } } else { if ('id' in data) await updateQuote((data as any).id, data as QuoteInput); else await addQuote(data as QuoteInput); } handleCloseDocModal(); await fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (e) { console.error(e); alert("Errore nel salvataggio"); } };
+    const handleConvertQuoteToInvoice = (quote: Quote) => { setQuoteToConvertId(quote.id); const invoiceData: InvoiceInput = { clientId: quote.clientId, clientName: quote.clientName, issueDate: new Date().toISOString(), dueDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(), items: quote.items, totalAmount: quote.totalAmount, status: DocumentStatus.Draft, isProForma: false, paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer, installments: quote.installments || [], invoiceNumber: '', hasStampDuty: quote.hasStampDuty, notes: quote.notes || '', relatedQuoteNumber: quote.quoteNumber }; setDocType('invoice'); setEditingDoc(invoiceData as unknown as Invoice); setIsDocModalOpen(true); };
+    const handleMakeInvoiceFinal = async (invoice: Invoice) => { if (!invoice.isProForma) return; try { await updateInvoice(invoice.id, { isProForma: false }); await fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch(e) { console.error(e); } };
+    const handleUpdateStatus = async (id: string, status: DocumentStatus, type: 'invoice' | 'quote') => { if (type === 'invoice') { const invoice = invoices.find(i => i.id === id); if (invoice) { try { await deleteTransactionByRelatedId(id); } catch (e) { console.error("Errore nella pulizia delle transazioni precedenti:", e); } if (status === DocumentStatus.Paid || status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI) { try { await addTransaction({ date: invoice.issueDate, description: `Incasso Fattura ${invoice.invoiceNumber} - ${invoice.clientName}`, amount: invoice.totalAmount, type: TransactionType.Income, category: TransactionCategory.Sales, paymentMethod: invoice.paymentMethod || PaymentMethod.BankTransfer, status: TransactionStatus.Completed, relatedDocumentId: invoice.id }); } catch (e) { console.error("Errore creazione transazione automatica", e); alert("Attenzione: Stato aggiornato ma errore nella creazione della transazione automatica."); } } } setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status } : inv)); await updateInvoiceStatus(id, status); window.dispatchEvent(new Event('EP_DataUpdated')); } else { setQuotes(prev => prev.map(q => q.id === id ? { ...q, status } : q)); await updateQuoteStatus(id, status); } fetchAllData(); };
+    const handleActionClick = (id: string, type: 'transaction' | 'invoice' | 'quote', action: 'delete' | 'restore' | 'permanent') => { setItemToProcess({ id, type, action }); };
+    const handleConfirmAction = async () => { if (!itemToProcess) return; const { id, type, action } = itemToProcess; try { if (type === 'transaction') { if (action === 'delete') await deleteTransaction(id); else if (action === 'restore') await restoreTransaction(id); else await permanentDeleteTransaction(id); } else if (type === 'invoice') { if (action === 'delete') await deleteInvoice(id); else if (action === 'restore') await restoreInvoice(id); else await permanentDeleteInvoice(id); } else if (type === 'quote') { if (action === 'delete') await deleteQuote(id); else if (action === 'restore') await restoreQuote(id); else await permanentDeleteQuote(id); } await fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (e) { console.error(e); setError("Errore durante l'operazione."); } finally { setItemToProcess(null); } };
+    const handleDownloadPDF = async (doc: Invoice | Quote, type: 'Fattura' | 'Preventivo') => { try { const companyInfo = await getCompanyInfo(); const client = clients.find(c => c.id === doc.clientId); await generateDocumentPDF(doc, type, companyInfo, client); } catch (err) { console.error("Errore PDF", err); setError("Impossibile generare il PDF."); } };
+    const handleArchiveToggle = (id: string) => { setSelectedArchiveIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
+    const handleArchiveSelectAll = () => { const allIds = invoices.filter(i => !i.isDeleted && i.status !== DocumentStatus.Draft && i.status !== DocumentStatus.Cancelled).map(i => i.id); if (selectedArchiveIds.length === allIds.length) { setSelectedArchiveIds([]); } else { setSelectedArchiveIds(allIds); } };
+    const getSelectedInvoices = () => { return invoices.filter(i => selectedArchiveIds.includes(i.id)); };
+    const handleSendDistinta = () => { const selected = getSelectedInvoices(); if (selected.length === 0) { alert("Seleziona almeno una fattura."); return; } const supplier = suppliers.find(s => s.companyName.trim().toUpperCase().includes("SIMONA PUDDU")); if (!supplier || !supplier.phone) { alert("Impossibile trovare il contatto WhatsApp del fornitore 'SIMONA PUDDU'. Assicurati che sia registrato tra i fornitori con un numero di telefono."); return; } const monthName = new Date().toLocaleString('it-IT', { month: 'long' }).toUpperCase(); let message = `*DISTINTA TRASMISSIONE FATTURE - ${monthName}*\n\nEcco l'elenco delle fatture emesse:\n\n`; selected.forEach(inv => { const date = new Date(inv.issueDate).toLocaleDateString('it-IT'); message += `📄 *FT ${inv.invoiceNumber}* del ${date}\n`; message += `   SDI: ${inv.sdiCode || "N/A"}\n\n`; }); message += `Totale Fatture: ${selected.length}\n`; message += `Grazie, Ilaria.`; const cleanPhone = supplier.phone.replace(/[^0-9]/g, ''); const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`; window.open(waLink, '_blank'); };
+    const handleExportArchiveExcel = () => { const selected = getSelectedInvoices(); if (selected.length === 0) { alert("Seleziona almeno una fattura."); return; } const data = selected.map(inv => ({ "Numero Fattura": inv.invoiceNumber, "Data Emissione": new Date(inv.issueDate).toLocaleDateString('it-IT'), "Cliente": inv.clientName, "Codice SDI": inv.sdiCode || "", "Importo": inv.totalAmount, "Stato": inv.status })); const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Distinta Fatture"); XLSX.writeFile(wb, `Distinta_Trasmissione_Fatture.xlsx`); };
 
-    // Find Pending SDI invoices to flag related transactions
-    const pendingSDIInvoiceIds = useMemo(() => {
-        return new Set(invoices.filter(i => i.status === DocumentStatus.PendingSDI).map(i => i.id));
-    }, [invoices]);
-
-
-    const handleOpenTransModal = (transaction: Transaction | null = null) => {
-        setEditingTransaction(transaction);
-        setIsTransModalOpen(true);
-    };
-
-    const handleCloseTransModal = () => {
-        setEditingTransaction(null);
-        setIsTransModalOpen(false);
-    };
-
-    const handleSaveTransaction = async (transactionData: TransactionInput | Transaction) => {
-        try {
-            if ('id' in transactionData) {
-                const { id, ...data } = transactionData;
-                await updateTransaction(id, data);
-            } else {
-                await addTransaction(transactionData); 
-            }
-            handleCloseTransModal();
-            fetchAllData();
-        } catch (error) {
-            console.error("Errore salvataggio transazione:", error);
-            alert("Errore durante il salvataggio della transazione.");
-        }
-    };
-
-    const handleGenerateRent = async () => {
-        setLoading(true);
-        try {
-            const newTransactions = calculateRentTransactions(enrollments, suppliers, activeTransactions);
-            
-            if (newTransactions.length > 0) {
-                await batchAddTransactions(newTransactions);
-                await fetchAllData();
-                alert(`Generazione completata. Aggiunti ${newTransactions.length} movimenti di nolo in stato 'Da Saldare'.`);
-            } else {
-                alert("Nessuna nuova spesa di nolo da generare.");
-            }
-        } catch (err) {
-            console.error("Errore generazione nolo:", err);
-            alert("Errore durante la generazione delle spese di nolo.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleConfirmPendingTransaction = async (t: Transaction) => {
-        try {
-            await updateTransaction(t.id, { status: TransactionStatus.Completed });
-            fetchAllData();
-        } catch (err) {
-            console.error("Errore conferma transazione", err);
-            alert("Impossibile confermare il saldo.");
-        }
-    };
-
-
-    const handleOpenDocModal = (type: 'invoice' | 'quote', doc: Invoice | Quote | null = null) => {
-        setDocType(type);
-        setEditingDoc(doc);
-        setIsDocModalOpen(true);
-    };
-
-    const handleCloseDocModal = () => {
-        setIsDocModalOpen(false);
-        setEditingDoc(null);
-        setQuoteToConvertId(null);
-    };
-
-    const handleSaveDocument = async (data: InvoiceInput | QuoteInput) => {
-        try {
-            if (docType === 'invoice') {
-                const invData = data as InvoiceInput;
-                let savedId = '';
-                let finalInvoiceNumber = invData.invoiceNumber;
-
-                const isUpdate = 'id' in invData;
-
-                if (isUpdate) {
-                    savedId = (invData as any).id;
-                    await updateInvoice(savedId, invData);
-                } else {
-                    const result = await addInvoice(invData);
-                    savedId = result.id;
-                    finalInvoiceNumber = result.invoiceNumber;
-                }
-
-                if (isUpdate) {
-                    await deleteTransactionByRelatedId(savedId);
-                }
-
-                // Create transaction if PAID or SEALED
-                // NOTE: PendingSDI previously created transactions, but now we strictly follow
-                // the "Seal" logic. If a user sends a bank transfer, they mark as PendingSDI.
-                // We will treat PendingSDI as "Money Received, Waiting for Bureaucracy".
-                // So we DO create the transaction, but SealedSDI ensures it's final.
-                const shouldCreateTransaction = invData.status === DocumentStatus.Paid || 
-                                                invData.status === DocumentStatus.PendingSDI || 
-                                                invData.status === DocumentStatus.SealedSDI;
-
-                if (shouldCreateTransaction) {
-                    await addTransaction({
-                        date: invData.issueDate, // IMPORTANT: Usa la data fattura (non oggi) per coerenza contabile
-                        description: `Incasso Fattura ${finalInvoiceNumber || 'PROFORMA'} - ${invData.clientName}`,
-                        amount: invData.totalAmount, // Import values
-                        type: TransactionType.Income,
-                        category: TransactionCategory.Sales,
-                        paymentMethod: invData.paymentMethod || PaymentMethod.BankTransfer,
-                        status: TransactionStatus.Completed,
-                        relatedDocumentId: savedId
-                    });
-                }
-                
-                if (quoteToConvertId) {
-                    await updateQuoteStatus(quoteToConvertId, DocumentStatus.Converted);
-                    setQuoteToConvertId(null);
-                }
-
-            } else {
-                if ('id' in data) await updateQuote((data as any).id, data as QuoteInput);
-                else await addQuote(data as QuoteInput);
-            }
-            handleCloseDocModal();
-            await fetchAllData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        } catch (e) {
-            console.error(e);
-            alert("Errore nel salvataggio");
-        }
-    };
-
-    const handleConvertQuoteToInvoice = (quote: Quote) => {
-        setQuoteToConvertId(quote.id);
-        const invoiceData: InvoiceInput = {
-            clientId: quote.clientId,
-            clientName: quote.clientName,
-            issueDate: new Date().toISOString(),
-            dueDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(),
-            items: quote.items,
-            totalAmount: quote.totalAmount,
-            status: DocumentStatus.Draft,
-            isProForma: false,
-            paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer,
-            installments: quote.installments || [],
-            invoiceNumber: '',
-            hasStampDuty: quote.hasStampDuty,
-            notes: quote.notes || '',
-            relatedQuoteNumber: quote.quoteNumber
-        };
-        setDocType('invoice');
-        setEditingDoc(invoiceData as unknown as Invoice);
-        setIsDocModalOpen(true);
-    };
-
-    const handleMakeInvoiceFinal = async (invoice: Invoice) => {
-        if (!invoice.isProForma) return;
-        try {
-             await updateInvoice(invoice.id, { isProForma: false });
-             await fetchAllData();
-             window.dispatchEvent(new Event('EP_DataUpdated'));
-        } catch(e) {
-            console.error(e);
-        }
-    };
-
-
-    const handleUpdateStatus = async (id: string, status: DocumentStatus, type: 'invoice' | 'quote') => {
-        if (type === 'invoice') {
-            const invoice = invoices.find(i => i.id === id);
-            
-            if (invoice) {
-                try {
-                    await deleteTransactionByRelatedId(id);
-                } catch (e) {
-                    console.error("Errore nella pulizia delle transazioni precedenti:", e);
-                }
-
-                // Logic: Create Transaction if status implies payment received
-                if (status === DocumentStatus.Paid || status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI) {
-                    try {
-                        await addTransaction({
-                            date: invoice.issueDate, // Use Invoice Date
-                            description: `Incasso Fattura ${invoice.invoiceNumber} - ${invoice.clientName}`,
-                            amount: invoice.totalAmount,
-                            type: TransactionType.Income,
-                            category: TransactionCategory.Sales,
-                            paymentMethod: invoice.paymentMethod || PaymentMethod.BankTransfer,
-                            status: TransactionStatus.Completed,
-                            relatedDocumentId: invoice.id
-                        });
-                    } catch (e) {
-                        console.error("Errore creazione transazione automatica", e);
-                        alert("Attenzione: Stato aggiornato ma errore nella creazione della transazione automatica.");
-                    }
-                }
-            }
-
-             setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status } : inv));
-             await updateInvoiceStatus(id, status);
-             window.dispatchEvent(new Event('EP_DataUpdated'));
-        } else {
-             setQuotes(prev => prev.map(q => q.id === id ? { ...q, status } : q));
-             await updateQuoteStatus(id, status);
-        }
-        fetchAllData(); 
-    };
-
-    const handleActionClick = (id: string, type: 'transaction' | 'invoice' | 'quote', action: 'delete' | 'restore' | 'permanent') => {
-        setItemToProcess({ id, type, action });
-    };
-
-    const handleConfirmAction = async () => {
-        if (!itemToProcess) return;
-        const { id, type, action } = itemToProcess;
-        try {
-            if (type === 'transaction') {
-                if (action === 'delete') await deleteTransaction(id);
-                else if (action === 'restore') await restoreTransaction(id);
-                else await permanentDeleteTransaction(id);
-            } else if (type === 'invoice') {
-                if (action === 'delete') await deleteInvoice(id);
-                else if (action === 'restore') await restoreInvoice(id);
-                else await permanentDeleteInvoice(id);
-            } else if (type === 'quote') {
-                if (action === 'delete') await deleteQuote(id);
-                else if (action === 'restore') await restoreQuote(id);
-                else await permanentDeleteQuote(id);
-            }
-            
-            await fetchAllData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        } catch (e) {
-            console.error(e);
-            setError("Errore durante l'operazione.");
-        } finally {
-            setItemToProcess(null);
-        }
-    };
-
-    const handleDownloadPDF = async (doc: Invoice | Quote, type: 'Fattura' | 'Preventivo') => {
-        try {
-            const companyInfo = await getCompanyInfo();
-            const client = clients.find(c => c.id === doc.clientId);
-            await generateDocumentPDF(doc, type, companyInfo, client);
-        } catch (err) {
-            console.error("Errore PDF", err);
-            setError("Impossibile generare il PDF.");
-        }
-    };
-
-    // --- Archive Logic ---
-    const handleArchiveToggle = (id: string) => {
-        setSelectedArchiveIds(prev => 
-            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-        );
-    };
-
-    const handleArchiveSelectAll = () => {
-        const allIds = invoices.filter(i => !i.isDeleted && i.status !== DocumentStatus.Draft && i.status !== DocumentStatus.Cancelled).map(i => i.id);
-        if (selectedArchiveIds.length === allIds.length) {
-            setSelectedArchiveIds([]);
-        } else {
-            setSelectedArchiveIds(allIds);
-        }
-    };
-
-    const getSelectedInvoices = () => {
-        return invoices.filter(i => selectedArchiveIds.includes(i.id));
-    };
-
-    const handleSendDistinta = () => {
-        const selected = getSelectedInvoices();
-        if (selected.length === 0) {
-            alert("Seleziona almeno una fattura.");
-            return;
-        }
-
-        // Find Simona Puddu
-        const supplier = suppliers.find(s => s.companyName.trim().toUpperCase().includes("SIMONA PUDDU"));
-        if (!supplier || !supplier.phone) {
-            alert("Impossibile trovare il contatto WhatsApp del fornitore 'SIMONA PUDDU'. Assicurati che sia registrato tra i fornitori con un numero di telefono.");
-            return;
-        }
-
-        const monthName = new Date().toLocaleString('it-IT', { month: 'long' }).toUpperCase();
-        let message = `*DISTINTA TRASMISSIONE FATTURE - ${monthName}*\n\nEcco l'elenco delle fatture emesse:\n\n`;
-
-        selected.forEach(inv => {
-            const date = new Date(inv.issueDate).toLocaleDateString('it-IT');
-            message += `📄 *FT ${inv.invoiceNumber}* del ${date}\n`;
-            message += `   SDI: ${inv.sdiCode || "N/A"}\n\n`;
-        });
-
-        message += `Totale Fatture: ${selected.length}\n`;
-        message += `Grazie, Ilaria.`;
-
-        const cleanPhone = supplier.phone.replace(/[^0-9]/g, '');
-        const waLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-        window.open(waLink, '_blank');
-    };
-
-    const handleExportArchiveExcel = () => {
-        const selected = getSelectedInvoices();
-        if (selected.length === 0) {
-            alert("Seleziona almeno una fattura.");
-            return;
-        }
-
-        const data = selected.map(inv => ({
-            "Numero Fattura": inv.invoiceNumber,
-            "Data Emissione": new Date(inv.issueDate).toLocaleDateString('it-IT'),
-            "Cliente": inv.clientName,
-            "Codice SDI": inv.sdiCode || "",
-            "Importo": inv.totalAmount,
-            "Stato": inv.status
-        }));
-
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Distinta Fatture");
-        XLSX.writeFile(wb, `Distinta_Trasmissione_Fatture.xlsx`);
-    };
-
-
-    // --- REPORTS LOGIC ---
-    
-    const calculateLocationProfit = () => {
-        const locationStats: Record<string, { name: string, revenue: number, costs: number }> = {};
-        
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                locationStats[l.id] = { name: `${l.name} (${s.companyName})`, revenue: 0, costs: 0 };
-            });
-        });
-
-        enrollments.forEach(enr => {
-            if (enr.status === EnrollmentStatus.Active && locationStats[enr.locationId]) {
-                locationStats[enr.locationId].revenue += (enr.price || 0);
-            }
-        });
-
-        completedTransactions.forEach(t => {
-            if (t.type === TransactionType.Expense) {
-                if (t.allocationType === 'location' && t.allocationId && locationStats[t.allocationId]) {
-                    locationStats[t.allocationId].costs += t.amount;
-                }
-                else if (t.category === TransactionCategory.Rent && !t.allocationId) {
-                    for (const locId in locationStats) {
-                        if (t.description.includes(locationStats[locId].name.split('(')[0].trim())) {
-                            locationStats[locId].costs += t.amount;
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-
-        return Object.values(locationStats).map(s => ({
-            ...s,
-            profit: s.revenue - s.costs,
-            margin: s.revenue > 0 ? ((s.revenue - s.costs) / s.revenue) * 100 : 0
-        })).sort((a, b) => b.profit - a.profit);
-    };
-
+    // --- REPORTS LOGIC (Unchanged) ---
+    const calculateLocationProfit = () => { const locationStats: Record<string, { name: string, revenue: number, costs: number }> = {}; suppliers.forEach(s => { s.locations.forEach(l => { locationStats[l.id] = { name: `${l.name} (${s.companyName})`, revenue: 0, costs: 0 }; }); }); enrollments.forEach(enr => { if (enr.status === EnrollmentStatus.Active && locationStats[enr.locationId]) { locationStats[enr.locationId].revenue += (enr.price || 0); } }); completedTransactions.forEach(t => { if (t.type === TransactionType.Expense) { if (t.allocationType === 'location' && t.allocationId && locationStats[t.allocationId]) { locationStats[t.allocationId].costs += t.amount; } else if (t.category === TransactionCategory.Rent && !t.allocationId) { for (const locId in locationStats) { if (t.description.includes(locationStats[locId].name.split('(')[0].trim())) { locationStats[locId].costs += t.amount; break; } } } } }); return Object.values(locationStats).map(s => ({ ...s, profit: s.revenue - s.costs, margin: s.revenue > 0 ? ((s.revenue - s.costs) / s.revenue) * 100 : 0 })).sort((a, b) => b.profit - a.profit); };
     const locationProfits = useMemo(() => calculateLocationProfit(), [enrollments, completedTransactions, suppliers]);
-
-    // --- CHART LOGIC ---
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+    const now = new Date(); const currentMonth = now.getMonth(); const currentYear = now.getFullYear();
     const monthlyIncome = completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
     const monthlyExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    
-    const annualIncome = completedTransactions
-        .filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capital && new Date(t.date).getFullYear() === currentYear)
-        .reduce((sum, t) => sum + t.amount, 0);
-        
+    const annualIncome = completedTransactions.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capital && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
     const annualExpense = completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
-    
     const overdueAmount = invoices.filter(inv => !inv.isDeleted && inv.status === DocumentStatus.Overdue).reduce((sum, inv) => sum + inv.totalAmount, 0);
+    const COEFFICIENTE_REDDITIVITA = 0.78, ALIQUOTA_INPS = 0.2623, ALIQUOTA_IMPOSTA = 0.05; const imponibileLordo = annualIncome * COEFFICIENTE_REDDITIVITA; const contributiInpsStimati = imponibileLordo * ALIQUOTA_INPS; const imponibileNetto = imponibileLordo - contributiInpsStimati; const impostaSostitutivaStimata = imponibileNetto > 0 ? imponibileNetto * ALIQUOTA_IMPOSTA : 0; const utileNettoPrevisto = annualIncome - annualExpense - contributiInpsStimati - impostaSostitutivaStimata;
 
-    const COEFFICIENTE_REDDITIVITA = 0.78, ALIQUOTA_INPS = 0.2623, ALIQUOTA_IMPOSTA = 0.05;
-    const imponibileLordo = annualIncome * COEFFICIENTE_REDDITIVITA;
-    const contributiInpsStimati = imponibileLordo * ALIQUOTA_INPS;
-    const imponibileNetto = imponibileLordo - contributiInpsStimati;
-    const impostaSostitutivaStimata = imponibileNetto > 0 ? imponibileNetto * ALIQUOTA_IMPOSTA : 0;
-    const utileNettoPrevisto = annualIncome - annualExpense - contributiInpsStimati - impostaSostitutivaStimata;
-
-    useEffect(() => {
-        if (activeTab !== 'overview' && activeTab !== 'reports') return; 
-        
-        const last6Months = [...Array(6)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return { month: d.getMonth(), year: d.getFullYear() }; }).reverse();
-        const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' }));
-        const monthlyIncomeData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
-        const monthlyExpenseData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0));
-        const monthlyEnrollmentsData = last6Months.map(d => enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length);
-        
-        const expenseByCategory = completedTransactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
-        const incomeByCategory = completedTransactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>);
-
-
-        let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart, reportsDoughnut: Chart, profitDoughnut: Chart, efficiencyScatter: Chart;
-        
-        const percentageTooltip = {
-            callbacks: {
-                label: function(context: TooltipItem<'doughnut'>) {
-                    const dataset = context.dataset;
-                    const total = dataset.data.reduce((acc, current) => acc + (typeof current === 'number' ? current : 0), 0);
-                    const currentValue = context.raw as number;
-                    const percentage = total > 0 ? ((currentValue / total) * 100).toFixed(1) : '0';
-                    return `${context.label}: ${currentValue.toFixed(2)}€ (${percentage}%)`;
-                }
-            }
-        };
-
-        if (monthlyChartRef.current && activeTab === 'overview') { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (enrollmentsChartRef.current && activeTab === 'overview') { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); }
-        if (expensesDoughnutRef.current && activeTab === 'overview') { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
-        if (incomeDoughnutRef.current && activeTab === 'overview') { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0', '#673AB7'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); }
-        
-        if (activeTab === 'reports') {
-            if (reportsDoughnutRef.current) {
-                reportsDoughnut = new Chart(reportsDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip } } }); 
-            }
-            if (profitDoughnutRef.current) {
-                const profitableLocations = locationProfits.filter(l => l.profit > 0);
-                profitDoughnut = new Chart(profitDoughnutRef.current, {
-                    type: 'doughnut',
-                    data: {
-                        labels: profitableLocations.map(l => l.name.split('(')[0]),
-                        datasets: [{ data: profitableLocations.map(l => l.profit), backgroundColor: ['#34d399', '#10b981', '#059669', '#6ee7b7', '#a7f3d0', '#047857'] }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip, title: { display: true, text: 'Sedi Profittevoli' } } }
-                });
-            }
-            if (efficiencyScatterRef.current) {
-                const scatterData = locationProfits.map(l => ({ x: l.revenue, y: l.margin }));
-                efficiencyScatter = new Chart(efficiencyScatterRef.current, {
-                    type: 'scatter',
-                    data: { datasets: [{ label: 'Sedi', data: scatterData, backgroundColor: '#6366f1', pointRadius: 6, pointHoverRadius: 8 }] },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: 'Fatturato (€)' }, beginAtZero: true }, y: { title: { display: true, text: 'Margine (%)' }, beginAtZero: true } }, plugins: { tooltip: { callbacks: { label: (context) => { const loc = locationProfits[context.dataIndex]; return `${loc.name.split('(')[0]}: Rev ${context.parsed.x}€, Mar ${context.parsed.y.toFixed(1)}%`; } } }, title: { display: true, text: 'Matrice Efficienza' } } }
-                });
-            }
-        }
-
-        return () => { 
-            if (monthlyChart) monthlyChart.destroy(); 
-            if (enrollmentsChart) enrollmentsChart.destroy(); 
-            if (expensesDoughnut) expensesDoughnut.destroy(); 
-            if (incomeDoughnut) incomeDoughnut.destroy();
-            if (reportsDoughnut) reportsDoughnut.destroy();
-            if (profitDoughnut) profitDoughnut.destroy();
-            if (efficiencyScatter) efficiencyScatter.destroy();
-        };
-    }, [completedTransactions, enrollments, activeTab, locationProfits]); 
-
-    const displayedTransactions = transactions.filter(t => {
-        if (showTrash) return t.isDeleted;
-        if (t.isDeleted) return false;
-        if (transactionFilter === 'all') return true;
-        return t.type === transactionFilter;
-    });
-
-    const displayedInvoices = invoices.filter(inv => {
-        if (showTrash) return inv.isDeleted;
-        if (inv.isDeleted) return false;
-        if (invoiceFilter === 'all') return true;
-        return inv.status === invoiceFilter;
-    });
-
-    const displayedQuotes = quotes.filter(q => {
-        if (showTrash) return q.isDeleted;
-        if (q.isDeleted) return false;
-        return true;
-    });
-
-    const archiveInvoices = invoices.filter(inv => 
-        !inv.isDeleted && 
-        inv.status !== DocumentStatus.Draft && 
-        inv.status !== DocumentStatus.Cancelled
-    );
-
-    const calculateAdvancedMetrics = () => {
-        const incomeTransactions = completedTransactions.filter(t => t.type === TransactionType.Income);
-        if (incomeTransactions.length < 2) return { cagr: 0, ros: 0, arpu: 0, burnRate: 0, dataInsufficient: true };
-        incomeTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        const firstDate = new Date(incomeTransactions[0].date);
-        const lastDate = new Date(incomeTransactions[incomeTransactions.length - 1].date);
-        const startYear = firstDate.getFullYear();
-        const endYear = lastDate.getFullYear();
-        const yearDiff = endYear - startYear;
-        let cagr = 0;
-        let dataInsufficient = false;
-        if (yearDiff >= 1) {
-            const startYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === startYear).reduce((acc, t) => acc + t.amount, 0);
-            const endYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === endYear).reduce((acc, t) => acc + t.amount, 0);
-            if (startYearRevenue > 0) { cagr = (Math.pow(endYearRevenue / startYearRevenue, 1 / yearDiff) - 1) * 100; }
-        } else { dataInsufficient = true; }
-        const totalRevenue = annualIncome;
-        const totalExpense = annualExpense;
-        const netProfit = totalRevenue - totalExpense;
-        const ros = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-        const activeEnrollmentsCount = enrollments.filter(e => e.status === EnrollmentStatus.Active).length;
-        const arpu = activeEnrollmentsCount > 0 && monthlyIncome > 0 ? monthlyIncome / activeEnrollmentsCount : 0;
-        const expenseTransactions = completedTransactions.filter(t => t.type === TransactionType.Expense);
-        let burnRate = 0;
-        if (expenseTransactions.length > 0) {
-             const months = new Set(expenseTransactions.map(t => t.date.substring(0, 7)));
-             const totalExp = expenseTransactions.reduce((acc, t) => acc + t.amount, 0);
-             burnRate = months.size > 0 ? totalExp / months.size : 0;
-        }
-        return { cagr, ros, arpu, burnRate, dataInsufficient };
-    };
-
+    useEffect(() => { if (activeTab !== 'overview' && activeTab !== 'reports') return; const last6Months = [...Array(6)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return { month: d.getMonth(), year: d.getFullYear() }; }).reverse(); const labels = last6Months.map(d => new Date(d.year, d.month).toLocaleString('it-IT', { month: 'short' })); const monthlyIncomeData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Income && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0)); const monthlyExpenseData = last6Months.map(d => completedTransactions.filter(t => t.type === TransactionType.Expense && new Date(t.date).getMonth() === d.month && new Date(t.date).getFullYear() === d.year).reduce((sum, t) => sum + t.amount, 0)); const monthlyEnrollmentsData = last6Months.map(d => enrollments.filter(e => new Date(e.startDate).getMonth() === d.month && new Date(e.startDate).getFullYear() === d.year).length); const expenseByCategory = completedTransactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>); const incomeByCategory = completedTransactions.filter(t => t.type === TransactionType.Income).reduce((acc, t) => { acc[t.category] = (acc[t.category] || 0) + t.amount; return acc; }, {} as Record<string, number>); let monthlyChart: Chart, enrollmentsChart: Chart, expensesDoughnut: Chart, incomeDoughnut: Chart, reportsDoughnut: Chart, profitDoughnut: Chart, efficiencyScatter: Chart; const percentageTooltip = { callbacks: { label: function(context: TooltipItem<'doughnut'>) { const dataset = context.dataset; const total = dataset.data.reduce((acc, current) => acc + (typeof current === 'number' ? current : 0), 0); const currentValue = context.raw as number; const percentage = total > 0 ? ((currentValue / total) * 100).toFixed(1) : '0'; return `${context.label}: ${currentValue.toFixed(2)}€ (${percentage}%)`; } } }; if (monthlyChartRef.current && activeTab === 'overview') { monthlyChart = new Chart(monthlyChartRef.current, { type: 'bar', data: { labels, datasets: [{ label: 'Entrate', data: monthlyIncomeData, backgroundColor: 'rgba(76, 175, 80, 0.7)' }, { label: 'Uscite', data: monthlyExpenseData, backgroundColor: 'rgba(244, 67, 54, 0.7)' }] }, options: { responsive: true, maintainAspectRatio: false } }); } if (enrollmentsChartRef.current && activeTab === 'overview') { enrollmentsChart = new Chart(enrollmentsChartRef.current, { type: 'line', data: { labels, datasets: [{ label: 'Nuovi Iscritti', data: monthlyEnrollmentsData, borderColor: 'var(--md-primary)', tension: 0.1, fill: false }] }, options: { responsive: true, maintainAspectRatio: false } }); } if (expensesDoughnutRef.current && activeTab === 'overview') { expensesDoughnut = new Chart(expensesDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); } if (incomeDoughnutRef.current && activeTab === 'overview') { incomeDoughnut = new Chart(incomeDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(incomeByCategory), datasets: [{ data: Object.values(incomeByCategory), backgroundColor: ['#4CAF50', '#2196F3', '#FFC107', '#9C27B0', '#673AB7'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: percentageTooltip } } }); } if (activeTab === 'reports') { if (reportsDoughnutRef.current) { reportsDoughnut = new Chart(reportsDoughnutRef.current, { type: 'doughnut', data: { labels: Object.keys(expenseByCategory), datasets: [{ data: Object.values(expenseByCategory), backgroundColor: ['#f87171', '#fb923c', '#facc15', '#a3e635', '#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#e879f9', '#fb7185'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip } } }); } if (profitDoughnutRef.current) { const profitableLocations = locationProfits.filter(l => l.profit > 0); profitDoughnut = new Chart(profitDoughnutRef.current, { type: 'doughnut', data: { labels: profitableLocations.map(l => l.name.split('(')[0]), datasets: [{ data: profitableLocations.map(l => l.profit), backgroundColor: ['#34d399', '#10b981', '#059669', '#6ee7b7', '#a7f3d0', '#047857'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' }, tooltip: percentageTooltip, title: { display: true, text: 'Sedi Profittevoli' } } } }); } if (efficiencyScatterRef.current) { const scatterData = locationProfits.map(l => ({ x: l.revenue, y: l.margin })); efficiencyScatter = new Chart(efficiencyScatterRef.current, { type: 'scatter', data: { datasets: [{ label: 'Sedi', data: scatterData, backgroundColor: '#6366f1', pointRadius: 6, pointHoverRadius: 8 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: 'Fatturato (€)' }, beginAtZero: true }, y: { title: { display: true, text: 'Margine (%)' }, beginAtZero: true } }, plugins: { tooltip: { callbacks: { label: (context) => { const loc = locationProfits[context.dataIndex]; return `${loc.name.split('(')[0]}: Rev ${context.parsed.x}€, Mar ${context.parsed.y.toFixed(1)}%`; } } }, title: { display: true, text: 'Matrice Efficienza' } } } }); } } return () => { if (monthlyChart) monthlyChart.destroy(); if (enrollmentsChart) enrollmentsChart.destroy(); if (expensesDoughnut) expensesDoughnut.destroy(); if (incomeDoughnut) incomeDoughnut.destroy(); if (reportsDoughnut) reportsDoughnut.destroy(); if (profitDoughnut) profitDoughnut.destroy(); if (efficiencyScatter) efficiencyScatter.destroy(); }; }, [completedTransactions, enrollments, activeTab, locationProfits]); 
+    const calculateAdvancedMetrics = () => { const incomeTransactions = completedTransactions.filter(t => t.type === TransactionType.Income); if (incomeTransactions.length < 2) return { cagr: 0, ros: 0, arpu: 0, burnRate: 0, dataInsufficient: true }; incomeTransactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()); const firstDate = new Date(incomeTransactions[0].date); const lastDate = new Date(incomeTransactions[incomeTransactions.length - 1].date); const startYear = firstDate.getFullYear(); const endYear = lastDate.getFullYear(); const yearDiff = endYear - startYear; let cagr = 0; let dataInsufficient = false; if (yearDiff >= 1) { const startYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === startYear).reduce((acc, t) => acc + t.amount, 0); const endYearRevenue = incomeTransactions.filter(t => new Date(t.date).getFullYear() === endYear).reduce((acc, t) => acc + t.amount, 0); if (startYearRevenue > 0) { cagr = (Math.pow(endYearRevenue / startYearRevenue, 1 / yearDiff) - 1) * 100; } } else { dataInsufficient = true; } const totalRevenue = annualIncome; const totalExpense = annualExpense; const netProfit = totalRevenue - totalExpense; const ros = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0; const activeEnrollmentsCount = enrollments.filter(e => e.status === EnrollmentStatus.Active).length; const arpu = activeEnrollmentsCount > 0 && monthlyIncome > 0 ? monthlyIncome / activeEnrollmentsCount : 0; const expenseTransactions = completedTransactions.filter(t => t.type === TransactionType.Expense); let burnRate = 0; if (expenseTransactions.length > 0) { const months = new Set(expenseTransactions.map(t => t.date.substring(0, 7))); const totalExp = expenseTransactions.reduce((acc, t) => acc + t.amount, 0); burnRate = months.size > 0 ? totalExp / months.size : 0; } return { cagr, ros, arpu, burnRate, dataInsufficient }; };
     const advancedMetrics = useMemo(() => calculateAdvancedMetrics(), [completedTransactions, enrollments, annualIncome, annualExpense, monthlyIncome]);
     const totalOperatingCosts = completedTransactions.filter(t => t.type === TransactionType.Expense && t.category !== TransactionCategory.Taxes).reduce((sum, t) => sum + t.amount, 0);
     const ebitda = annualIncome - totalOperatingCosts;
+
+    // --- FILTERING & SORTING LOGIC ---
+
+    // Generic Filter Function
+    const filterItems = <T extends any>(items: T[], textFields: (keyof T | string)[]) => {
+        return items.filter(item => {
+            const term = searchTerm.toLowerCase();
+            
+            // 1. Search
+            const match = textFields.some(field => {
+                const val = (item as any)[field];
+                return val && String(val).toLowerCase().includes(term);
+            });
+            
+            if (!match) return false;
+
+            // 2. Specific Filters are handled before calling this (in displayedVariables)
+            return true;
+        });
+    };
+
+    // Generic Sort Function
+    const sortItems = <T extends any>(items: T[], dateField: keyof T, alphaField: keyof T) => {
+        return items.sort((a, b) => {
+            switch (sortOrder) {
+                case 'date_desc': return new Date((b as any)[dateField]).getTime() - new Date((a as any)[dateField]).getTime();
+                case 'date_asc': return new Date((a as any)[dateField]).getTime() - new Date((b as any)[dateField]).getTime();
+                case 'alpha_asc': return String((a as any)[alphaField]).localeCompare(String((b as any)[alphaField]));
+                case 'alpha_desc': return String((b as any)[alphaField]).localeCompare(String((a as any)[alphaField]));
+                default: return 0;
+            }
+        });
+    };
+
+    // Displayed Transactions
+    const displayedTransactions = useMemo(() => {
+        let filtered = transactions.filter(t => {
+            if (showTrash) return t.isDeleted;
+            if (t.isDeleted) return false;
+            if (transactionFilter === 'all') return true;
+            return t.type === transactionFilter;
+        });
+
+        if (searchTerm) {
+            filtered = filtered.filter(t => 
+                t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                t.amount.toString().includes(searchTerm) ||
+                t.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                t.date.includes(searchTerm) // "2024-05"
+            );
+        }
+
+        return sortItems(filtered, 'date', 'description');
+    }, [transactions, showTrash, transactionFilter, searchTerm, sortOrder]);
+
+    // Displayed Invoices
+    const displayedInvoices = useMemo(() => {
+        let filtered = invoices.filter(inv => {
+            if (showTrash) return inv.isDeleted;
+            if (inv.isDeleted) return false;
+            if (invoiceFilter === 'all') return true;
+            return inv.status === invoiceFilter;
+        });
+
+        if (searchTerm) {
+            filtered = filtered.filter(inv => 
+                inv.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                inv.totalAmount.toString().includes(searchTerm) ||
+                inv.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                inv.issueDate.includes(searchTerm)
+            );
+        }
+
+        return sortItems(filtered, 'issueDate', 'clientName');
+    }, [invoices, showTrash, invoiceFilter, searchTerm, sortOrder]);
+
+    // Archive Invoices
+    const archiveInvoices = useMemo(() => {
+        let filtered = invoices.filter(inv => 
+            !inv.isDeleted && 
+            inv.status !== DocumentStatus.Draft && 
+            inv.status !== DocumentStatus.Cancelled
+        );
+
+        if (searchTerm) {
+            filtered = filtered.filter(inv => 
+                inv.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                inv.totalAmount.toString().includes(searchTerm) ||
+                inv.issueDate.includes(searchTerm)
+            );
+        }
+
+        return sortItems(filtered, 'issueDate', 'clientName');
+    }, [invoices, searchTerm, sortOrder]);
+
+    // Displayed Quotes
+    const displayedQuotes = useMemo(() => {
+        let filtered = quotes.filter(q => {
+            if (showTrash) return q.isDeleted;
+            if (q.isDeleted) return false;
+            return true;
+        });
+
+        if (searchTerm) {
+            filtered = filtered.filter(q => 
+                q.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                q.quoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                q.totalAmount.toString().includes(searchTerm) ||
+                q.status.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+
+        return sortItems(filtered, 'issueDate', 'clientName');
+    }, [quotes, showTrash, searchTerm, sortOrder]);
+
+
+    // Common Filter UI Component
+    const FilterBar = () => (
+        <div className="flex gap-2 w-full md:w-auto mb-4 md:mb-0">
+            <div className="relative w-full md:w-64">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <SearchIcon />
+                </div>
+                <input
+                    type="text"
+                    placeholder="Cerca..."
+                    className="block w-full bg-white border rounded-md py-1.5 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{borderColor: 'var(--md-divider)'}}
+                />
+            </div>
+            <div className="w-full md:w-40">
+                <select 
+                    value={sortOrder} 
+                    onChange={(e) => setSortOrder(e.target.value as any)} 
+                    className="block w-full bg-white border rounded-md py-1.5 px-2 text-sm focus:ring-1 focus:ring-indigo-500"
+                    style={{borderColor: 'var(--md-divider)'}}
+                >
+                    <option value="date_desc">Data (Recenti)</option>
+                    <option value="date_asc">Data (Vecchi)</option>
+                    <option value="alpha_asc">A-Z</option>
+                    <option value="alpha_desc">Z-A</option>
+                </select>
+            </div>
+        </div>
+    );
 
 
     const renderContent = () => {
         switch (activeTab) {
             case 'overview': return (
+                // ... (Overview content unchanged)
                 <div className="space-y-6 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <StatCard 
-                            title="Entrate (Mese)" 
-                            value={`${monthlyIncome.toFixed(2)}€`} 
-                            color="var(--md-green)" 
-                            onClick={() => {
-                                setTransactionFilter(TransactionType.Income);
-                                setActiveTab('transactions');
-                            }}
-                        />
-                        <StatCard 
-                            title="Uscite (Mese)" 
-                            value={`${monthlyExpense.toFixed(2)}€`} 
-                            color="var(--md-red)"
-                            onClick={() => {
-                                setTransactionFilter(TransactionType.Expense);
-                                setActiveTab('transactions');
-                            }}
-                        />
+                        <StatCard title="Entrate (Mese)" value={`${monthlyIncome.toFixed(2)}€`} color="var(--md-green)" onClick={() => { setTransactionFilter(TransactionType.Income); setActiveTab('transactions'); }} />
+                        <StatCard title="Uscite (Mese)" value={`${monthlyExpense.toFixed(2)}€`} color="var(--md-red)" onClick={() => { setTransactionFilter(TransactionType.Expense); setActiveTab('transactions'); }} />
                         <StatCard title="Utile Lordo (Mese)" value={`${(monthlyIncome - monthlyExpense).toFixed(2)}€`} color="var(--md-primary)" />
-                        <StatCard 
-                            title="Scaduti (Da Incassare)" 
-                            value={`${overdueAmount.toFixed(2)}€`} 
-                            color="#E65100" 
-                            onClick={() => {
-                                setInvoiceFilter(DocumentStatus.Overdue);
-                                setActiveTab('invoices');
-                            }}
-                        />
+                        <StatCard title="Scaduti (Da Incassare)" value={`${overdueAmount.toFixed(2)}€`} color="#E65100" onClick={() => { setInvoiceFilter(DocumentStatus.Overdue); setActiveTab('invoices'); }} />
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <ChartCard title="Andamento Mensile (Entrate vs Uscite)"><canvas ref={monthlyChartRef}></canvas></ChartCard>
@@ -1278,17 +917,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             );
             case 'transactions': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
-                    <div className="p-4 md:p-0 md:mb-4 flex flex-wrap justify-between gap-2">
+                    <div className="p-4 md:p-0 md:mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div className="flex space-x-2">
                             <button onClick={() => setTransactionFilter('all')} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutti</button>
                             <button onClick={() => setTransactionFilter(TransactionType.Income)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Entrate</button>
                             <button onClick={() => setTransactionFilter(TransactionType.Expense)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Uscite</button>
                         </div>
-                        {!showTrash && (
-                            <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm">
-                                <CalculatorIcon /> <span className="ml-2">Calcola Nolo Sedi</span>
-                            </button>
-                        )}
+                        
+                        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto items-center">
+                            <FilterBar />
+                            {!showTrash && (
+                                <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm whitespace-nowrap">
+                                    <CalculatorIcon /> <span className="ml-2">Calcola Nolo</span>
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {!showTrash && pendingTransactions.length > 0 && (
@@ -1373,6 +1016,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                              <button onClick={() => setInvoiceFilter(DocumentStatus.SealedSDI)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.SealedSDI ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Sigillate (SDI)</button>
                              <button onClick={() => setInvoiceFilter(DocumentStatus.Overdue)} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${invoiceFilter === DocumentStatus.Overdue ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Scadute</button>
                         </div>
+                        <FilterBar />
                     </div>
 
                     <div className="hidden md:block overflow-x-auto">
@@ -1445,8 +1089,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             case 'archive': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
                     <div className="p-4 md:p-0 md:mb-4 flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="text-sm text-gray-600">
-                            <span className="font-bold">{selectedArchiveIds.length}</span> fatture selezionate
+                        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto items-center">
+                            <div className="text-sm text-gray-600 mr-2">
+                                <span className="font-bold">{selectedArchiveIds.length}</span> selez.
+                            </div>
+                            <FilterBar />
                         </div>
                         <div className="flex gap-2">
                             <button 
@@ -1502,7 +1149,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                         <td className="p-4 text-right text-sm font-semibold">{inv.totalAmount.toFixed(2)}€</td>
                                     </tr>
                                 ))}
-                                {archiveInvoices.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nessuna fattura disponibile per l'archivio.</td></tr>}
+                                {archiveInvoices.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-gray-400">Nessuna fattura trovata in archivio.</td></tr>}
                             </tbody>
                         </table>
                     </div>
@@ -1510,6 +1157,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             );
             case 'quotes': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
+                     <div className="p-4 md:p-0 md:mb-4 flex justify-end">
+                        <FilterBar />
+                     </div>
                      <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -1565,36 +1215,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                 </div>
             );
             case 'reports': return (
+                // ... (Reports content unchanged)
                 <div className="space-y-6 animate-fade-in">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <KpiCard 
-                            title="Margine Operativo (ROS)" 
-                            value={`${advancedMetrics.ros.toFixed(1)}%`} 
-                            subtext="Utile su Fatturato"
-                            icon={<TrendingUpIcon />}
-                            trend={advancedMetrics.ros > 20 ? 'up' : 'neutral'}
-                        />
-                        <KpiCard 
-                            title="Burn Rate Mensile" 
-                            value={`${advancedMetrics.burnRate.toFixed(0)}€`} 
-                            subtext="Media Spese Fisse"
-                            icon={<span className="text-xl">🔥</span>}
-                            trend="down"
-                        />
-                        <KpiCard 
-                            title="Ricavo Medio Utente (ARPU)" 
-                            value={`${advancedMetrics.arpu.toFixed(0)}€`} 
-                            subtext="Mensile per Iscritto"
-                            icon={<span className="text-xl">👤</span>}
-                            trend="up"
-                        />
-                        <KpiCard 
-                            title="EBITDA Stimato" 
-                            value={`${ebitda.toFixed(0)}€`} 
-                            subtext="Utile prima delle tasse"
-                            icon={<span className="text-xl">💰</span>}
-                            trend={ebitda > 0 ? 'up' : 'down'}
-                        />
+                        <KpiCard title="Margine Operativo (ROS)" value={`${advancedMetrics.ros.toFixed(1)}%`} subtext="Utile su Fatturato" icon={<TrendingUpIcon />} trend={advancedMetrics.ros > 20 ? 'up' : 'neutral'} />
+                        <KpiCard title="Burn Rate Mensile" value={`${advancedMetrics.burnRate.toFixed(0)}€`} subtext="Media Spese Fisse" icon={<span className="text-xl">🔥</span>} trend="down" />
+                        <KpiCard title="Ricavo Medio Utente (ARPU)" value={`${advancedMetrics.arpu.toFixed(0)}€`} subtext="Mensile per Iscritto" icon={<span className="text-xl">👤</span>} trend="up" />
+                        <KpiCard title="EBITDA Stimato" value={`${ebitda.toFixed(0)}€`} subtext="Utile prima delle tasse" icon={<span className="text-xl">💰</span>} trend={ebitda > 0 ? 'up' : 'down'} />
                     </div>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <ChartCard title="Ripartizione Spese per Categoria"><canvas ref={reportsDoughnutRef}></canvas></ChartCard>
@@ -1607,6 +1234,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         }
     };
 
+    // ... (Rest of Finance component: Return statement for Main UI)
     return (
         <div>
             <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
@@ -1620,6 +1248,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                     </button>
                     <button onClick={() => handleOpenTransModal()} className="md-btn md-btn-raised md-btn-green">
                         <PlusIcon /> <span className="ml-2">Transazione</span>
+                    </button>
+                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}>
+                        <TrashIcon /> <span className="ml-2">{showTrash ? 'Attivi' : 'Cestino'}</span>
                     </button>
                 </div>
             </div>

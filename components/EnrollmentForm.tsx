@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ParentClient, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, AvailabilitySlot, Appointment, Enrollment } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import Spinner from './Spinner';
+import SearchIcon from './icons/SearchIcon';
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
@@ -31,6 +32,17 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     // UI State
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
 
+    // --- FILTER STATES ---
+    // Parent Filters
+    const [parentSearchTerm, setParentSearchTerm] = useState('');
+    const [parentSort, setParentSort] = useState<'surname_asc' | 'surname_desc' | 'name_asc' | 'name_desc'>('surname_asc');
+    
+    // Supplier Filters
+    const [supplierSearchTerm, setSupplierSearchTerm] = useState('');
+    const [supplierSort, setSupplierSort] = useState<'name_asc' | 'name_desc'>('name_asc');
+    const [filterDay, setFilterDay] = useState<string>(''); // '' = all
+    const [filterTime, setFilterTime] = useState<string>(''); // HH:mm
+
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
@@ -51,10 +63,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             if (!existingEnrollment) {
                 // Valori default solo se nuova iscrizione
                 if (subs.length > 0) setSubscriptionTypeId(subs[0].id);
-                if (suppliersData.length > 0) {
-                    setSupplierId(suppliersData[0].id);
-                    // Non settiamo locationId di default per forzare la scelta visuale
-                }
+                // Non auto-selezioniamo il fornitore per forzare l'uso dei filtri se necessario
             } else {
                 // Se modifica, tentiamo di pre-selezionare lo slot corretto
                 if(existingEnrollment.appointments && existingEnrollment.appointments.length > 0) {
@@ -79,14 +88,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     // Effetto per gestire il cambio di genitore e resettare i figli se necessario
     useEffect(() => {
         if (!existingEnrollment && currentParent) {
-            // Se cambiamo genitore in creazione, resettiamo i figli o selezioniamo il primo
-            if (currentParent.children.length > 0) {
-               // Opzionale: deselezionare tutto per forzare scelta o selezionare il primo
-               // setSelectedChildIds([currentParent.children[0].id]);
-               setSelectedChildIds([]); 
-            } else {
-               setSelectedChildIds([]);
-            }
+            // Se cambiamo genitore in creazione, resettiamo i figli
+            setSelectedChildIds([]); 
         }
     }, [selectedParentId, existingEnrollment]);
 
@@ -109,6 +112,66 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             }
         });
     };
+
+    // --- FILTER LOGIC ---
+
+    const filteredParents = useMemo(() => {
+        let result = parents.filter(p => {
+            const term = parentSearchTerm.toLowerCase();
+            const parentMatch = `${p.firstName} ${p.lastName}`.toLowerCase().includes(term);
+            const childMatch = p.children.some(c => c.name.toLowerCase().includes(term));
+            return parentMatch || childMatch;
+        });
+
+        result.sort((a, b) => {
+            switch (parentSort) {
+                case 'surname_asc': return a.lastName.localeCompare(b.lastName);
+                case 'surname_desc': return b.lastName.localeCompare(a.lastName);
+                case 'name_asc': return a.firstName.localeCompare(b.firstName);
+                case 'name_desc': return b.firstName.localeCompare(a.firstName);
+                default: return 0;
+            }
+        });
+        return result;
+    }, [parents, parentSearchTerm, parentSort]);
+
+    const filteredSuppliers = useMemo(() => {
+        let result = suppliers.filter(s => {
+            const term = supplierSearchTerm.toLowerCase();
+            // 1. Text Match (Company or Location Name)
+            const textMatch = s.companyName.toLowerCase().includes(term) || 
+                              s.locations.some(l => l.name.toLowerCase().includes(term));
+            
+            if (!textMatch) return false;
+
+            // 2. Day/Time Match
+            if (filterDay !== '' || filterTime !== '') {
+                const dayNum = filterDay !== '' ? parseInt(filterDay) : null;
+                
+                // Controlla se il fornitore ha ALMENO una sede con disponibilità compatibile
+                const hasAvailability = s.locations.some(loc => {
+                    if (!loc.availability) return false;
+                    return loc.availability.some(slot => {
+                        const dayOk = dayNum === null || slot.dayOfWeek === dayNum;
+                        const timeOk = filterTime === '' || (filterTime >= slot.startTime && filterTime <= slot.endTime);
+                        return dayOk && timeOk;
+                    });
+                });
+                
+                if (!hasAvailability) return false;
+            }
+
+            return true;
+        });
+
+        result.sort((a, b) => {
+            if (supplierSort === 'name_asc') return a.companyName.localeCompare(b.companyName);
+            return b.companyName.localeCompare(a.companyName);
+        });
+
+        return result;
+    }, [suppliers, supplierSearchTerm, supplierSort, filterDay, filterTime]);
+
 
     // Helper per generare le date delle lezioni
     const generateAppointments = (startDate: Date, slot: AvailabilitySlot, numLessons: number, locName: string, locColor: string, childName: string): Appointment[] => {
@@ -153,6 +216,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
         }
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+        // Cerca in TUTTI i fornitori, non solo quelli filtrati, per sicurezza in invio
         const selectedSupplier = suppliers.find(s => s.id === supplierId);
         const selectedLocation = selectedSupplier?.locations.find(l => l.id === locationId);
         
@@ -236,21 +300,49 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
                 
                 {/* 1. SELEZIONE GENITORE */}
-                <div className="md-input-group">
-                    <select 
-                        id="parent-select"
-                        value={selectedParentId} 
-                        onChange={e => setSelectedParentId(e.target.value)} 
-                        required 
-                        disabled={!!existingEnrollment} // Non modificabile in edit mode per sicurezza consistenza
-                        className={`md-input font-medium ${existingEnrollment ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                    >
-                        <option value="" disabled>Seleziona Genitore...</option>
-                        {parents.map(p => (
-                            <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
-                        ))}
-                    </select>
-                    <label htmlFor="parent-select" className="md-input-label !top-0 !text-xs !text-gray-500">1. Genitore</label>
+                <div className="space-y-2">
+                    {/* Filter Bar for Parents */}
+                    {!existingEnrollment && (
+                        <div className="bg-gray-50 p-2 rounded border border-gray-200 flex gap-2 items-center">
+                            <div className="relative flex-1">
+                                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div>
+                                <input 
+                                    type="text" 
+                                    className="w-full pl-8 pr-2 py-1 text-sm border rounded focus:ring-indigo-500 focus:border-indigo-500" 
+                                    placeholder="Cerca genitore o figlio..."
+                                    value={parentSearchTerm}
+                                    onChange={e => setParentSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            <select 
+                                value={parentSort}
+                                onChange={(e) => setParentSort(e.target.value as any)}
+                                className="text-xs border-gray-300 rounded py-1 pl-2 pr-6 bg-white"
+                            >
+                                <option value="surname_asc">Cognome (A-Z)</option>
+                                <option value="surname_desc">Cognome (Z-A)</option>
+                                <option value="name_asc">Nome (A-Z)</option>
+                                <option value="name_desc">Nome (Z-A)</option>
+                            </select>
+                        </div>
+                    )}
+
+                    <div className="md-input-group">
+                        <select 
+                            id="parent-select"
+                            value={selectedParentId} 
+                            onChange={e => setSelectedParentId(e.target.value)} 
+                            required 
+                            disabled={!!existingEnrollment} 
+                            className={`md-input font-medium ${existingEnrollment ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                        >
+                            <option value="" disabled>Seleziona Genitore...</option>
+                            {filteredParents.map(p => (
+                                <option key={p.id} value={p.id}>{p.lastName} {p.firstName}</option>
+                            ))}
+                        </select>
+                        <label htmlFor="parent-select" className="md-input-label !top-0 !text-xs !text-gray-500">1. Genitore</label>
+                    </div>
                 </div>
 
                 {/* 2. SELEZIONE FIGLI (Multipla) */}
@@ -322,11 +414,56 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                 </div>
 
                 {/* SELEZIONE FORNITORE (Filtro per Sede) */}
-                <div className="md-input-group">
-                    <select id="supplier" value={supplierId} onChange={e => handleSupplierChange(e.target.value)} required className="md-input">
-                        {suppliers.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
-                    </select>
-                    <label htmlFor="supplier" className="md-input-label !top-0 !text-xs !text-gray-500">Fornitore</label>
+                <div className="space-y-2">
+                    {/* Filter Bar for Suppliers */}
+                    <div className="bg-gray-50 p-2 rounded border border-gray-200 grid grid-cols-2 gap-2">
+                        <div className="col-span-2 md:col-span-1 relative">
+                            <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div>
+                            <input 
+                                type="text" 
+                                className="w-full pl-8 pr-2 py-1 text-sm border rounded focus:ring-indigo-500 focus:border-indigo-500" 
+                                placeholder="Cerca Fornitore o Sede..."
+                                value={supplierSearchTerm}
+                                onChange={e => setSupplierSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div className="col-span-2 md:col-span-1 flex gap-2">
+                            <select 
+                                value={filterDay}
+                                onChange={(e) => setFilterDay(e.target.value)}
+                                className="flex-1 text-xs border-gray-300 rounded py-1 bg-white"
+                            >
+                                <option value="">Giorno...</option>
+                                {daysOfWeekMap.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                            </select>
+                            <input 
+                                type="time" 
+                                value={filterTime}
+                                onChange={(e) => setFilterTime(e.target.value)}
+                                className="flex-1 text-xs border-gray-300 rounded py-1 px-1 bg-white"
+                            />
+                        </div>
+                        <div className="col-span-2">
+                             <select 
+                                value={supplierSort}
+                                onChange={(e) => setSupplierSort(e.target.value as any)}
+                                className="w-full text-xs border-gray-300 rounded py-1 bg-white"
+                            >
+                                <option value="name_asc">Ragione Sociale (A-Z)</option>
+                                <option value="name_desc">Ragione Sociale (Z-A)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="md-input-group">
+                        <select id="supplier" value={supplierId} onChange={e => handleSupplierChange(e.target.value)} required className="md-input">
+                            <option value="" disabled>Seleziona Fornitore...</option>
+                            {filteredSuppliers.map(s => (
+                                <option key={s.id} value={s.id}>{s.companyName}</option>
+                            ))}
+                        </select>
+                        <label htmlFor="supplier" className="md-input-label !top-0 !text-xs !text-gray-500">Fornitore</label>
+                    </div>
                 </div>
 
                 {/* 3. SELEZIONE SEDE (Radio List) */}
