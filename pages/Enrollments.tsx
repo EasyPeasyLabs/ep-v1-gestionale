@@ -44,6 +44,17 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null); // Usato SOLO per EDIT mode
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
 
+    // Payment Modal State (New)
+    const [paymentModalState, setPaymentModalState] = useState<{
+        isOpen: boolean;
+        enrollment: Enrollment | null;
+        date: string;
+    }>({
+        isOpen: false,
+        enrollment: null,
+        date: new Date().toISOString().split('T')[0]
+    });
+
     // Confirmation Modal State
     const [confirmState, setConfirmState] = useState<{
         isOpen: boolean;
@@ -125,22 +136,23 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     // --- Payment Logic ---
 
-    const executePayment = async (enr: Enrollment) => {
-        console.log(`[DEBUG] Executing Payment for ${enr.id}`);
+    const executePayment = async (enr: Enrollment, paymentDateStr: string) => {
+        console.log(`[DEBUG] Executing Payment for ${enr.id} on date ${paymentDateStr}`);
         setLoading(true);
         try {
             const amount = enr.price !== undefined ? enr.price : 0;
             const client = clients.find(c => c.id === enr.clientId);
             const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
+            const paymentIsoDate = new Date(paymentDateStr).toISOString();
 
             // 1. GENERAZIONE AUTOMATICA FATTURA (DA SIGILLARE)
             // La fattura viene creata come 'PendingSDI' (Da Sigillare) per il bonifico.
             const invoiceInput: InvoiceInput = {
                 clientId: enr.clientId,
                 clientName: clientName,
-                issueDate: new Date().toISOString(), // Corrispondenza data bonifico
-                dueDate: new Date().toISOString(), // Già pagata
-                status: DocumentStatus.PendingSDI, // STATO AGGIORNATO
+                issueDate: paymentIsoDate, // Usa la data selezionata
+                dueDate: paymentIsoDate, // Già pagata in data X
+                status: DocumentStatus.PendingSDI, 
                 paymentMethod: PaymentMethod.BankTransfer,
                 items: [{
                     description: `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`,
@@ -163,7 +175,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             // 3. Crea Transazione (COLLEGATA ALLA FATTURA)
             if (amount > 0) {
                 await addTransaction({
-                    date: new Date().toISOString(),
+                    date: paymentIsoDate, // Usa la data selezionata
                     description: `Incasso Fattura ${invoiceNumber} (Bonifico) - Iscrizione ${enr.childName}`,
                     amount: amount, 
                     type: TransactionType.Income,
@@ -178,7 +190,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert(`Pagamento registrato con Bonifico!\nÈ stata generata la Fattura n. ${invoiceNumber} in stato 'Da sigillare (SDI)'.\nRicorda di registrarla entro 12 giorni.`);
+            alert(`Pagamento registrato!\nÈ stata generata la Fattura n. ${invoiceNumber} in stato 'Da sigillare (SDI)' con data ${new Date(paymentDateStr).toLocaleDateString()}.`);
         } catch(err) {
             console.error("[DEBUG] Errore Pagamento:", err);
             setError("Errore nel processare il pagamento. Controlla la console.");
@@ -186,16 +198,21 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         }
     };
 
+    // Open Modal instead of generic confirm
     const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
-        const priceMsg = enr.price ? `${enr.price}€` : '0€';
-        setConfirmState({
+        setPaymentModalState({
             isOpen: true,
-            title: "Conferma Pagamento Bonifico",
-            message: `Confermi il pagamento tramite Bonifico per l'iscrizione di ${enr.childName}? \n\nVerrà generata automaticamente una FATTURA di ${priceMsg} in stato 'Da sigillare (SDI)'.`,
-            isDangerous: false,
-            onConfirm: () => executePayment(enr)
+            enrollment: enr,
+            date: new Date().toISOString().split('T')[0] // Default to today
         });
+    };
+
+    const handleConfirmPayment = async () => {
+        if (paymentModalState.enrollment && paymentModalState.date) {
+            setPaymentModalState(prev => ({ ...prev, isOpen: false }));
+            await executePayment(paymentModalState.enrollment, paymentModalState.date);
+        }
     };
 
     // --- Revoke Logic ---
@@ -449,7 +466,49 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </Modal>
             )}
 
-            {/* Modale Conferma */}
+            {/* Modale Conferma Pagamento (Nuova) */}
+            {paymentModalState.isOpen && paymentModalState.enrollment && (
+                <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
+                    <div className="p-6">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
+                        <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4">
+                            <p className="text-sm text-green-800">
+                                Stai registrando il pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.
+                            </p>
+                            <p className="text-xs text-green-700 mt-1">
+                                Verrà generata una fattura "Da sigillare (SDI)" con la data indicata qui sotto.
+                            </p>
+                        </div>
+                        
+                        <div className="md-input-group">
+                            <input
+                                type="date"
+                                value={paymentModalState.date}
+                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))}
+                                className="md-input font-bold"
+                            />
+                            <label className="md-input-label !top-0">Data Ricezione Pagamento</label>
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-2">
+                            <button 
+                                onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} 
+                                className="md-btn md-btn-flat md-btn-sm"
+                            >
+                                Annulla
+                            </button>
+                            <button 
+                                onClick={handleConfirmPayment} 
+                                className="md-btn md-btn-raised md-btn-green md-btn-sm"
+                            >
+                                Conferma Pagamento
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Modale Conferma Generica */}
             <ConfirmModal 
                 isOpen={confirmState.isOpen}
                 onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
