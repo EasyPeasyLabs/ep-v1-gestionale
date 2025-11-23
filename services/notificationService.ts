@@ -98,6 +98,8 @@ export const getNotifications = async (): Promise<Notification[]> => {
     const currentYear = today.getFullYear();
 
     invoices.forEach(inv => {
+        if (inv.isDeleted) return; // Ignora fatture nel cestino
+
         // Fatture Scadute
         if (inv.status === DocumentStatus.Overdue) {
             notifications.push({
@@ -190,6 +192,8 @@ export const getNotifications = async (): Promise<Notification[]> => {
 
     // 3. PREVENTIVI
     quotes.forEach(quote => {
+        if (quote.isDeleted) return; // Ignora preventivi nel cestino
+
         if (quote.status === DocumentStatus.Draft) {
             notifications.push({
                 id: `quote-draft-${quote.id}`,
@@ -207,6 +211,8 @@ export const getNotifications = async (): Promise<Notification[]> => {
 
     // 4. TRANSAZIONI (SPESE PENDING / NOLI DA SALDARE)
     transactions.forEach(trans => {
+        if (trans.isDeleted) return; // Ignora transazioni nel cestino
+
         if (trans.status === TransactionStatus.Pending) {
             notifications.push({
                 id: `trans-pending-${trans.id}`,
