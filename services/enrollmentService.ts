@@ -78,10 +78,9 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
 
     let updatedData: Partial<Enrollment> = { appointments };
 
-    // 2. Logica di Recupero (Slittamento)
+    // 2. Logica di Recupero (Slittamento Automatico) - Legacy logic
+    // Se viene usata la modale di recupero manuale, questo flag potrebbe essere false
     if (shouldReschedule) {
-        // Trova l'ultima lezione in programma (ignorando quelle cancellate o già assenti, basiamoci sulla data)
-        // Ordiniamo per data per sicurezza
         const sortedApps = [...appointments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const lastApp = sortedApps[sortedApps.length - 1];
         
@@ -92,15 +91,10 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
             let foundDate = false;
             let safetyCounter = 0;
 
-            // Cerca la prossima data valida (stesso giorno della settimana, non festivo)
-            while (!foundDate && safetyCounter < 52) { // Limite di sicurezza 1 anno
-                nextDate.setDate(nextDate.getDate() + 1); // Avanza di un giorno
-                
-                if (nextDate.getDay() === originalDayOfWeek) {
-                    // Trovato il giorno della settimana corretto. Controlla festività
-                    if (!isItalianHoliday(nextDate)) {
-                        foundDate = true;
-                    }
+            while (!foundDate && safetyCounter < 52) {
+                nextDate.setDate(nextDate.getDate() + 1);
+                if (nextDate.getDay() === originalDayOfWeek && !isItalianHoliday(nextDate)) {
+                    foundDate = true;
                 }
                 safetyCounter++;
             }
@@ -117,10 +111,6 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
                     status: 'Scheduled'
                 };
                 appointments.push(newAppointment);
-                
-                // NOTA: Non aggiorniamo più endDate qui per mantenere la data di scadenza contrattuale originale.
-                // L'estensione verrà segnalata visivamente nell'interfaccia come "Recupero".
-                // updatedData.endDate = nextDate.toISOString(); 
             }
         }
     }
@@ -129,15 +119,61 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
     await updateDoc(enrollmentDocRef, updatedData);
 };
 
+// --- Nuova funzione per recupero manuale (Modale Recupera) ---
+export const addRecoveryLessons = async (
+    enrollmentId: string, 
+    startDate: string, // ISO Date String
+    startTime: string, 
+    endTime: string,
+    numberOfLessons: number,
+    locationName: string,
+    locationColor: string
+): Promise<void> => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    
+    if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    const childName = enrollment.childName;
+
+    let currentDate = new Date(startDate);
+    
+    for (let i = 0; i < numberOfLessons; i++) {
+        // Crea appuntamento
+        const newAppointment: Appointment = {
+            lessonId: `REC-${Date.now()}-${i}`, // ID univoco per recupero
+            date: currentDate.toISOString(),
+            startTime: startTime,
+            endTime: endTime,
+            locationName: locationName, // Può essere diversa dall'originale
+            locationColor: locationColor,
+            childName: childName,
+            status: 'Scheduled'
+        };
+        appointments.push(newAppointment);
+
+        // Avanza di una settimana per il prossimo recupero (se multiplo)
+        currentDate.setDate(currentDate.getDate() + 7);
+    }
+
+    // Ordina appuntamenti per data per pulizia
+    appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // Aggiorna DB
+    // Nota: Non aggiorniamo 'lessonsTotal' perché il recupero sostituisce le assenze, non aggiunge al pacchetto venduto.
+    // Tuttavia, 'lessonsRemaining' era un contatore legacy. La logica 'Concluso' ora si baserà sulle presenze effettive.
+    await updateDoc(enrollmentDocRef, {
+        appointments: appointments
+    });
+};
+
 
 /**
  * AUTOMAZIONE "BACKEND": Consolida le lezioni passate.
- * Questa funzione simula il job notturno.
- * Cerca tutte le lezioni con status 'Scheduled' la cui data è passata (minore di oggi/ora).
- * Le imposta come 'Present' e decrementa il contatore lessonsRemaining.
  */
 export const consolidateAppointments = async (): Promise<number> => {
-    // 1. Ottieni tutte le iscrizioni attive
     const q = query(enrollmentCollectionRef, where("status", "==", EnrollmentStatus.Active));
     const snapshot = await getDocs(q);
     
@@ -151,11 +187,8 @@ export const consolidateAppointments = async (): Promise<number> => {
         let newLessonsRemaining = enrollment.lessonsRemaining;
         
         const updatedAppointments = (enrollment.appointments || []).map(app => {
-            // Costruiamo la data/ora dell'appuntamento per confrontarla con ADESSO
             const appDateTime = new Date(`${app.date.split('T')[0]}T${app.endTime}:00`);
             
-            // Se l'appuntamento è nel passato E lo stato è ancora 'Scheduled' (quindi non Absent o Cancelled)
-            // Allora assumiamo che sia stato svolto regolarmente (Present)
             if (appDateTime < now && (!app.status || app.status === 'Scheduled')) {
                 needsUpdate = true;
                 newLessonsRemaining = Math.max(0, newLessonsRemaining - 1);

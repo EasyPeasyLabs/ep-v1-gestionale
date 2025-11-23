@@ -21,17 +21,30 @@ const defaultCompanyInfo: Omit<CompanyInfo, 'id'> = {
 };
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
-    const docSnap = await getDoc(settingsDocRef);
-    if (docSnap.exists()) {
-        const data = docSnap.data() as CompanyInfo;
-        // Se manca il logo nel DB, usa quello di default
-        return { 
-            id: docSnap.id, 
-            ...data, 
-            logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64 
-        };
-    } else {
-        await setDoc(settingsDocRef, defaultCompanyInfo);
+    try {
+        const docSnap = await getDoc(settingsDocRef);
+        if (docSnap.exists()) {
+            const data = docSnap.data() as CompanyInfo;
+            return { 
+                id: docSnap.id, 
+                ...data, 
+                logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64 
+            };
+        } else {
+            // Se siamo online e non esiste, lo creiamo. Se siamo offline, getDoc fallisce prima.
+            // Tuttavia, setDoc potrebbe fallire offline se non c'è cache.
+            try {
+                await setDoc(settingsDocRef, defaultCompanyInfo);
+                return { id: 'companyInfo', ...defaultCompanyInfo };
+            } catch (e) {
+                // Fallback se setDoc fallisce (es. permission/offline)
+                console.warn("Impossibile creare company info default:", e);
+                return { id: 'companyInfo', ...defaultCompanyInfo };
+            }
+        }
+    } catch (e) {
+        console.warn("Errore caricamento Company Info (possibile offline):", e);
+        // Fallback ai default se offline e non in cache
         return { id: 'companyInfo', ...defaultCompanyInfo };
     }
 };

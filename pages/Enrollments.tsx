@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput } from '../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier } from '../types';
 import { getClients } from '../services/parentService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
+import { getSuppliers } from '../services/supplierService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons } from '../services/enrollmentService';
 import { addTransaction, deleteTransactionByRelatedId, addInvoice } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -12,6 +13,7 @@ import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import RefreshIcon from '../components/icons/RestoreIcon'; // Used for Recovery icon
 
 interface EnrollmentsProps {
     initialParams?: {
@@ -20,31 +22,138 @@ interface EnrollmentsProps {
     };
 }
 
+const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+// --- Modal Recupero ---
+const RecoveryModal: React.FC<{
+    enrollment: Enrollment;
+    maxRecoverable: number;
+    suppliers: Supplier[];
+    onClose: () => void;
+    onConfirm: (date: string, time: string, endTime: string, count: number, locName: string, locColor: string) => void;
+}> = ({ enrollment, maxRecoverable, suppliers, onClose, onConfirm }) => {
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [count, setCount] = useState(1);
+    
+    // Recupera location originale per default
+    const originalSupplier = suppliers.find(s => s.id === enrollment.supplierId);
+    const originalLocation = originalSupplier?.locations.find(l => l.id === enrollment.locationId);
+
+    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
+    const [availableSlots, setAvailableSlots] = useState<{start: string, end: string, day: number}[]>([]);
+
+    // Aggiorna gli slot disponibili quando cambia la data (in base al giorno della settimana)
+    useEffect(() => {
+        const dayOfWeek = new Date(date).getDay();
+        if (originalLocation && originalLocation.availability) {
+            const slots = originalLocation.availability.filter(s => s.dayOfWeek === dayOfWeek);
+            setAvailableSlots(slots.map(s => ({ start: s.startTime, end: s.endTime, day: s.dayOfWeek })));
+            setSelectedSlotIndex(null); // Reset selezione
+        } else {
+            setAvailableSlots([]);
+        }
+    }, [date, originalLocation]);
+
+    const handleConfirm = () => {
+        if (selectedSlotIndex === null || !originalLocation) return;
+        const slot = availableSlots[selectedSlotIndex];
+        onConfirm(date, slot.start, slot.end, count, originalLocation.name, originalLocation.color);
+    };
+
+    return (
+        <Modal onClose={onClose} size="md">
+            <div className="p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Recupero Lezioni</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                    Programma il recupero per <strong>{enrollment.childName}</strong>.
+                    <br/>
+                    <span className="text-xs text-orange-600">Assenze da recuperare: {maxRecoverable}</span>
+                </p>
+
+                <div className="space-y-4">
+                    <div className="md-input-group">
+                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
+                        <label className="md-input-label !top-0">Data Inizio Recupero</label>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">Seleziona Slot ({daysOfWeekMap[new Date(date).getDay()]})</label>
+                        {availableSlots.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-2">
+                                {availableSlots.map((slot, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setSelectedSlotIndex(idx)}
+                                        className={`p-2 border rounded text-sm ${selectedSlotIndex === idx ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'hover:bg-gray-50'}`}
+                                    >
+                                        {slot.start} - {slot.end}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-red-500 italic border p-2 rounded bg-red-50">Nessuno slot disponibile per questo giorno nella sede originale.</p>
+                        )}
+                    </div>
+
+                    <div className="md-input-group">
+                        <input 
+                            type="number" 
+                            min="1" 
+                            max={maxRecoverable} 
+                            value={count} 
+                            onChange={e => setCount(Math.min(maxRecoverable, Math.max(1, Number(e.target.value))))} 
+                            className="md-input" 
+                        />
+                        <label className="md-input-label !top-0">Numero Lezioni</label>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-2">
+                    <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                    <button 
+                        onClick={handleConfirm} 
+                        disabled={selectedSlotIndex === null}
+                        className="md-btn md-btn-raised md-btn-primary md-btn-sm disabled:opacity-50"
+                    >
+                        Conferma Recupero
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
+
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [clients, setClients] = useState<ParentClient[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     
     // Filter State
-    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active'>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active' | 'completed'>('all');
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'name_desc'>('date_desc');
+    const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'name_desc' | 'parent_asc' | 'parent_desc'>('date_desc');
     
-    // Apply initial params if present
+    // Advanced Filters
+    const [filterDay, setFilterDay] = useState<string>('');
+    const [filterTime, setFilterTime] = useState<string>('');
+
+    // Apply initial params
     useEffect(() => {
         if (initialParams) {
-            if (initialParams.status) setStatusFilter(initialParams.status);
+            if (initialParams.status) setStatusFilter(initialParams.status as any);
             if (initialParams.searchTerm) setSearchTerm(initialParams.searchTerm);
         }
     }, [initialParams]);
 
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null); // Usato SOLO per EDIT mode
+    const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
 
-    // Payment Modal State (New)
+    // Payment Modal State
     const [paymentModalState, setPaymentModalState] = useState<{
         isOpen: boolean;
         enrollment: Enrollment | null;
@@ -57,7 +166,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         method: PaymentMethod.BankTransfer
     });
 
-    // Confirmation Modal State
+    // Recovery Modal State
+    const [recoveryModalState, setRecoveryModalState] = useState<{
+        isOpen: boolean;
+        enrollment: Enrollment | null;
+        maxRecoverable: number;
+    }>({
+        isOpen: false,
+        enrollment: null,
+        maxRecoverable: 0
+    });
+
+    // Confirm Modal
     const [confirmState, setConfirmState] = useState<{
         isOpen: boolean;
         title: string;
@@ -75,15 +195,17 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const [clientsData, enrollmentsData] = await Promise.all([
+            const [clientsData, enrollmentsData, suppliersData] = await Promise.all([
                 getClients(),
-                getAllEnrollments()
+                getAllEnrollments(),
+                getSuppliers()
             ]);
             setClients(clientsData.filter(c => c.clientType === ClientType.Parent) as ParentClient[]);
             setEnrollments(enrollmentsData);
+            setSuppliers(suppliersData);
             setError(null);
         } catch (err) {
-            console.error("[DEBUG] Errore fetch dati:", err);
+            console.error("[DEBUG] Error fetching data:", err);
             setError("Errore nel caricamento dati.");
         } finally {
             setLoading(false);
@@ -97,10 +219,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
     }, [fetchData]);
 
-    // --- Actions Handlers ---
+    // --- Handlers ---
 
     const handleNewEnrollment = () => {
-        // Reset selezione per nuova iscrizione
         setSelectedClient(null); 
         setEditingEnrollment(undefined);
         setIsModalOpen(true);
@@ -117,7 +238,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => {
         setLoading(true);
         try {
-            // Itera su tutte le iscrizioni passate (1 nel caso di edit, N nel caso di nuova iscrizione multipla)
             for (const enrollmentData of enrollmentsData) {
                 if ('id' in enrollmentData) {
                     await updateEnrollment((enrollmentData as any).id, enrollmentData);
@@ -125,21 +245,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     await addEnrollment(enrollmentData);
                 }
             }
-
             setIsModalOpen(false);
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (err) {
-            console.error("[DEBUG] Errore salvataggio:", err);
-            setError(`Errore durante il salvataggio: ${err}`);
+            console.error("Save error:", err);
+            setError("Errore salvataggio.");
             setLoading(false);
         }
     };
 
-    // --- Payment Logic ---
-
+    // --- Payment ---
     const executePayment = async (enr: Enrollment, paymentDateStr: string, method: PaymentMethod) => {
-        console.log(`[DEBUG] Executing Payment for ${enr.id} on date ${paymentDateStr} via ${method}`);
         setLoading(true);
         try {
             const amount = enr.price !== undefined ? enr.price : 0;
@@ -147,13 +264,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
             const paymentIsoDate = new Date(paymentDateStr).toISOString();
 
-            // 1. GENERAZIONE AUTOMATICA FATTURA (DA SIGILLARE)
-            // La fattura viene creata come 'PendingSDI' (Da Sigillare) per il bonifico.
             const invoiceInput: InvoiceInput = {
                 clientId: enr.clientId,
                 clientName: clientName,
-                issueDate: paymentIsoDate, // Usa la data selezionata
-                dueDate: paymentIsoDate, // Già pagata in data X
+                issueDate: paymentIsoDate,
+                dueDate: paymentIsoDate,
                 status: DocumentStatus.PendingSDI, 
                 paymentMethod: method,
                 items: [{
@@ -169,15 +284,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             };
 
             const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
-            console.log(`[DEBUG] Fattura generata: ${invoiceNumber} (Pending SDI)`);
-
-            // 2. Aggiorna Stato Iscrizione -> Active
             await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
             
-            // 3. Crea Transazione (COLLEGATA ALLA FATTURA)
             if (amount > 0) {
                 await addTransaction({
-                    date: paymentIsoDate, // Usa la data selezionata
+                    date: paymentIsoDate,
                     description: `Incasso Fattura ${invoiceNumber} (${method}) - Iscrizione ${enr.childName}`,
                     amount: amount, 
                     type: TransactionType.Income,
@@ -187,27 +298,23 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     relatedDocumentId: invoiceId, 
                 });
             }
-
-            console.log("[DEBUG] Transazione e Fattura create correttamente.");
-
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert(`Pagamento registrato!\nÈ stata generata la Fattura n. ${invoiceNumber} in stato 'Da sigillare (SDI)' con data ${new Date(paymentDateStr).toLocaleDateString()} e metodo ${method}.`);
+            alert(`Pagamento registrato!\nGenerata Fattura n. ${invoiceNumber} (Da sigillare).`);
         } catch(err) {
-            console.error("[DEBUG] Errore Pagamento:", err);
-            setError("Errore nel processare il pagamento. Controlla la console.");
+            console.error("Payment error:", err);
+            setError("Errore pagamento.");
             setLoading(false);
         }
     };
 
-    // Open Modal instead of generic confirm
     const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
         setPaymentModalState({
             isOpen: true,
             enrollment: enr,
-            date: new Date().toISOString().split('T')[0], // Default to today
-            method: PaymentMethod.BankTransfer // Default method
+            date: new Date().toISOString().split('T')[0],
+            method: PaymentMethod.BankTransfer
         });
     };
 
@@ -218,52 +325,56 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         }
     };
 
-    // --- Revoke Logic ---
+    // --- Recovery ---
+    const handleRecoveryRequest = (e: React.MouseEvent, enr: Enrollment, absentCount: number) => {
+        e.stopPropagation();
+        setRecoveryModalState({
+            isOpen: true,
+            enrollment: enr,
+            maxRecoverable: absentCount
+        });
+    };
 
-    const executeRevoke = async (enr: Enrollment) => {
+    const handleConfirmRecovery = async (date: string, startTime: string, endTime: string, count: number, locName: string, locColor: string) => {
+        if (!recoveryModalState.enrollment) return;
+        setRecoveryModalState(prev => ({ ...prev, isOpen: false }));
         setLoading(true);
         try {
-            await updateEnrollment(enr.id, { status: EnrollmentStatus.Pending });
-            // Nota: La revoca dell'iscrizione NON elimina la fattura emessa per ragioni di tracciabilità fiscale.
-            // La fattura deve essere gestita (annullata/nota di credito) manualmente in Finanza se necessario.
-            
+            await addRecoveryLessons(
+                recoveryModalState.enrollment.id,
+                date,
+                startTime,
+                endTime,
+                count,
+                locName,
+                locColor
+            );
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert("Iscrizione revocata. Ricorda di gestire l'eventuale fattura emessa nella sezione Finanza.");
-        } catch(err) {
-            console.error("[DEBUG] Errore Revoca:", err);
-            setError("Errore durante la revoca del pagamento.");
+            alert("Recupero programmato con successo!");
+        } catch (err) {
+            console.error("Recovery error:", err);
+            alert("Errore durante la programmazione del recupero.");
+        } finally {
             setLoading(false);
         }
     };
 
+    // --- Other Actions ---
     const handleRevokeRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
         setConfirmState({
             isOpen: true,
             title: "Revoca Pagamento",
-            message: `Attenzione: L'iscrizione tornerà 'In Attesa'.\nNOTA: La fattura eventualmente emessa NON verrà eliminata automaticamente.`,
+            message: `Attenzione: L'iscrizione tornerà 'In Attesa'. La fattura emessa NON sarà eliminata automaticamente.`,
             isDangerous: true,
-            onConfirm: () => executeRevoke(enr)
+            onConfirm: async () => {
+                setLoading(true);
+                await updateEnrollment(enr.id, { status: EnrollmentStatus.Pending });
+                await fetchData();
+                setLoading(false);
+            }
         });
-    };
-
-    // --- Abandon Logic ---
-
-    const executeAbandon = async (enr: Enrollment) => {
-        setLoading(true);
-        try {
-            await updateEnrollment(enr.id, { 
-                status: EnrollmentStatus.Completed,
-                endDate: new Date().toISOString()
-            });
-            await fetchData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        } catch(err) {
-            console.error("[DEBUG] Errore Abbandona:", err);
-            setError("Errore durante l'operazione di abbandono.");
-            setLoading(false);
-        }
     };
 
     const handleAbandonRequest = (e: React.MouseEvent, enr: Enrollment) => {
@@ -271,25 +382,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setConfirmState({
             isOpen: true,
             title: "Conferma Abbandono",
-            message: `Sei sicuro di voler segnare come 'Abbandonato' l'iscrizione di ${enr.childName}? Lo stato passerà a Completato e la data fine sarà impostata a oggi.`,
+            message: `Segnare come 'Abbandonato'? Lo stato passerà a Completato.`,
             isDangerous: true,
-            onConfirm: () => executeAbandon(enr)
+            onConfirm: async () => {
+                setLoading(true);
+                await updateEnrollment(enr.id, { status: EnrollmentStatus.Completed, endDate: new Date().toISOString() });
+                await fetchData();
+                setLoading(false);
+            }
         });
-    };
-
-    const executeDelete = async (enr: Enrollment) => {
-        setLoading(true);
-        try {
-            await deleteEnrollment(enr.id);
-            // Elimina eventuali transazioni orfane (legacy)
-            await deleteTransactionByRelatedId(enr.id);
-            await fetchData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        } catch(err) {
-            console.error("[DEBUG] Errore Eliminazione:", err);
-            setError("Errore durante l'eliminazione dell'iscrizione.");
-            setLoading(false);
-        }
     };
 
     const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => {
@@ -297,166 +398,218 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setConfirmState({
             isOpen: true,
             title: "Elimina Iscrizione",
-            message: `Sei sicuro di voler eliminare DEFINITIVAMENTE l'iscrizione di ${enr.childName}?`,
+            message: `Eliminare DEFINITIVAMENTE l'iscrizione di ${enr.childName}?`,
             isDangerous: true,
-            onConfirm: () => executeDelete(enr)
+            onConfirm: async () => {
+                setLoading(true);
+                await deleteEnrollment(enr.id);
+                await deleteTransactionByRelatedId(enr.id);
+                await fetchData();
+                setLoading(false);
+            }
         });
     };
 
-    // Filter Logic
-    const filteredEnrollments = enrollments.filter(enr => {
-        // Status Filter
-        if (statusFilter === 'pending' && enr.status !== EnrollmentStatus.Pending) return false;
-        if (statusFilter === 'active' && enr.status !== EnrollmentStatus.Active) return false;
-        
-        // Search Filter
-        if (searchTerm) {
-            const lowerTerm = searchTerm.toLowerCase();
-            return (
-                enr.childName.toLowerCase().includes(lowerTerm) ||
-                enr.subscriptionName.toLowerCase().includes(lowerTerm) ||
-                (enr.locationName || '').toLowerCase().includes(lowerTerm)
-            );
-        }
-        return true;
-    });
+    // --- Filtering & Sorting ---
+    const filteredEnrollments = useMemo(() => {
+        let result = enrollments.filter(enr => {
+            // 1. Status
+            if (statusFilter === 'pending' && enr.status !== EnrollmentStatus.Pending) return false;
+            if (statusFilter === 'active' && enr.status !== EnrollmentStatus.Active) return false;
+            if (statusFilter === 'completed' && enr.status !== EnrollmentStatus.Completed && enr.status !== EnrollmentStatus.Expired) return false;
 
-    // Sorting Logic
-    filteredEnrollments.sort((a, b) => {
-        switch (sortOrder) {
-            case 'date_asc':
-                return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
-            case 'date_desc':
-                return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
-            case 'name_asc':
-                return a.childName.localeCompare(b.childName);
-            case 'name_desc':
-                return b.childName.localeCompare(a.childName);
-            default:
-                return 0;
-        }
-    });
+            // 2. Search
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                const client = clients.find(c => c.id === enr.clientId);
+                const parentName = client ? `${client.firstName} ${client.lastName}` : '';
+                
+                const match = 
+                    enr.childName.toLowerCase().includes(term) ||
+                    parentName.toLowerCase().includes(term) ||
+                    enr.supplierName.toLowerCase().includes(term) ||
+                    enr.locationName.toLowerCase().includes(term);
+                
+                if (!match) return false;
+            }
+
+            // 3. Day / Time Filter (Check appointments)
+            if (filterDay !== '' || filterTime !== '') {
+                const dayNum = filterDay !== '' ? parseInt(filterDay) : null;
+                const hasMatch = enr.appointments?.some(app => {
+                    const appDate = new Date(app.date);
+                    const dayOk = dayNum === null || appDate.getDay() === dayNum;
+                    const timeOk = filterTime === '' || (filterTime >= app.startTime && filterTime <= app.endTime);
+                    return dayOk && timeOk;
+                });
+                if (!hasMatch) return false;
+            }
+
+            return true;
+        });
+
+        // Sorting
+        result.sort((a, b) => {
+            const clientA = clients.find(c => c.id === a.clientId);
+            const clientB = clients.find(c => c.id === b.clientId);
+            const parentA = clientA ? clientA.lastName : '';
+            const parentB = clientB ? clientB.lastName : '';
+
+            switch (sortOrder) {
+                case 'date_asc': return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+                case 'date_desc': return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
+                case 'name_asc': return a.childName.localeCompare(b.childName);
+                case 'name_desc': return b.childName.localeCompare(a.childName);
+                case 'parent_asc': return parentA.localeCompare(parentB);
+                case 'parent_desc': return parentB.localeCompare(parentA);
+                default: return 0;
+            }
+        });
+
+        return result;
+    }, [enrollments, clients, statusFilter, searchTerm, sortOrder, filterDay, filterTime]);
 
     return (
         <div>
             <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <div>
                     <h1 className="text-3xl font-bold">Iscrizioni</h1>
-                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci le iscrizioni, i pagamenti e gli abbandoni.</p>
+                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci iscrizioni, pagamenti e recuperi.</p>
                 </div>
                 <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green">
-                    <PlusIcon />
-                    <span className="ml-2">Nuova Iscrizione</span>
+                    <PlusIcon /> <span className="ml-2">Nuova Iscrizione</span>
                 </button>
             </div>
 
-            <div className="mb-6 space-y-4 md:space-y-0 md:flex md:items-center md:justify-between gap-4">
-                {/* Filters */}
-                 <div className="flex space-x-2 overflow-x-auto pb-2 md:pb-0">
-                    <button onClick={() => setStatusFilter('all')} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${statusFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutte</button>
-                    <button onClick={() => setStatusFilter('active')} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${statusFilter === 'active' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Attive</button>
-                    <button onClick={() => setStatusFilter('pending')} className={`px-3 py-1 text-sm rounded-full border whitespace-nowrap ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>In Attesa</button>
+            {/* Filters Toolbar */}
+            <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 flex flex-col lg:flex-row gap-3 items-center">
+                {/* Status Tabs */}
+                <div className="flex space-x-1 bg-white rounded border p-1">
+                    <button onClick={() => setStatusFilter('all')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'all' ? 'bg-indigo-100 text-indigo-800 font-bold' : 'text-gray-600'}`}>Tutte</button>
+                    <button onClick={() => setStatusFilter('active')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'active' ? 'bg-green-100 text-green-800 font-bold' : 'text-gray-600'}`}>Attive</button>
+                    <button onClick={() => setStatusFilter('pending')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-800 font-bold' : 'text-gray-600'}`}>In Attesa</button>
+                    <button onClick={() => setStatusFilter('completed')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'completed' ? 'bg-gray-200 text-gray-800 font-bold' : 'text-gray-600'}`}>Concluse</button>
                 </div>
 
-                <div className="flex gap-2 w-full md:w-auto">
-                    {/* Search */}
-                    <div className="relative w-full md:w-64">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <SearchIcon />
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Cerca..."
-                            className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm placeholder-gray-500 focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
+                {/* Search & Sort */}
+                <div className="flex-1 flex gap-2 w-full">
+                    <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div>
+                        <input 
+                            type="text" 
+                            placeholder="Cerca Allievo, Genitore, Sede..." 
+                            className="block w-full bg-white border rounded py-1.5 pl-8 pr-2 text-sm"
                             value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            style={{borderColor: 'var(--md-divider)'}}
+                            onChange={e => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    
+                    {/* Day / Time */}
+                    <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="w-24 text-xs border rounded bg-white">
+                        <option value="">Giorno...</option>
+                        {daysOfWeekMap.map((d, i) => <option key={i} value={i}>{d.substring(0,3)}</option>)}
+                    </select>
+                    <input type="time" value={filterTime} onChange={e => setFilterTime(e.target.value)} className="w-20 text-xs border rounded bg-white px-1" />
 
-                    {/* Sort */}
-                    <div className="w-full md:w-48">
-                        <select 
-                            value={sortOrder} 
-                            onChange={(e) => setSortOrder(e.target.value as any)} 
-                            className="block w-full bg-white border rounded-md py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                            style={{borderColor: 'var(--md-divider)'}}
-                        >
-                            <option value="date_desc">Più Recenti</option>
-                            <option value="date_asc">Meno Recenti</option>
-                            <option value="name_asc">Nome Allievo (A-Z)</option>
-                            <option value="name_desc">Nome Allievo (Z-A)</option>
-                        </select>
-                    </div>
+                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="w-32 text-xs border rounded bg-white">
+                        <option value="date_desc">Recenti</option>
+                        <option value="name_asc">Allievo A-Z</option>
+                        <option value="parent_asc">Genitore A-Z</option>
+                    </select>
                 </div>
             </div>
 
-            {loading ? <div className="flex justify-center py-12"><Spinner /></div> : 
-             error ? <p className="text-center text-red-500 py-8">{error}</p> : (
+            {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredEnrollments.map(enr => (
-                        <div key={enr.id} className="md-card p-0 flex flex-col border-t-4 border-transparent hover:border-indigo-500 transition-all">
-                            <div className="p-5 flex-1">
-                                <div className="flex justify-between items-start mb-2">
-                                    <h3 className="text-lg font-bold text-gray-800">{enr.childName}</h3>
-                                    {enr.status === EnrollmentStatus.Pending && <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 px-2 py-1 rounded">Da Pagare</span>}
-                                    {enr.status === EnrollmentStatus.Active && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-2 py-1 rounded">Attiva</span>}
-                                    {(enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired) && <span className="text-[10px] font-bold uppercase tracking-wide bg-gray-100 text-gray-600 px-2 py-1 rounded">Terminata</span>}
+                    {filteredEnrollments.map(enr => {
+                        // Logic for badges
+                        const usedSlots = enr.appointments ? enr.appointments.filter(a => a.status === 'Present').length : 0;
+                        const absentSlots = enr.appointments ? enr.appointments.filter(a => a.status === 'Absent').length : 0;
+                        // Se il numero di presenze ha raggiunto il totale, il pacchetto è concluso (indipendentemente dallo stato attivo del cliente)
+                        const isPackageFinished = usedSlots >= enr.lessonsTotal;
+                        
+                        // Recupero abilitato solo se attivo, non finito e ci sono assenze
+                        const canRecover = enr.status === EnrollmentStatus.Active && !isPackageFinished && absentSlots > 0;
+
+                        return (
+                            <div key={enr.id} className="md-card flex flex-col relative overflow-hidden hover:shadow-md transition-shadow" style={{ borderLeftWidth: '8px', borderLeftColor: enr.locationColor || '#ccc' }}>
+                                <div className="p-5 flex-1">
+                                    <div className="flex justify-between items-start mb-3">
+                                        <h3 className="text-lg font-bold text-gray-800">{enr.childName}</h3>
+                                        <div className="flex flex-col items-end gap-1">
+                                            {/* Badge Stato Cliente */}
+                                            {enr.status === EnrollmentStatus.Active && <span className="text-[10px] font-bold uppercase tracking-wide bg-green-100 text-green-700 px-2 py-0.5 rounded">Cliente: ATTIVO</span>}
+                                            {enr.status === EnrollmentStatus.Pending && <span className="text-[10px] font-bold uppercase tracking-wide bg-amber-100 text-amber-700 px-2 py-0.5 rounded">In Attesa</span>}
+                                            
+                                            {/* Badge Stato Abbonamento */}
+                                            {isPackageFinished && enr.status === EnrollmentStatus.Active && (
+                                                <span className="text-[10px] font-bold uppercase tracking-wide bg-gray-200 text-gray-700 px-2 py-0.5 rounded border border-gray-300">Abbonamento: CONCLUSO</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <p className="text-sm text-indigo-600 font-medium mb-1">{enr.subscriptionName}</p>
+                                    <p className="text-xs text-gray-500 mb-3 flex items-center gap-1">
+                                        <span className="w-2 h-2 rounded-full" style={{backgroundColor: enr.locationColor}}></span>
+                                        {enr.locationName}
+                                    </p>
+                                    
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-3 bg-gray-50 p-2 rounded border border-gray-100">
+                                        <div>Inizio: <strong>{new Date(enr.startDate).toLocaleDateString()}</strong></div>
+                                        <div>Fine: <strong>{new Date(enr.endDate).toLocaleDateString()}</strong></div>
+                                        <div>Totale: <strong>{enr.lessonsTotal}</strong></div>
+                                        <div className={`${isPackageFinished ? 'text-red-600 font-bold' : ''}`}>
+                                            Usati: <strong>{usedSlots}</strong> / {enr.lessonsTotal}
+                                        </div>
+                                        {absentSlots > 0 && <div className="col-span-2 text-orange-600 font-bold">Assenze: {absentSlots}</div>}
+                                    </div>
                                 </div>
-                                <p className="text-sm text-indigo-600 font-medium mb-1">{enr.subscriptionName}</p>
-                                <p className="text-xs text-gray-500 mb-4">{enr.locationName}</p>
-                                
-                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 mb-3 bg-gray-50 p-2 rounded">
-                                    <div>Start: <strong>{new Date(enr.startDate).toLocaleDateString()}</strong></div>
-                                    <div>End: <strong>{new Date(enr.endDate).toLocaleDateString()}</strong></div>
-                                    <div>Lezioni: <strong>{enr.lessonsTotal}</strong></div>
-                                    <div>Residuo: <strong>{enr.lessonsRemaining}</strong></div>
-                                </div>
-                                
-                                <div className="text-xs text-gray-400 truncate">
-                                    ID: {enr.id.substring(0,8)}...
+
+                                {/* Footer Actions */}
+                                <div className="bg-gray-50 p-3 border-t border-gray-100 flex justify-between items-center">
+                                    <div>
+                                        {canRecover && (
+                                            <button 
+                                                onClick={(e) => handleRecoveryRequest(e, enr, absentSlots)}
+                                                className="flex items-center px-2 py-1 text-xs font-bold text-white bg-orange-500 rounded hover:bg-orange-600 shadow-sm transition-colors"
+                                            >
+                                                <span className="mr-1"><RefreshIcon /></span> RECUPERA
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                        {enr.status === EnrollmentStatus.Pending && (
+                                            <button onClick={(e) => handlePaymentRequest(e, enr)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded hover:bg-green-600 shadow-sm">
+                                                Registra Pagamento
+                                            </button>
+                                        )}
+                                        
+                                        {enr.status === EnrollmentStatus.Active && (
+                                            <>
+                                                <button onClick={(e) => handleRevokeRequest(e, enr)} className="text-amber-600 hover:text-amber-800 text-xs font-medium underline px-1">Revoca</button>
+                                                <button onClick={(e) => handleAbandonRequest(e, enr)} className="text-gray-500 hover:text-gray-700 text-xs font-medium underline px-1">Abbandona</button>
+                                            </>
+                                        )}
+
+                                        <div className="h-4 w-px bg-gray-300 mx-1"></div>
+
+                                        <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="text-gray-400 hover:text-indigo-600 p-1">
+                                            <PencilIcon />
+                                        </button>
+                                        <button onClick={(e) => handleDeleteRequest(e, enr)} className="text-gray-400 hover:text-red-600 p-1">
+                                            <TrashIcon />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-
-                            {/* Action Footer */}
-                            <div className="bg-gray-50 p-3 border-t border-gray-100 flex justify-end items-center gap-2">
-                                {/* Buttons based on status */}
-                                {enr.status === EnrollmentStatus.Pending && (
-                                    <button onClick={(e) => handlePaymentRequest(e, enr)} className="px-3 py-1 text-xs font-bold text-white bg-green-500 rounded hover:bg-green-600 shadow-sm">
-                                        Registra Pagamento
-                                    </button>
-                                )}
-                                {enr.status === EnrollmentStatus.Active && (
-                                    <>
-                                        <button onClick={(e) => handleRevokeRequest(e, enr)} className="px-2 py-1 text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100">
-                                            Revoca
-                                        </button>
-                                        <button onClick={(e) => handleAbandonRequest(e, enr)} className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded hover:bg-gray-200">
-                                            Abbandona
-                                        </button>
-                                    </>
-                                )}
-                                
-                                <div className="h-4 w-px bg-gray-300 mx-1"></div>
-
-                                <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="text-gray-400 hover:text-indigo-600 p-1" title="Modifica">
-                                    <PencilIcon />
-                                </button>
-                                <button onClick={(e) => handleDeleteRequest(e, enr)} className="text-gray-400 hover:text-red-600 p-1" title="Elimina">
-                                    <TrashIcon />
-                                </button>
-                            </div>
-                        </div>
-                    ))}
-                    {filteredEnrollments.length === 0 && (
-                        <div className="col-span-full text-center py-12 text-gray-500 italic">
-                            Nessuna iscrizione trovata.
-                        </div>
-                    )}
+                        );
+                    })}
+                    {filteredEnrollments.length === 0 && <div className="col-span-full text-center py-12 text-gray-500 italic">Nessuna iscrizione trovata con i filtri correnti.</div>}
                 </div>
             )}
 
-            {/* Modale Iscrizione */}
+            {/* Modals */}
             {isModalOpen && (
                 <Modal onClose={() => setIsModalOpen(false)} size="lg">
                     <EnrollmentForm 
@@ -469,62 +622,38 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </Modal>
             )}
 
-            {/* Modale Conferma Pagamento (Nuova) */}
             {paymentModalState.isOpen && paymentModalState.enrollment && (
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
-                        <div className="bg-green-50 border border-green-200 rounded-md p-3 mb-4">
-                            <p className="text-sm text-green-800">
-                                Stai registrando il pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.
-                            </p>
-                            <p className="text-xs text-green-700 mt-1">
-                                Verrà generata una fattura "Da sigillare (SDI)".
-                            </p>
-                        </div>
-                        
                         <div className="md-input-group">
-                            <input
-                                type="date"
-                                value={paymentModalState.date}
-                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))}
-                                className="md-input font-bold"
-                            />
-                            <label className="md-input-label !top-0">Data Ricezione Pagamento</label>
+                            <input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" />
+                            <label className="md-input-label !top-0">Data Pagamento</label>
                         </div>
-
                         <div className="md-input-group mt-4">
-                            <select
-                                value={paymentModalState.method}
-                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))}
-                                className="md-input font-bold"
-                            >
-                                {Object.values(PaymentMethod).map(method => (
-                                    <option key={method} value={method}>{method}</option>
-                                ))}
+                            <select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input font-bold">
+                                {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
-                            <label className="md-input-label !top-0">Metodo di Pagamento</label>
+                            <label className="md-input-label !top-0">Metodo</label>
                         </div>
-
                         <div className="mt-6 flex justify-end gap-2">
-                            <button 
-                                onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} 
-                                className="md-btn md-btn-flat md-btn-sm"
-                            >
-                                Annulla
-                            </button>
-                            <button 
-                                onClick={handleConfirmPayment} 
-                                className="md-btn md-btn-raised md-btn-green md-btn-sm"
-                            >
-                                Conferma Pagamento
-                            </button>
+                            <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                            <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma</button>
                         </div>
                     </div>
                 </Modal>
             )}
 
-            {/* Modale Conferma Generica */}
+            {recoveryModalState.isOpen && recoveryModalState.enrollment && (
+                <RecoveryModal 
+                    enrollment={recoveryModalState.enrollment}
+                    maxRecoverable={recoveryModalState.maxRecoverable}
+                    suppliers={suppliers}
+                    onClose={() => setRecoveryModalState(prev => ({ ...prev, isOpen: false }))}
+                    onConfirm={handleConfirmRecovery}
+                />
+            )}
+
             <ConfirmModal 
                 isOpen={confirmState.isOpen}
                 onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))}
