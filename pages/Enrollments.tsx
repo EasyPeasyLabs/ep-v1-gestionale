@@ -49,10 +49,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         isOpen: boolean;
         enrollment: Enrollment | null;
         date: string;
+        method: PaymentMethod;
     }>({
         isOpen: false,
         enrollment: null,
-        date: new Date().toISOString().split('T')[0]
+        date: new Date().toISOString().split('T')[0],
+        method: PaymentMethod.BankTransfer
     });
 
     // Confirmation Modal State
@@ -136,8 +138,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     // --- Payment Logic ---
 
-    const executePayment = async (enr: Enrollment, paymentDateStr: string) => {
-        console.log(`[DEBUG] Executing Payment for ${enr.id} on date ${paymentDateStr}`);
+    const executePayment = async (enr: Enrollment, paymentDateStr: string, method: PaymentMethod) => {
+        console.log(`[DEBUG] Executing Payment for ${enr.id} on date ${paymentDateStr} via ${method}`);
         setLoading(true);
         try {
             const amount = enr.price !== undefined ? enr.price : 0;
@@ -153,7 +155,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 issueDate: paymentIsoDate, // Usa la data selezionata
                 dueDate: paymentIsoDate, // Già pagata in data X
                 status: DocumentStatus.PendingSDI, 
-                paymentMethod: PaymentMethod.BankTransfer,
+                paymentMethod: method,
                 items: [{
                     description: `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`,
                     quantity: 1,
@@ -176,11 +178,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             if (amount > 0) {
                 await addTransaction({
                     date: paymentIsoDate, // Usa la data selezionata
-                    description: `Incasso Fattura ${invoiceNumber} (Bonifico) - Iscrizione ${enr.childName}`,
+                    description: `Incasso Fattura ${invoiceNumber} (${method}) - Iscrizione ${enr.childName}`,
                     amount: amount, 
                     type: TransactionType.Income,
                     category: TransactionCategory.Sales,
-                    paymentMethod: PaymentMethod.BankTransfer,
+                    paymentMethod: method,
                     status: TransactionStatus.Completed,
                     relatedDocumentId: invoiceId, 
                 });
@@ -190,7 +192,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert(`Pagamento registrato!\nÈ stata generata la Fattura n. ${invoiceNumber} in stato 'Da sigillare (SDI)' con data ${new Date(paymentDateStr).toLocaleDateString()}.`);
+            alert(`Pagamento registrato!\nÈ stata generata la Fattura n. ${invoiceNumber} in stato 'Da sigillare (SDI)' con data ${new Date(paymentDateStr).toLocaleDateString()} e metodo ${method}.`);
         } catch(err) {
             console.error("[DEBUG] Errore Pagamento:", err);
             setError("Errore nel processare il pagamento. Controlla la console.");
@@ -204,14 +206,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setPaymentModalState({
             isOpen: true,
             enrollment: enr,
-            date: new Date().toISOString().split('T')[0] // Default to today
+            date: new Date().toISOString().split('T')[0], // Default to today
+            method: PaymentMethod.BankTransfer // Default method
         });
     };
 
     const handleConfirmPayment = async () => {
         if (paymentModalState.enrollment && paymentModalState.date) {
             setPaymentModalState(prev => ({ ...prev, isOpen: false }));
-            await executePayment(paymentModalState.enrollment, paymentModalState.date);
+            await executePayment(paymentModalState.enrollment, paymentModalState.date, paymentModalState.method);
         }
     };
 
@@ -476,7 +479,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 Stai registrando il pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.
                             </p>
                             <p className="text-xs text-green-700 mt-1">
-                                Verrà generata una fattura "Da sigillare (SDI)" con la data indicata qui sotto.
+                                Verrà generata una fattura "Da sigillare (SDI)".
                             </p>
                         </div>
                         
@@ -488,6 +491,19 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 className="md-input font-bold"
                             />
                             <label className="md-input-label !top-0">Data Ricezione Pagamento</label>
+                        </div>
+
+                        <div className="md-input-group mt-4">
+                            <select
+                                value={paymentModalState.method}
+                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))}
+                                className="md-input font-bold"
+                            >
+                                {Object.values(PaymentMethod).map(method => (
+                                    <option key={method} value={method}>{method}</option>
+                                ))}
+                            </select>
+                            <label className="md-input-label !top-0">Metodo di Pagamento</label>
                         </div>
 
                         <div className="mt-6 flex justify-end gap-2">
