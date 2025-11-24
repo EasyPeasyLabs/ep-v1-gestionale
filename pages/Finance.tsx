@@ -826,6 +826,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [invoiceFilter, setInvoiceFilter] = useState<'all' | DocumentStatus>('all');
     const [showTrash, setShowTrash] = useState(false);
     
+    // New Filters for Transactions
+    const [categoryFilter, setCategoryFilter] = useState<string>('');
+    const [allocationFilter, setAllocationFilter] = useState<string>('');
+
     const [searchTerm, setSearchTerm] = useState('');
     const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'alpha_asc' | 'alpha_desc'>('date_desc');
 
@@ -845,6 +849,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     useEffect(() => {
         setSearchTerm('');
         setSortOrder('date_desc');
+        setCategoryFilter('');
+        setAllocationFilter('');
     }, [activeTab]);
 
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -1112,7 +1118,43 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     // --- FILTERING & SORTING LOGIC (Unchanged) ---
     const filterItems = <T extends any>(items: T[], textFields: (keyof T | string)[]) => { return items.filter(item => { const term = searchTerm.toLowerCase(); const match = textFields.some(field => { const val = (item as any)[field]; return val && String(val).toLowerCase().includes(term); }); if (!match) return false; return true; }); };
     const sortItems = <T extends any>(items: T[], dateField: keyof T, alphaField: keyof T) => { return items.sort((a, b) => { switch (sortOrder) { case 'date_desc': return new Date((b as any)[dateField]).getTime() - new Date((a as any)[dateField]).getTime(); case 'date_asc': return new Date((a as any)[dateField]).getTime() - new Date((b as any)[dateField]).getTime(); case 'alpha_asc': return String((a as any)[alphaField]).localeCompare(String((b as any)[alphaField])); case 'alpha_desc': return String((b as any)[alphaField]).localeCompare(String((a as any)[alphaField])); default: return 0; } }); };
-    const displayedTransactions = useMemo(() => { let filtered = transactions.filter(t => { if (showTrash) return t.isDeleted; if (t.isDeleted) return false; if (transactionFilter === 'all') return true; return t.type === transactionFilter; }); if (searchTerm) { filtered = filtered.filter(t => t.description.toLowerCase().includes(searchTerm.toLowerCase()) || t.amount.toString().includes(searchTerm) || t.status.toLowerCase().includes(searchTerm.toLowerCase()) || t.date.includes(searchTerm)); } return sortItems(filtered, 'date', 'description'); }, [transactions, showTrash, transactionFilter, searchTerm, sortOrder]);
+    const displayedTransactions = useMemo(() => { 
+        let filtered = transactions.filter(t => { 
+            if (showTrash) return t.isDeleted; 
+            if (t.isDeleted) return false; 
+            
+            // Type Filter
+            if (transactionFilter !== 'all' && t.type !== transactionFilter) return false;
+            
+            // Category Filter
+            if (categoryFilter && t.category !== categoryFilter) return false;
+
+            // Allocation Filter
+            if (allocationFilter) {
+                if (allocationFilter === 'general') {
+                    // Show items specifically marked as general OR items with no allocation
+                    if (t.allocationType && t.allocationType !== 'general') return false;
+                } else {
+                    if (t.allocationType !== allocationFilter) return false;
+                }
+            }
+
+            return true; 
+        }); 
+        
+        if (searchTerm) { 
+            const term = searchTerm.toLowerCase();
+            filtered = filtered.filter(t => 
+                t.description.toLowerCase().includes(term) || 
+                t.amount.toString().includes(term) || 
+                t.status.toLowerCase().includes(term) || 
+                t.date.includes(term) ||
+                (t.allocationName && t.allocationName.toLowerCase().includes(term)) // Added allocation name search
+            ); 
+        } 
+        return sortItems(filtered, 'date', 'description'); 
+    }, [transactions, showTrash, transactionFilter, categoryFilter, allocationFilter, searchTerm, sortOrder]);
+    
     const displayedInvoices = useMemo(() => { let filtered = invoices.filter(inv => { if (showTrash) return inv.isDeleted; if (inv.isDeleted) return false; if (invoiceFilter === 'all') return true; return inv.status === invoiceFilter; }); if (searchTerm) { filtered = filtered.filter(inv => inv.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) || inv.totalAmount.toString().includes(searchTerm) || inv.status.toLowerCase().includes(searchTerm.toLowerCase()) || inv.issueDate.includes(searchTerm)); } return sortItems(filtered, 'issueDate', 'clientName'); }, [invoices, showTrash, invoiceFilter, searchTerm, sortOrder]);
     const archiveInvoices = useMemo(() => { let filtered = invoices.filter(inv => !inv.isDeleted && inv.status !== DocumentStatus.Draft && inv.status !== DocumentStatus.Cancelled); if (searchTerm) { filtered = filtered.filter(inv => inv.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || inv.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()) || inv.totalAmount.toString().includes(searchTerm) || inv.issueDate.includes(searchTerm)); } return sortItems(filtered, 'issueDate', 'clientName'); }, [invoices, searchTerm, sortOrder]);
     const displayedQuotes = useMemo(() => { let filtered = quotes.filter(q => { if (showTrash) return q.isDeleted; if (q.isDeleted) return false; return true; }); if (searchTerm) { filtered = filtered.filter(q => q.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || q.quoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) || q.totalAmount.toString().includes(searchTerm) || q.status.toLowerCase().includes(searchTerm.toLowerCase())); } return sortItems(filtered, 'issueDate', 'clientName'); }, [quotes, showTrash, searchTerm, sortOrder]);
@@ -1183,20 +1225,46 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             );
             case 'transactions': return (
                 <div className="md-card p-0 md:p-6 animate-fade-in">
-                    <div className="p-4 md:p-0 md:mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                        <div className="flex space-x-2">
-                            <button onClick={() => setTransactionFilter('all')} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutti</button>
-                            <button onClick={() => setTransactionFilter(TransactionType.Income)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Entrate</button>
-                            <button onClick={() => setTransactionFilter(TransactionType.Expense)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Uscite</button>
+                    <div className="p-4 md:p-0 md:mb-4 flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div className="flex space-x-2">
+                                <button onClick={() => setTransactionFilter('all')} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === 'all' ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Tutti</button>
+                                <button onClick={() => setTransactionFilter(TransactionType.Income)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Income ? 'bg-green-100 text-green-800 border-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Entrate</button>
+                                <button onClick={() => setTransactionFilter(TransactionType.Expense)} className={`px-3 py-1 text-sm rounded-full border ${transactionFilter === TransactionType.Expense ? 'bg-red-100 text-red-800 border-red-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>Uscite</button>
+                            </div>
+                            
+                            <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto items-center">
+                                <FilterBar />
+                                {!showTrash && (
+                                    <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm whitespace-nowrap w-full md:w-auto justify-center">
+                                        <CalculatorIcon /> <span className="ml-2">Calcola Nolo</span>
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                        
-                        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto items-center">
-                            <FilterBar />
-                            {!showTrash && (
-                                <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm whitespace-nowrap w-full md:w-auto justify-center">
-                                    <CalculatorIcon /> <span className="ml-2">Calcola Nolo</span>
-                                </button>
-                            )}
+
+                        {/* Second Row: Advanced Filters */}
+                        <div className="flex flex-wrap gap-3 bg-gray-50 p-2 rounded border border-gray-200 items-center">
+                            <span className="text-xs font-bold text-gray-500 uppercase">Filtri:</span>
+                            <select 
+                                value={categoryFilter} 
+                                onChange={(e) => setCategoryFilter(e.target.value)}
+                                className="text-xs border-gray-300 rounded py-1 px-2 bg-white focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option value="">Tutte le Categorie</option>
+                                {Object.values(TransactionCategory).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                            </select>
+
+                            <select 
+                                value={allocationFilter} 
+                                onChange={(e) => setAllocationFilter(e.target.value)}
+                                className="text-xs border-gray-300 rounded py-1 px-2 bg-white focus:ring-1 focus:ring-indigo-500"
+                            >
+                                <option value="">Tutte le Imputazioni</option>
+                                <option value="general">Generale (Spese Fisse)</option>
+                                <option value="location">Sede Specifica</option>
+                                <option value="enrollment">Iscrizione Specifica</option>
+                            </select>
                         </div>
                     </div>
 
