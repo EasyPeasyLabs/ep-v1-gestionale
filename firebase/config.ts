@@ -1,5 +1,4 @@
 
-// FIX: Corrected Firebase import paths.
 import { initializeApp } from "@firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "@firebase/firestore";
 import { getAuth } from "@firebase/auth";
@@ -22,8 +21,10 @@ const app = initializeApp(firebaseConfig);
 // Per migliorare la robustezza, abilitiamo la persistenza offline con la nuova API.
 // Questo permette all'app di funzionare anche senza connessione (usando dati in cache)
 // e gestisce la sincronizzazione tra più schede del browser.
+// experimentalForceLongPolling risolve problemi di connessione in ambienti che bloccano i WebSocket.
 export const db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    experimentalForceLongPolling: true
 });
 export const auth = getAuth(app);
 export const storage = getStorage(app);

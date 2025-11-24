@@ -107,7 +107,6 @@ const TransactionForm: React.FC<{
     onSave: (transaction: TransactionInput | Transaction) => void;
     onCancel: () => void;
 }> = ({ initialData, suppliers, enrollments, onSave, onCancel }) => {
-    // ... (Resto del componente TransactionForm invariato)
     const [description, setDescription] = useState(initialData?.description || '');
     const [amount, setAmount] = useState(initialData?.amount || 0);
     const [date, setDate] = useState(initialData?.date.split('T')[0] || new Date().toISOString().split('T')[0]);
@@ -136,28 +135,42 @@ const TransactionForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        let allocationName = undefined;
+        
+        console.log("--- Debug Transaction Submit ---");
+        console.log("Raw Inputs:", { allocationType, allocationId });
+
+        let allocationName = null;
+        let finalAllocationId = null;
         
         if (allocationType === 'location') {
             const loc = allLocations.find(l => l.id === allocationId);
-            if (loc) allocationName = loc.name;
+            if (loc) {
+                allocationName = `${loc.name} (${loc.supplierName})`;
+                finalAllocationId = allocationId;
+            }
         } else if (allocationType === 'enrollment') {
             const enr = activeEnrollments.find(e => e.id === allocationId);
-            if (enr) allocationName = enr.childName;
+            if (enr) {
+                allocationName = enr.childName;
+                finalAllocationId = allocationId;
+            }
         }
+        // If 'general', both stay null (Firestore doesn't accept undefined)
 
         const data: any = { 
             description, 
-            amount: Number(amount), 
+            amount: Math.abs(Number(amount)), 
             date: new Date(date).toISOString(), 
             type, 
             category, 
             paymentMethod, 
             status,
             allocationType,
-            allocationId: allocationType === 'general' ? undefined : allocationId,
-            allocationName: allocationType === 'general' ? undefined : allocationName
+            allocationId: finalAllocationId,
+            allocationName: allocationName
         };
+        
+        console.log("Payload to save:", data);
         
         if (initialData) {
             onSave({ ...data, id: initialData.id } as Transaction);
@@ -274,7 +287,6 @@ const DocumentForm: React.FC<{
     onSave: (data: InvoiceInput | QuoteInput) => void;
     onCancel: () => void;
 }> = ({ type, initialData, onSave, onCancel }) => {
-    // ... (Resto del componente DocumentForm invariato)
     const [clients, setClients] = useState<Client[]>([]);
     const [clientId, setClientId] = useState(initialData?.clientId || '');
     const [issueDate, setIssueDate] = useState(initialData?.issueDate.split('T')[0] || new Date().toISOString().split('T')[0]);
@@ -291,8 +303,6 @@ const DocumentForm: React.FC<{
     
     const [isSealed, setIsSealed] = useState(initialData?.status === DocumentStatus.SealedSDI);
 
-    // FIX: Il contenuto è bloccato SOLO se la fattura è ufficialmente sigillata su SDI.
-    // Le fatture "PendingSDI" (in attesa) rimangono modificabili.
     const isContentLocked = type === 'invoice' && initialData?.status === DocumentStatus.SealedSDI;
 
     useEffect(() => {
