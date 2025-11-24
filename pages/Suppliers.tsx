@@ -27,6 +27,36 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
     </svg>
 );
 
+// Fuel Pump Icon
+const FuelIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 12v.01M12 16v.01M12 20v.01" stroke="none"/> 
+        {/* Simple fuel pump representation */}
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+    </svg>
+);
+
+// Helper function for automatic fuel rating
+const calculateFuelRating = (distance: number) => {
+    if (distance <= 5) return 5;
+    if (distance <= 15) return 4;
+    if (distance <= 30) return 3;
+    if (distance <= 60) return 2;
+    return 1;
+};
+
+const getFuelRatingLabel = (rating: number) => {
+    switch(rating) {
+        case 5: return "Impatto Minimo";
+        case 4: return "Impatto Basso";
+        case 3: return "Impatto Medio";
+        case 2: return "Impatto Elevato";
+        case 1: return "Impatto Critico";
+        default: return "";
+    }
+};
+
 // Generic Legend Component
 const RatingLegend: React.FC = () => (
     <div className="mt-3 flex items-center justify-end gap-3 text-[10px] text-gray-400 border-t border-dashed border-gray-200 pt-2">
@@ -96,6 +126,10 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
 
     const daysOfWeek = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
+    // Automatic Fuel Rating calculation
+    const fuelRating = calculateFuelRating(Number(distance));
+    const fuelRatingLabel = getFuelRatingLabel(fuelRating);
+
     const handleAddSlot = () => {
         setAvailability([...availability, { dayOfWeek: 1, startTime: '15:00', endTime: '16:00' }]);
     };
@@ -159,10 +193,25 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
                             <div className="col-span-2 md-input-group"><input id="locCity" type="text" value={city} onChange={e => setCity(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locCity" className="md-input-label">Città</label></div>
                         </div>
                         <div className="md-input-group"><input id="locProv" type="text" value={province} onChange={e => setProvince(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="locProv" className="md-input-label">Provincia</label></div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                             <div className="md-input-group"><input id="locCap" type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCap" className="md-input-label">Capienza</label></div>
                             <div className="md-input-group"><input id="locCost" type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locCost" className="md-input-label">Nolo (€)</label></div>
-                            <div className="md-input-group"><input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label></div>
+                            <div>
+                                <div className="md-input-group">
+                                    <input id="locDist" type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} required className="md-input" placeholder=" " /><label htmlFor="locDist" className="md-input-label">Distanza (km)</label>
+                                </div>
+                                {/* Visual Rating Indicator */}
+                                <div className={`mt-1 flex items-center justify-between text-[10px] px-2 py-1 rounded border ${
+                                    fuelRating >= 4 ? 'bg-green-50 text-green-700 border-green-100' : 
+                                    fuelRating >= 3 ? 'bg-yellow-50 text-yellow-700 border-yellow-100' : 
+                                    'bg-red-50 text-red-700 border-red-100'
+                                }`}>
+                                    <span>Incidenza Carburante:</span>
+                                    <div className="flex items-center font-bold">
+                                        {fuelRating} <StarIcon filled={true} className="w-3 h-3 ml-0.5"/>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -386,6 +435,7 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                             <div className="mt-2 space-y-2">
                             {locations.length > 0 ? locations.map((loc) => {
                                 const avg = getLocAvg(loc.rating);
+                                const fuelR = calculateFuelRating(loc.distance || 0);
                                 return (
                                 <div key={loc.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md border border-gray-100 hover:shadow-sm transition-shadow">
                                     <div className="flex items-center">
@@ -397,7 +447,10 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center bg-gray-200 px-2 py-0.5 rounded text-[10px] font-bold text-gray-700" title="Rating Carburante">
+                                            <FuelIcon className="w-3 h-3 mr-1" /> {fuelR}/5
+                                        </div>
                                         {Number(avg) > 0 && (
                                             <div className="flex items-center text-xs font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded border border-yellow-100">
                                                 {avg} <StarIcon filled={true} className="w-3 h-3 ml-1" />
@@ -740,12 +793,20 @@ const Suppliers: React.FC = () => {
                                 <div className="mt-4 pt-4 border-t" style={{borderColor: 'var(--md-divider)'}}>
                                     <h4 className="font-semibold text-sm">Sedi Operative ({supplier.locations.length})</h4>
                                     <ul className="text-xs mt-2 space-y-1" style={{color: 'var(--md-text-secondary)'}}>
-                                    {supplier.locations.slice(0, 3).map(loc => (
-                                        <li key={loc.id} className="flex items-center">
-                                            <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: loc.color }}></span>
-                                            {loc.name} - {loc.address}, {loc.city}
+                                    {supplier.locations.slice(0, 3).map(loc => {
+                                        const fuelR = calculateFuelRating(loc.distance || 0);
+                                        return (
+                                        <li key={loc.id} className="flex items-center justify-between">
+                                            <div className="flex items-center overflow-hidden">
+                                                <span className="w-2 h-2 rounded-full mr-2 flex-shrink-0" style={{ backgroundColor: loc.color }}></span>
+                                                <span className="truncate">{loc.name}</span>
+                                            </div>
+                                            <div className="flex items-center bg-gray-100 px-1.5 py-0.5 rounded ml-2" title="Rating Carburante">
+                                                <FuelIcon className="w-3 h-3 text-gray-600 mr-1"/>
+                                                <span className="font-bold text-gray-700">{fuelR}</span>
+                                            </div>
                                         </li>
-                                    ))}
+                                    )})}
                                     {supplier.locations.length > 3 && <li className="text-xs text-gray-400">...e altre {supplier.locations.length - 3}.</li>}
                                     </ul>
                                 </div>

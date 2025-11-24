@@ -144,7 +144,7 @@ const Settings: React.FC = () => {
                 setIsSaving(true);
                 await updateCompanyInfo(info); 
                 window.dispatchEvent(new Event('EP_DataUpdated'));
-                alert("Dati aziendali e Logo salvati con successo!");
+                alert("Dati salvati con successo!");
             } catch (err) {
                 console.error(err);
                 alert("Errore durante il salvataggio.");
@@ -154,7 +154,7 @@ const Settings: React.FC = () => {
         }
     };
 
-    const handleInfoChange = (field: keyof CompanyInfo, value: string) => {
+    const handleInfoChange = (field: keyof CompanyInfo, value: string | number) => {
         setInfo(prev => prev ? { ...prev, [field]: value } : null);
     };
 
@@ -254,6 +254,25 @@ const Settings: React.FC = () => {
                                 <div className="md-input-group"><input id="infoEmail" type="email" value={info.email || ''} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
                                 <div className="md-input-group"><input id="infoPhone" type="tel" value={info.phone || ''} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
                             </div>
+                            
+                            {/* Parametri Veicolo */}
+                            <div className="pt-4 border-t mt-4">
+                                <h3 className="text-sm font-bold text-gray-700 mb-3">Parametri Veicolo Aziendale</h3>
+                                <div className="md-input-group">
+                                    <input 
+                                        id="fuelCons" 
+                                        type="number" 
+                                        step="0.1" 
+                                        value={info.carFuelConsumption || 16.5} 
+                                        onChange={(e) => handleInfoChange('carFuelConsumption', parseFloat(e.target.value))} 
+                                        className="md-input" 
+                                        placeholder=" "
+                                    />
+                                    <label htmlFor="fuelCons" className="md-input-label">Consumo Medio (km/l)</label>
+                                    <p className="text-[10px] text-gray-400 mt-1">Usato per il calcolo automatico dei costi trasferta nel Controllo di Gestione.</p>
+                                </div>
+                            </div>
+
                             <div className="flex justify-end pt-4">
                                 <button onClick={handleSaveInfo} disabled={isSaving} className="md-btn md-btn-raised md-btn-primary">
                                     {isSaving ? 'Salvataggio...' : 'Salva Modifiche'}

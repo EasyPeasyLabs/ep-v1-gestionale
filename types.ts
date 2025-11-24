@@ -198,6 +198,7 @@ export interface CompanyInfo {
     email: string;
     phone: string;
     logoBase64?: string; // Logo in formato Base64
+    carFuelConsumption?: number; // Consumo medio km/l (es. 16.5)
 }
 
 export interface SubscriptionType {

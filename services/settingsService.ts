@@ -17,7 +17,8 @@ const defaultCompanyInfo: Omit<CompanyInfo, 'id'> = {
     address: 'VIA CHIANCARO 2 N, 70010 ADELFIA (BARI)',
     email: 'labeasypeasy@gmail.com',
     phone: '(+39) 340 523 4353',
-    logoBase64: DEFAULT_LOGO_BASE64
+    logoBase64: DEFAULT_LOGO_BASE64,
+    carFuelConsumption: 16.5 // km/l default
 };
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
@@ -28,7 +29,8 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
             return { 
                 id: docSnap.id, 
                 ...data, 
-                logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64 
+                logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64,
+                carFuelConsumption: data.carFuelConsumption || 16.5
             };
         } else {
             // Se siamo online e non esiste, lo creiamo. Se siamo offline, getDoc fallisce prima.

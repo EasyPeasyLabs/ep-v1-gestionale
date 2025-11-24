@@ -15,6 +15,15 @@ import { Page } from '../App';
 import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
 
+// Helper per calcolo rating carburante (Duplicato per coerenza con Suppliers.tsx)
+const calculateFuelRating = (distance: number) => {
+    if (distance <= 5) return 5;
+    if (distance <= 15) return 4;
+    if (distance <= 30) return 3;
+    if (distance <= 60) return 2;
+    return 1;
+};
+
 // Premium Stat Card 2.0
 const StatCard: React.FC<{ 
     title: string; 
@@ -492,11 +501,27 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           .sort((a, b) => b.score - a.score)
           .slice(0, 5);
 
-      // Suppliers
+      // Suppliers - UPDATED: Include Automatic Fuel Rating from Locations
       const suppliers = suppliersData
           .map(s => {
               const r = s.rating || { responsiveness: 0, partnership: 0, negotiation: 0 };
-              const avg = (r.responsiveness + r.partnership + r.negotiation) / 3;
+              
+              // Calcolo Rating Automatico Carburante
+              let fuelRatingSum = 0;
+              let locCount = 0;
+              if (s.locations && s.locations.length > 0) {
+                  s.locations.forEach((l: any) => {
+                      fuelRatingSum += calculateFuelRating(l.distance || 0);
+                      locCount++;
+                  });
+              }
+              const avgFuelRating = locCount > 0 ? fuelRatingSum / locCount : 0;
+
+              // Calcolo Media Ponderata (Se non ci sono sedi, usiamo solo i 3 manuali)
+              const divisor = locCount > 0 ? 4 : 3;
+              const sum = r.responsiveness + r.partnership + r.negotiation + avgFuelRating;
+              const avg = sum / divisor;
+
               return { id: s.id, name: s.companyName, score: avg };
           })
           .sort((a, b) => b.score - a.score)
@@ -601,8 +626,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     />
                 </div>
 
-                {/* ROW 2: 4 Columns - Calendar | Saturation | Top 5 | Alerts */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {/* ROW 2: 3 Columns - Calendar | Saturation | Alerts */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     
                     {/* COL 1: Calendario Settimanale */}
                     <div className="md-card p-6 border-t-4 border-indigo-500">
@@ -667,56 +692,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         </div>
                     </div>
 
-                    {/* COL 3: Top 5 Ranking */}
-                    <div className="md-card p-6 flex flex-col border-t-4 border-yellow-400">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                                🏆 Top 5
-                            </h2>
-                            <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                                <button 
-                                    onClick={() => setTop5Tab('clients')} 
-                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${top5Tab === 'clients' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-400'}`}
-                                >
-                                    CLIENTI
-                                </button>
-                                <button 
-                                    onClick={() => setTop5Tab('suppliers')} 
-                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${top5Tab === 'suppliers' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-400'}`}
-                                >
-                                    FORNITORI
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div className="flex-1 overflow-y-auto max-h-80 pr-1 custom-scrollbar">
-                            <ul className="space-y-2">
-                                {(top5Tab === 'clients' ? topFiveData.parents : topFiveData.suppliers).map((item, idx) => (
-                                    <li key={item.id} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <span className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700 ring-2 ring-yellow-200' : idx === 1 ? 'bg-gray-100 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-transparent text-gray-400'}`}>
-                                                {idx + 1}
-                                            </span>
-                                            <span className="text-sm text-gray-700 font-medium truncate block" title={item.name}>
-                                                {item.name}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 rounded-md border border-yellow-100 shrink-0">
-                                            <span className="text-xs font-bold text-yellow-700">{item.score.toFixed(1)}</span>
-                                            <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
-                                        </div>
-                                    </li>
-                                ))}
-                                {(top5Tab === 'clients' ? topFiveData.parents : topFiveData.suppliers).length === 0 && (
-                                    <li className="text-center text-gray-400 text-xs py-4 italic">
-                                        Nessun dato di rating disponibile.
-                                    </li>
-                                )}
-                            </ul>
-                        </div>
-                    </div>
-
-                    {/* COL 4: Avvisi */}
+                    {/* COL 3: Avvisi */}
                     <div className="md-card p-6 flex flex-col border-t-4 border-amber-500">
                         <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
                             Avvisi & Scadenze
@@ -755,8 +731,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           )}
 
           {activeTab === 'ratings' && (
-              <div className="animate-fade-in">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+              <div className="animate-fade-in space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <RatingCard 
                         title="Genitori"
                         average={ratings.parents.avg}
@@ -794,8 +770,63 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         summary={ratings.locations.summary}
                     />
                 </div>
-                <div className="text-center text-xs text-gray-400 flex justify-center items-center gap-2">
-                    <span className="font-bold">Legenda:</span> 1 Stella = Pessimo / 5 Stelle = Ottimo
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                    {/* Top 5 Ranking Card (Moved from Overview) */}
+                    <div className="md-card p-6 flex flex-col border-t-4 border-yellow-400 h-80">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                🏆 Top 5
+                            </h2>
+                            <div className="flex bg-gray-100 p-0.5 rounded-lg">
+                                <button 
+                                    onClick={() => setTop5Tab('clients')} 
+                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${top5Tab === 'clients' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-400'}`}
+                                >
+                                    CLIENTI
+                                </button>
+                                <button 
+                                    onClick={() => setTop5Tab('suppliers')} 
+                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${top5Tab === 'suppliers' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-400'}`}
+                                >
+                                    FORNITORI
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
+                            <ul className="space-y-2">
+                                {(top5Tab === 'clients' ? topFiveData.parents : topFiveData.suppliers).map((item, idx) => (
+                                    <li key={item.id} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors">
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700 ring-2 ring-yellow-200' : idx === 1 ? 'bg-gray-100 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-transparent text-gray-400'}`}>
+                                                {idx + 1}
+                                            </span>
+                                            <span className="text-sm text-gray-700 font-medium truncate block" title={item.name}>
+                                                {item.name}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 rounded-md border border-yellow-100 shrink-0">
+                                            <span className="text-xs font-bold text-yellow-700">{item.score.toFixed(1)}</span>
+                                            <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                                        </div>
+                                    </li>
+                                ))}
+                                {(top5Tab === 'clients' ? topFiveData.parents : topFiveData.suppliers).length === 0 && (
+                                    <li className="text-center text-gray-400 text-xs py-4 italic">
+                                        Nessun dato di rating disponibile.
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex items-end pb-2 md:col-span-2 h-full">
+                        <div className="text-xs text-gray-400 flex items-center gap-2">
+                            <span className="font-bold">Legenda:</span> 1 Stella = Pessimo / 5 Stelle = Ottimo
+                        </div>
+                    </div>
                 </div>
               </div>
           )}
