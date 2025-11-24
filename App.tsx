@@ -170,7 +170,8 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 text-gray-900 font-sans">
+    // FIX MOBILE: Use h-[100dvh] for dynamic viewport height (avoids address bar cutoff)
+    <div className="flex h-screen h-[100dvh] w-full bg-slate-50 text-gray-900 font-sans overflow-hidden">
       {/* Scheduler locale come fallback per quando il browser è aperto */}
       <NotificationScheduler />
       
@@ -181,14 +182,18 @@ const App: React.FC = () => {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
-      <div className="flex-1 flex flex-col overflow-hidden relative">
+      <div className="flex-1 flex flex-col overflow-hidden relative w-full">
         <Header 
             user={user} 
             setCurrentPage={(page) => handleNavigation(page)} 
             onNavigate={handleNavigation}
             onMenuClick={() => setIsSidebarOpen(true)} 
         />
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 scroll-smooth">
+        {/* FIX MOBILE: Added padding-bottom (pb-24) for mobile to prevent content being hidden behind bottom bars. Added touch-scrolling support. */}
+        <main 
+            className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 scroll-smooth pb-24 md:pb-8 touch-pan-y" 
+            style={{ WebkitOverflowScrolling: 'touch' }}
+        >
           {renderContent()}
         </main>
       </div>

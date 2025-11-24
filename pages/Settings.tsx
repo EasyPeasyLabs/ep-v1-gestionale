@@ -30,7 +30,7 @@ const SubscriptionForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2>
             </div>
@@ -69,7 +69,7 @@ const TemplateForm: React.FC<{
         : ['{{cliente}}', '{{bambino}}', '{{data}}'];
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">Modifica Template: {template.label}</h2>
             </div>

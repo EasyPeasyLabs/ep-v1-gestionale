@@ -159,11 +159,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enrollment: Enrollment | null;
         date: string;
         method: PaymentMethod;
+        generateInvoice: boolean;
     }>({
         isOpen: false,
         enrollment: null,
         date: new Date().toISOString().split('T')[0],
-        method: PaymentMethod.BankTransfer
+        method: PaymentMethod.BankTransfer,
+        generateInvoice: true
     });
 
     // Recovery Modal State
@@ -256,51 +258,75 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     };
 
     // --- Payment ---
-    const executePayment = async (enr: Enrollment, paymentDateStr: string, method: PaymentMethod) => {
+    const executePayment = async (enr: Enrollment, paymentDateStr: string, method: PaymentMethod, generateInvoice: boolean) => {
         setLoading(true);
         try {
             const amount = enr.price !== undefined ? enr.price : 0;
-            const client = clients.find(c => c.id === enr.clientId);
-            const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
             const paymentIsoDate = new Date(paymentDateStr).toISOString();
 
-            const invoiceInput: InvoiceInput = {
-                clientId: enr.clientId,
-                clientName: clientName,
-                issueDate: paymentIsoDate,
-                dueDate: paymentIsoDate,
-                status: DocumentStatus.PendingSDI, 
-                paymentMethod: method,
-                items: [{
-                    description: `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`,
-                    quantity: 1,
-                    price: amount,
-                    notes: 'Generata automaticamente da iscrizione'
-                }],
-                totalAmount: amount,
-                hasStampDuty: amount > 77, 
-                notes: `Rif. Iscrizione ${enr.childName}`,
-                invoiceNumber: '' 
-            };
+            if (generateInvoice) {
+                // --- OPZIONE 1: GENERA FATTURA + TRANSAZIONE COLLEGATA ---
+                const client = clients.find(c => c.id === enr.clientId);
+                const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
 
-            const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
-            await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
-            
-            if (amount > 0) {
-                await addTransaction({
-                    date: paymentIsoDate,
-                    description: `Incasso Fattura ${invoiceNumber} (${method}) - Iscrizione ${enr.childName}`,
-                    amount: amount, 
-                    type: TransactionType.Income,
-                    category: TransactionCategory.Sales,
+                const invoiceInput: InvoiceInput = {
+                    clientId: enr.clientId,
+                    clientName: clientName,
+                    issueDate: paymentIsoDate,
+                    dueDate: paymentIsoDate,
+                    status: DocumentStatus.PendingSDI, 
                     paymentMethod: method,
-                    status: TransactionStatus.Completed,
-                    relatedDocumentId: invoiceId, 
-                });
+                    items: [{
+                        description: `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`,
+                        quantity: 1,
+                        price: amount,
+                        notes: 'Generata automaticamente da iscrizione'
+                    }],
+                    totalAmount: amount,
+                    hasStampDuty: amount > 77, 
+                    notes: `Rif. Iscrizione ${enr.childName}`,
+                    invoiceNumber: '' 
+                };
+
+                const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
+                
+                if (amount > 0) {
+                    await addTransaction({
+                        date: paymentIsoDate,
+                        description: `Incasso Fattura ${invoiceNumber} (${method}) - Iscrizione ${enr.childName}`,
+                        amount: amount, 
+                        type: TransactionType.Income,
+                        category: TransactionCategory.Sales,
+                        paymentMethod: method,
+                        status: TransactionStatus.Completed,
+                        relatedDocumentId: invoiceId, 
+                    });
+                }
+                alert(`Pagamento registrato!\nGenerata Fattura n. ${invoiceNumber} (Da sigillare).`);
+
+            } else {
+                // --- OPZIONE 2: SOLO TRANSAZIONE (Es. Contanti senza fattura) ---
+                if (amount > 0) {
+                    await addTransaction({
+                        date: paymentIsoDate,
+                        description: `Incasso Iscrizione: ${enr.childName} - ${enr.subscriptionName}`,
+                        amount: amount,
+                        type: TransactionType.Income,
+                        category: TransactionCategory.Sales,
+                        paymentMethod: method,
+                        status: TransactionStatus.Completed,
+                        allocationType: 'enrollment', // Colleghiamo direttamente all'iscrizione per i report
+                        allocationId: enr.id,
+                        allocationName: enr.childName
+                    });
+                }
+                alert(`Pagamento registrato (Solo Transazione).`);
             }
+
+            await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert(`Pagamento registrato!\nGenerata Fattura n. ${invoiceNumber} (Da sigillare).`);
+            
         } catch(err) {
             console.error("Payment error:", err);
             setError("Errore pagamento.");
@@ -314,14 +340,20 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             isOpen: true,
             enrollment: enr,
             date: new Date().toISOString().split('T')[0],
-            method: PaymentMethod.BankTransfer
+            method: PaymentMethod.BankTransfer,
+            generateInvoice: true // Default true
         });
     };
 
     const handleConfirmPayment = async () => {
         if (paymentModalState.enrollment && paymentModalState.date) {
             setPaymentModalState(prev => ({ ...prev, isOpen: false }));
-            await executePayment(paymentModalState.enrollment, paymentModalState.date, paymentModalState.method);
+            await executePayment(
+                paymentModalState.enrollment, 
+                paymentModalState.date, 
+                paymentModalState.method,
+                paymentModalState.generateInvoice
+            );
         }
     };
 
@@ -366,7 +398,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setConfirmState({
             isOpen: true,
             title: "Revoca Pagamento",
-            message: `Attenzione: L'iscrizione tornerà 'In Attesa'. La fattura emessa NON sarà eliminata automaticamente.`,
+            message: `Attenzione: L'iscrizione tornerà 'In Attesa'. La fattura/transazione emessa NON sarà eliminata automaticamente.`,
             isDangerous: true,
             onConfirm: async () => {
                 setLoading(true);
@@ -484,16 +516,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             {/* Filters Toolbar */}
             <div className="mb-6 bg-gray-50 p-3 rounded-lg border border-gray-200 flex flex-col lg:flex-row gap-3 items-center">
                 {/* Status Tabs */}
-                <div className="flex space-x-1 bg-white rounded border p-1">
-                    <button onClick={() => setStatusFilter('all')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'all' ? 'bg-indigo-100 text-indigo-800 font-bold' : 'text-gray-600'}`}>Tutte</button>
-                    <button onClick={() => setStatusFilter('active')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'active' ? 'bg-green-100 text-green-800 font-bold' : 'text-gray-600'}`}>Attive</button>
-                    <button onClick={() => setStatusFilter('pending')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-800 font-bold' : 'text-gray-600'}`}>In Attesa</button>
-                    <button onClick={() => setStatusFilter('completed')} className={`px-3 py-1 text-xs rounded ${statusFilter === 'completed' ? 'bg-gray-200 text-gray-800 font-bold' : 'text-gray-600'}`}>Concluse</button>
+                <div className="flex space-x-1 bg-white rounded border p-1 overflow-x-auto w-full lg:w-auto">
+                    <button onClick={() => setStatusFilter('all')} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${statusFilter === 'all' ? 'bg-indigo-100 text-indigo-800 font-bold' : 'text-gray-600'}`}>Tutte</button>
+                    <button onClick={() => setStatusFilter('active')} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${statusFilter === 'active' ? 'bg-green-100 text-green-800 font-bold' : 'text-gray-600'}`}>Attive</button>
+                    <button onClick={() => setStatusFilter('pending')} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${statusFilter === 'pending' ? 'bg-amber-100 text-amber-800 font-bold' : 'text-gray-600'}`}>In Attesa</button>
+                    <button onClick={() => setStatusFilter('completed')} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${statusFilter === 'completed' ? 'bg-gray-200 text-gray-800 font-bold' : 'text-gray-600'}`}>Concluse</button>
                 </div>
 
-                {/* Search & Sort */}
-                <div className="flex-1 flex gap-2 w-full">
-                    <div className="relative flex-1">
+                {/* Search & Sort - FIX MOBILE: Added flex-wrap to allow items to stack on small screens instead of shrinking */}
+                <div className="flex-1 flex gap-2 w-full flex-wrap">
+                    <div className="relative flex-1 min-w-[200px]">
                         <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div>
                         <input 
                             type="text" 
@@ -505,13 +537,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     </div>
                     
                     {/* Day / Time */}
-                    <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="w-24 text-xs border rounded bg-white">
+                    <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="w-24 text-xs border rounded bg-white h-[34px]">
                         <option value="">Giorno...</option>
                         {daysOfWeekMap.map((d, i) => <option key={i} value={i}>{d.substring(0,3)}</option>)}
                     </select>
-                    <input type="time" value={filterTime} onChange={e => setFilterTime(e.target.value)} className="w-20 text-xs border rounded bg-white px-1" />
+                    <input type="time" value={filterTime} onChange={e => setFilterTime(e.target.value)} className="w-20 text-xs border rounded bg-white px-1 h-[34px]" />
 
-                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="w-32 text-xs border rounded bg-white">
+                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="w-32 text-xs border rounded bg-white h-[34px]">
                         <option value="date_desc">Recenti</option>
                         <option value="name_asc">Allievo A-Z</option>
                         <option value="parent_asc">Genitore A-Z</option>
@@ -636,6 +668,26 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             </select>
                             <label className="md-input-label !top-0">Metodo</label>
                         </div>
+                        
+                        {/* Opzione Genera Fattura */}
+                        <div className="mt-4 flex items-center bg-gray-50 p-3 rounded border border-gray-200">
+                            <input 
+                                id="genInvoice"
+                                type="checkbox" 
+                                checked={paymentModalState.generateInvoice}
+                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, generateInvoice: e.target.checked }))}
+                                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded cursor-pointer"
+                            />
+                            <label htmlFor="genInvoice" className="ml-2 block text-sm text-gray-700 cursor-pointer select-none">
+                                Genera e collega Fattura automaticamente
+                            </label>
+                        </div>
+                        {!paymentModalState.generateInvoice && (
+                            <p className="text-xs text-amber-600 mt-1 ml-1">
+                                Verrà creata solo una transazione finanziaria.
+                            </p>
+                        )}
+
                         <div className="mt-6 flex justify-end gap-2">
                             <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
                             <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma</button>

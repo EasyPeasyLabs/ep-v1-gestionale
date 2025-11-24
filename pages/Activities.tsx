@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, ActivityInput } from '../types';
 import { getActivities, addActivity, updateActivity, deleteActivity } from '../services/activityService';
@@ -17,14 +16,6 @@ const extractFirstUrl = (text: string): string | null => {
     if (!text) return null;
     const match = text.match(/(https?:\/\/[^\s]+)/g);
     return match ? match[0] : null;
-};
-
-// --- Helper per icona file ---
-const FileIcon: React.FC<{ type: string }> = ({ type }) => {
-    if (type.includes('image')) return <span>🖼️</span>;
-    if (type.includes('video')) return <span>🎥</span>;
-    if (type.includes('audio')) return <span>🎵</span>;
-    return <span>📄</span>;
 };
 
 // --- Componenti Interni ---
@@ -93,7 +84,7 @@ const ActivityForm: React.FC<{
     const detectedLink = extractFirstUrl(links);
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             {/* Header Fixed */}
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">
@@ -191,10 +182,6 @@ const ActivityForm: React.FC<{
                     {attachments.length > 0 && (
                         <div className="grid grid-cols-1 gap-2">
                             {attachments.map((url, index) => {
-                                // Rileva tipo file dall'URL (approssimativo, basato su token o estensione se visibile, 
-                                // ma qui Firebase Storage usa token opachi. Usiamo estensione o generico)
-                                const isImage = url.includes('.jpg') || url.includes('.png') || url.includes('.jpeg') || url.includes('token='); // Assunzione safe
-                                
                                 return (
                                     <div key={index} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-md text-sm">
                                         <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-gray-700 hover:text-indigo-600 truncate flex-1">
@@ -385,72 +372,42 @@ const Activities: React.FC = () => {
                             <div key={act.id} className="md-card flex flex-col h-full hover:shadow-lg transition-shadow relative group border-t-4 border-gray-400">
                                 <div className="p-5 flex-1">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="text-[10px] uppercase font-bold tracking-wide text-gray-700 bg-gray-200 px-2 py-1 rounded-full">
-                                            {act.category}
+                                        <span className="text-[10px] uppercase font-bold tracking-wide text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                                            {act.category} {act.theme ? `• ${act.theme}` : ''}
                                         </span>
                                         {act.createdAt && <span className="text-[9px] text-gray-400">{new Date(act.createdAt).toLocaleDateString()}</span>}
                                     </div>
-                                    <h3 className="text-lg font-bold text-gray-800 mb-1">{act.title}</h3>
-                                    {act.theme && (
-                                        <p className="text-xs text-gray-500 italic mb-3">Tema: {act.theme}</p>
-                                    )}
-                                    <p className="text-sm text-gray-600 line-clamp-3 mb-4">
-                                        {act.description || "Nessuna descrizione."}
-                                    </p>
+                                    <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-2" title={act.title}>{act.title}</h3>
                                     
-                                    {(act.materials || act.links || hasAttachments) && (
-                                        <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
-                                            {act.materials && <p className="truncate">📦 {act.materials}</p>}
-                                            {act.links && (
-                                                linkUrl ? (
-                                                    <a 
-                                                        href={linkUrl} 
-                                                        target="_blank" 
-                                                        rel="noopener noreferrer" 
-                                                        className="truncate text-gray-600 hover:underline hover:text-gray-900 flex items-center font-medium"
-                                                        onClick={(e) => e.stopPropagation()} 
-                                                    >
-                                                        🔗 Link Esterno (Apri)
-                                                    </a>
-                                                ) : (
-                                                    <p className="truncate text-gray-600">🔗 Risorse disponibili</p>
-                                                )
-                                            )}
-                                            {hasAttachments && (
-                                                <div className="flex flex-wrap gap-1 mt-1">
-                                                    {act.attachments!.map((url, idx) => (
-                                                        <a 
-                                                            key={idx} 
-                                                            href={url} 
-                                                            target="_blank" 
-                                                            rel="noopener noreferrer" 
-                                                            className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100 hover:bg-indigo-100 flex items-center gap-1"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                        >
-                                                            📎 File {idx + 1}
-                                                        </a>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
+                                    {act.description && (
+                                        <p className="text-sm text-gray-600 mb-4 line-clamp-3">{act.description}</p>
                                     )}
+
+                                    <div className="space-y-2 mt-auto">
+                                        {act.materials && (
+                                            <p className="text-xs text-gray-500 line-clamp-2"><strong className="text-gray-700">Materiali:</strong> {act.materials}</p>
+                                        )}
+                                        
+                                        {(linkUrl || hasAttachments) && (
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {linkUrl && (
+                                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                                                        🔗 Link
+                                                    </span>
+                                                )}
+                                                {hasAttachments && (
+                                                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-purple-50 text-purple-700">
+                                                        📎 {act.attachments?.length} File
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-2" style={{borderColor: 'var(--md-divider)'}}>
-                                    <button 
-                                        onClick={() => handleOpenModal(act)} 
-                                        className="md-icon-btn edit"
-                                        title="Modifica"
-                                    >
-                                        <PencilIcon />
-                                    </button>
-                                    <button 
-                                        onClick={() => handleDeleteRequest(act.id)} 
-                                        className="md-icon-btn delete"
-                                        title="Elimina"
-                                    >
-                                        <TrashIcon />
-                                    </button>
+                                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => handleOpenModal(act)} className="md-icon-btn edit"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteRequest(act.id)} className="md-icon-btn delete"><TrashIcon /></button>
                                 </div>
                             </div>
                         );
@@ -478,7 +435,7 @@ const Activities: React.FC = () => {
                 onClose={() => setActivityToDelete(null)}
                 onConfirm={handleConfirmDelete}
                 title="Elimina Attività"
-                message="Sei sicuro di voler eliminare questa attività dal registro?"
+                message="Sei sicuro di voler eliminare questa attività?"
                 isDangerous={true}
             />
         </div>

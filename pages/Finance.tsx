@@ -178,7 +178,7 @@ const TransactionForm: React.FC<{
     }, [type]);
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">{initialData ? 'Modifica Transazione' : 'Nuova Transazione'}</h2>
             </div>
@@ -291,7 +291,9 @@ const DocumentForm: React.FC<{
     
     const [isSealed, setIsSealed] = useState(initialData?.status === DocumentStatus.SealedSDI);
 
-    const isContentLocked = type === 'invoice' && (initialData?.status === DocumentStatus.PendingSDI || initialData?.status === DocumentStatus.SealedSDI);
+    // FIX: Il contenuto è bloccato SOLO se la fattura è ufficialmente sigillata su SDI.
+    // Le fatture "PendingSDI" (in attesa) rimangono modificabili.
+    const isContentLocked = type === 'invoice' && initialData?.status === DocumentStatus.SealedSDI;
 
     useEffect(() => {
         const fetchClientsList = async () => {
@@ -417,7 +419,7 @@ const DocumentForm: React.FC<{
     }
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[85vh] overflow-hidden">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <h2 className="text-xl font-bold text-gray-800">
                     {initialData ? 'Modifica' : 'Nuovo'} {type === 'invoice' ? 'Fattura' : 'Preventivo'}
@@ -459,7 +461,7 @@ const DocumentForm: React.FC<{
 
                 {isContentLocked && (
                     <div className="bg-gray-100 p-3 rounded border border-gray-300 text-xs text-gray-600 mb-2">
-                        🔒 I dettagli della fattura sono bloccati perché il pagamento è stato ricevuto. Puoi modificare solo le Note e i dati SDI.
+                        🔒 I dettagli della fattura sono bloccati perché il documento è stato sigillato (SDI).
                     </div>
                 )}
 
@@ -591,11 +593,11 @@ const DocumentForm: React.FC<{
                 )}
 
                  <div className="md-input-group mt-4">
-                    <select id="status" value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="md-input" disabled={type === 'invoice' && (status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI)}>
+                    <select id="status" value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="md-input" disabled={type === 'invoice' && status === DocumentStatus.SealedSDI}>
                         {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <label htmlFor="status" className="md-input-label !top-0 !text-xs !text-gray-500">Stato Documento</label>
-                    {type === 'invoice' && (status === DocumentStatus.PendingSDI || status === DocumentStatus.SealedSDI) && <p className="text-[10px] text-gray-400 mt-1">Lo stato è gestito dall'area SDI.</p>}
+                    {type === 'invoice' && status === DocumentStatus.SealedSDI && <p className="text-[10px] text-gray-400 mt-1">Lo stato è bloccato perché la fattura è sigillata.</p>}
                 </div>
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
@@ -848,9 +850,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     }, [quotes, showTrash, searchTerm, sortOrder]);
 
 
-    // Common Filter UI Component
+    // FIX MOBILE: Changed flex to flex-col md:flex-row to stack on mobile
     const FilterBar = () => (
-        <div className="flex gap-2 w-full md:w-auto mb-4 md:mb-0">
+        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto mb-4 md:mb-0">
             <div className="relative w-full md:w-64">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <SearchIcon />
@@ -927,7 +929,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto items-center">
                             <FilterBar />
                             {!showTrash && (
-                                <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm whitespace-nowrap">
+                                <button onClick={handleGenerateRent} className="md-btn md-btn-flat text-indigo-600 border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm whitespace-nowrap w-full md:w-auto justify-center">
                                     <CalculatorIcon /> <span className="ml-2">Calcola Nolo</span>
                                 </button>
                             )}
@@ -957,6 +959,50 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         </div>
                     )}
 
+                    {/* Mobile View: Cards */}
+                    <div className="md:hidden space-y-3 px-4 pb-4">
+                        {displayedTransactions.map(t => {
+                            const isLinkedToPendingSDI = t.relatedDocumentId && pendingSDIInvoiceIds.has(t.relatedDocumentId);
+                            return (
+                                <div key={t.id} className={`bg-white p-4 rounded-lg border shadow-sm ${t.isDeleted ? 'bg-red-50 border-red-200' : 'border-gray-100'}`}>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-xs text-gray-500">{new Date(t.date).toLocaleDateString()}</span>
+                                        <span className={`text-sm font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                            {t.type === 'income' ? '+' : '-'} {t.amount.toFixed(2)}€
+                                            {isLinkedToPendingSDI && <span className="text-amber-500 ml-1" title="Fattura non ancora sigillata (SDI)">*</span>}
+                                        </span>
+                                    </div>
+                                    <p className="font-medium text-gray-800 text-sm line-clamp-2 mb-2">{t.description}</p>
+                                    <div className="flex justify-between items-end">
+                                        <div>
+                                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{t.category}</span>
+                                            {t.allocationType && t.allocationName && (
+                                                <p className="text-[10px] text-gray-400 mt-1 truncate max-w-[150px]">
+                                                    Ref: {t.allocationName}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="flex space-x-2">
+                                            {showTrash ? (
+                                                <>
+                                                    <button onClick={() => handleActionClick(t.id, 'transaction', 'restore')} className="text-green-600 p-1"><RestoreIcon/></button>
+                                                    <button onClick={() => handleActionClick(t.id, 'transaction', 'permanent')} className="text-red-600 p-1"><TrashIcon/></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleOpenTransModal(t)} className="text-blue-600 p-1"><PencilIcon/></button>
+                                                    <button onClick={() => handleActionClick(t.id, 'transaction', 'delete')} className="text-red-400 p-1"><TrashIcon/></button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        {displayedTransactions.length === 0 && <p className="text-center text-gray-500 py-8">Nessuna transazione trovata.</p>}
+                    </div>
+
+                    {/* Desktop View: Table */}
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -1019,6 +1065,49 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         <FilterBar />
                     </div>
 
+                    {/* Mobile View: Cards */}
+                    <div className="md:hidden space-y-3 px-4 pb-4">
+                        {displayedInvoices.map(inv => (
+                            <div key={inv.id} className={`bg-white p-4 rounded-lg border shadow-sm ${inv.isDeleted ? 'bg-red-50 border-red-200 opacity-75' : 'border-gray-100'}`}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <span className="text-xs text-gray-500">{new Date(inv.issueDate).toLocaleDateString()}</span>
+                                        <h4 className="font-bold text-gray-900">{inv.invoiceNumber} {inv.isProForma && <span className="text-[10px] bg-yellow-100 text-yellow-800 px-1 rounded">PRO</span>}</h4>
+                                    </div>
+                                    <select 
+                                        value={inv.status} 
+                                        disabled={inv.isDeleted}
+                                        onChange={(e) => handleUpdateStatus(inv.id, e.target.value as DocumentStatus, 'invoice')}
+                                        className={`text-xs font-bold px-2 py-1 rounded border-0 outline-none cursor-pointer max-w-[120px] ${inv.status === DocumentStatus.PendingSDI ? 'bg-yellow-100 text-yellow-800' : inv.status === DocumentStatus.SealedSDI ? 'bg-blue-100 text-blue-800' : inv.status === DocumentStatus.Paid ? 'bg-green-100 text-green-800' : inv.status === DocumentStatus.Overdue ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}
+                                    >
+                                        {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <p className="text-sm text-gray-700 font-medium mb-2 truncate">{inv.clientName}</p>
+                                
+                                <div className="flex justify-between items-end pt-2 border-t border-gray-50">
+                                    <span className="font-bold text-lg">{inv.totalAmount.toFixed(2)}€</span>
+                                    <div className="flex space-x-2">
+                                        {showTrash ? (
+                                            <>
+                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'restore')} className="text-green-600 p-1"><RestoreIcon/></button>
+                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'permanent')} className="text-red-600 p-1"><TrashIcon/></button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => handleDownloadPDF(inv, 'Fattura')} className="text-green-600 p-1"><DownloadIcon /></button>
+                                                <button onClick={() => handleOpenDocModal('invoice', inv)} className="text-blue-600 p-1"><PencilIcon /></button>
+                                                <button onClick={() => handleActionClick(inv.id, 'invoice', 'delete')} className="text-red-400 p-1"><TrashIcon /></button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {displayedInvoices.length === 0 && <p className="text-center text-gray-500 py-8">Nessuna fattura trovata.</p>}
+                    </div>
+
+                    {/* Desktop View: Table */}
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -1100,25 +1189,53 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 onClick={handleArchiveSelectAll} 
                                 className="md-btn md-btn-flat text-xs"
                             >
-                                {selectedArchiveIds.length === archiveInvoices.length ? "Deseleziona Tutti" : "Seleziona Tutti"}
+                                {selectedArchiveIds.length === archiveInvoices.length ? "Deseleziona" : "Tutti"}
                             </button>
                             <button 
                                 onClick={handleExportArchiveExcel} 
                                 disabled={selectedArchiveIds.length === 0}
                                 className="md-btn md-btn-flat text-green-700 border border-green-200 hover:bg-green-50 text-xs disabled:opacity-50"
                             >
-                                <DownloadIcon /> <span className="ml-1">Excel</span>
+                                <DownloadIcon />
                             </button>
                             <button 
                                 onClick={handleSendDistinta} 
                                 disabled={selectedArchiveIds.length === 0}
                                 className="md-btn md-btn-raised md-btn-green text-xs flex items-center disabled:opacity-50"
                             >
-                                <WhatsAppIcon /> <span className="ml-1">Invia Distinta</span>
+                                <WhatsAppIcon />
                             </button>
                         </div>
                     </div>
 
+                    {/* Mobile View: Cards with Checkbox */}
+                    <div className="md:hidden space-y-3 px-4 pb-4">
+                        {archiveInvoices.map(inv => (
+                            <div 
+                                key={inv.id} 
+                                onClick={() => handleArchiveToggle(inv.id)}
+                                className={`bg-white p-3 rounded-lg border shadow-sm flex items-center gap-3 transition-colors cursor-pointer ${selectedArchiveIds.includes(inv.id) ? 'border-indigo-500 bg-indigo-50' : 'border-gray-100'}`}
+                            >
+                                <input 
+                                    type="checkbox" 
+                                    checked={selectedArchiveIds.includes(inv.id)} 
+                                    onChange={() => handleArchiveToggle(inv.id)}
+                                    className="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded pointer-events-none"
+                                />
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-center">
+                                        <span className="font-bold text-gray-800">{inv.invoiceNumber}</span>
+                                        <span className="font-bold text-gray-900">{inv.totalAmount.toFixed(2)}€</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500">{new Date(inv.issueDate).toLocaleDateString()} - {inv.clientName}</p>
+                                    <p className="text-[10px] text-blue-600 font-mono mt-1">SDI: {inv.sdiCode || '-'}</p>
+                                </div>
+                            </div>
+                        ))}
+                        {archiveInvoices.length === 0 && <p className="text-center text-gray-500 py-8">Nessuna fattura in archivio.</p>}
+                    </div>
+
+                    {/* Desktop View: Table */}
                     <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>
@@ -1160,6 +1277,53 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                      <div className="p-4 md:p-0 md:mb-4 flex justify-end">
                         <FilterBar />
                      </div>
+
+                     {/* Mobile View: Cards */}
+                     <div className="md:hidden space-y-3 px-4 pb-4">
+                        {displayedQuotes.map(q => (
+                            <div key={q.id} className={`bg-white p-4 rounded-lg border shadow-sm ${q.isDeleted ? 'bg-red-50 border-red-200 opacity-75' : 'border-gray-100'}`}>
+                                <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                        <span className="text-xs text-gray-500">{new Date(q.issueDate).toLocaleDateString()}</span>
+                                        <h4 className="font-bold text-gray-900">{q.quoteNumber}</h4>
+                                    </div>
+                                    <select 
+                                        value={q.status} 
+                                        disabled={q.isDeleted}
+                                        onChange={(e) => handleUpdateStatus(q.id, e.target.value as DocumentStatus, 'quote')}
+                                        className={`text-xs font-bold px-2 py-1 rounded border-0 outline-none cursor-pointer max-w-[100px] ${q.status === DocumentStatus.Converted ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-800'}`}
+                                    >
+                                        {Object.values(DocumentStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                                <p className="text-sm text-gray-700 font-medium mb-2 truncate">{q.clientName}</p>
+                                
+                                <div className="flex justify-between items-end pt-2 border-t border-gray-50">
+                                    <span className="font-bold text-lg">{q.totalAmount.toFixed(2)}€</span>
+                                    <div className="flex space-x-2">
+                                        {showTrash ? (
+                                            <>
+                                                <button onClick={() => handleActionClick(q.id, 'quote', 'restore')} className="text-green-600 p-1"><RestoreIcon/></button>
+                                                <button onClick={() => handleActionClick(q.id, 'quote', 'permanent')} className="text-red-600 p-1"><TrashIcon/></button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <button onClick={() => handleDownloadPDF(q, 'Preventivo')} className="text-green-600 p-1"><DownloadIcon /></button>
+                                                <button onClick={() => handleOpenDocModal('quote', q)} className="text-blue-600 p-1"><PencilIcon /></button>
+                                                <button onClick={() => handleActionClick(q.id, 'quote', 'delete')} className="text-red-400 p-1"><TrashIcon /></button>
+                                                {q.status !== DocumentStatus.Converted && (
+                                                    <button onClick={() => handleConvertQuoteToInvoice(q)} className="text-indigo-600 p-1" title="Converti"><ConvertIcon /></button>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {displayedQuotes.length === 0 && <p className="text-center text-gray-500 py-8">Nessun preventivo trovato.</p>}
+                     </div>
+
+                     {/* Desktop View: Table */}
                      <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left">
                             <thead>

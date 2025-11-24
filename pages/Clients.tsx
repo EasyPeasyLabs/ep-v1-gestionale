@@ -152,7 +152,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-gray-800">{client ? 'Modifica Cliente' : 'Nuovo Cliente'}</h2>
@@ -463,11 +463,12 @@ const Clients: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
                     <input type="text" placeholder="Cerca Cliente, Figlio, Sede..." className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
-                <div className="flex gap-2 w-full lg:w-auto">
+                {/* FIX MOBILE: Added flex-wrap to prevent shrinking inputs on small screens */}
+                <div className="flex gap-2 w-full lg:w-auto flex-wrap">
                     <select 
                         value={filterDay}
                         onChange={(e) => setFilterDay(e.target.value)}
-                        className="flex-1 lg:w-32 block bg-white border rounded-md py-2 px-3 text-sm"
+                        className="flex-1 lg:w-32 block bg-white border rounded-md py-2 px-3 text-sm min-w-[100px]"
                     >
                         <option value="">Giorno...</option>
                         {daysOfWeekMap.map((d, i) => <option key={i} value={i}>{d}</option>)}
@@ -476,9 +477,9 @@ const Clients: React.FC = () => {
                         type="time" 
                         value={filterTime}
                         onChange={(e) => setFilterTime(e.target.value)}
-                        className="flex-1 lg:w-28 block bg-white border rounded-md py-2 px-2 text-sm"
+                        className="flex-1 lg:w-28 block bg-white border rounded-md py-2 px-2 text-sm min-w-[80px]"
                     />
-                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="flex-1 lg:w-40 block bg-white border rounded-md py-2 px-3 text-sm">
+                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="flex-1 lg:w-40 block bg-white border rounded-md py-2 px-3 text-sm min-w-[130px]">
                         <option value="surname_asc">Cognome (A-Z)</option>
                         <option value="surname_desc">Cognome (Z-A)</option>
                         <option value="name_asc">Nome (A-Z)</option>

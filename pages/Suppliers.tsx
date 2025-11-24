@@ -136,7 +136,7 @@ const LocationForm: React.FC<{ location?: Location | null; onSave: (location: Lo
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100" style={{borderColor: 'var(--md-divider)'}}>
                 <h3 className="text-lg font-bold text-gray-800 mb-3">{location ? 'Modifica Sede' : 'Nuova Sede'}</h3>
                 <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
@@ -346,7 +346,7 @@ const SupplierForm: React.FC<{ supplier?: Supplier | null; onSave: (supplier: Su
 
     return (
         <>
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100" style={{borderColor: 'var(--md-divider)'}}>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold text-gray-800">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>

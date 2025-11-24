@@ -71,7 +71,7 @@ const LessonForm: React.FC<{
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
     
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
                  <h2 className="text-xl font-bold text-gray-800">{lesson ? 'Modifica Lezione Manuale' : 'Nuova Lezione Manuale'}</h2>
             </div>
