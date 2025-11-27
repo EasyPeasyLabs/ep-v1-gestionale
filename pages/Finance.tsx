@@ -17,7 +17,7 @@ import PencilIcon from '../components/icons/PencilIcon';
 import CalculatorIcon from '../components/icons/CalculatorIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
-import { Chart, registerables } from 'chart.js';
+import { Chart, registerables, ChartConfiguration } from 'chart.js';
 
 Chart.register(...registerables);
 
@@ -35,16 +35,123 @@ interface FinanceProps {
 // --- ICONS ---
 const TrendingUpIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /> </svg> );
 const BankIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z" /> </svg> );
+const InfoIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 hover:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /> </svg> );
+const BulbIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /> </svg> );
+const RocketIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /> </svg> );
+
+// --- FORM COMPONENTS (Restored Inline) ---
+
+const TransactionForm: React.FC<{ transaction?: Transaction | null; onSave: (t: TransactionInput | Transaction) => void; onCancel: () => void }> = ({ transaction, onSave, onCancel }) => {
+    const [date, setDate] = useState(transaction?.date ? transaction.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [description, setDescription] = useState(transaction?.description || '');
+    const [amount, setAmount] = useState(transaction?.amount || 0);
+    const [type, setType] = useState<TransactionType>(transaction?.type || TransactionType.Expense);
+    const [category, setCategory] = useState<TransactionCategory>(transaction?.category || TransactionCategory.OtherExpense);
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(transaction?.paymentMethod || PaymentMethod.BankTransfer);
+    const [status, setStatus] = useState<TransactionStatus>(transaction?.status || TransactionStatus.Completed);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const data: any = { date: new Date(date).toISOString(), description, amount: Number(amount), type, category, paymentMethod, status };
+        if (transaction?.id) onSave({ ...data, id: transaction.id });
+        else onSave(data);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <h3 className="text-lg font-bold">{transaction ? 'Modifica Transazione' : 'Nuova Transazione'}</h3>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label">Data</label></div>
+                <div className="md-input-group"><input type="number" value={amount} onChange={e => setAmount(Number(e.target.value))} className="md-input" /><label className="md-input-label">Importo (€)</label></div>
+            </div>
+            <div className="md-input-group"><input type="text" value={description} onChange={e => setDescription(e.target.value)} className="md-input" required /><label className="md-input-label">Descrizione</label></div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="md-input-group"><select value={type} onChange={e => setType(e.target.value as TransactionType)} className="md-input">{Object.values(TransactionType).map(t => <option key={t} value={t}>{t}</option>)}</select><label className="md-input-label">Tipo</label></div>
+                <div className="md-input-group"><select value={category} onChange={e => setCategory(e.target.value as TransactionCategory)} className="md-input">{Object.values(TransactionCategory).map(c => <option key={c} value={c}>{c}</option>)}</select><label className="md-input-label">Categoria</label></div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button><button type="submit" className="md-btn md-btn-raised md-btn-primary">Salva</button></div>
+        </form>
+    );
+};
+
+const DocumentForm: React.FC<{ doc?: Invoice | Quote | null; type: 'invoice' | 'quote'; clients: Client[]; onSave: (d: any) => void; onCancel: () => void }> = ({ doc, type, clients, onSave, onCancel }) => {
+    const [clientId, setClientId] = useState(doc?.clientId || '');
+    const [date, setDate] = useState(doc?.issueDate ? doc.issueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [items, setItems] = useState<DocumentItem[]>(doc?.items || [{ description: '', quantity: 1, price: 0 }]);
+    
+    const client = clients.find(c => c.id === clientId);
+    const clientName = client ? (client.clientType === ClientType.Parent ? `${(client as any).firstName} ${(client as any).lastName}` : (client as any).companyName) : '';
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const total = items.reduce((sum, i) => sum + (i.quantity * i.price), 0);
+        const data = { 
+            clientId, clientName, issueDate: new Date(date).toISOString(), items, totalAmount: total, 
+            status: doc?.status || DocumentStatus.Draft,
+            invoiceNumber: (doc as any)?.invoiceNumber || '', 
+            quoteNumber: (doc as any)?.quoteNumber || ''
+        };
+        if (doc?.id) onSave({ ...data, id: doc.id }); else onSave(data);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 flex flex-col h-full max-h-[80vh]">
+            <h3 className="text-lg font-bold">{doc ? `Modifica ${type}` : `Nuovo ${type}`}</h3>
+            <div className="md-input-group">
+                <select value={clientId} onChange={e => setClientId(e.target.value)} className="md-input">
+                    <option value="">Seleziona Cliente...</option>
+                    {clients.map(c => <option key={c.id} value={c.id}>{c.clientType === 'Parent' ? `${(c as any).firstName} ${(c as any).lastName}` : (c as any).companyName}</option>)}
+                </select>
+                <label className="md-input-label">Cliente</label>
+            </div>
+            <div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label">Data</label></div>
+            
+            <div className="flex-1 overflow-y-auto border p-2 rounded">
+                <h4 className="text-sm font-bold mb-2">Articoli</h4>
+                {items.map((item, idx) => (
+                    <div key={idx} className="flex gap-2 mb-2">
+                        <input className="border p-1 w-full text-sm" placeholder="Desc" value={item.description} onChange={e => {const n=[...items]; n[idx].description=e.target.value; setItems(n)}} />
+                        <input className="border p-1 w-20 text-sm" type="number" placeholder="Qty" value={item.quantity} onChange={e => {const n=[...items]; n[idx].quantity=Number(e.target.value); setItems(n)}} />
+                        <input className="border p-1 w-24 text-sm" type="number" placeholder="Prezzo" value={item.price} onChange={e => {const n=[...items]; n[idx].price=Number(e.target.value); setItems(n)}} />
+                    </div>
+                ))}
+                <button type="button" onClick={() => setItems([...items, {description:'', quantity:1, price:0}])} className="text-xs text-blue-600">+ Aggiungi Riga</button>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4"><button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button><button type="submit" className="md-btn md-btn-raised md-btn-primary">Salva</button></div>
+        </form>
+    );
+};
+
 
 // --- COMPONENTS ---
 
-const StatCard: React.FC<{ title: string; value: string; color: string; subtext?: string; onClick?: () => void }> = ({ title, value, color, subtext, onClick }) => (
+const StatCard: React.FC<{ 
+    title: string; 
+    value: string; 
+    color: string; 
+    subtext?: string; 
+    explanation?: string;
+    onClick?: () => void 
+}> = ({ title, value, color, subtext, explanation, onClick }) => (
   <div 
-    className={`md-card p-4 border-l-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
+    className={`md-card p-4 border-l-4 group relative ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
     style={{borderColor: color}}
     onClick={onClick}
   >
-    <h3 className="text-xs font-medium uppercase tracking-wide" style={{color: 'var(--md-text-secondary)'}}>{title}</h3>
+    <div className="flex justify-between items-start">
+        <h3 className="text-xs font-medium uppercase tracking-wide flex items-center gap-1" style={{color: 'var(--md-text-secondary)'}}>
+            {title}
+            {explanation && (
+                <div className="group/info relative ml-1">
+                    <InfoIcon />
+                    <div className="absolute left-0 top-6 w-48 p-2 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover/info:opacity-100 transition-opacity z-10 pointer-events-none">
+                        {explanation}
+                    </div>
+                </div>
+            )}
+        </h3>
+    </div>
     <p className="text-xl md:text-2xl font-bold mt-1 text-gray-800">{value}</p>
     {subtext && <p className="text-[10px] text-gray-500 mt-1 font-medium">{subtext}</p>}
   </div>
@@ -55,27 +162,50 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [activeTab, setActiveTab] = useState<Tab>(initialParams?.tab || 'dashboard');
     
     // Simulator State
-    const [targetNetProfit, setTargetNetProfit] = useState<number>(3000); // Obiettivo Netto Mensile
-    const [taxRate, setTaxRate] = useState<number>(5); // 5% startup, 15% standard
-    const [inpsRate, setInpsRate] = useState<number>(26.23); // Gestione Separata
-    const [profitabilityCoeff, setProfitabilityCoeff] = useState<number>(78); // Coefficiente redditività
+    const [targetNetProfit, setTargetNetProfit] = useState<number>(3000); 
+    const [taxRate, setTaxRate] = useState<number>(5); 
+    const [inpsRate, setInpsRate] = useState<number>(26.23); 
+    const [profitabilityCoeff, setProfitabilityCoeff] = useState<number>(78); 
+    const [fuelPrice, setFuelPrice] = useState<number>(1.85); 
 
     // Data State
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     const [loading, setLoading] = useState(true);
     
+    // CRUD Modal State
+    const [isTransModalOpen, setIsTransModalOpen] = useState(false);
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+    const [docType, setDocType] = useState<'invoice'|'quote'>('invoice');
+    const [editingDoc, setEditingDoc] = useState<Invoice | Quote | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'transaction'|'invoice'|'quote'} | null>(null);
+
+    // Chart Refs
     const monthlyChartRef = useRef<HTMLCanvasElement>(null);
+    const expenseDoughnutRef = useRef<HTMLCanvasElement>(null);
+    const trendLineRef = useRef<HTMLCanvasElement>(null);
+    const taxPieRef = useRef<HTMLCanvasElement>(null);
+
+    // Chart Instances Refs (per pulizia)
+    const chartInstances = useRef<{[key: string]: any}>({});
+
+    // Chart Instances Refs (per pulizia)
+    // const chartInstances = useRef<{[key: string]: Chart | null}>({});
 
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [transData, enrollData, invData, quoData] = await Promise.all([
-                getTransactions(), getAllEnrollments(), getInvoices(), getQuotes()
+            const [transData, enrollData, invData, quoData, clientsData, suppliersData, compInfo] = await Promise.all([
+                getTransactions(), getAllEnrollments(), getInvoices(), getQuotes(), getClients(), getSuppliers(), getCompanyInfo()
             ]);
             setTransactions(transData); setEnrollments(enrollData); setInvoices(invData); setQuotes(quoData);
+            setClients(clientsData); setSuppliers(suppliersData); setCompanyInfo(compInfo);
         } catch (err) { console.error(err); } finally { setLoading(false); }
     }, []);
 
@@ -93,6 +223,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         let totalExpensesYTD = 0;
         let monthlyRevenue = new Array(12).fill(0);
         let monthlyExpenses = new Array(12).fill(0);
+        const expensesByCategory: Record<string, number> = {};
 
         activeTransactions.forEach(t => {
             const d = new Date(t.date);
@@ -103,6 +234,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                 } else if (t.type === TransactionType.Expense) {
                     totalExpensesYTD += t.amount;
                     monthlyExpenses[d.getMonth()] += t.amount;
+                    // Aggregate for Doughnut
+                    expensesByCategory[t.category] = (expensesByCategory[t.category] || 0) + t.amount;
                 }
             }
         });
@@ -117,56 +250,214 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             totalRevenueYTD, totalExpensesYTD, 
             monthlyRevenue, monthlyExpenses,
             avgMonthlyRevenue, avgMonthlyExpenses,
-            projectedAnnualRevenue, projectedAnnualExpenses
+            projectedAnnualRevenue, projectedAnnualExpenses,
+            expensesByCategory
         };
     }, [activeTransactions]);
 
     // --- SIMULATOR LOGIC (CFO) ---
     const simulation = useMemo(() => {
-        // Reverse calculation: Net Profit -> Gross Revenue needed
-        // Net = Gross - Expenses - Taxes - INPS
-        // Taxes = (Gross * Coeff) * TaxRate
-        // INPS = (Gross * Coeff) * InpsRate
-        // So: Net + Exp = Gross - (Gross * Coeff * TaxRate) - (Gross * Coeff * InpsRate)
-        // Net + Exp = Gross * (1 - Coeff*TaxRate - Coeff*InpsRate)
-        // Gross = (Net + Exp) / (1 - Coeff * (TaxRate + InpsRate))
-
         const monthlyExpenses = metrics.avgMonthlyExpenses;
         const targetNet = targetNetProfit;
-        
         const totalTaxBurdenRate = (profitabilityCoeff / 100) * ((taxRate / 100) + (inpsRate / 100));
         const requiredGrossRevenue = (targetNet + monthlyExpenses) / (1 - totalTaxBurdenRate);
-        
         const currentGap = requiredGrossRevenue - metrics.avgMonthlyRevenue;
-        
-        // Action Items
-        const avgPackagePrice = 350; // Prezzo medio pacchetto
-        const newStudentsNeeded = currentGap > 0 ? Math.ceil(currentGap / (avgPackagePrice / 4)) : 0; // Diviso 4 mesi durata media? Semplifichiamo: studenti nuovi al mese
+        const newStudentsNeeded = currentGap > 0 ? Math.ceil(currentGap / (350 / 4)) : 0; 
         
         return { requiredGrossRevenue, currentGap, newStudentsNeeded, totalTaxBurdenRate };
     }, [targetNetProfit, metrics, taxRate, inpsRate, profitabilityCoeff]);
 
+    // --- LOGISTICS & PROFITABILITY (Ripristinata) ---
+    const logisticsData = useMemo(() => {
+        const profitByLocation: Record<string, { revenue: number, cost: number, trips: number, distance: number }> = {};
+        const locationInfoMap = new Map<string, {name: string, distance: number}>();
+        
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                locationInfoMap.set(l.id, { name: l.name, distance: l.distance || 0 });
+            });
+        });
 
-    // --- CHART EFFECT ---
-    useEffect(() => {
-        if (activeTab === 'dashboard' && monthlyChartRef.current) {
-            const ctx = monthlyChartRef.current.getContext('2d');
-            if (ctx) {
-                const chart = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
-                        datasets: [
-                            { label: 'Entrate', data: metrics.monthlyRevenue, backgroundColor: '#4ade80', borderRadius: 4 },
-                            { label: 'Uscite', data: metrics.monthlyExpenses, backgroundColor: '#f87171', borderRadius: 4 }
-                        ]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false } }, y: { display: false } } }
+        // 1. Costi Diretti e Ricavi (da Transazioni)
+        activeTransactions.forEach(t => {
+            if (t.allocationType === 'location' && t.allocationId) {
+                if (!profitByLocation[t.allocationId]) profitByLocation[t.allocationId] = { revenue: 0, cost: 0, trips: 0, distance: 0 };
+                if (t.type === TransactionType.Income) profitByLocation[t.allocationId].revenue += t.amount;
+                else profitByLocation[t.allocationId].cost += t.amount;
+            }
+        });
+
+        // 2. Costi Logistici (Calcolati da Lezioni Passate)
+        const tripSet = new Set<string>(); // "YYYY-MM-DD|LOC_ID"
+        const now = new Date();
+        
+        enrollments.forEach(enr => {
+            if (enr.appointments) {
+                enr.appointments.forEach(app => {
+                    const appDate = new Date(app.date);
+                    if (appDate < now) {
+                        const dateKey = app.date.split('T')[0];
+                        tripSet.add(`${dateKey}|${enr.locationId}`);
+                    }
                 });
-                return () => chart.destroy();
+            }
+        });
+
+        const carConsumption = companyInfo?.carFuelConsumption || 16.5; 
+        const maintenanceCostPerKm = 0.10; 
+
+        tripSet.forEach(key => {
+            const [_, locId] = key.split('|');
+            const locInfo = locationInfoMap.get(locId);
+            if (locInfo) {
+                if (!profitByLocation[locId]) profitByLocation[locId] = { revenue: 0, cost: 0, trips: 0, distance: locInfo.distance };
+                
+                const roundTripKm = locInfo.distance * 2;
+                const fuelCost = (roundTripKm / carConsumption) * fuelPrice;
+                const wearCost = roundTripKm * maintenanceCostPerKm;
+                
+                profitByLocation[locId].trips += 1;
+                profitByLocation[locId].cost += (fuelCost + wearCost);
+            }
+        });
+
+        return { profitByLocation, locationInfoMap };
+    }, [activeTransactions, enrollments, suppliers, companyInfo, fuelPrice]);
+
+
+    // --- HANDLERS ---
+    const handleSaveTransaction = async (t: TransactionInput | Transaction) => {
+        if ('id' in t) await updateTransaction(t.id, t); else await addTransaction(t);
+        setIsTransModalOpen(false); fetchAllData();
+    };
+    const handleSaveDoc = async (d: any) => {
+        if (docType === 'invoice') { if(d.id) await updateInvoice(d.id, d); else await addInvoice(d); }
+        else { if(d.id) await updateQuote(d.id, d); else await addQuote(d); }
+        setIsDocModalOpen(false); fetchAllData();
+    };
+    const handleDeleteConfirm = async () => {
+        if (!itemToDelete) return;
+        if (itemToDelete.type === 'transaction') await deleteTransaction(itemToDelete.id);
+        else if (itemToDelete.type === 'invoice') await deleteInvoice(itemToDelete.id);
+        else await deleteQuote(itemToDelete.id);
+        setItemToDelete(null); fetchAllData();
+    };
+
+
+    // --- CHARTS EFFECTS ---
+    
+    // 1. Dashboard Charts (Bar + Doughnut + Trend)
+    useEffect(() => {
+        if (activeTab === 'dashboard') {
+            // A. Monthly Bar Chart
+            if (monthlyChartRef.current) {
+                const ctx = monthlyChartRef.current.getContext('2d');
+                if (ctx) {
+                    if(chartInstances.current['monthly']) chartInstances.current['monthly'].destroy();
+                    chartInstances.current['monthly'] = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
+                            datasets: [
+                                { label: 'Entrate', data: metrics.monthlyRevenue, backgroundColor: '#4ade80', borderRadius: 4 },
+                                { label: 'Uscite', data: metrics.monthlyExpenses, backgroundColor: '#f87171', borderRadius: 4 }
+                            ]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false } }, y: { display: false } } }
+                    });
+                }
+            }
+
+            // B. Expense Doughnut Chart
+            if (expenseDoughnutRef.current) {
+                const ctx = expenseDoughnutRef.current.getContext('2d');
+                if (ctx) {
+                    const categories = Object.keys(metrics.expensesByCategory);
+                    const values = Object.values(metrics.expensesByCategory);
+                    if(chartInstances.current['expenses']) chartInstances.current['expenses'].destroy();
+                    chartInstances.current['expenses'] = new Chart(ctx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: categories,
+                            datasets: [{
+                                data: values,
+                                backgroundColor: ['#f87171', '#fbbf24', '#60a5fa', '#a78bfa', '#34d399', '#f472b6'],
+                                borderWidth: 0
+                            }]
+                        },
+                        options: { 
+                            responsive: true, 
+                            maintainAspectRatio: false, 
+                            plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: {size: 10} } } } 
+                        }
+                    });
+                }
+            }
+
+            // C. Trend Line Chart (Cash Flow)
+            if (trendLineRef.current) {
+                const ctx = trendLineRef.current.getContext('2d');
+                if (ctx) {
+                    // Calcola cumulativo
+                    let cumulative = 0;
+                    const trendData = metrics.monthlyRevenue.map((inc, i) => {
+                        cumulative += (inc - metrics.monthlyExpenses[i]);
+                        return cumulative;
+                    });
+
+                    if(chartInstances.current['trend']) chartInstances.current['trend'].destroy();
+                    chartInstances.current['trend'] = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
+                            datasets: [{
+                                label: 'Flusso di Cassa Cumulativo',
+                                data: trendData,
+                                borderColor: '#6366f1',
+                                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                                fill: true,
+                                tension: 0.4
+                            }]
+                        },
+                        options: { responsive: true, maintainAspectRatio: false, scales: { x: { grid: { display: false } }, y: { grid: { display: true } } } }
+                    });
+                }
             }
         }
+        return () => {
+            Object.values(chartInstances.current).forEach(c => c?.destroy());
+        };
     }, [activeTab, metrics]);
+
+    // 2. Controlling Charts (Pie)
+    useEffect(() => {
+        if (activeTab === 'controlling' && taxPieRef.current) {
+            const ctx = taxPieRef.current.getContext('2d');
+            if (ctx) {
+                const taxable = metrics.totalRevenueYTD * (profitabilityCoeff / 100);
+                const tax = taxable * (taxRate / 100);
+                const inps = taxable * (inpsRate / 100);
+                const realNet = metrics.totalRevenueYTD - (tax + inps + metrics.totalExpensesYTD);
+                // Approx real expenses deduction from net view
+                const expenses = metrics.totalExpensesYTD;
+
+                if(chartInstances.current['taxPie']) chartInstances.current['taxPie'].destroy();
+                chartInstances.current['taxPie'] = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: ['Netto Reale', 'Tasse & INPS', 'Spese Operative'],
+                        datasets: [{
+                            data: [realNet, tax + inps, expenses],
+                            backgroundColor: ['#4ade80', '#fb923c', '#f87171'],
+                            borderWidth: 1
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+            }
+        }
+    }, [activeTab, metrics, taxRate, inpsRate, profitabilityCoeff]);
+
 
     return (
         <div className="pb-24">
@@ -178,7 +469,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                 {[
                     {id: 'dashboard', label: 'Dashboard'},
                     {id: 'simulator', label: 'CFO Simulator'},
-                    {id: 'controlling', label: 'Tasse & INPS'},
+                    {id: 'controlling', label: 'Controlling'},
                     {id: 'transactions', label: 'Transazioni'},
                     {id: 'invoices', label: 'Fatture'},
                     {id: 'quotes', label: 'Preventivi'}
@@ -201,28 +492,51 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <StatCard 
                                 title="Fatturato YTD" 
+                                explanation="Year To Date: Totale ricavi da inizio anno solare ad oggi."
                                 value={metrics.totalRevenueYTD.toLocaleString('it-IT', {style:'currency', currency:'EUR'})} 
                                 color="#4ade80" 
-                                subtext={`Proiezione: ${metrics.projectedAnnualRevenue.toLocaleString()}€`}
+                                subtext={`Proiezione annua: ${metrics.projectedAnnualRevenue.toLocaleString()}€`}
                             />
                             <StatCard 
                                 title="Spese YTD" 
+                                explanation="Year To Date: Totale spese sostenute da inizio anno ad oggi."
                                 value={metrics.totalExpensesYTD.toLocaleString('it-IT', {style:'currency', currency:'EUR'})} 
                                 color="#f87171" 
+                                subtext={`Media mensile: ${metrics.avgMonthlyExpenses.toLocaleString('it-IT', {maximumFractionDigits:0})}€`}
                             />
                             <StatCard 
                                 title="Utile Lordo" 
+                                explanation="Differenza secca tra Incassato e Speso (prima delle tasse)."
                                 value={(metrics.totalRevenueYTD - metrics.totalExpensesYTD).toLocaleString('it-IT', {style:'currency', currency:'EUR'})} 
                                 color="#6366f1" 
                             />
                             <StatCard 
-                                title="Margine" 
+                                title="Margine Operativo" 
+                                explanation="Percentuale di guadagno su ogni euro incassato."
                                 value={`${metrics.totalRevenueYTD > 0 ? ((metrics.totalRevenueYTD - metrics.totalExpensesYTD)/metrics.totalRevenueYTD * 100).toFixed(1) : 0}%`} 
                                 color="#f59e0b" 
                             />
                         </div>
-                        <div className="md-card p-4 h-64">
-                            <canvas ref={monthlyChartRef} />
+
+                        {/* Grafici Dashboard */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="md-card p-4 h-80">
+                                <h3 className="font-bold text-gray-700 mb-4">Entrate vs Uscite (Mensile)</h3>
+                                <canvas ref={monthlyChartRef} />
+                            </div>
+                            <div className="md-card p-4 h-80">
+                                <h3 className="font-bold text-gray-700 mb-4">Ripartizione Spese</h3>
+                                <div className="h-64">
+                                    {Object.keys(metrics.expensesByCategory).length > 0 ? 
+                                        <canvas ref={expenseDoughnutRef} /> : 
+                                        <div className="flex h-full items-center justify-center text-gray-400">Nessuna spesa registrata</div>
+                                    }
+                                </div>
+                            </div>
+                            <div className="md-card p-4 h-80 lg:col-span-2">
+                                <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><TrendingUpIcon /> Trend Flusso di Cassa (Cumulativo)</h3>
+                                <canvas ref={trendLineRef} />
+                            </div>
                         </div>
                     </div>
                 )}
@@ -274,7 +588,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 </div>
 
                                 <div>
-                                    <h3 className="text-sm font-bold text-green-300 uppercase tracking-wider mb-2">Azioni Richieste</h3>
+                                    <h3 className="text-sm font-bold text-green-300 uppercase tracking-wider mb-2">Target Rapidi</h3>
                                     {simulation.currentGap > 0 ? (
                                         <ul className="space-y-2 text-sm">
                                             <li className="flex items-center gap-2">
@@ -285,10 +599,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                                 <span className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center font-bold text-xs">2</span>
                                                 <span>Alzare i prezzi del <strong>{((simulation.currentGap / metrics.avgMonthlyRevenue)*100).toFixed(1)}%</strong>.</span>
                                             </li>
-                                            <li className="flex items-center gap-2">
-                                                <span className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center font-bold text-xs">3</span>
-                                                <span>Ridurre i costi operativi di <strong>{(simulation.currentGap * 0.5).toFixed(0)}€</strong>.</span>
-                                            </li>
                                         </ul>
                                     ) : (
                                         <div className="text-center py-4 text-green-300 font-bold text-lg">
@@ -298,88 +608,136 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* --- ACTION PLAN CARDS --- */}
+                        {simulation.currentGap > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Azioni Pragmatiche */}
+                                <div className="md-card p-5 border-t-4 border-amber-500 bg-amber-50/50">
+                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                        <RocketIcon /> Azioni Urgenti (Entro 30gg)
+                                    </h3>
+                                    <ul className="space-y-3 text-sm text-gray-700">
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-amber-600 font-bold">•</span>
+                                            <span><strong>Recupero Crediti:</strong> Chiama i 3 clienti con il debito più alto.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-amber-600 font-bold">•</span>
+                                            <span><strong>Upsell Immediato:</strong> Proponi il rinnovo anticipato con sconto 5% ai clienti in scadenza.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-amber-600 font-bold">•</span>
+                                            <span><strong>Taglio Costi:</strong> Rivedi le spese "Altro" ({metrics.expensesByCategory[TransactionCategory.OtherExpense]?.toFixed(0) || 0}€) e taglia il 20%.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-amber-600 font-bold">•</span>
+                                            <span><strong>Promo Lampo:</strong> Lancia "Porta un Amico" valido solo per questo mese.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                {/* Azioni Strategiche */}
+                                <div className="md-card p-5 border-t-4 border-indigo-500 bg-indigo-50/50">
+                                    <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
+                                        <BulbIcon /> Azioni Creative (Medio Termine)
+                                    </h3>
+                                    <ul className="space-y-3 text-sm text-gray-700">
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-indigo-600 font-bold">•</span>
+                                            <span><strong>Partnership:</strong> Contatta cartolibrerie locali per lasciare volantini in cambio di sconto reciproco.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-indigo-600 font-bold">•</span>
+                                            <span><strong>Nuovo Prodotto:</strong> Crea un "Corso Intensivo Estivo" o "Sabato Lab" per aumentare il LTV.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-indigo-600 font-bold">•</span>
+                                            <span><strong>Negoziazione:</strong> Rinegozia il nolo con la sede più costosa basandoti sui dati di saturazione.</span>
+                                        </li>
+                                        <li className="flex items-start gap-2">
+                                            <span className="text-indigo-600 font-bold">•</span>
+                                            <span><strong>Brand Awareness:</strong> Organizza un Open Day gratuito con laboratorio di inglese.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* === CONTROLLING (TASSE) === */}
+                {/* === CONTROLLING (TASSE & LOGISTICA) === */}
                 {activeTab === 'controlling' && (
                     <div className="animate-fade-in space-y-6">
-                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                <BankIcon /> Controlling Fiscale (Forfettario)
-                            </h2>
-                            
-                            {/* Parametri Configurabili */}
-                            <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-                                <div>
-                                    <label className="block text-gray-500 mb-1">Coeff. Redditività %</label>
-                                    <input type="number" value={profitabilityCoeff} onChange={e => setProfitabilityCoeff(Number(e.target.value))} className="w-full p-2 border rounded font-bold text-indigo-600" />
-                                </div>
-                                <div>
-                                    <label className="block text-gray-500 mb-1">Imposta Sostitutiva %</label>
-                                    <input type="number" value={taxRate} onChange={e => setTaxRate(Number(e.target.value))} className="w-full p-2 border rounded font-bold text-indigo-600" />
-                                </div>
-                                <div>
-                                    <label className="block text-gray-500 mb-1">Aliquota INPS %</label>
-                                    <input type="number" value={inpsRate} onChange={e => setInpsRate(Number(e.target.value))} className="w-full p-2 border rounded font-bold text-indigo-600" />
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Sezione Fiscale Tabella */}
+                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <BankIcon /> Controlling Fiscale (Forfettario)
+                                </h2>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
+                                            <tr><th className="p-3">Voce</th><th className="p-3 text-right">Attuale (YTD)</th><th className="p-3 text-right">Proiezione (Anno)</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            <tr><td className="p-3 font-medium">Fatturato Lordo</td><td className="p-3 text-right font-bold">{metrics.totalRevenueYTD.toLocaleString()}€</td><td className="p-3 text-right font-bold text-indigo-600">{metrics.projectedAnnualRevenue.toLocaleString()}€</td></tr>
+                                            <tr><td className="p-3 text-gray-600">Imponibile ({profitabilityCoeff}%)</td><td className="p-3 text-right text-gray-600">{(metrics.totalRevenueYTD * profitabilityCoeff/100).toLocaleString()}€</td><td className="p-3 text-right text-gray-600">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100).toLocaleString()}€</td></tr>
+                                            <tr className="bg-red-50"><td className="p-3 font-medium text-red-800">Imposta Sostitutiva ({taxRate}%)</td><td className="p-3 text-right text-red-800">{(metrics.totalRevenueYTD * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td><td className="p-3 text-right text-red-800 font-bold">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td></tr>
+                                            <tr className="bg-orange-50"><td className="p-3 font-medium text-orange-800">INPS ({inpsRate}%)</td><td className="p-3 text-right text-orange-800">{(metrics.totalRevenueYTD * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td><td className="p-3 text-right text-orange-800 font-bold">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td></tr>
+                                            <tr className="bg-green-50 border-t-2 border-green-200"><td className="p-3 font-bold text-green-900">NETTO REALE STIMATO</td><td className="p-3 text-right font-bold text-green-900">{(metrics.totalRevenueYTD - (metrics.totalRevenueYTD * profitabilityCoeff/100 * (taxRate+inpsRate)/100)).toLocaleString()}€</td><td className="p-3 text-right font-bold text-green-900 text-lg">{(metrics.projectedAnnualRevenue - (metrics.projectedAnnualRevenue * profitabilityCoeff/100 * (taxRate+inpsRate)/100)).toLocaleString()}€</td></tr>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
 
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
-                                        <tr>
-                                            <th className="p-3">Voce</th>
-                                            <th className="p-3 text-right">Attuale (YTD)</th>
-                                            <th className="p-3 text-right">Proiezione (Anno)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        <tr>
-                                            <td className="p-3 font-medium">Fatturato Lordo</td>
-                                            <td className="p-3 text-right font-bold">{metrics.totalRevenueYTD.toLocaleString()}€</td>
-                                            <td className="p-3 text-right font-bold text-indigo-600">{metrics.projectedAnnualRevenue.toLocaleString()}€</td>
-                                        </tr>
-                                        <tr>
-                                            <td className="p-3 text-gray-600">Imponibile ({profitabilityCoeff}%)</td>
-                                            <td className="p-3 text-right text-gray-600">{(metrics.totalRevenueYTD * profitabilityCoeff/100).toLocaleString()}€</td>
-                                            <td className="p-3 text-right text-gray-600">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100).toLocaleString()}€</td>
-                                        </tr>
-                                        <tr className="bg-red-50">
-                                            <td className="p-3 font-medium text-red-800">Imposta Sostitutiva ({taxRate}%)</td>
-                                            <td className="p-3 text-right text-red-800">{(metrics.totalRevenueYTD * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td>
-                                            <td className="p-3 text-right text-red-800 font-bold">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td>
-                                        </tr>
-                                        <tr className="bg-orange-50">
-                                            <td className="p-3 font-medium text-orange-800">INPS ({inpsRate}%)</td>
-                                            <td className="p-3 text-right text-orange-800">{(metrics.totalRevenueYTD * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td>
-                                            <td className="p-3 text-right text-orange-800 font-bold">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td>
-                                        </tr>
-                                        <tr className="bg-green-50 border-t-2 border-green-200">
-                                            <td className="p-3 font-bold text-green-900">NETTO REALE STIMATO</td>
-                                            <td className="p-3 text-right font-bold text-green-900">
-                                                {(metrics.totalRevenueYTD - (metrics.totalRevenueYTD * profitabilityCoeff/100 * (taxRate+inpsRate)/100)).toLocaleString()}€
-                                            </td>
-                                            <td className="p-3 text-right font-bold text-green-900 text-lg">
-                                                {(metrics.projectedAnnualRevenue - (metrics.projectedAnnualRevenue * profitabilityCoeff/100 * (taxRate+inpsRate)/100)).toLocaleString()}€
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            {/* Grafico Torta Tasse */}
+                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center">
+                                <h3 className="font-bold text-gray-700 mb-4">Dove vanno i tuoi soldi?</h3>
+                                <div className="w-full h-64">
+                                    <canvas ref={taxPieRef} />
+                                </div>
                             </div>
-                            <p className="text-xs text-gray-400 mt-4 italic">
-                                * Simulazione basata sul regime forfettario. I costi deducibili non influenzano l'imponibile, solo il coefficiente di redditività.
-                            </p>
+                        </div>
+
+                        {/* Sezione Logistica Ripristinata */}
+                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm border-l-4 border-l-indigo-500">
+                            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                <CalculatorIcon /> Logistica & Profittabilità Sedi
+                            </h2>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-center bg-gray-50 p-3 rounded">
+                                <div><div className="text-xs text-gray-500">Costo Carburante</div><input type="number" step="0.01" value={fuelPrice} onChange={e => setFuelPrice(Number(e.target.value))} className="w-16 p-1 text-center font-bold border rounded" /></div>
+                                <div><div className="text-xs text-gray-500">Consumo Veicolo</div><div className="font-bold text-gray-800">{companyInfo?.carFuelConsumption || 16.5} km/l</div></div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                                {Object.entries(logisticsData.profitByLocation).map(([locId, data]) => {
+                                    const typedData = data as { revenue: number, cost: number, trips: number, distance: number };
+                                    const locInfo = logisticsData.locationInfoMap.get(locId);
+                                    const profit = typedData.revenue - typedData.cost;
+                                    const margin = typedData.revenue > 0 ? (profit / typedData.revenue) * 100 : 0;
+                                    return (
+                                        <div key={locId} className="border rounded p-4 relative overflow-hidden">
+                                            <h4 className="font-bold text-gray-800">{locInfo?.name || 'Sconosciuta'}</h4>
+                                            <div className="text-xs text-gray-500 mb-2">{typedData.trips} Viaggi a/r • {locInfo?.distance}km dist.</div>
+                                            <div className="flex justify-between text-sm"><span className="text-green-600">Ricavi: {typedData.revenue.toFixed(0)}€</span><span className="text-red-500">Costi: {typedData.cost.toFixed(0)}€</span></div>
+                                            <div className="mt-2 font-bold text-right" style={{color: profit > 0 ? 'green' : 'red'}}>Utile: {profit.toFixed(0)}€ ({margin.toFixed(0)}%)</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 )}
 
-                {/* === LISTE (TRANSAZIONI / FATTURE / PREVENTIVI) === */}
+                {/* === LISTE CRUD (TRANSAZIONI / FATTURE / PREVENTIVI) === */}
                 {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'quotes') && (
                     <div className="animate-slide-up">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-xl font-bold capitalize">{activeTab}</h2>
-                            <button className="md-btn md-btn-raised md-btn-primary md-btn-sm flex items-center">
+                            <button onClick={() => {
+                                if(activeTab === 'transactions') { setEditingTransaction(null); setIsTransModalOpen(true); }
+                                else { setDocType(activeTab === 'invoices' ? 'invoice' : 'quote'); setEditingDoc(null); setIsDocModalOpen(true); }
+                            }} className="md-btn md-btn-raised md-btn-primary md-btn-sm flex items-center">
                                 <PlusIcon /><span className="ml-2">Nuova</span>
                             </button>
                         </div>
@@ -390,55 +748,76 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                     <thead className="bg-gray-50 border-b">
                                         <tr>
                                             <th className="p-3">Data</th>
-                                            <th className="p-3">Descrizione</th>
+                                            <th className="p-3">Descrizione / Cliente</th>
                                             <th className="p-3 text-right">Importo</th>
                                             <th className="p-3 text-center">Stato</th>
+                                            <th className="p-3 text-right">Azioni</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {activeTab === 'transactions' && transactions.slice(0, 10).map(t => (
+                                        {activeTab === 'transactions' && transactions.slice(0, 15).map(t => (
                                             <tr key={t.id}>
                                                 <td className="p-3">{new Date(t.date).toLocaleDateString()}</td>
                                                 <td className="p-3 font-medium">{t.description}</td>
-                                                <td className={`p-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {t.type === 'income' ? '+' : '-'}{t.amount}€
-                                                </td>
+                                                <td className={`p-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'}{t.amount}€</td>
                                                 <td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{t.status}</span></td>
+                                                <td className="p-3 text-right">
+                                                    <button onClick={() => { setEditingTransaction(t); setIsTransModalOpen(true); }} className="text-blue-600 mx-1"><PencilIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: t.id, type: 'transaction'})} className="text-red-600 mx-1"><TrashIcon /></button>
+                                                </td>
                                             </tr>
                                         ))}
-                                        {activeTab === 'invoices' && invoices.slice(0, 10).map(i => (
+                                        {activeTab === 'invoices' && invoices.slice(0, 15).map(i => (
                                             <tr key={i.id}>
                                                 <td className="p-3">{new Date(i.issueDate).toLocaleDateString()}</td>
                                                 <td className="p-3 font-medium">{i.invoiceNumber} - {i.clientName}</td>
                                                 <td className="p-3 text-right font-bold">{i.totalAmount}€</td>
-                                                <td className="p-3 text-center">
-                                                    <span className={`px-2 py-1 rounded text-xs ${i.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                                                        {i.status}
-                                                    </span>
+                                                <td className="p-3 text-center"><span className={`px-2 py-1 rounded text-xs ${i.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{i.status}</span></td>
+                                                <td className="p-3 text-right">
+                                                    <button onClick={() => { setDocType('invoice'); setEditingDoc(i); setIsDocModalOpen(true); }} className="text-blue-600 mx-1"><PencilIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: i.id, type: 'invoice'})} className="text-red-600 mx-1"><TrashIcon /></button>
                                                 </td>
                                             </tr>
                                         ))}
-                                        {activeTab === 'quotes' && quotes.slice(0, 10).map(q => (
+                                        {activeTab === 'quotes' && quotes.slice(0, 15).map(q => (
                                             <tr key={q.id}>
                                                 <td className="p-3">{new Date(q.issueDate).toLocaleDateString()}</td>
                                                 <td className="p-3 font-medium">{q.quoteNumber} - {q.clientName}</td>
                                                 <td className="p-3 text-right font-bold">{q.totalAmount}€</td>
-                                                <td className="p-3 text-center">
-                                                    <span className="px-2 py-1 bg-gray-100 rounded text-xs">{q.status}</span>
+                                                <td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{q.status}</span></td>
+                                                <td className="p-3 text-right">
+                                                    <button onClick={() => { setDocType('quote'); setEditingDoc(q); setIsDocModalOpen(true); }} className="text-blue-600 mx-1"><PencilIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: q.id, type: 'quote'})} className="text-red-600 mx-1"><TrashIcon /></button>
                                                 </td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
-                            <div className="p-4 text-center text-xs text-gray-400 bg-gray-50">
-                                Mostrati gli ultimi 10 elementi. Usa la ricerca per trovarne altri.
-                            </div>
                         </div>
                     </div>
                 )}
                 </>
             )}
+
+            {isTransModalOpen && (
+                <Modal onClose={() => setIsTransModalOpen(false)}>
+                    <TransactionForm transaction={editingTransaction} onSave={handleSaveTransaction} onCancel={() => setIsTransModalOpen(false)} />
+                </Modal>
+            )}
+            {isDocModalOpen && (
+                <Modal onClose={() => setIsDocModalOpen(false)} size="lg">
+                    <DocumentForm doc={editingDoc} type={docType} clients={clients} onSave={handleSaveDoc} onCancel={() => setIsDocModalOpen(false)} />
+                </Modal>
+            )}
+            <ConfirmModal 
+                isOpen={!!itemToDelete} 
+                onClose={() => setItemToDelete(null)} 
+                onConfirm={handleDeleteConfirm} 
+                title="Elimina Elemento" 
+                message="Sei sicuro di voler eliminare questo elemento?" 
+                isDangerous={true} 
+            />
         </div>
     );
 };

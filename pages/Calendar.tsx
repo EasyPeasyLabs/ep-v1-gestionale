@@ -50,11 +50,15 @@ const EditGroupModal: React.FC<{
     return (
         <Modal onClose={onClose} size="lg">
             <div className="p-6">
-                <h3 className="text-xl font-bold mb-4">Sposta Lezione</h3>
+                <h3 className="text-xl font-bold mb-2">Sposta Lezione</h3>
+                <p className="text-sm text-gray-500 mb-4">
+                    Stai spostando <strong>{groupEnrollments.length} iscritti</strong>. 
+                    Le lezioni passate rimarranno invariate.
+                </p>
                 <div className="space-y-4">
                     <div className="md-input-group">
                         <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className="md-input font-bold" />
-                        <label className="md-input-label !top-0">Nuova Data</label>
+                        <label className="md-input-label !top-0">Nuova Data (Inizio Validità)</label>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="md-input-group">
@@ -79,7 +83,7 @@ const EditGroupModal: React.FC<{
                 </div>
                 <div className="mt-6 flex justify-end gap-2">
                     <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                    <button onClick={handleConfirm} disabled={!locationId} className="md-btn md-btn-raised md-btn-primary md-btn-sm">Sposta</button>
+                    <button onClick={handleConfirm} disabled={!locationId} className="md-btn md-btn-raised md-btn-primary md-btn-sm">Conferma Spostamento</button>
                 </div>
             </div>
         </Modal>
@@ -165,7 +169,7 @@ const Calendar: React.FC = () => {
     // Handler unico per click su evento
     const handleEventClick = (event: CalendarEvent, date: Date | null) => {
         if (isMoveMode) {
-            // Se siamo in Move Mode, cliccare su un evento lo seleziona come "Da Spostare"
+            // Mobile: Click-to-move fallback
             if (!event.isManual) {
                 setEventToMove(event);
             } else {
@@ -185,23 +189,50 @@ const Calendar: React.FC = () => {
         setEditingLesson(lessonToEdit); setSelectedDate(date); setIsModalOpen(true); 
     };
 
+    // --- DRAG AND DROP HANDLERS ---
+    const handleDragStart = (e: React.DragEvent, event: CalendarEvent) => {
+        if (event.isManual) {
+            e.preventDefault(); // Prevent dragging manual lessons for now
+            return;
+        }
+        e.dataTransfer.setData("eventId", event.id);
+        // Optional: Set drag image or effect
+        e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault(); // Necessary to allow dropping
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = (e: React.DragEvent, targetDate: Date) => {
+        e.preventDefault();
+        const eventId = e.dataTransfer.getData("eventId");
+        const movedEvent = events.find(ev => ev.id === eventId);
+        
+        if (movedEvent && !movedEvent.isManual) {
+            // Apri la modale di conferma con i dati preimpostati
+            setSelectedGroupEvent(movedEvent);
+            setMoveTargetDate(targetDate.toISOString().split('T')[0]);
+            setIsGroupModalOpen(true);
+        }
+    };
+
     // Handler per click sul giorno (vuoto o con eventi)
     const handleDayClick = (day: Date) => {
         if (!day) return;
 
         if (isMoveMode && eventToMove) {
-            // Se abbiamo un evento in canna e clicchiamo un giorno, è il DROP
+            // Mobile Drop
             setSelectedGroupEvent(eventToMove);
-            setMoveTargetDate(day.toISOString().split('T')[0]); // Imposta data target
+            setMoveTargetDate(day.toISOString().split('T')[0]); 
             setIsGroupModalOpen(true);
             
-            // Reset move mode after triggering modal
             setIsMoveMode(false);
             setEventToMove(null);
             return;
         }
 
-        // Normal: Apri modale creazione lezione manuale
         handleOpenModal(null, day);
     };
 
@@ -227,7 +258,7 @@ const Calendar: React.FC = () => {
             );
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert("Spostamento completato.");
+            alert("Spostamento completato. Lezioni aggiornate.");
         } catch (e) {
             alert("Errore aggiornamento gruppo.");
             console.error(e);
@@ -252,10 +283,10 @@ const Calendar: React.FC = () => {
                 <h1 className="text-3xl font-bold">Calendario</h1>
                 
                 <div className="flex gap-2">
-                    {/* MOVE BUTTON TOGGLE */}
+                    {/* MOVE BUTTON TOGGLE (Mobile Only Visual Aid) */}
                     <button 
                         onClick={() => { setIsMoveMode(!isMoveMode); setEventToMove(null); }} 
-                        className={`md-btn md-btn-sm ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}
+                        className={`md-btn md-btn-sm md:hidden ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}
                     >
                         {isMoveMode ? (
                             <span className="flex items-center font-bold">
@@ -273,7 +304,7 @@ const Calendar: React.FC = () => {
             </div>
             
             {isMoveMode && (
-                <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm">
+                <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">
                     {eventToMove ? 
                         <span>Selezionato: <strong>{eventToMove.locationName}</strong>. Tocca il giorno di destinazione.</span> : 
                         <span>Tocca una lezione per spostarla.</span>
@@ -298,6 +329,8 @@ const Calendar: React.FC = () => {
                                 ${day ? (isMoveMode && eventToMove ? 'bg-green-50 cursor-pointer hover:bg-green-100 border-green-200' : 'bg-white cursor-pointer') : 'bg-gray-50'}
                             `}
                             style={{borderColor: 'var(--md-divider)'}} 
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => day && handleDrop(e, day)}
                             onClick={() => day && handleDayClick(day)}
                         >
                              {day && <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>}
@@ -310,7 +343,9 @@ const Calendar: React.FC = () => {
                                         return (
                                             <div 
                                                 key={event.id} 
-                                                className={`p-1 rounded shadow-sm flex flex-col justify-between relative
+                                                draggable={!event.isManual}
+                                                onDragStart={(e) => handleDragStart(e, event)}
+                                                className={`p-1 rounded shadow-sm flex flex-col justify-between relative cursor-grab active:cursor-grabbing
                                                     ${isSelected ? 'ring-2 ring-offset-1 ring-amber-500 transform scale-95 opacity-80' : ''}
                                                 `} 
                                                 style={{ backgroundColor: event.color, color: textColor, minHeight: event.isManual ? 'auto' : '36px' }} 
