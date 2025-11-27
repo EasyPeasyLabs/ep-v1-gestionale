@@ -250,7 +250,7 @@ export interface LessonActivity {
 // --- Notifications ---
 export interface Notification {
     id: string;
-    type: 'expiry' | 'payment_required' | 'action_required' | 'low_lessons' | 'sdi_deadline' | 'accountant_send';
+    type: 'expiry' | 'payment_required' | 'action_required' | 'low_lessons' | 'sdi_deadline' | 'accountant_send' | 'balance_due';
     message: string;
     clientId?: string;
     date: string;
@@ -422,6 +422,7 @@ export interface Invoice extends DocumentBase {
     sdiCode?: string;
     isProForma?: boolean;
     relatedQuoteNumber?: string;
+    isGhost?: boolean; // Fattura "Fantasma" per il saldo futuro
 }
 
 export interface Quote extends DocumentBase {

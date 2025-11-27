@@ -254,3 +254,36 @@ Risoluzione problemi di layout nella modale di iscrizione.
 ### Riepilogo delle Attività
 1.  **UI Fix Iscrizioni**:
     -   Aggiornato il componente `EnrollmentForm` per garantire che il contenuto della form sia scrollabile verticalmente (`overflow-y-auto`) mentre l'header e il footer (con i bottoni di azione) rimangono fissi. Questo risolve un problema di usabilità su schermi più piccoli dove i bottoni "Conferma" potevano risultare inaccessibili.
+
+---
+
+## Sessione 18 (8 Giugno 2024)
+
+### Obiettivo della Sessione
+Pianificazione della "Pagina Pubblica" (Lead Generation) con architettura sicura.
+
+### Riepilogo delle Attività
+1.  **Analisi Fattibilità**:
+    -   Valutata l'ipotesi di integrare Google Moduli con Webhook.
+    -   Scelta l'alternativa "Buffer Database" per un maggiore controllo sul branding e sulla logica, mantenendo i costi bassi.
+
+2.  **Definizione Architettura (Buffer Database)**:
+    -   Definita la struttura a "doppio progetto" per sicurezza (Air Gap):
+        -   **Progetto A (EP v.1)**: Gestionale Privato (Admin Only).
+        -   **Progetto B (Public)**: Pagina di Iscrizione pubblica che scrive su un database Firebase separato e "sacrificabile".
+    -   EP v.1 leggerà i dati dal Progetto B per importarli come "Nuovi Iscritti".
+
+3.  **Aggiornamento Documentazione**:
+    -   Aggiornati `Contesto.md` e `Architettura.md` con le specifiche del nuovo modulo.
+    -   **Fork Operativo**: È stato deciso di sviluppare la parte pubblica in un nuovo contesto (nuova chat/progetto) per mantenere il codice pulito. I file `.md` specifici per il nuovo progetto sono stati generati.
+
+---
+
+## Sessione 19 (8 Giugno 2024 - Parte 2)
+
+### Obiettivo della Sessione
+Generazione dei file di bootstrap per il nuovo progetto.
+
+### Riepilogo delle Attività
+1.  **Generazione File**: Creati i file `Contesto_1.md` e `Architettura_1.md` contenenti le specifiche per il nuovo progetto "EP Public".
+2.  **Istruzioni**: Questi file verranno utilizzati come prompt iniziale per l'AI nel nuovo repository.

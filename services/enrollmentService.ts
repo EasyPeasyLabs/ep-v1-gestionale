@@ -162,8 +162,6 @@ export const addRecoveryLessons = async (
     appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // Aggiorna DB
-    // Nota: Non aggiorniamo 'lessonsTotal' perché il recupero sostituisce le assenze, non aggiunge al pacchetto venduto.
-    // Tuttavia, 'lessonsRemaining' era un contatore legacy. La logica 'Concluso' ora si baserà sulle presenze effettive.
     await updateDoc(enrollmentDocRef, {
         appointments: appointments
     });
@@ -172,13 +170,26 @@ export const addRecoveryLessons = async (
 
 /**
  * AUTOMAZIONE "BACKEND": Consolida le lezioni passate.
+ * Range: 'today', 'month', 'quarter'
  */
-export const consolidateAppointments = async (): Promise<number> => {
+export const consolidateAppointments = async (range: 'today' | 'month' | 'quarter' = 'today'): Promise<number> => {
     const q = query(enrollmentCollectionRef, where("status", "==", EnrollmentStatus.Active));
     const snapshot = await getDocs(q);
     
     const batch = writeBatch(db);
     const now = new Date();
+    
+    // Calcola data limite indietro nel tempo
+    const limitDate = new Date(now);
+    limitDate.setHours(0,0,0,0);
+    
+    if (range === 'month') {
+        limitDate.setDate(1); // Primo del mese
+    } else if (range === 'quarter') {
+        limitDate.setMonth(limitDate.getMonth() - 3);
+    }
+    // 'today' è il default (solo lezioni fino ad oggi/adesso)
+
     let updatesCount = 0;
 
     snapshot.docs.forEach(docSnap => {
@@ -189,7 +200,8 @@ export const consolidateAppointments = async (): Promise<number> => {
         const updatedAppointments = (enrollment.appointments || []).map(app => {
             const appDateTime = new Date(`${app.date.split('T')[0]}T${app.endTime}:00`);
             
-            if (appDateTime < now && (!app.status || app.status === 'Scheduled')) {
+            // Check se è nel range temporale selezionato E nel passato
+            if (appDateTime < now && appDateTime >= limitDate && (!app.status || app.status === 'Scheduled')) {
                 needsUpdate = true;
                 newLessonsRemaining = Math.max(0, newLessonsRemaining - 1);
                 return { ...app, status: 'Present' as AppointmentStatus };
@@ -211,4 +223,49 @@ export const consolidateAppointments = async (): Promise<number> => {
     }
     
     return updatesCount;
+};
+
+// Funzione massiva per aggiornare location/orario da calendario
+export const bulkUpdateLocation = async (
+    enrollmentIds: string[], 
+    fromDate: string, 
+    newLocationId: string, 
+    newLocationName: string, 
+    newLocationColor: string,
+    newStartTime?: string,
+    newEndTime?: string
+): Promise<void> => {
+    const batch = writeBatch(db);
+    const fromDateObj = new Date(fromDate);
+    fromDateObj.setHours(0,0,0,0);
+
+    for (const id of enrollmentIds) {
+        const docRef = doc(db, 'enrollments', id);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+            const enr = snap.data() as Enrollment;
+            const updatedApps = (enr.appointments || []).map(app => {
+                if (new Date(app.date) >= fromDateObj) {
+                    return {
+                        ...app,
+                        locationName: newLocationName,
+                        locationColor: newLocationColor,
+                        startTime: newStartTime || app.startTime,
+                        endTime: newEndTime || app.endTime
+                    };
+                }
+                return app;
+            });
+            
+            // Aggiorna anche i metadati principali se tutte le lezioni future sono cambiate
+            // Per semplicità, aggiorniamo sempre l'ultimo stato noto
+            batch.update(docRef, {
+                appointments: updatedApps,
+                locationId: newLocationId,
+                locationName: newLocationName,
+                locationColor: newLocationColor
+            });
+        }
+    }
+    await batch.commit();
 };

@@ -8,6 +8,9 @@ export const getNotifications = async (): Promise<Notification[]> => {
     // 1. Aggiorna stati critici (es. fatture scadute)
     await checkAndSetOverdueInvoices();
 
+    // Recupera lista notifiche ignorate da LocalStorage
+    const ignoredIds = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
+
     const [enrollments, clients, invoices, quotes, transactions] = await Promise.all([
         getAllEnrollments(),
         getClients(),
@@ -98,7 +101,28 @@ export const getNotifications = async (): Promise<Notification[]> => {
     const currentYear = today.getFullYear();
 
     invoices.forEach(inv => {
-        if (inv.isDeleted) return; // Ignora fatture nel cestino
+        if (inv.isDeleted) return; 
+
+        // Notifica Saldo (Fattura Fantasma in scadenza)
+        if (inv.isGhost && inv.status === DocumentStatus.Draft) {
+            const dueDate = new Date(inv.dueDate);
+            if (dueDate >= today && dueDate <= sevenDaysFromNow) {
+                const diffTime = dueDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                notifications.push({
+                    id: `inv-balance-${inv.id}`,
+                    type: 'balance_due',
+                    message: `SALDO DOVUTO tra ${diffDays} giorni: ${inv.clientName} (${inv.totalAmount.toFixed(2)}€). Attiva fattura a saldo.`,
+                    clientId: inv.clientId,
+                    date: new Date().toISOString(),
+                    linkPage: 'Finance',
+                    filterContext: {
+                        tab: 'invoices',
+                        searchTerm: inv.clientName
+                    }
+                });
+            }
+        }
 
         // Fatture Scadute
         if (inv.status === DocumentStatus.Overdue) {
@@ -115,8 +139,8 @@ export const getNotifications = async (): Promise<Notification[]> => {
                 }
             });
         }
-        // Fatture Bozza
-        if (inv.status === DocumentStatus.Draft) {
+        // Fatture Bozza (Escludendo le Fantasma)
+        if (inv.status === DocumentStatus.Draft && !inv.isGhost) {
             notifications.push({
                 id: `inv-draft-${inv.id}`,
                 type: 'action_required',
@@ -174,9 +198,8 @@ export const getNotifications = async (): Promise<Notification[]> => {
         }
     });
 
-    // --- NUOVO: Notifica Invio Commercialista ---
+    // Notifica Invio Commercialista
     if (sealedInvoicesCount > 0) {
-        // Mostra sempre se ci sono fatture sigillate nel mese, come promemoria costante
         notifications.push({
             id: `accountant-send-${currentMonth}-${currentYear}`,
             type: 'accountant_send',
@@ -192,7 +215,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
 
     // 3. PREVENTIVI
     quotes.forEach(quote => {
-        if (quote.isDeleted) return; // Ignora preventivi nel cestino
+        if (quote.isDeleted) return; 
 
         if (quote.status === DocumentStatus.Draft) {
             notifications.push({
@@ -209,24 +232,25 @@ export const getNotifications = async (): Promise<Notification[]> => {
         }
     });
 
-    // 4. TRANSAZIONI (SPESE PENDING / NOLI DA SALDARE)
+    // 4. TRANSAZIONI (SPESE PENDING)
     transactions.forEach(trans => {
-        if (trans.isDeleted) return; // Ignora transazioni nel cestino
+        if (trans.isDeleted) return; 
 
         if (trans.status === TransactionStatus.Pending) {
             notifications.push({
                 id: `trans-pending-${trans.id}`,
-                type: 'payment_required', // "Uscita da pagare"
+                type: 'payment_required',
                 message: `Da Saldare: ${trans.description} (${trans.amount.toFixed(2)}€)`,
                 date: new Date().toISOString(),
                 linkPage: 'Finance',
                 filterContext: {
                     tab: 'transactions',
-                    transactionStatus: 'pending' // Usato per evidenziare o filtrare
+                    transactionStatus: 'pending'
                 }
             });
         }
     });
 
-    return notifications;
+    // Filtra quelle ignorate
+    return notifications.filter(n => !ignoredIds.includes(n.id));
 };

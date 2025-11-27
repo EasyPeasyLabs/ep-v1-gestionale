@@ -54,6 +54,15 @@ Lo stato è gestito principalmente a livello di componente tramite i React Hooks
 
 Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato (`currentPage`). Questo approccio è semplice e adatto per un'applicazione gestionale interna. Il cambio di pagina avviene tramite la funzione `setCurrentPage`, passata come prop.
 
+### 3.4. Pagina Pubblica & Buffer Database (Nuova Feature)
+
+Per gestire la raccolta iscrizioni online in sicurezza ("Lead Generation"), viene adottato il pattern **"Buffer Database"** con separazione fisica dei progetti:
+
+1.  **Front-End Pubblico (Progetto Separato)**: Un'applicazione web distinta (repo `ep-iscrizioni-public`), accessibile a chiunque senza login. Usa un proprio progetto Firebase dedicato (**Project B**).
+2.  **Database "Buffer" (Project B)**: Un database Firestore separato con regole di sicurezza che permettono la scrittura pubblica (`create`) ma non la lettura/modifica. Contiene solo i dati grezzi dei lead.
+3.  **Importazione (EP v.1 - Project A)**: L'applicazione principale EP v.1 implementerà una funzione "Importa dal Web". Questa funzione utilizzerà una connessione secondaria a Firebase inizializzata con le credenziali di Project B (solo lato Admin) per leggere i lead, importarli nel database principale (Project A) e cancellarli dal buffer.
+    *   Questo garantisce un "Air Gap" di sicurezza: il database principale non è mai esposto pubblicamente.
+
 ## 4. Architettura Backend (Firebase)
 
 ### 4.1. Firestore Data Model

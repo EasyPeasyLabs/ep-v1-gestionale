@@ -18,6 +18,7 @@ const Attendance: React.FC = () => {
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [consolidating, setConsolidating] = useState(false);
+    const [consolidateRange, setConsolidateRange] = useState<'today' | 'month' | 'quarter'>('today');
     
     // Modal State per conferma assenza
     const [confirmState, setConfirmState] = useState<{
@@ -38,18 +39,20 @@ const Attendance: React.FC = () => {
     const handleConsolidation = useCallback(async () => {
         setConsolidating(true);
         try {
-            const count = await consolidateAppointments();
+            const count = await consolidateAppointments(consolidateRange);
             if (count > 0) {
                 console.log(`Consolidate ${count} iscrizioni con lezioni passate.`);
                 // Emettiamo evento globale per aggiornare le altre viste (es. Dashboard o Iscrizioni)
                 window.dispatchEvent(new Event('EP_DataUpdated'));
+            } else {
+                alert("Nessuna lezione da aggiornare nel periodo selezionato.");
             }
         } catch (e) {
             console.error("Errore consolidamento automatico:", e);
         } finally {
             setConsolidating(false);
         }
-    }, []);
+    }, [consolidateRange]);
 
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);
@@ -88,14 +91,10 @@ const Attendance: React.FC = () => {
         }
     }, [selectedDate]);
 
-    // All'avvio, eseguiamo prima il consolidamento e poi il fetch
+    // All'avvio
     useEffect(() => {
-        const init = async () => {
-            await handleConsolidation();
-            fetchAttendanceData();
-        };
-        init();
-    }, [handleConsolidation, fetchAttendanceData]); // Dipendenze stabili
+        fetchAttendanceData();
+    }, [fetchAttendanceData]); 
 
     const handleDateChange = (offset: number) => {
         const date = new Date(selectedDate);
@@ -128,27 +127,39 @@ const Attendance: React.FC = () => {
 
     return (
         <div>
-            <div className="flex flex-wrap justify-between items-center mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
                     <h1 className="text-3xl font-bold">Registro Presenze</h1>
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
                         Gestisci le presenze giornaliere e i recuperi automatici.
                     </p>
                 </div>
-                <button 
-                    onClick={() => { handleConsolidation().then(fetchAttendanceData); }} 
-                    disabled={consolidating}
-                    className="md-btn md-btn-flat text-sm flex items-center"
-                >
-                    {consolidating ? <Spinner /> : (
-                        <>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                            Aggiorna Stato Lezioni
-                        </>
-                    )}
-                </button>
+                
+                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
+                    <select 
+                        value={consolidateRange} 
+                        onChange={(e) => setConsolidateRange(e.target.value as any)}
+                        className="text-sm border-none bg-gray-50 rounded px-2 py-1.5 focus:ring-0 cursor-pointer"
+                    >
+                        <option value="today">Solo Oggi</option>
+                        <option value="month">Tutto il Mese</option>
+                        <option value="quarter">Ultimi 3 Mesi</option>
+                    </select>
+                    <button 
+                        onClick={() => { handleConsolidation().then(fetchAttendanceData); }} 
+                        disabled={consolidating}
+                        className="md-btn md-btn-raised md-btn-primary text-xs flex items-center h-8"
+                    >
+                        {consolidating ? <Spinner /> : (
+                            <>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                Aggiorna Stato
+                            </>
+                        )}
+                    </button>
+                </div>
             </div>
 
             {/* Barra di Navigazione Data */}
@@ -202,7 +213,6 @@ const Attendance: React.FC = () => {
                                         const isPresent = item.status === 'Present';
                                         
                                         // Determina se la lezione è nel passato (quindi teoricamente "svolta")
-                                        // Usiamo una comparazione sicura data+ora
                                         const lessonEnd = new Date(`${item.date.split('T')[0]}T${item.endTime}:00`);
                                         const isPast = lessonEnd < new Date();
 

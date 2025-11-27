@@ -133,6 +133,12 @@ La seguente roadmap delinea lo stato di avanzamento e le attività future:
 - **Storico Note Strutturato**: Sostituzione dei campi note testuali semplici con un sistema di **Storico Note** (Data + Contenuto) per Genitori, Figli, Fornitori e Sedi.
 - **UI Fix Iscrizioni**: Abilitato scroll verticale nella modale "Nuova Iscrizione" per risolvere problemi di visibilità su schermi piccoli.
 
+### In Sviluppo (Progetto Separato)
+1.  **Pagina Pubblica Iscrizioni (Lead Generation)**
+    -   Sviluppo in corso su repository separato (`ep-iscrizioni-public`).
+    -   Architettura **"Buffer Database"** (Project B) per separare i dati pubblici da quelli privati.
+    -   Integrazione futura in EP v.1 tramite funzione di importazione.
+
 ### In Programma
 1.  **Ottimizzazione Offline Mode**
     - Miglioramento della cache e della gestione dati senza connessione.
