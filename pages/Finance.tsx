@@ -7,6 +7,7 @@ import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo, getSubscriptionTypes } from '../services/settingsService';
 import { generateDocumentPDF } from '../utils/pdfGenerator';
+import { Page } from '../App';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
@@ -30,6 +31,7 @@ interface FinanceProps {
         transactionStatus?: 'pending' | 'completed';
         searchTerm?: string; 
     };
+    onNavigate?: (page: Page, params?: any) => void;
 }
 
 // --- ICONS ---
@@ -38,6 +40,7 @@ const BankIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-6 
 const InfoIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-400 hover:text-indigo-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /> </svg> );
 const BulbIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /> </svg> );
 const RocketIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /> </svg> );
+const ShareIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /> </svg> );
 
 // --- FORM COMPONENTS (Restored Inline) ---
 
@@ -158,7 +161,7 @@ const StatCard: React.FC<{
 );
 
 // --- MAIN COMPONENT ---
-const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
+const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [activeTab, setActiveTab] = useState<Tab>(initialParams?.tab || 'dashboard');
     
     // Simulator State
@@ -178,6 +181,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     const [loading, setLoading] = useState(true);
     
+    // Selection State for Invoices
+    const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+
     // CRUD Modal State
     const [isTransModalOpen, setIsTransModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -194,9 +200,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
 
     // Chart Instances Refs (per pulizia)
     const chartInstances = useRef<{[key: string]: any}>({});
-
-    // Chart Instances Refs (per pulizia)
-    // const chartInstances = useRef<{[key: string]: Chart | null}>({});
 
     const fetchAllData = useCallback(async () => {
         try {
@@ -343,6 +346,36 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         setItemToDelete(null); fetchAllData();
     };
 
+    // --- Invoice Selection & Send Logic ---
+    const toggleInvoiceSelection = (id: string) => {
+        setSelectedInvoiceIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const handleSendToAccountant = (method: 'email' | 'whatsapp') => {
+        const selected = invoices.filter(inv => selectedInvoiceIds.includes(inv.id));
+        if (selected.length === 0) return;
+
+        // Prepare message
+        let message = `Ciao Simona,\necco l'elenco delle fatture emesse:\n\n`;
+        selected.forEach(inv => {
+            const sdi = inv.sdiCode ? ` (SDI: ${inv.sdiCode})` : '';
+            message += `- ${inv.invoiceNumber} del ${new Date(inv.issueDate).toLocaleDateString()} - ${inv.clientName}${sdi}\n`;
+        });
+        message += `\nTotale documenti: ${selected.length}`;
+
+        // Send logic
+        if (method === 'email') {
+            const subject = encodeURIComponent("Invio Tabulato Fatture - Easy Peasy");
+            const body = encodeURIComponent(message);
+            window.location.href = `mailto:commercialista@example.com?subject=${subject}&body=${body}`; // Placeholder email
+        } else {
+            const encodedMsg = encodeURIComponent(message);
+            window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
+        }
+    };
+
 
     // --- CHARTS EFFECTS ---
     
@@ -425,7 +458,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
             }
         }
         return () => {
-            Object.values(chartInstances.current).forEach(c => c?.destroy());
+            Object.values(chartInstances.current).forEach((c: any) => c?.destroy());
         };
     }, [activeTab, metrics]);
 
@@ -554,16 +587,36 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                 <label className="block text-indigo-200 text-sm font-bold mb-2">
                                     Obiettivo Guadagno Netto Mensile (Pulito in tasca)
                                 </label>
-                                <div className="flex items-center gap-4">
-                                    <input 
-                                        type="range" min="1000" max="10000" step="100" 
-                                        value={targetNetProfit} 
-                                        onChange={e => setTargetNetProfit(Number(e.target.value))}
-                                        className="w-full h-2 bg-indigo-500 rounded-lg appearance-none cursor-pointer"
-                                    />
-                                    <span className="text-3xl font-bold font-mono text-white min-w-[120px]">
-                                        {targetNetProfit.toLocaleString()}€
-                                    </span>
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex items-center gap-4">
+                                        <input 
+                                            type="range" min="1000" max="10000" step="100" 
+                                            value={targetNetProfit} 
+                                            onChange={e => setTargetNetProfit(Number(e.target.value))}
+                                            className="w-full h-2 bg-indigo-500 rounded-lg appearance-none cursor-pointer"
+                                            list="salary-markers"
+                                        />
+                                        <span className="text-3xl font-bold font-mono text-white min-w-[120px]">
+                                            {targetNetProfit.toLocaleString()}€
+                                        </span>
+                                    </div>
+                                    {/* Datalist per scalini visivi (supporto browser limitato su style, ma funzionale) */}
+                                    <datalist id="salary-markers" className="flex justify-between w-full text-xs text-indigo-300 font-mono">
+                                        <option value="1000" label="1k"></option>
+                                        <option value="2000"></option>
+                                        <option value="3000"></option>
+                                        <option value="4000"></option>
+                                        <option value="5000" label="5k"></option>
+                                        <option value="6000"></option>
+                                        <option value="7000"></option>
+                                        <option value="8000"></option>
+                                        <option value="9000"></option>
+                                        <option value="10000" label="10k"></option>
+                                    </datalist>
+                                    <div className="flex justify-between text-xs text-indigo-400 font-bold px-1">
+                                        <span>1.000€</span>
+                                        <span>10.000€</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -617,24 +670,29 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                     <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
                                         <RocketIcon /> Azioni Urgenti (Entro 30gg)
                                     </h3>
-                                    <ul className="space-y-3 text-sm text-gray-700">
-                                        <li className="flex items-start gap-2">
+                                    <div className="space-y-3">
+                                        <button 
+                                            onClick={() => onNavigate && onNavigate('Finance', { tab: 'invoices', invoiceStatus: 'overdue' })}
+                                            className="flex items-start gap-2 text-sm text-gray-700 hover:bg-white p-2 rounded transition-colors w-full text-left"
+                                        >
                                             <span className="text-amber-600 font-bold">•</span>
-                                            <span><strong>Recupero Crediti:</strong> Chiama i 3 clienti con il debito più alto.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
+                                            <span><strong>Recupero Crediti:</strong> Chiama i clienti con debiti scaduti.</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => onNavigate && onNavigate('CRM', { tab: 'overview' })}
+                                            className="flex items-start gap-2 text-sm text-gray-700 hover:bg-white p-2 rounded transition-colors w-full text-left"
+                                        >
                                             <span className="text-amber-600 font-bold">•</span>
-                                            <span><strong>Upsell Immediato:</strong> Proponi il rinnovo anticipato con sconto 5% ai clienti in scadenza.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
+                                            <span><strong>Upsell Immediato:</strong> Proponi rinnovi ai clienti in scadenza.</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => onNavigate && onNavigate('Finance', { tab: 'transactions', category: 'OtherExpense' })}
+                                            className="flex items-start gap-2 text-sm text-gray-700 hover:bg-white p-2 rounded transition-colors w-full text-left"
+                                        >
                                             <span className="text-amber-600 font-bold">•</span>
-                                            <span><strong>Taglio Costi:</strong> Rivedi le spese "Altro" ({metrics.expensesByCategory[TransactionCategory.OtherExpense]?.toFixed(0) || 0}€) e taglia il 20%.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <span className="text-amber-600 font-bold">•</span>
-                                            <span><strong>Promo Lampo:</strong> Lancia "Porta un Amico" valido solo per questo mese.</span>
-                                        </li>
-                                    </ul>
+                                            <span><strong>Taglio Costi:</strong> Analizza le spese "Altro" ({metrics.expensesByCategory[TransactionCategory.OtherExpense]?.toFixed(0) || 0}€).</span>
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {/* Azioni Strategiche */}
@@ -642,24 +700,29 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                     <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center gap-2">
                                         <BulbIcon /> Azioni Creative (Medio Termine)
                                     </h3>
-                                    <ul className="space-y-3 text-sm text-gray-700">
-                                        <li className="flex items-start gap-2">
+                                    <div className="space-y-3">
+                                        <button 
+                                            onClick={() => onNavigate && onNavigate('CRM', { tab: 'campaigns' })}
+                                            className="flex items-start gap-2 text-sm text-gray-700 hover:bg-white p-2 rounded transition-colors w-full text-left"
+                                        >
                                             <span className="text-indigo-600 font-bold">•</span>
-                                            <span><strong>Partnership:</strong> Contatta cartolibrerie locali per lasciare volantini in cambio di sconto reciproco.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
+                                            <span><strong>Partnership:</strong> Lancia una campagna marketing per partner locali.</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => onNavigate && onNavigate('Settings', {})}
+                                            className="flex items-start gap-2 text-sm text-gray-700 hover:bg-white p-2 rounded transition-colors w-full text-left"
+                                        >
                                             <span className="text-indigo-600 font-bold">•</span>
-                                            <span><strong>Nuovo Prodotto:</strong> Crea un "Corso Intensivo Estivo" o "Sabato Lab" per aumentare il LTV.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
+                                            <span><strong>Nuovo Prodotto:</strong> Crea un pacchetto "Intensivo" nel listino.</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => onNavigate && onNavigate('Suppliers', {})}
+                                            className="flex items-start gap-2 text-sm text-gray-700 hover:bg-white p-2 rounded transition-colors w-full text-left"
+                                        >
                                             <span className="text-indigo-600 font-bold">•</span>
-                                            <span><strong>Negoziazione:</strong> Rinegozia il nolo con la sede più costosa basandoti sui dati di saturazione.</span>
-                                        </li>
-                                        <li className="flex items-start gap-2">
-                                            <span className="text-indigo-600 font-bold">•</span>
-                                            <span><strong>Brand Awareness:</strong> Organizza un Open Day gratuito con laboratorio di inglese.</span>
-                                        </li>
-                                    </ul>
+                                            <span><strong>Negoziazione:</strong> Rinegozia il nolo con i fornitori meno performanti.</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -685,6 +748,18 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                             <tr><td className="p-3 text-gray-600">Imponibile ({profitabilityCoeff}%)</td><td className="p-3 text-right text-gray-600">{(metrics.totalRevenueYTD * profitabilityCoeff/100).toLocaleString()}€</td><td className="p-3 text-right text-gray-600">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100).toLocaleString()}€</td></tr>
                                             <tr className="bg-red-50"><td className="p-3 font-medium text-red-800">Imposta Sostitutiva ({taxRate}%)</td><td className="p-3 text-right text-red-800">{(metrics.totalRevenueYTD * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td><td className="p-3 text-right text-red-800 font-bold">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td></tr>
                                             <tr className="bg-orange-50"><td className="p-3 font-medium text-orange-800">INPS ({inpsRate}%)</td><td className="p-3 text-right text-orange-800">{(metrics.totalRevenueYTD * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td><td className="p-3 text-right text-orange-800 font-bold">{(metrics.projectedAnnualRevenue * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td></tr>
+                                            
+                                            {/* RIGA TOTALE TASSE */}
+                                            <tr className="bg-gray-100 border-t border-gray-200">
+                                                <td className="p-3 font-bold text-gray-700">TOTALE TASSE + INPS</td>
+                                                <td className="p-3 text-right font-bold text-red-600">
+                                                    {((metrics.totalRevenueYTD * profitabilityCoeff/100 * taxRate/100) + (metrics.totalRevenueYTD * profitabilityCoeff/100 * inpsRate/100)).toLocaleString()}€
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-red-600">
+                                                    {((metrics.projectedAnnualRevenue * profitabilityCoeff/100 * taxRate/100) + (metrics.projectedAnnualRevenue * profitabilityCoeff/100 * inpsRate/100)).toLocaleString()}€
+                                                </td>
+                                            </tr>
+
                                             <tr className="bg-green-50 border-t-2 border-green-200"><td className="p-3 font-bold text-green-900">NETTO REALE STIMATO</td><td className="p-3 text-right font-bold text-green-900">{(metrics.totalRevenueYTD - (metrics.totalRevenueYTD * profitabilityCoeff/100 * (taxRate+inpsRate)/100)).toLocaleString()}€</td><td className="p-3 text-right font-bold text-green-900 text-lg">{(metrics.projectedAnnualRevenue - (metrics.projectedAnnualRevenue * profitabilityCoeff/100 * (taxRate+inpsRate)/100)).toLocaleString()}€</td></tr>
                                         </tbody>
                                     </table>
@@ -742,11 +817,27 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                             </button>
                         </div>
                         
+                        {/* Action Bar for Invoices Selection */}
+                        {activeTab === 'invoices' && selectedInvoiceIds.length > 0 && (
+                            <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex items-center justify-between animate-fade-in">
+                                <span className="text-sm text-indigo-800 font-medium">{selectedInvoiceIds.length} fatture selezionate</span>
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleSendToAccountant('email')} className="md-btn md-btn-sm bg-white border shadow-sm text-gray-700 flex items-center">
+                                        📧 Email Commercialista
+                                    </button>
+                                    <button onClick={() => handleSendToAccountant('whatsapp')} className="md-btn md-btn-sm bg-green-500 text-white shadow-sm flex items-center hover:bg-green-600">
+                                        <ShareIcon /><span className="ml-1">WhatsApp</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="md-card overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-gray-50 border-b">
                                         <tr>
+                                            {activeTab === 'invoices' && <th className="p-3 w-8"></th>}
                                             <th className="p-3">Data</th>
                                             <th className="p-3">Descrizione / Cliente</th>
                                             <th className="p-3 text-right">Importo</th>
@@ -768,7 +859,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
                                             </tr>
                                         ))}
                                         {activeTab === 'invoices' && invoices.slice(0, 15).map(i => (
-                                            <tr key={i.id}>
+                                            <tr key={i.id} className={selectedInvoiceIds.includes(i.id) ? 'bg-indigo-50' : ''}>
+                                                <td className="p-3 text-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedInvoiceIds.includes(i.id)}
+                                                        onChange={() => toggleInvoiceSelection(i.id)}
+                                                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                </td>
                                                 <td className="p-3">{new Date(i.issueDate).toLocaleDateString()}</td>
                                                 <td className="p-3 font-medium">{i.invoiceNumber} - {i.clientName}</td>
                                                 <td className="p-3 text-right font-bold">{i.totalAmount}€</td>

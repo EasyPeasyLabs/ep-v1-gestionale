@@ -148,7 +148,7 @@ const App: React.FC = () => {
                   case 'CRM':
                     return <CRM />;
                   case 'Finance':
-                    return <Finance initialParams={pageParams} />;
+                    return <Finance initialParams={pageParams} onNavigate={handleNavigation} />;
                   case 'Settings':
                     return <Settings />;
                   case 'Profile':
