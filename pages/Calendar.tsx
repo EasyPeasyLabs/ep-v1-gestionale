@@ -200,7 +200,11 @@ const Calendar: React.FC = () => {
             const groupedAppointments = new Map<string, { date: string; startTime: string; endTime: string; locationId: string; count: number; locationName: string; color: string; capacity: number; enrollmentIds: string[] }>();
 
             enrollments.forEach(enr => {
-                if (enr.status !== EnrollmentStatus.Active && enr.status !== EnrollmentStatus.Pending) return;
+                // MODIFICA: Includiamo anche 'Completed' per visualizzare lo storico delle lezioni passate.
+                // Le lezioni future delle iscrizioni 'Completed' sono state rimosse fisicamente dal 'bulkUpdateLocation',
+                // quindi non appariranno duplicati nel futuro.
+                if (enr.status !== EnrollmentStatus.Active && enr.status !== EnrollmentStatus.Pending && enr.status !== EnrollmentStatus.Completed) return;
+                
                 if (enr.appointments) {
                     enr.appointments.forEach(app => {
                         const locationId = enr.locationId;
@@ -297,7 +301,7 @@ const Calendar: React.FC = () => {
                                         const textColor = getTextColorForBg(event.color);
                                         const locAbbr = (event.locationName || 'UNK').substring(0, 3).toUpperCase();
                                         return (
-                                            <div key={event.id} className="p-1 rounded shadow-sm group flex flex-col justify-between relative" style={{ backgroundColor: event.color, color: textColor, minHeight: event.isManual ? 'auto' : '36px' }} onClick={(e) => { e.stopPropagation(); handleOpenModal(event, day); }}>
+                                            <div key={event.id} className="p-1 rounded shadow-sm group flex flex-col justify-between relative cursor-pointer" style={{ backgroundColor: event.color, color: textColor, minHeight: event.isManual ? 'auto' : '36px' }} onClick={(e) => { e.stopPropagation(); handleOpenModal(event, day); }}>
                                                  {event.isManual ? (
                                                     <div className="flex justify-between items-center text-[10px] leading-tight"><span className="font-bold truncate">{event.startTime} - {event.title}</span><button onClick={(e) => {e.stopPropagation(); handleDeleteClick(event.id, true);}} className="opacity-0 group-hover:opacity-100 ml-1 hover:text-red-600 font-bold">×</button></div>
                                                  ) : (

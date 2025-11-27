@@ -95,22 +95,28 @@ const RecoveryModal: React.FC<{
 
 
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
-    // ... (States same as before)
+    // Data States
     const [clients, setClients] = useState<ParentClient[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'active' | 'completed'>('all');
+    
+    // Filter States
     const [searchTerm, setSearchTerm] = useState('');
-    const [sortOrder, setSortOrder] = useState<'date_desc' | 'date_asc' | 'name_asc' | 'name_desc' | 'parent_asc' | 'parent_desc'>('date_desc');
+    const [sortOrder, setSortOrder] = useState<'az' | 'za'>('az');
+    
+    // Dropdown Filters
+    const [filterLocation, setFilterLocation] = useState<string>('');
     const [filterDay, setFilterDay] = useState<string>('');
     const [filterTime, setFilterTime] = useState<string>('');
+    const [filterAge, setFilterAge] = useState<string>('');
+
+    // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     
-    // Updated Payment Modal State with "isDeposit" and "depositAmount"
     const [paymentModalState, setPaymentModalState] = useState<{
         isOpen: boolean;
         enrollment: Enrollment | null;
@@ -132,7 +138,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [recoveryModalState, setRecoveryModalState] = useState<{ isOpen: boolean; enrollment: Enrollment | null; maxRecoverable: number; }>({ isOpen: false, enrollment: null, maxRecoverable: 0 });
     const [confirmState, setConfirmState] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; isDangerous: boolean; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, isDangerous: false });
 
-    // ... (fetchData useEffect - same as before)
+    // Fetch Data
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
@@ -158,7 +164,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const handleEditClick = (e: React.MouseEvent, client: ParentClient | undefined, enrollment: Enrollment) => { e.stopPropagation(); if (!client) return; setSelectedClient(client); setEditingEnrollment(enrollment); setIsModalOpen(true); };
     const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { setLoading(true); try { for (const enrollmentData of enrollmentsData) { if ('id' in enrollmentData) { await updateEnrollment((enrollmentData as any).id, enrollmentData); } else { await addEnrollment(enrollmentData); } } setIsModalOpen(false); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Save error:", err); setError("Errore salvataggio."); setLoading(false); } };
 
-    // --- Payment Execution with Deposit Logic ---
+    // --- Actions ---
     const executePayment = async (
         enr: Enrollment, 
         paymentDateStr: string, 
@@ -172,12 +178,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             const fullPrice = enr.price !== undefined ? enr.price : 0;
             const actualAmount = isDeposit ? depositAmount : fullPrice;
             const paymentIsoDate = new Date(paymentDateStr).toISOString();
-            
             const client = clients.find(c => c.id === enr.clientId);
             const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
 
             if (generateInvoice) {
-                // 1. Fattura Acconto (o Totale)
                 const desc = isDeposit 
                     ? `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`
                     : `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
@@ -198,7 +202,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
                 const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
                 
-                // Transazione
                 if (actualAmount > 0) {
                     await addTransaction({
                         date: paymentIsoDate,
@@ -212,15 +215,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     });
                 }
 
-                // 2. Se Acconto -> Genera Fattura Fantasma per il saldo
                 if (isDeposit) {
                     const balance = fullPrice - depositAmount;
                     if (balance > 0) {
                         const ghostInvoice: InvoiceInput = {
                             clientId: enr.clientId,
                             clientName: clientName,
-                            issueDate: new Date().toISOString(), // Data creazione
-                            dueDate: enr.endDate, // Scadenza = Fine Corso
+                            issueDate: new Date().toISOString(), 
+                            dueDate: enr.endDate, 
                             status: DocumentStatus.Draft,
                             paymentMethod: PaymentMethod.BankTransfer,
                             items: [{ 
@@ -233,19 +235,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             hasStampDuty: balance > 77,
                             notes: 'Fattura generata automaticamente come saldo.',
                             invoiceNumber: '',
-                            isGhost: true // FLAG CHIAVE
+                            isGhost: true
                         };
                         await addInvoice(ghostInvoice);
                     }
                 }
-
-                const msg = isDeposit 
-                    ? `Acconto di ${actualAmount}€ registrato. Generata fattura fantasma per il saldo.`
-                    : `Pagamento registrato! Generata Fattura n. ${invoiceNumber}.`;
-                alert(msg);
-
+                alert(isDeposit ? `Acconto di ${actualAmount}€ registrato. Generata fattura fantasma per il saldo.` : `Pagamento registrato! Generata Fattura n. ${invoiceNumber}.`);
             } else {
-                // Solo Transazione
                 if (actualAmount > 0) {
                     await addTransaction({
                         date: paymentIsoDate,
@@ -276,15 +272,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
-        setPaymentModalState({
-            isOpen: true,
-            enrollment: enr,
-            date: new Date().toISOString().split('T')[0],
-            method: PaymentMethod.BankTransfer,
-            generateInvoice: true,
-            isDeposit: false,
-            depositAmount: (enr.price || 0) / 2 // Default suggestion 50%
-        });
+        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, generateInvoice: true, isDeposit: false, depositAmount: (enr.price || 0) / 2 });
     };
 
     const handleConfirmPayment = async () => {
@@ -303,63 +291,290 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handleRecoveryRequest = (e: React.MouseEvent, enr: Enrollment, absentCount: number) => { e.stopPropagation(); setRecoveryModalState({ isOpen: true, enrollment: enr, maxRecoverable: absentCount }); };
     const handleConfirmRecovery = async (date: string, startTime: string, endTime: string, count: number, locName: string, locColor: string) => { if (!recoveryModalState.enrollment) return; setRecoveryModalState(prev => ({ ...prev, isOpen: false })); setLoading(true); try { await addRecoveryLessons(recoveryModalState.enrollment.id, date, startTime, endTime, count, locName, locColor); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Recupero programmato con successo!"); } catch (err) { alert("Errore recupero."); } finally { setLoading(false); } };
-    const handleRevokeRequest = (e: React.MouseEvent, enr: Enrollment) => { e.stopPropagation(); setConfirmState({ isOpen: true, title: "Revoca", message: "Torna in attesa?", isDangerous: true, onConfirm: async () => { setLoading(true); await updateEnrollment(enr.id, { status: EnrollmentStatus.Pending }); await fetchData(); setLoading(false); } }); };
-    const handleAbandonRequest = (e: React.MouseEvent, enr: Enrollment) => { e.stopPropagation(); setConfirmState({ isOpen: true, title: "Abbandono", message: "Confermi?", isDangerous: true, onConfirm: async () => { setLoading(true); await updateEnrollment(enr.id, { status: EnrollmentStatus.Completed, endDate: new Date().toISOString() }); await fetchData(); setLoading(false); } }); };
     const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => { e.stopPropagation(); setConfirmState({ isOpen: true, title: "Elimina", message: "Eliminare definitivamente?", isDangerous: true, onConfirm: async () => { setLoading(true); await deleteEnrollment(enr.id); await deleteTransactionByRelatedId(enr.id); await fetchData(); setLoading(false); } }); };
 
-    // --- Filtering Logic Omitted for brevity (same as before) ---
+    // --- Helper per estrarre dati derivati ---
+    const getChildAge = (enrollment: Enrollment): string => {
+        const client = clients.find(c => c.id === enrollment.clientId);
+        const child = client?.children.find(c => c.id === enrollment.childId);
+        return child?.age || '';
+    };
+
+    const getFirstAppointmentData = (enrollment: Enrollment) => {
+        if (enrollment.appointments && enrollment.appointments.length > 0) {
+            const first = enrollment.appointments[0];
+            const date = new Date(first.date);
+            return {
+                dayIndex: date.getDay(),
+                dayName: daysOfWeekMap[date.getDay()],
+                startTime: first.startTime,
+                endTime: first.endTime
+            };
+        }
+        return { dayIndex: 9, dayName: 'Da Definire', startTime: '', endTime: '' };
+    };
+
+    // --- Dynamic Options for Selects ---
+    const availableLocations = useMemo(() => Array.from(new Set(enrollments.map(e => e.locationName))).filter(Boolean).sort(), [enrollments]);
+    const availableAges = useMemo(() => {
+        const ages = new Set<string>();
+        enrollments.forEach(e => {
+            const age = getChildAge(e);
+            if(age) ages.add(age);
+        });
+        return Array.from(ages).sort();
+    }, [enrollments, clients]);
+    const availableTimes = useMemo(() => {
+        const times = new Set<string>();
+        enrollments.forEach(e => {
+            const d = getFirstAppointmentData(e);
+            if(d.startTime) times.add(`${d.startTime} - ${d.endTime}`);
+        });
+        return Array.from(times).sort();
+    }, [enrollments]);
+
+
+    // --- Filtering Logic ---
     const filteredEnrollments = useMemo(() => {
         let result = enrollments.filter(enr => {
-            if (statusFilter === 'pending' && enr.status !== EnrollmentStatus.Pending) return false;
-            if (statusFilter === 'active' && enr.status !== EnrollmentStatus.Active) return false;
-            if (statusFilter === 'completed' && enr.status !== EnrollmentStatus.Completed && enr.status !== EnrollmentStatus.Expired) return false;
+            // Esclude completati ed expired dalla vista principale se non filtrati diversamente
+            // (La logica "Recinti" funziona meglio con Active/Pending)
+            if (enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired) return false;
+
+            // Search Term
             if (searchTerm) {
                 const term = searchTerm.toLowerCase();
                 const client = clients.find(c => c.id === enr.clientId);
                 const parentName = client ? `${client.firstName} ${client.lastName}` : '';
-                const match = enr.childName.toLowerCase().includes(term) || parentName.toLowerCase().includes(term) || enr.supplierName.toLowerCase().includes(term) || enr.locationName.toLowerCase().includes(term);
+                const childAge = getChildAge(enr);
+                const appData = getFirstAppointmentData(enr);
+                
+                const match = 
+                    enr.childName.toLowerCase().includes(term) || 
+                    parentName.toLowerCase().includes(term) || 
+                    enr.locationName.toLowerCase().includes(term) || 
+                    childAge.toLowerCase().includes(term) ||
+                    appData.dayName.toLowerCase().includes(term) ||
+                    appData.startTime.includes(term);
+                
                 if (!match) return false;
             }
+
+            // Dropdown Filters
+            if (filterLocation && enr.locationName !== filterLocation) return false;
+            if (filterAge && getChildAge(enr) !== filterAge) return false;
+            if (filterDay && getFirstAppointmentData(enr).dayName !== filterDay) return false;
+            if (filterTime) {
+                const d = getFirstAppointmentData(enr);
+                const timeStr = `${d.startTime} - ${d.endTime}`;
+                if (timeStr !== filterTime) return false;
+            }
+
             return true;
         });
-        result.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+
+        // Sorting Base (Before Grouping)
+        result.sort((a, b) => {
+            const nameA = a.childName.toLowerCase();
+            const nameB = b.childName.toLowerCase();
+            return sortOrder === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        });
+
         return result;
-    }, [enrollments, clients, statusFilter, searchTerm]);
+    }, [enrollments, clients, searchTerm, filterLocation, filterAge, filterDay, filterTime, sortOrder]);
+
+
+    // --- Grouping Logic (Recinti) ---
+    // Structure: Location -> Day -> TimeSlot -> Enrollments[]
+    const groupedEnrollments = useMemo(() => {
+        const groups: Record<string, { // Location Key
+            locationName: string;
+            locationColor: string;
+            days: Record<number, { // Day Index Key
+                dayName: string;
+                slots: Record<string, { // Time Key (Start-End)
+                    timeRange: string;
+                    items: Enrollment[];
+                }>
+            }>
+        }> = {};
+
+        filteredEnrollments.forEach(enr => {
+            const locName = enr.locationName || 'Sede Non Definita';
+            const locColor = enr.locationColor || '#ccc';
+            const appData = getFirstAppointmentData(enr);
+            const timeKey = appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D';
+
+            if (!groups[locName]) {
+                groups[locName] = { locationName: locName, locationColor: locColor, days: {} };
+            }
+            
+            if (!groups[locName].days[appData.dayIndex]) {
+                groups[locName].days[appData.dayIndex] = { dayName: appData.dayName, slots: {} };
+            }
+
+            if (!groups[locName].days[appData.dayIndex].slots[timeKey]) {
+                groups[locName].days[appData.dayIndex].slots[timeKey] = { timeRange: timeKey, items: [] };
+            }
+
+            groups[locName].days[appData.dayIndex].slots[timeKey].items.push(enr);
+        });
+
+        // Convert to Arrays for rendering and sort
+        return Object.values(groups).sort((a,b) => a.locationName.localeCompare(b.locationName)).map(loc => ({
+            ...loc,
+            days: Object.entries(loc.days)
+                .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)) // Sort by Day Index (Mon=1, ...)
+                .map(([_, day]) => ({
+                    ...day,
+                    slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange))
+                }))
+        }));
+
+    }, [filteredEnrollments]);
+
 
     return (
         <div>
-            {/* ... Header and Toolbar ... */}
-            <div className="flex wrap gap-4 justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Iscrizioni</h1>
-                <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green"><PlusIcon /><span className="ml-2">Nuova</span></button>
+            {/* --- HEADER --- */}
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+                <div>
+                    <h1 className="text-3xl font-bold">Iscrizioni</h1>
+                    <p className="mt-1 text-gray-500">Gestisci le iscrizioni attive per sede e orario.</p>
+                </div>
+
+                {/* Search & Filters Bar */}
+                <div className="flex flex-col md:flex-row gap-2 flex-1 xl:max-w-4xl xl:justify-end">
+                    
+                    {/* Search Input */}
+                    <div className="relative w-full md:w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
+                        <input 
+                            type="text" 
+                            className="block w-full bg-white border border-gray-300 rounded-lg py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+                            placeholder="Cerca nome, sede, orario..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Dropdown Filters Group */}
+                    <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+                        <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]">
+                            <option value="">Tutte le Sedi</option>
+                            {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        
+                        <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]">
+                            <option value="">Tutti i Giorni</option>
+                            {daysOfWeekMap.map(d => <option key={d} value={d}>{d}</option>)}
+                        </select>
+
+                        <select value={filterTime} onChange={e => setFilterTime(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[90px]">
+                            <option value="">Tutti Orari</option>
+                            {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+
+                        <select value={filterAge} onChange={e => setFilterAge(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[80px]">
+                            <option value="">Tutte Età</option>
+                            {availableAges.map(a => <option key={a} value={a}>{a}</option>)}
+                        </select>
+
+                        {/* Sort Button Toggle */}
+                        <button 
+                            onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')}
+                            className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm"
+                        >
+                            {sortOrder === 'az' ? 'A-Z' : 'Z-A'}
+                        </button>
+                    </div>
+
+                    <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center">
+                        <PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span>
+                    </button>
+                </div>
             </div>
             
-            {/* Render List */}
+            {/* --- CONTENT --- */}
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredEnrollments.map(enr => (
-                        <div key={enr.id} className="md-card p-5 flex flex-col hover:shadow-md transition-shadow" style={{ borderLeftWidth: '8px', borderLeftColor: enr.locationColor || '#ccc' }}>
-                            <div className="flex justify-between mb-2">
-                                <h3 className="text-lg font-bold">{enr.childName}</h3>
-                                {enr.status === 'Active' && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Attivo</span>}
-                                {enr.status === 'Pending' && <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">In Attesa</span>}
+                <div className="space-y-8 pb-10">
+                    {groupedEnrollments.length === 0 && <p className="text-center text-gray-500 italic py-10">Nessuna iscrizione trovata.</p>}
+
+                    {groupedEnrollments.map((locGroup, locIdx) => (
+                        <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            {/* RECINTO SEDE */}
+                            <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex items-center gap-3">
+                                <div className="w-4 h-4 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: locGroup.locationColor }}></div>
+                                <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locGroup.locationName}</h2>
                             </div>
-                            <p className="text-sm text-gray-600 mb-4">{enr.subscriptionName}</p>
-                            
-                            {/* Actions Footer */}
-                            <div className="mt-auto pt-3 border-t flex justify-between items-center">
-                                {enr.status === 'Pending' && (
-                                    <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-green-600 shadow-sm">
-                                        Registra Pagamento
-                                    </button>
-                                )}
-                                {enr.status === 'Active' && (
-                                    <button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="text-orange-500 text-xs font-bold flex items-center"><RefreshIcon/> Recupera</button>
-                                )}
-                                <div className="flex gap-1">
-                                    <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="text-gray-400 p-1 hover:text-blue-500"><PencilIcon/></button>
-                                    <button onClick={(e) => handleDeleteRequest(e, enr)} className="text-gray-400 p-1 hover:text-red-500"><TrashIcon/></button>
-                                </div>
+
+                            <div className="p-6 space-y-6">
+                                {locGroup.days.map((dayGroup, dayIdx) => (
+                                    <div key={dayIdx} className="relative pl-4 border-l-2 border-dashed border-gray-300">
+                                        {/* RECINTO GIORNO */}
+                                        <h3 className="text-md font-bold text-indigo-700 mb-3 uppercase flex items-center">
+                                            <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2 -ml-[21px] ring-4 ring-white"></span>
+                                            {dayGroup.dayName}
+                                        </h3>
+
+                                        <div className="space-y-4">
+                                            {dayGroup.slots.map((slotGroup, slotIdx) => (
+                                                <div key={slotIdx} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                                    {/* RECINTO ORARIO */}
+                                                    <div className="flex items-center mb-3">
+                                                        <span className="bg-white text-slate-600 border border-slate-200 text-xs font-mono font-bold px-2 py-1 rounded shadow-sm">
+                                                            {slotGroup.timeRange}
+                                                        </span>
+                                                        <div className="h-px bg-slate-200 flex-1 ml-3"></div>
+                                                    </div>
+
+                                                    {/* CARDS GRID */}
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                                        {slotGroup.items.map(enr => {
+                                                            const childAge = getChildAge(enr);
+                                                            return (
+                                                                <div key={enr.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative group cursor-default">
+                                                                    <div className="flex justify-between items-start">
+                                                                        <div>
+                                                                            <h4 className="font-bold text-gray-800 text-sm">{enr.childName}</h4>
+                                                                            <p className="text-[10px] text-gray-500">{childAge}</p>
+                                                                        </div>
+                                                                        {enr.status === 'Active' ? 
+                                                                            <span className="w-2 h-2 bg-green-500 rounded-full" title="Attivo"></span> : 
+                                                                            <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" title="In Attesa"></span>
+                                                                        }
+                                                                    </div>
+                                                                    
+                                                                    <p className="text-xs text-gray-600 mt-2 truncate" title={enr.subscriptionName}>{enr.subscriptionName}</p>
+                                                                    
+                                                                    {/* Hover Actions */}
+                                                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
+                                                                        {enr.status === 'Pending' && (
+                                                                            <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento">
+                                                                                <span className="font-bold text-xs">€</span>
+                                                                            </button>
+                                                                        )}
+                                                                        <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica">
+                                                                            <PencilIcon />
+                                                                        </button>
+                                                                        <button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina">
+                                                                            <TrashIcon />
+                                                                        </button>
+                                                                        {enr.status === 'Active' && (
+                                                                            <button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero">
+                                                                                <RefreshIcon />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     ))}
