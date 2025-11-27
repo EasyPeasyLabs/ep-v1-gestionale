@@ -268,7 +268,10 @@ export const bulkUpdateLocation = async (
         const snap = await getDoc(docRef);
         
         if (snap.exists()) {
-            const enr = snap.data() as Enrollment;
+            // FIX: Recuperiamo esplicitamente l'ID dal documento, perché snap.data() non lo contiene.
+            const data = snap.data();
+            const originalId = snap.id;
+            const enr = { ...data, id: originalId } as Enrollment;
             
             // 1. Filtra lezioni passate (da mantenere nella vecchia iscrizione)
             // Consideriamo passate tutte le lezioni con data < fromDate
@@ -279,13 +282,12 @@ export const bulkUpdateLocation = async (
 
             // 2. Calcola lezioni rimanenti
             // Se lezioni totali erano 10, e ne ho fatte 4 (oldAppointments), ne devo generare 6 nuove.
-            // Usiamo enr.lessonsTotal originale come base se non c'è tracking preciso,
-            // oppure usiamo semplicemente quante ne "tagliamo" dal futuro?
-            // Metodo più sicuro: contiamo quante ne stiamo rimuovendo dal futuro.
             const futureAppointmentsCount = (enr.appointments || []).length - oldAppointments.length;
             
             if (futureAppointmentsCount <= 0) {
-                continue; // Nessuna lezione futura da spostare
+                // Se non ci sono lezioni future, aggiorniamo solo i metadati della corrente (opzionale)
+                // oppure saltiamo. Per ora saltiamo perché non c'è nulla da "spostare".
+                continue; 
             }
 
             // 3. Chiudi Vecchia Iscrizione
@@ -297,8 +299,7 @@ export const bulkUpdateLocation = async (
                 appointments: oldAppointments,
                 status: EnrollmentStatus.Completed,
                 endDate: closeDate.toISOString(),
-                // Nota: lessonsRemaining della vecchia non lo tocchiamo o lo mettiamo a 0?
-                // Meglio lasciarlo coerente col fatto che è "chiusa".
+                // Lessons remaining va a 0 perché quelle rimanenti vengono spostate nella nuova
                 lessonsRemaining: 0 
             });
 
@@ -323,7 +324,7 @@ export const bulkUpdateLocation = async (
             const lastAppDate = newAppointments.length > 0 ? newAppointments[newAppointments.length - 1].date : fromDate;
             
             const newEnrollment: Enrollment = {
-                ...enr,
+                ...enr, // Copia tutti i campi (incluso note, rating, ecc.)
                 id: newRef.id,
                 startDate: fromDate, // Inizia dalla modifica
                 endDate: lastAppDate, // Finisce quando finiscono le lezioni residue
@@ -335,8 +336,7 @@ export const bulkUpdateLocation = async (
                 lessonsTotal: futureAppointmentsCount, // Totale del nuovo pacchetto "residuo"
                 lessonsRemaining: futureAppointmentsCount,
                 price: 0, // Importante: Prezzo 0 perché già pagato nella precedente
-                previousEnrollmentId: enr.id, // Link alla storia
-                // Pulizia campi non necessari
+                previousEnrollmentId: originalId, // Link alla storia (FIX: usa ID esplicito)
             };
 
             batch.set(newRef, newEnrollment);
