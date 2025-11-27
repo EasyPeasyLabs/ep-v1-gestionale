@@ -533,7 +533,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                         {slotGroup.items.map(enr => {
                                                             const childAge = getChildAge(enr);
                                                             return (
-                                                                <div key={enr.id} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative group cursor-default">
+                                                                <div 
+                                                                    key={enr.id} 
+                                                                    className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative group cursor-default"
+                                                                    style={{ borderLeftWidth: '5px', borderLeftColor: enr.locationColor || '#9ca3af' }}
+                                                                >
                                                                     <div className="flex justify-between items-start">
                                                                         <div>
                                                                             <h4 className="font-bold text-gray-800 text-sm">{enr.childName}</h4>

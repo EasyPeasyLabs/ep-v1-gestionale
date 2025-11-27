@@ -260,6 +260,8 @@ export const bulkUpdateLocation = async (
     newEndTime?: string
 ): Promise<void> => {
     const batch = writeBatch(db);
+    
+    // Assicuriamo che la data di taglio sia a mezzanotte locale per un confronto corretto
     const fromDateObj = new Date(fromDate);
     fromDateObj.setHours(0,0,0,0);
 
@@ -268,21 +270,24 @@ export const bulkUpdateLocation = async (
         const snap = await getDoc(docRef);
         
         if (snap.exists()) {
-            // FIX: Recuperiamo esplicitamente l'ID dal documento, perché snap.data() non lo contiene.
             const data = snap.data();
             const originalId = snap.id;
             const enr = { ...data, id: originalId } as Enrollment;
             
             // 1. Filtra lezioni passate (da mantenere nella vecchia iscrizione)
-            // Consideriamo passate tutte le lezioni con data < fromDate
+            // Consideriamo "passate" tutte le lezioni con data strettamente ANTECEDENTE alla data di modifica
+            // Se la data di modifica è oggi, la lezione di oggi (se esiste nel vecchio orario) viene rimossa 
+            // perché verrà rigenerata nel nuovo orario.
             const oldAppointments = (enr.appointments || []).filter(app => {
                 const appDate = new Date(app.date);
-                return appDate < fromDateObj;
+                // Confronto date pure (senza orario se app.date fosse ISO completo) per sicurezza o timestamp
+                return appDate < fromDateObj; 
             });
 
             // 2. Calcola lezioni rimanenti
             // Se lezioni totali erano 10, e ne ho fatte 4 (oldAppointments), ne devo generare 6 nuove.
-            const futureAppointmentsCount = (enr.appointments || []).length - oldAppointments.length;
+            const totalOriginal = enr.appointments?.length || 0;
+            const futureAppointmentsCount = totalOriginal - oldAppointments.length;
             
             if (futureAppointmentsCount <= 0) {
                 // Se non ci sono lezioni future, aggiorniamo solo i metadati della corrente (opzionale)
@@ -296,19 +301,17 @@ export const bulkUpdateLocation = async (
             closeDate.setDate(closeDate.getDate() - 1);
 
             batch.update(docRef, {
-                appointments: oldAppointments,
+                appointments: oldAppointments, // TRONCAMENTO: Rimuove fisicamente i futuri
                 status: EnrollmentStatus.Completed,
                 endDate: closeDate.toISOString(),
-                // Lessons remaining va a 0 perché quelle rimanenti vengono spostate nella nuova
-                lessonsRemaining: 0 
+                lessonsRemaining: 0 // Resettiamo a 0 perché il saldo passa alla nuova
             });
 
             // 4. Crea Nuova Iscrizione (Continuazione)
             const newRef = doc(collection(db, 'enrollments'));
             
-            // Genera nuovi appuntamenti con i nuovi orari/luoghi
+            // Genera nuovi appuntamenti con i nuovi orari/luoghi a partire dalla data di modifica
             const startGenDate = new Date(fromDate); 
-            // fromDate è la data effettiva del primo nuovo appuntamento
             
             const newAppointments = generateAppointmentsInternal(
                 startGenDate,
@@ -336,7 +339,7 @@ export const bulkUpdateLocation = async (
                 lessonsTotal: futureAppointmentsCount, // Totale del nuovo pacchetto "residuo"
                 lessonsRemaining: futureAppointmentsCount,
                 price: 0, // Importante: Prezzo 0 perché già pagato nella precedente
-                previousEnrollmentId: originalId, // Link alla storia (FIX: usa ID esplicito)
+                previousEnrollmentId: originalId, // Link alla storia
             };
 
             batch.set(newRef, newEnrollment);
