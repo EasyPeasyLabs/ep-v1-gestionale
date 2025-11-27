@@ -15,16 +15,23 @@ const LessonForm: React.FC<{ lesson?: Lesson | null; selectedDate?: Date | null;
 // --- Edit Group Modal ---
 const EditGroupModal: React.FC<{
     event: CalendarEvent;
-    enrollmentIds: string[];
+    allEnrollments: Enrollment[]; // Passiamo tutte per filtrare i nomi
     onClose: () => void;
-    onSave: (date: string, locId: string, locName: string, locColor: string, startTime: string, endTime: string) => void;
-}> = ({ event, enrollmentIds, onClose, onSave }) => {
+    onSave: (date: string, locId: string, locName: string, locColor: string, startTime: string, endTime: string, selectedIds: string[]) => void;
+}> = ({ event, allEnrollments, onClose, onSave }) => {
     const [effectiveDate, setEffectiveDate] = useState(event.date.split('T')[0]);
     const [supplierId, setSupplierId] = useState('');
     const [locationId, setLocationId] = useState('');
     const [startTime, setStartTime] = useState(event.startTime);
     const [endTime, setEndTime] = useState(event.endTime);
     
+    // Partecipanti
+    const groupEnrollments = useMemo(() => {
+        return allEnrollments.filter(e => event.enrollmentIds?.includes(e.id));
+    }, [allEnrollments, event.enrollmentIds]);
+
+    const [selectedIds, setSelectedIds] = useState<string[]>(event.enrollmentIds || []);
+
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -37,59 +44,110 @@ const EditGroupModal: React.FC<{
 
     const selectedSupplier = suppliers.find(s => s.id === supplierId);
 
+    const toggleParticipant = (id: string) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+    };
+
     const handleConfirm = () => {
         if (!selectedSupplier) return;
         const loc = selectedSupplier.locations.find(l => l.id === locationId);
         if (!loc) return;
-        onSave(effectiveDate, loc.id, loc.name, loc.color, startTime, endTime);
+        
+        // Passiamo anche gli ID selezionati
+        onSave(effectiveDate, loc.id, loc.name, loc.color, startTime, endTime, selectedIds);
     };
 
     return (
-        <Modal onClose={onClose} size="md">
-            <div className="p-6">
-                <h3 className="text-xl font-bold mb-4">Modifica Gruppo</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                    Stai modificando {enrollmentIds.length} iscrizioni per la sede <strong>{event.locationName}</strong>.
-                </p>
-
-                <div className="space-y-4">
-                    <div className="md-input-group">
-                        <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className="md-input" />
-                        <label className="md-input-label !top-0">Efficace dal (Data)</label>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="md-input-group">
-                            <select value={supplierId} onChange={e => {setSupplierId(e.target.value); setLocationId('');}} className="md-input">
-                                <option value="">Scegli Fornitore...</option>
-                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
-                            </select>
-                            <label className="md-input-label !top-0">Nuovo Fornitore</label>
-                        </div>
-                        <div className="md-input-group">
-                            <select value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!selectedSupplier} className="md-input">
-                                <option value="">Scegli Sede...</option>
-                                {selectedSupplier?.locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                            </select>
-                            <label className="md-input-label !top-0">Nuova Sede</label>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 bg-gray-50 p-2 rounded">
-                        <div className="md-input-group">
-                            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" />
-                            <label className="md-input-label !top-0">Nuovo Inizio</label>
-                        </div>
-                        <div className="md-input-group">
-                            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="md-input" />
-                            <label className="md-input-label !top-0">Nuova Fine</label>
-                        </div>
-                    </div>
+        <Modal onClose={onClose} size="lg">
+            <div className="flex flex-col h-full max-h-full overflow-hidden">
+                <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                    <h3 className="text-xl font-bold">Modifica Gruppo</h3>
+                    <p className="text-sm text-gray-500">
+                        Spostamento Sede/Orario per <strong>{event.locationName}</strong>.
+                    </p>
                 </div>
 
-                <div className="mt-6 flex justify-end gap-2">
+                <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-6">
+                    
+                    {/* Sezione 1: Parametri Spostamento */}
+                    <div className="space-y-4">
+                        <h4 className="font-bold text-sm text-indigo-700 uppercase">1. Nuovi Parametri</h4>
+                        <div className="md-input-group">
+                            <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className="md-input font-bold" />
+                            <label className="md-input-label !top-0">Efficace dal (Data)</label>
+                            <p className="text-[10px] text-gray-400 mt-1">Le iscrizioni precedenti verranno chiuse a questa data.</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="md-input-group">
+                                <select value={supplierId} onChange={e => {setSupplierId(e.target.value); setLocationId('');}} className="md-input">
+                                    <option value="">Scegli Fornitore...</option>
+                                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
+                                </select>
+                                <label className="md-input-label !top-0">Nuovo Fornitore</label>
+                            </div>
+                            <div className="md-input-group">
+                                <select value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!selectedSupplier} className="md-input">
+                                    <option value="">Scegli Sede...</option>
+                                    {selectedSupplier?.locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                                <label className="md-input-label !top-0">Nuova Sede</label>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 bg-gray-50 p-2 rounded">
+                            <div className="md-input-group">
+                                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" />
+                                <label className="md-input-label !top-0">Nuovo Inizio</label>
+                            </div>
+                            <div className="md-input-group">
+                                <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="md-input" />
+                                <label className="md-input-label !top-0">Nuova Fine</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sezione 2: Partecipanti Coinvolti */}
+                    <div className="space-y-2 pt-4 border-t border-gray-100">
+                        <div className="flex justify-between items-center">
+                            <h4 className="font-bold text-sm text-indigo-700 uppercase">2. Partecipanti ({selectedIds.length})</h4>
+                            <button 
+                                onClick={() => setSelectedIds(selectedIds.length === groupEnrollments.length ? [] : groupEnrollments.map(e => e.id))}
+                                className="text-xs text-blue-600 font-bold hover:underline"
+                            >
+                                {selectedIds.length === groupEnrollments.length ? 'Deseleziona Tutti' : 'Seleziona Tutti'}
+                            </button>
+                        </div>
+                        
+                        <div className="bg-gray-50 border rounded-md max-h-40 overflow-y-auto p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {groupEnrollments.map(enr => (
+                                <label key={enr.id} className="flex items-center space-x-2 p-2 bg-white rounded border border-gray-100 cursor-pointer hover:border-indigo-300">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={selectedIds.includes(enr.id)}
+                                        onChange={() => toggleParticipant(enr.id)}
+                                        className="h-4 w-4 text-indigo-600 rounded"
+                                    />
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold text-gray-800">{enr.childName}</span>
+                                        <span className="text-[10px] text-gray-500 truncate max-w-[120px]">{enr.subscriptionName}</span>
+                                    </div>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
                     <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                    <button onClick={handleConfirm} disabled={!locationId} className="md-btn md-btn-raised md-btn-primary md-btn-sm disabled:opacity-50">Applica Modifiche</button>
+                    <button 
+                        onClick={handleConfirm} 
+                        disabled={!locationId || selectedIds.length === 0} 
+                        className="md-btn md-btn-raised md-btn-primary md-btn-sm disabled:opacity-50"
+                    >
+                        Applica Modifiche
+                    </button>
                 </div>
             </div>
         </Modal>
@@ -114,6 +172,7 @@ interface CalendarEvent {
 const Calendar: React.FC = () => {
     // ... (Existing states) ...
     const [events, setEvents] = useState<CalendarEvent[]>([]);
+    const [rawEnrollments, setRawEnrollments] = useState<Enrollment[]>([]); // New state for raw data
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -131,6 +190,8 @@ const Calendar: React.FC = () => {
         try {
             setLoading(true);
             const [manualLessons, enrollments, suppliers] = await Promise.all([getLessons(), getAllEnrollments(), getSuppliers()]);
+            setRawEnrollments(enrollments); // Store raw enrollments
+
             const locationMap = new Map<string, { name: string; capacity: number; color: string }>();
             suppliers.forEach(s => { s.locations.forEach(l => { locationMap.set(l.id, { name: l.name, capacity: l.capacity || 0, color: l.color }); }); });
             const calendarEvents: CalendarEvent[] = [];
@@ -175,14 +236,13 @@ const Calendar: React.FC = () => {
         setEditingLesson(lessonToEdit); setSelectedDate(date); setIsModalOpen(true); 
     };
 
-    const handleGroupSave = async (date: string, locId: string, locName: string, locColor: string, start: string, end: string) => {
-        if (!selectedGroupEvent?.enrollmentIds) return;
+    const handleGroupSave = async (date: string, locId: string, locName: string, locColor: string, start: string, end: string, selectedIds: string[]) => {
         setIsGroupModalOpen(false);
         setLoading(true);
         try {
-            // Bulk update logic
+            // Bulk update logic with Split
             await bulkUpdateLocation(
-                selectedGroupEvent.enrollmentIds,
+                selectedIds, // Use selected IDs from modal
                 date,
                 locId,
                 locName,
@@ -192,9 +252,10 @@ const Calendar: React.FC = () => {
             );
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert("Modifiche applicate con successo.");
+            alert("Spostamento completato. Iscrizioni aggiornate e rigenerate.");
         } catch (e) {
             alert("Errore aggiornamento gruppo.");
+            console.error(e);
         } finally {
             setLoading(false);
         }
@@ -253,7 +314,7 @@ const Calendar: React.FC = () => {
             </div>
 
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)}><LessonForm lesson={editingLesson} selectedDate={selectedDate} onSave={handleSaveLesson} onCancel={() => {setIsModalOpen(false); setEditingLesson(null);}} /></Modal>}
-            {isGroupModalOpen && selectedGroupEvent && <EditGroupModal event={selectedGroupEvent} enrollmentIds={selectedGroupEvent.enrollmentIds || []} onClose={() => setIsGroupModalOpen(false)} onSave={handleGroupSave} />}
+            {isGroupModalOpen && selectedGroupEvent && <EditGroupModal event={selectedGroupEvent} allEnrollments={rawEnrollments} onClose={() => setIsGroupModalOpen(false)} onSave={handleGroupSave} />}
             <ConfirmModal isOpen={!!lessonToDelete} onClose={() => setLessonToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Lezione" message="Sei sicuro di voler eliminare questa lezione extra?" isDangerous={true} />
         </div>
     );

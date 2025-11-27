@@ -225,7 +225,31 @@ export const consolidateAppointments = async (range: 'today' | 'month' | 'quarte
     return updatesCount;
 };
 
-// Funzione massiva per aggiornare location/orario da calendario
+// Helper interno per generare lezioni future (duplicato logico da EnrollmentForm per uso server-side)
+const generateAppointmentsInternal = (startDate: Date, startTime: string, endTime: string, numLessons: number, locName: string, locColor: string, childName: string): Appointment[] => {
+    const appointments: Appointment[] = [];
+    let currentDate = new Date(startDate);
+    let lessonsScheduled = 0;
+
+    while (lessonsScheduled < numLessons) {
+        appointments.push({
+            lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            date: currentDate.toISOString(),
+            startTime: startTime,
+            endTime: endTime,
+            locationName: locName,
+            locationColor: locColor,
+            childName: childName,
+            status: 'Scheduled'
+        });
+        currentDate.setDate(currentDate.getDate() + 7);
+        lessonsScheduled++;
+    }
+    return appointments;
+};
+
+// Funzione massiva per SPLIT e sposta location/orario da calendario
+// Modifica Enterprise: Chiude le vecchie iscrizioni e ne crea di nuove per le lezioni residue
 export const bulkUpdateLocation = async (
     enrollmentIds: string[], 
     fromDate: string, 
@@ -242,29 +266,80 @@ export const bulkUpdateLocation = async (
     for (const id of enrollmentIds) {
         const docRef = doc(db, 'enrollments', id);
         const snap = await getDoc(docRef);
+        
         if (snap.exists()) {
             const enr = snap.data() as Enrollment;
-            const updatedApps = (enr.appointments || []).map(app => {
-                if (new Date(app.date) >= fromDateObj) {
-                    return {
-                        ...app,
-                        locationName: newLocationName,
-                        locationColor: newLocationColor,
-                        startTime: newStartTime || app.startTime,
-                        endTime: newEndTime || app.endTime
-                    };
-                }
-                return app;
-            });
             
-            // Aggiorna anche i metadati principali se tutte le lezioni future sono cambiate
-            // Per semplicità, aggiorniamo sempre l'ultimo stato noto
+            // 1. Filtra lezioni passate (da mantenere nella vecchia iscrizione)
+            // Consideriamo passate tutte le lezioni con data < fromDate
+            const oldAppointments = (enr.appointments || []).filter(app => {
+                const appDate = new Date(app.date);
+                return appDate < fromDateObj;
+            });
+
+            // 2. Calcola lezioni rimanenti
+            // Se lezioni totali erano 10, e ne ho fatte 4 (oldAppointments), ne devo generare 6 nuove.
+            // Usiamo enr.lessonsTotal originale come base se non c'è tracking preciso,
+            // oppure usiamo semplicemente quante ne "tagliamo" dal futuro?
+            // Metodo più sicuro: contiamo quante ne stiamo rimuovendo dal futuro.
+            const futureAppointmentsCount = (enr.appointments || []).length - oldAppointments.length;
+            
+            if (futureAppointmentsCount <= 0) {
+                continue; // Nessuna lezione futura da spostare
+            }
+
+            // 3. Chiudi Vecchia Iscrizione
+            // Data fine = giorno prima della modifica
+            const closeDate = new Date(fromDateObj);
+            closeDate.setDate(closeDate.getDate() - 1);
+
             batch.update(docRef, {
-                appointments: updatedApps,
+                appointments: oldAppointments,
+                status: EnrollmentStatus.Completed,
+                endDate: closeDate.toISOString(),
+                // Nota: lessonsRemaining della vecchia non lo tocchiamo o lo mettiamo a 0?
+                // Meglio lasciarlo coerente col fatto che è "chiusa".
+                lessonsRemaining: 0 
+            });
+
+            // 4. Crea Nuova Iscrizione (Continuazione)
+            const newRef = doc(collection(db, 'enrollments'));
+            
+            // Genera nuovi appuntamenti con i nuovi orari/luoghi
+            const startGenDate = new Date(fromDate); 
+            // fromDate è la data effettiva del primo nuovo appuntamento
+            
+            const newAppointments = generateAppointmentsInternal(
+                startGenDate,
+                newStartTime || enr.appointments[0]?.startTime || '09:00', // Fallback se non c'è orario
+                newEndTime || enr.appointments[0]?.endTime || '10:00',
+                futureAppointmentsCount,
+                newLocationName,
+                newLocationColor,
+                enr.childName
+            );
+
+            // Calcola nuova data fine stimata
+            const lastAppDate = newAppointments.length > 0 ? newAppointments[newAppointments.length - 1].date : fromDate;
+            
+            const newEnrollment: Enrollment = {
+                ...enr,
+                id: newRef.id,
+                startDate: fromDate, // Inizia dalla modifica
+                endDate: lastAppDate, // Finisce quando finiscono le lezioni residue
+                status: EnrollmentStatus.Active,
                 locationId: newLocationId,
                 locationName: newLocationName,
-                locationColor: newLocationColor
-            });
+                locationColor: newLocationColor,
+                appointments: newAppointments,
+                lessonsTotal: futureAppointmentsCount, // Totale del nuovo pacchetto "residuo"
+                lessonsRemaining: futureAppointmentsCount,
+                price: 0, // Importante: Prezzo 0 perché già pagato nella precedente
+                previousEnrollmentId: enr.id, // Link alla storia
+                // Pulizia campi non necessari
+            };
+
+            batch.set(newRef, newEnrollment);
         }
     }
     await batch.commit();

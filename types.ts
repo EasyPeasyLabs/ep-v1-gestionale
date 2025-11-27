@@ -66,6 +66,9 @@ export interface Enrollment {
   startDate: string; // ISO String
   endDate: string; // ISO String
   status: EnrollmentStatus;
+  
+  // Tracking spostamenti
+  previousEnrollmentId?: string; // ID dell'iscrizione precedente se questa è frutto di uno spostamento
 }
 
 export type EnrollmentInput = Omit<Enrollment, 'id'>;
