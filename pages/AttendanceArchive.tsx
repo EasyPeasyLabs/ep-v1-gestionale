@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { Enrollment, EnrollmentStatus } from '../types';
 import Spinner from '../components/Spinner';
 import SearchIcon from '../components/icons/SearchIcon';
+import Pagination from '../components/Pagination';
 
 interface ArchiveItem {
     id: string; // unique key
@@ -19,6 +20,10 @@ const AttendanceArchive: React.FC = () => {
     const [items, setItems] = useState<ArchiveItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
 
     useEffect(() => {
         const fetchArchive = async () => {
@@ -59,10 +64,22 @@ const AttendanceArchive: React.FC = () => {
         fetchArchive();
     }, []);
 
-    const filteredItems = items.filter(item => 
-        item.childName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        item.locationName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Reset pagination
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm]);
+
+    const filteredItems = useMemo(() => {
+        return items.filter(item => 
+            item.childName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            item.locationName.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [items, searchTerm]);
+
+    const paginatedItems = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredItems.slice(start, start + itemsPerPage);
+    }, [filteredItems, currentPage]);
 
     return (
         <div>
@@ -97,7 +114,7 @@ const AttendanceArchive: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {filteredItems.map(item => (
+                                {paginatedItems.map(item => (
                                     <tr key={item.id} className="hover:bg-gray-50">
                                         <td className="p-4 font-mono text-gray-600">
                                             {new Date(item.date).toLocaleDateString()} <span className="text-xs text-gray-400 ml-1">{item.startTime}</span>
@@ -122,6 +139,12 @@ const AttendanceArchive: React.FC = () => {
                             </tbody>
                         </table>
                     </div>
+                    <Pagination 
+                        currentPage={currentPage} 
+                        totalItems={filteredItems.length} 
+                        itemsPerPage={itemsPerPage} 
+                        onPageChange={setCurrentPage} 
+                    />
                 </div>
             )}
         </div>

@@ -9,6 +9,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import ImportModal from '../components/ImportModal';
 import NotesManager from '../components/NotesManager';
+import Pagination from '../components/Pagination';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
@@ -282,6 +283,10 @@ const Clients: React.FC = () => {
     const [filterDay, setFilterDay] = useState<string>('');
     const [filterTime, setFilterTime] = useState<string>('');
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     
@@ -306,6 +311,11 @@ const Clients: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchClientsData(); }, [fetchClientsData]);
+
+    // Reset pagination when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, showTrash, filterDay, filterTime]);
 
     const handleOpenModal = (client: Client | null = null) => {
         setEditingClient(client);
@@ -434,6 +444,12 @@ const Clients: React.FC = () => {
         return result;
     }, [clients, enrollments, showTrash, searchTerm, sortOrder, filterDay, filterTime]);
 
+    // Paginated Data
+    const paginatedClients = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredClients.slice(start, start + itemsPerPage);
+    }, [filteredClients, currentPage]);
+
     // Helper to extract location colors for a client
     const getClientLocationColors = (clientId: string) => {
         const activeEnrollments = enrollments.filter(e => e.clientId === clientId && e.status === EnrollmentStatus.Active);
@@ -489,8 +505,9 @@ const Clients: React.FC = () => {
             </div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredClients.map(client => {
+                    {paginatedClients.map(client => {
                         const isParent = client.clientType === ClientType.Parent;
                         const parentClient = client as ParentClient;
                         const instClient = client as InstitutionalClient;
@@ -572,6 +589,14 @@ const Clients: React.FC = () => {
                     })}
                     {filteredClients.length === 0 && <div className="col-span-full text-center py-12 text-gray-500">Nessun cliente trovato.</div>}
                 </div>
+                
+                <Pagination 
+                    currentPage={currentPage} 
+                    totalItems={filteredClients.length} 
+                    itemsPerPage={itemsPerPage} 
+                    onPageChange={setCurrentPage} 
+                />
+                </>
             )}
 
             {isModalOpen && (

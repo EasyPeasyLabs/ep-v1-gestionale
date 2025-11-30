@@ -123,6 +123,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         method: PaymentMethod;
         generateInvoice: boolean; // Usato per Contanti
         isDeposit: boolean; // Acconto
+        isBalance: boolean; // NEW: Saldo
         depositAmount: number;
     }>({
         isOpen: false,
@@ -131,6 +132,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         method: PaymentMethod.BankTransfer,
         generateInvoice: true,
         isDeposit: false,
+        isBalance: false, // NEW
         depositAmount: 0
     });
 
@@ -177,12 +179,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         method: PaymentMethod, 
         generateInvoice: boolean, // Rilevante solo per contanti ora
         isDeposit: boolean,
+        isBalance: boolean, // NEW
         depositAmount: number
     ) => {
         setLoading(true);
         try {
             const fullPrice = enr.price !== undefined ? enr.price : 0;
-            const actualAmount = isDeposit ? depositAmount : fullPrice;
+            const actualAmount = (isDeposit || isBalance) ? depositAmount : fullPrice;
             const paymentIsoDate = new Date(paymentDateStr).toISOString();
             const client = clients.find(c => c.id === enr.clientId);
             const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
@@ -200,11 +203,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
             if (shouldGenerateInvoice) {
                 // Generazione Fattura Reale
-                const desc = isDeposit 
-                    ? `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`
-                    : `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+                let desc = `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+                if (isDeposit) desc = `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+                if (isBalance) desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
 
-                const itemNotes = `Sede: ${enr.locationName}`;
+                let itemNotes = `Sede: ${enr.locationName}`;
+                if (isBalance) itemNotes += " - A chiusura del piano rateale/acconto.";
 
                 const invoiceInput: InvoiceInput = {
                     clientId: enr.clientId,
@@ -264,7 +268,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         await addInvoice(ghostInvoice);
                     }
                 }
-                alert(isDeposit ? `Acconto di ${actualAmount}€ registrato. Generata fattura fantasma per il saldo.` : `Pagamento registrato! Generata Fattura n. ${invoiceNumber}.`);
+                
+                let successMsg = `Pagamento registrato! Generata Fattura n. ${invoiceNumber}.`;
+                if(isDeposit) successMsg = `Acconto di ${actualAmount}€ registrato. Generata fattura fantasma per il saldo.`;
+                if(isBalance) successMsg = `Saldo di ${actualAmount}€ registrato. Ciclo contabile riconciliato.`;
+                
+                alert(successMsg);
             } else {
                 // NO FATTURA (Solo Contanti non fiscali)
                 if (actualAmount > 0) {
@@ -447,7 +456,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             date: new Date().toISOString().split('T')[0], 
             method: PaymentMethod.BankTransfer, // Default safe
             generateInvoice: true, 
-            isDeposit: false, 
+            isDeposit: false,
+            isBalance: false, // Reset logic
             depositAmount: (enr.price || 0) / 2 
         });
     };
@@ -461,6 +471,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 paymentModalState.method,
                 paymentModalState.generateInvoice,
                 paymentModalState.isDeposit,
+                paymentModalState.isBalance, // NEW param
                 paymentModalState.depositAmount
             );
         }
@@ -945,21 +956,42 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             <label className="md-input-label !top-0">Metodo Pagamento</label>
                         </div>
                         
-                        {/* Logic Acconto */}
-                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200">
-                            <div className="flex items-center mb-2">
+                        {/* Logic Acconto / Saldo */}
+                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
+                            <div className="flex items-center">
                                 <input 
                                     type="checkbox" 
                                     id="accontoCheck"
                                     checked={paymentModalState.isDeposit}
-                                    onChange={e => setPaymentModalState(prev => ({ ...prev, isDeposit: e.target.checked }))}
+                                    onChange={e => setPaymentModalState(prev => ({ 
+                                        ...prev, 
+                                        isDeposit: e.target.checked,
+                                        isBalance: e.target.checked ? false : prev.isBalance, // Mutual exclusive
+                                        depositAmount: e.target.checked ? (prev.enrollment?.price || 0) / 2 : prev.depositAmount 
+                                    }))}
                                     className="h-4 w-4 text-indigo-600 rounded"
                                 />
                                 <label htmlFor="accontoCheck" className="ml-2 text-sm font-bold text-gray-700">Pagamento in Acconto</label>
                             </div>
+
+                            <div className="flex items-center">
+                                <input 
+                                    type="checkbox" 
+                                    id="balanceCheck"
+                                    checked={paymentModalState.isBalance}
+                                    onChange={e => setPaymentModalState(prev => ({ 
+                                        ...prev, 
+                                        isBalance: e.target.checked,
+                                        isDeposit: e.target.checked ? false : prev.isDeposit, // Mutual exclusive
+                                        depositAmount: e.target.checked ? (prev.enrollment?.price || 0) / 2 : prev.depositAmount // Suggest remaining? Simplified to 50% or manual.
+                                    }))}
+                                    className="h-4 w-4 text-green-600 rounded"
+                                />
+                                <label htmlFor="balanceCheck" className="ml-2 text-sm font-bold text-green-700">Pagamento a Saldo</label>
+                            </div>
                             
-                            {paymentModalState.isDeposit && (
-                                <div className="animate-fade-in pl-6">
+                            {(paymentModalState.isDeposit || paymentModalState.isBalance) && (
+                                <div className="animate-fade-in pl-6 pt-2">
                                     <label className="text-xs text-gray-500 block">Importo Versato Ora</label>
                                     <input 
                                         type="number" 
@@ -967,10 +999,17 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                         onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))}
                                         className="w-full p-1 border rounded text-sm font-bold"
                                     />
-                                    <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
-                                        Rimanenza (Saldo): <strong>{(paymentModalState.enrollment.price || 0) - paymentModalState.depositAmount}€</strong>
-                                        <br/>Verrà generata una notifica di saldo tra 30 giorni.
-                                    </div>
+                                    {paymentModalState.isDeposit && (
+                                        <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
+                                            Rimanenza (Saldo): <strong>{(paymentModalState.enrollment.price || 0) - paymentModalState.depositAmount}€</strong>
+                                            <br/>Verrà generata una notifica di saldo tra 30 giorni.
+                                        </div>
+                                    )}
+                                    {paymentModalState.isBalance && (
+                                        <div className="text-xs text-green-600 mt-2 bg-green-50 p-2 rounded">
+                                            Questo pagamento chiuderà il ciclo contabile dell'iscrizione (Carnet esistente).
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

@@ -11,6 +11,7 @@ import { Page } from '../App';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
+import Pagination from '../components/Pagination';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import RestoreIcon from '../components/icons/RestoreIcon';
@@ -171,6 +172,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [editingDoc, setEditingDoc] = useState<Invoice | Quote | null>(null);
     const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'transaction'|'invoice'|'quote'} | null>(null);
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 20;
+
     // Chart Refs
     const monthlyChartRef = useRef<HTMLCanvasElement>(null);
     const expenseDoughnutRef = useRef<HTMLCanvasElement>(null);
@@ -192,6 +197,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     }, []);
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
+
+    // Reset pagination
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, sortOrder, activeTab]);
 
     // --- FINANCIAL CORE CALCULATIONS ---
     const activeTransactions = useMemo(() => transactions.filter(t => !t.isDeleted), [transactions]);
@@ -342,6 +352,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const filteredInvoices = useMemo(() => getSortedFilteredData(invoices, 'invoice'), [invoices, searchTerm, sortOrder]);
     const filteredQuotes = useMemo(() => getSortedFilteredData(quotes, 'quote'), [quotes, searchTerm, sortOrder]);
 
+    const getPaginatedData = (data: any[]) => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return data.slice(start, start + itemsPerPage);
+    };
 
     // --- HANDLERS (Unchanged) ---
     const handleSaveTransaction = async (t: TransactionInput | Transaction) => {
@@ -681,15 +695,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                 <table className="w-full text-sm text-left">
                                     <thead className="bg-gray-50 border-b"><tr>{activeTab === 'invoices' && <th className="p-3 w-8"></th>}<th className="p-3">Data</th><th className="p-3">Descrizione / Cliente</th><th className="p-3 text-right">Importo</th><th className="p-3 text-center">Stato</th><th className="p-3 text-right">Azioni</th></tr></thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {activeTab === 'transactions' && filteredTransactions.slice(0, 50).map(t => (<tr key={t.id} className={t.excludeFromStats ? 'opacity-50 bg-gray-50' : ''}><td className="p-3">{new Date(t.date).toLocaleDateString()}</td><td className="p-3 font-medium">{t.description} {t.excludeFromStats && <span className="text-[10px] text-gray-500">(Non Fiscale)</span>}</td><td className={`p-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'}{t.amount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{t.status}</span></td><td className="p-3 text-right"><button onClick={() => { setEditingTransaction(t); setIsTransModalOpen(true); }} className="text-blue-600 mx-1"><PencilIcon /></button><button onClick={() => setItemToDelete({id: t.id, type: 'transaction'})} className="text-red-600 mx-1"><TrashIcon /></button></td></tr>))}
+                                        {activeTab === 'transactions' && getPaginatedData(filteredTransactions).map(t => (<tr key={t.id} className={t.excludeFromStats ? 'opacity-50 bg-gray-50' : ''}><td className="p-3">{new Date(t.date).toLocaleDateString()}</td><td className="p-3 font-medium">{t.description} {t.excludeFromStats && <span className="text-[10px] text-gray-500">(Non Fiscale)</span>}</td><td className={`p-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'}{t.amount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{t.status}</span></td><td className="p-3 text-right"><button onClick={() => { setEditingTransaction(t); setIsTransModalOpen(true); }} className="text-blue-600 mx-1"><PencilIcon /></button><button onClick={() => setItemToDelete({id: t.id, type: 'transaction'})} className="text-red-600 mx-1"><TrashIcon /></button></td></tr>))}
                                         
-                                        {activeTab === 'invoices' && filteredInvoices.slice(0, 50).map(i => (<tr key={i.id} className={selectedInvoiceIds.includes(i.id) ? 'bg-indigo-50' : i.isGhost ? 'bg-gray-50 border-l-4 border-gray-300' : ''}><td className="p-3 text-center"><input type="checkbox" checked={selectedInvoiceIds.includes(i.id)} onChange={() => toggleInvoiceSelection(i.id)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /></td><td className="p-3">{new Date(i.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{i.invoiceNumber || (i.isGhost ? 'SALDO (Ghost)' : 'Bozza')} - {i.clientName}</td><td className="p-3 text-right font-bold">{i.totalAmount}€</td><td className="p-3 text-center"><span className={`px-2 py-1 rounded text-xs ${i.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{i.status}</span></td><td className="p-3 text-right flex justify-end gap-1"><button onClick={() => handlePrintDocument(i, 'Fattura')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button><button onClick={() => { setDocType('invoice'); setEditingDoc(i); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button><button onClick={() => setItemToDelete({id: i.id, type: 'invoice'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button></td></tr>))}
+                                        {activeTab === 'invoices' && getPaginatedData(filteredInvoices).map(i => (<tr key={i.id} className={selectedInvoiceIds.includes(i.id) ? 'bg-indigo-50' : i.isGhost ? 'bg-gray-50 border-l-4 border-gray-300' : ''}><td className="p-3 text-center"><input type="checkbox" checked={selectedInvoiceIds.includes(i.id)} onChange={() => toggleInvoiceSelection(i.id)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /></td><td className="p-3">{new Date(i.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{i.invoiceNumber || (i.isGhost ? 'SALDO (Ghost)' : 'Bozza')} - {i.clientName}</td><td className="p-3 text-right font-bold">{i.totalAmount}€</td><td className="p-3 text-center"><span className={`px-2 py-1 rounded text-xs ${i.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{i.status}</span></td><td className="p-3 text-right flex justify-end gap-1"><button onClick={() => handlePrintDocument(i, 'Fattura')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button><button onClick={() => { setDocType('invoice'); setEditingDoc(i); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button><button onClick={() => setItemToDelete({id: i.id, type: 'invoice'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button></td></tr>))}
                                         
-                                        {activeTab === 'quotes' && filteredQuotes.slice(0, 50).map(q => (<tr key={q.id}><td className="p-3">{new Date(q.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{q.quoteNumber} - {q.clientName}</td><td className="p-3 text-right font-bold">{q.totalAmount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{q.status}</span></td><td className="p-3 text-right flex justify-end gap-1">{q.status !== DocumentStatus.Converted && (<button onClick={() => handleConvertQuote(q)} className="md-icon-btn text-green-600 hover:bg-green-50" title="Converti in Fattura"><DocumentCheckIcon /></button>)}<button onClick={() => handlePrintDocument(q, 'Preventivo')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button><button onClick={() => { setDocType('quote'); setEditingDoc(q); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button><button onClick={() => setItemToDelete({id: q.id, type: 'quote'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button></td></tr>))}
+                                        {activeTab === 'quotes' && getPaginatedData(filteredQuotes).map(q => (<tr key={q.id}><td className="p-3">{new Date(q.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{q.quoteNumber} - {q.clientName}</td><td className="p-3 text-right font-bold">{q.totalAmount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{q.status}</span></td><td className="p-3 text-right flex justify-end gap-1">{q.status !== DocumentStatus.Converted && (<button onClick={() => handleConvertQuote(q)} className="md-icon-btn text-green-600 hover:bg-green-50" title="Converti in Fattura"><DocumentCheckIcon /></button>)}<button onClick={() => handlePrintDocument(q, 'Preventivo')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button><button onClick={() => { setDocType('quote'); setEditingDoc(q); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button><button onClick={() => setItemToDelete({id: q.id, type: 'quote'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button></td></tr>))}
                                     </tbody>
                                 </table>
                                 {(activeTab === 'transactions' ? filteredTransactions : activeTab === 'invoices' ? filteredInvoices : filteredQuotes).length === 0 && <p className="text-center text-gray-400 py-8 text-sm italic">Nessun elemento trovato.</p>}
                             </div>
+                            <Pagination 
+                                currentPage={currentPage} 
+                                totalItems={(activeTab === 'transactions' ? filteredTransactions : activeTab === 'invoices' ? filteredInvoices : filteredQuotes).length} 
+                                itemsPerPage={itemsPerPage} 
+                                onPageChange={setCurrentPage} 
+                            />
                         </div>
                     </div>
                 )}

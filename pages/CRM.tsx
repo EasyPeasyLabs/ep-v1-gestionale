@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions } from '../services/financeService';
 import { getClients } from '../services/parentService';
@@ -15,6 +15,7 @@ import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import UploadIcon from '../components/icons/UploadIcon';
+import Pagination from '../components/Pagination';
 
 // --- Icons ---
 const ChatIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> );
@@ -272,6 +273,10 @@ const CRM: React.FC = () => {
     const [isFreeCommOpen, setIsFreeCommOpen] = useState(false);
     const [isCampaignWizardOpen, setIsCampaignWizardOpen] = useState(false);
 
+    // Pagination
+    const [archivePage, setArchivePage] = useState(1);
+    const itemsPerPage = 10;
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -331,6 +336,11 @@ const CRM: React.FC = () => {
         fetchData();
         alert("Campagna pianificata!");
     };
+
+    const paginatedLogs = useMemo(() => {
+        const start = (archivePage - 1) * itemsPerPage;
+        return logs.slice(start, start + itemsPerPage);
+    }, [logs, archivePage]);
 
     return (
         <div>
@@ -402,19 +412,27 @@ const CRM: React.FC = () => {
                 )}
 
                 {activeTab === 'archive' && (
-                    <div className="animate-slide-up space-y-3">
-                        {logs.map(log => (
-                            <div key={log.id} className="bg-white border rounded p-4 shadow-sm">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-xs text-gray-400">{new Date(log.date).toLocaleString()}</span>
-                                    <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-bold uppercase">{log.channel}</span>
+                    <div className="animate-slide-up">
+                        <div className="space-y-3">
+                            {paginatedLogs.map(log => (
+                                <div key={log.id} className="bg-white border rounded p-4 shadow-sm">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <span className="text-xs text-gray-400">{new Date(log.date).toLocaleString()}</span>
+                                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-bold uppercase">{log.channel}</span>
+                                    </div>
+                                    <h4 className="font-bold text-sm text-gray-800">{log.subject}</h4>
+                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{log.message}</p>
+                                    <div className="mt-2 text-xs text-indigo-600 font-medium">Inviato a: {log.recipients.length > 3 ? `${log.recipients.length} destinatari` : log.recipients.join(', ')}</div>
                                 </div>
-                                <h4 className="font-bold text-sm text-gray-800">{log.subject}</h4>
-                                <p className="text-xs text-gray-600 mt-1 line-clamp-2">{log.message}</p>
-                                <div className="mt-2 text-xs text-indigo-600 font-medium">Inviato a: {log.recipients.length > 3 ? `${log.recipients.length} destinatari` : log.recipients.join(', ')}</div>
-                            </div>
-                        ))}
-                        {logs.length === 0 && <p className="text-center text-gray-500 py-10">Nessuna comunicazione in archivio.</p>}
+                            ))}
+                            {logs.length === 0 && <p className="text-center text-gray-500 py-10">Nessuna comunicazione in archivio.</p>}
+                        </div>
+                        <Pagination 
+                            currentPage={archivePage} 
+                            totalItems={logs.length} 
+                            itemsPerPage={itemsPerPage} 
+                            onPageChange={setArchivePage} 
+                        />
                     </div>
                 )}
                 </>

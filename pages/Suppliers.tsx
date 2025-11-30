@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
 import PlusIcon from '../components/icons/PlusIcon';
@@ -13,6 +13,7 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 import { importSuppliersFromExcel } from '../services/importService';
 import NotesManager from '../components/NotesManager';
+import Pagination from '../components/Pagination';
 
 // Helpers & Icons
 const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => ( <svg onClick={onClick} xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${filled ? 'text-yellow-400' : 'text-gray-300'} ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${className}`} viewBox="0 0 20 20" fill="currentColor"> <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /> </svg> );
@@ -248,6 +249,10 @@ const Suppliers: React.FC = () => {
     // Sort State
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'day_asc'>('day_asc');
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
+
     const fetchSuppliers = useCallback(async () => {
         try {
             setLoading(true);
@@ -257,6 +262,11 @@ const Suppliers: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchSuppliers(); }, [fetchSuppliers]);
+
+    // Reset pagination when filter changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [showTrash, sortOrder]);
 
     const handleOpenModal = (supplier: Supplier | null = null) => { setEditingSupplier(supplier); setIsModalOpen(true); };
     const handleSaveSupplier = async (supplierData: SupplierInput | Supplier) => { 
@@ -284,17 +294,27 @@ const Suppliers: React.FC = () => {
         return minDay;
     };
 
-    const filteredSuppliers = suppliers.filter(s => showTrash ? s.isDeleted : !s.isDeleted);
+    const filteredSuppliers = useMemo(() => {
+        const result = suppliers.filter(s => showTrash ? s.isDeleted : !s.isDeleted);
 
-    // Sorting
-    filteredSuppliers.sort((a, b) => {
-        if (sortOrder === 'day_asc') {
-            return getEarliestDay(a) - getEarliestDay(b);
-        }
-        const nameA = a.companyName.toLowerCase();
-        const nameB = b.companyName.toLowerCase();
-        return sortOrder === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-    });
+        // Sorting
+        result.sort((a, b) => {
+            if (sortOrder === 'day_asc') {
+                return getEarliestDay(a) - getEarliestDay(b);
+            }
+            const nameA = a.companyName.toLowerCase();
+            const nameB = b.companyName.toLowerCase();
+            return sortOrder === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+        });
+        
+        return result;
+    }, [suppliers, showTrash, sortOrder]);
+
+    // Paginated
+    const paginatedSuppliers = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredSuppliers.slice(start, start + itemsPerPage);
+    }, [filteredSuppliers, currentPage]);
 
     return (
         <div>
@@ -320,8 +340,9 @@ const Suppliers: React.FC = () => {
             </div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
+             <>
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredSuppliers.map(supplier => {
+                {paginatedSuppliers.map(supplier => {
                     const avgRating = getAverageRating(supplier.rating);
                     const earliestDay = getEarliestDay(supplier);
                     return (
@@ -373,6 +394,14 @@ const Suppliers: React.FC = () => {
                     );
                 })}
             </div>
+            
+            <Pagination 
+                currentPage={currentPage} 
+                totalItems={filteredSuppliers.length} 
+                itemsPerPage={itemsPerPage} 
+                onPageChange={setCurrentPage} 
+            />
+            </>
             )}
             
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="2xl"><SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={() => setIsModalOpen(false)} /></Modal>}

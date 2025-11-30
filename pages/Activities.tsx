@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Activity, ActivityInput } from '../types';
 import { getActivities, addActivity, updateActivity, deleteActivity } from '../services/activityService';
 import { uploadActivityAttachment } from '../services/storageService';
@@ -10,6 +11,7 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import UploadIcon from '../components/icons/UploadIcon';
+import Pagination from '../components/Pagination';
 
 // --- Helper per estrarre URL ---
 const extractFirstUrl = (text: string): string | null => {
@@ -230,6 +232,10 @@ const Activities: React.FC = () => {
     // Sort State
     const [sortOrder, setSortOrder] = useState<'created_desc' | 'created_asc' | 'title_asc' | 'title_desc'>('created_desc');
 
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 12;
+
     const fetchActivitiesData = useCallback(async () => {
         setLoading(true);
         try {
@@ -245,6 +251,11 @@ const Activities: React.FC = () => {
     useEffect(() => {
         fetchActivitiesData();
     }, [fetchActivitiesData]);
+
+    // Reset pagination
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, sortOrder]);
 
     // Handlers
     const handleOpenModal = (activity: Activity | null = null) => {
@@ -289,31 +300,40 @@ const Activities: React.FC = () => {
         }
     };
 
-    const filteredActivities = activities.filter(act => {
-        const term = searchTerm.toLowerCase();
-        return (
-            act.title.toLowerCase().includes(term) ||
-            act.category.toLowerCase().includes(term) ||
-            act.theme.toLowerCase().includes(term) ||
-            act.description.toLowerCase().includes(term)
-        );
-    });
+    const filteredActivities = useMemo(() => {
+        const filtered = activities.filter(act => {
+            const term = searchTerm.toLowerCase();
+            return (
+                act.title.toLowerCase().includes(term) ||
+                act.category.toLowerCase().includes(term) ||
+                act.theme.toLowerCase().includes(term) ||
+                act.description.toLowerCase().includes(term)
+            );
+        });
 
-    // Sorting
-    filteredActivities.sort((a, b) => {
-        switch (sortOrder) {
-            case 'created_asc':
-                return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-            case 'created_desc':
-                return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-            case 'title_asc':
-                return a.title.localeCompare(b.title);
-            case 'title_desc':
-                return b.title.localeCompare(a.title);
-            default:
-                return 0;
-        }
-    });
+        // Sorting
+        filtered.sort((a, b) => {
+            switch (sortOrder) {
+                case 'created_asc':
+                    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                case 'created_desc':
+                    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                case 'title_asc':
+                    return a.title.localeCompare(b.title);
+                case 'title_desc':
+                    return b.title.localeCompare(a.title);
+                default:
+                    return 0;
+            }
+        });
+        
+        return filtered;
+    }, [activities, searchTerm, sortOrder]);
+
+    const paginatedActivities = useMemo(() => {
+        const start = (currentPage - 1) * itemsPerPage;
+        return filteredActivities.slice(start, start + itemsPerPage);
+    }, [filteredActivities, currentPage]);
 
     return (
         <div>
@@ -363,8 +383,9 @@ const Activities: React.FC = () => {
             {loading ? (
                 <div className="flex justify-center py-12"><Spinner /></div>
             ) : (
+                <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredActivities.map(act => {
+                    {paginatedActivities.map(act => {
                         const linkUrl = extractFirstUrl(act.links);
                         const hasAttachments = act.attachments && act.attachments.length > 0;
                         
@@ -418,6 +439,13 @@ const Activities: React.FC = () => {
                         </div>
                     )}
                 </div>
+                <Pagination 
+                    currentPage={currentPage} 
+                    totalItems={filteredActivities.length} 
+                    itemsPerPage={itemsPerPage} 
+                    onPageChange={setCurrentPage} 
+                />
+                </>
             )}
 
             {isModalOpen && (
