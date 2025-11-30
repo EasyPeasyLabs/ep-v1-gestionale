@@ -76,6 +76,40 @@ export const batchAddTransactions = async (transactions: TransactionInput[]): Pr
     await batch.commit();
 };
 
+// --- MASSIVE RESET FUNCTION (DANGER ZONE) ---
+export const resetFinancialData = async (type: TransactionType): Promise<void> => {
+    // 1. Trova tutte le transazioni del tipo specificato (Entrate o Uscite)
+    const q = query(transactionCollectionRef, where("type", "==", type));
+    const snapshot = await getDocs(q);
+
+    // Nota: Firestore batch ha un limite di 500 operazioni. 
+    // Per sicurezza in un reset massivo, usiamo un approccio a chunk o iterativo con Promise.all per piccoli gruppi.
+    // Qui usiamo un approccio iterativo sicuro.
+    
+    const deletePromises = snapshot.docs.map(async (docSnap) => {
+        const t = docSnap.data() as Transaction;
+        
+        // A. Elimina la transazione
+        await deleteDoc(docSnap.ref);
+
+        // B. Elimina il documento collegato (Fattura Attiva o Passiva) se presente
+        if (t.relatedDocumentId) {
+            // Se è un'entrata, cerchiamo nelle fatture (invoices)
+            if (type === TransactionType.Income) {
+                const invoiceRef = doc(db, 'invoices', t.relatedDocumentId);
+                // Tentiamo l'eliminazione. Se non esiste (già cancellata), Firestore non dà errore.
+                await deleteDoc(invoiceRef);
+            }
+            // Se è un'uscita, potenzialmente ci sono fatture passive o noli, 
+            // ma attualmente non abbiamo una collection 'passive_invoices' separata strict.
+            // Se in futuro ci sarà, aggiungere qui la logica.
+        }
+    });
+
+    await Promise.all(deletePromises);
+};
+
+
 // --- Rent Expenses Automation ---
 export const calculateRentTransactions = (
     enrollments: Enrollment[], 

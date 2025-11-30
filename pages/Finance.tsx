@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Transaction, TransactionInput, TransactionCategory, TransactionType, PaymentMethod, Enrollment, Invoice, Quote, InvoiceInput, QuoteInput, DocumentStatus, DocumentItem, Client, ClientType, Installment, Supplier, TransactionStatus, Location, EnrollmentStatus, CompanyInfo, SubscriptionType } from '../types';
-import { getTransactions, addTransaction, deleteTransaction, restoreTransaction, permanentDeleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, restoreInvoice, permanentDeleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, restoreQuote, permanentDeleteQuote, deleteTransactionByRelatedId, updateTransaction, calculateRentTransactions, batchAddTransactions } from '../services/financeService';
+import { getTransactions, addTransaction, deleteTransaction, restoreTransaction, permanentDeleteTransaction, getInvoices, addInvoice, updateInvoice, updateInvoiceStatus, deleteInvoice, restoreInvoice, permanentDeleteInvoice, getQuotes, addQuote, updateQuote, updateQuoteStatus, deleteQuote, restoreQuote, permanentDeleteQuote, deleteTransactionByRelatedId, updateTransaction, calculateRentTransactions, batchAddTransactions, resetFinancialData } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
@@ -172,6 +172,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [docType, setDocType] = useState<'invoice'|'quote'>('invoice');
     const [editingDoc, setEditingDoc] = useState<Invoice | Quote | null>(null);
     const [itemToDelete, setItemToDelete] = useState<{id: string, type: 'transaction'|'invoice'|'quote'} | null>(null);
+    
+    // Cleanup Modal State
+    const [cleanupModal, setCleanupModal] = useState<{ isOpen: boolean; type: TransactionType | null }>({ isOpen: false, type: null });
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -414,6 +417,22 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
+    const handleConfirmCleanup = async () => {
+        if (!cleanupModal.type) return;
+        setLoading(true);
+        try {
+            await resetFinancialData(cleanupModal.type);
+            await fetchAllData();
+            setCleanupModal({ isOpen: false, type: null });
+            alert("Pulizia completata con successo.");
+        } catch (err) {
+            console.error("Errore pulizia:", err);
+            alert("Errore durante la pulizia dei dati.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleRestore = async (id: string, type: 'invoice' | 'quote') => {
         try {
             setLoading(true);
@@ -641,7 +660,30 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                         <span className="ml-2 hidden sm:inline">{showTrash ? 'Chiudi Cestino' : 'Cestino'}</span>
                                     </button>
                                 )}
-                                {!showTrash && <button onClick={() => { if(activeTab === 'transactions') { setEditingTransaction(null); setIsTransModalOpen(true); } else { setDocType(activeTab === 'invoices' ? 'invoice' : 'quote'); setEditingDoc(null); setIsDocModalOpen(true); } }} className="md-btn md-btn-raised md-btn-primary md-btn-sm flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>}
+                                {/* ACTION BUTTONS */}
+                                {!showTrash && (
+                                    <>
+                                        {activeTab === 'transactions' && (
+                                            <div className="flex gap-2 mr-2">
+                                                <button 
+                                                    onClick={() => setCleanupModal({ isOpen: true, type: TransactionType.Income })}
+                                                    className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center text-xs font-bold"
+                                                    title="Elimina tutte le entrate e le fatture collegate"
+                                                >
+                                                    <span className="mr-1">⚠️</span> ENTRATE - Elimina tutte
+                                                </button>
+                                                <button 
+                                                    onClick={() => setCleanupModal({ isOpen: true, type: TransactionType.Expense })}
+                                                    className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold"
+                                                    title="Elimina tutte le uscite"
+                                                >
+                                                    <span className="mr-1">⚠️</span> USCITE - Elimina tutte
+                                                </button>
+                                            </div>
+                                        )}
+                                        <button onClick={() => { if(activeTab === 'transactions') { setEditingTransaction(null); setIsTransModalOpen(true); } else { setDocType(activeTab === 'invoices' ? 'invoice' : 'quote'); setEditingDoc(null); setIsDocModalOpen(true); } }} className="md-btn md-btn-raised md-btn-primary md-btn-sm flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -744,6 +786,19 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         : "L'elemento verrà spostato nel cestino.")
                 }
                 isDangerous={true} 
+            />
+
+            <ConfirmModal 
+                isOpen={cleanupModal.isOpen} 
+                onClose={() => setCleanupModal({ isOpen: false, type: null })} 
+                onConfirm={handleConfirmCleanup} 
+                title={cleanupModal.type === 'income' ? "PULIZIA TOTALE ENTRATE" : "PULIZIA TOTALE USCITE"}
+                message={cleanupModal.type === 'income' 
+                    ? "⚠️ ATTENZIONE: Stai per eliminare DEFINITIVAMENTE tutte le transazioni di ENTRATA e le relative FATTURE. Questa operazione è irreversibile e serve per resettare i dati finanziari. Confermi?"
+                    : "⚠️ ATTENZIONE: Stai per eliminare DEFINITIVAMENTE tutte le transazioni di USCITA. Questa operazione è irreversibile. Confermi?"
+                }
+                isDangerous={true} 
+                confirmText="Sì, Elimina TUTTO"
             />
         </div>
     );
