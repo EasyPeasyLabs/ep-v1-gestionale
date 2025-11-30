@@ -1,5 +1,6 @@
 
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   children: ReactNode;
@@ -8,9 +9,11 @@ interface ModalProps {
 }
 
 const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
-  
+  const [mounted, setMounted] = useState(false);
+
   // Gestione blocco scroll del body quando la modale è aperta
   useEffect(() => {
+    setMounted(true);
     // Salva lo stile originale
     const originalOverflow = document.body.style.overflow;
     
@@ -30,7 +33,7 @@ const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
     '2xl': 'max-w-2xl',
   };
 
-  return (
+  const modalContent = (
     <div 
       className="fixed inset-0 bg-slate-900/60 z-[100] flex justify-center items-center p-4 animate-fade-in backdrop-blur-sm"
       aria-labelledby="modal-title"
@@ -53,6 +56,10 @@ const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
       </div>
     </div>
   );
+
+  // Renderizza tramite Portal al body per evitare problemi di stacking context/overflow dei genitori
+  if (!mounted) return null;
+  return createPortal(modalContent, document.body);
 };
 
 export default Modal;

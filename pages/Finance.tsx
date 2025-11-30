@@ -160,6 +160,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // Filtering & Sorting State
     const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
     const [sortOrder, setSortOrder] = useState<SortOrder>('date_desc');
+    const [showTrash, setShowTrash] = useState(false);
 
     // Selection State for Invoices
     const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
@@ -198,10 +199,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     useEffect(() => { fetchAllData(); }, [fetchAllData]);
 
-    // Reset pagination
+    // Reset pagination and filters on tab change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, sortOrder, activeTab]);
+        setShowTrash(false);
+    }, [activeTab]);
 
     // --- FINANCIAL CORE CALCULATIONS ---
     const activeTransactions = useMemo(() => transactions.filter(t => !t.isDeleted), [transactions]);
@@ -309,6 +311,14 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const getSortedFilteredData = (data: any[], type: 'transaction' | 'invoice' | 'quote') => {
         let processed = [...data];
 
+        // 0. Soft Delete Filter
+        if (type === 'invoice' || type === 'quote') {
+            processed = processed.filter(item => item.isDeleted === showTrash);
+        } else if (type === 'transaction') {
+            // Transactions don't have a "trash" view in UI, so always show active
+            processed = processed.filter(item => !item.isDeleted);
+        }
+
         // 1. Search Filter
         if (searchTerm) {
             const lowerTerm = searchTerm.toLowerCase();
@@ -348,9 +358,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         return processed;
     };
 
-    const filteredTransactions = useMemo(() => getSortedFilteredData(transactions, 'transaction'), [transactions, searchTerm, sortOrder]);
-    const filteredInvoices = useMemo(() => getSortedFilteredData(invoices, 'invoice'), [invoices, searchTerm, sortOrder]);
-    const filteredQuotes = useMemo(() => getSortedFilteredData(quotes, 'quote'), [quotes, searchTerm, sortOrder]);
+    const filteredTransactions = useMemo(() => getSortedFilteredData(transactions, 'transaction'), [transactions, searchTerm, sortOrder, showTrash]);
+    const filteredInvoices = useMemo(() => getSortedFilteredData(invoices, 'invoice'), [invoices, searchTerm, sortOrder, showTrash]);
+    const filteredQuotes = useMemo(() => getSortedFilteredData(quotes, 'quote'), [quotes, searchTerm, sortOrder, showTrash]);
 
     const getPaginatedData = (data: any[]) => {
         const start = (currentPage - 1) * itemsPerPage;
@@ -367,12 +377,55 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         else { if(d.id) await updateQuote(d.id, d); else await addQuote(d); }
         setIsDocModalOpen(false); fetchAllData();
     };
+    
+    // --- DELETE / RESTORE HANDLERS ---
     const handleDeleteConfirm = async () => {
         if (!itemToDelete) return;
-        if (itemToDelete.type === 'transaction') await deleteTransaction(itemToDelete.id);
-        else if (itemToDelete.type === 'invoice') await deleteInvoice(itemToDelete.id);
-        else await deleteQuote(itemToDelete.id);
-        setItemToDelete(null); fetchAllData();
+        
+        try {
+            setLoading(true);
+            if (itemToDelete.type === 'transaction') {
+                await deleteTransaction(itemToDelete.id);
+            } 
+            else if (itemToDelete.type === 'invoice') {
+                if (showTrash) {
+                    // Hard Delete
+                    await permanentDeleteInvoice(itemToDelete.id);
+                } else {
+                    // Soft Delete & Delete related Transaction permanently
+                    await deleteInvoice(itemToDelete.id);
+                    await deleteTransactionByRelatedId(itemToDelete.id);
+                }
+            } 
+            else if (itemToDelete.type === 'quote') {
+                if (showTrash) {
+                    await permanentDeleteQuote(itemToDelete.id);
+                } else {
+                    await deleteQuote(itemToDelete.id);
+                }
+            }
+            setItemToDelete(null); 
+            await fetchAllData();
+        } catch (error) {
+            console.error("Delete error:", error);
+            alert("Errore durante l'eliminazione.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleRestore = async (id: string, type: 'invoice' | 'quote') => {
+        try {
+            setLoading(true);
+            if (type === 'invoice') await restoreInvoice(id);
+            else await restoreQuote(id);
+            await fetchAllData();
+        } catch (error) {
+            console.error("Restore error:", error);
+            alert("Errore durante il ripristino.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const toggleInvoiceSelection = (id: string) => {
@@ -572,92 +625,24 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     </div>
                 )}
 
-                {activeTab === 'controlling' && (
-                    <div className="animate-fade-in space-y-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                                <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2"><BankIcon /> Controlling Fiscale (Forfettario)</h2>
-                                <div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs"><tr><th className="p-3">Voce</th><th className="p-3 text-right">Attuale (YTD)</th><th className="p-3 text-right">Proiezione (Anno)</th></tr></thead><tbody className="divide-y divide-gray-100"><tr><td className="p-3 font-medium">Fatturato Imponibile</td><td className="p-3 text-right font-bold">{metrics.totalRevenueTaxableYTD.toLocaleString()}€</td><td className="p-3 text-right font-bold text-indigo-600">{metrics.projectedAnnualTaxableRevenue.toLocaleString('it-IT', {maximumFractionDigits:0})}€</td></tr><tr><td className="p-3 text-gray-600">Base Imp. ({profitabilityCoeff}%)</td><td className="p-3 text-right text-gray-600">{(metrics.totalRevenueTaxableYTD * profitabilityCoeff/100).toLocaleString()}€</td><td className="p-3 text-right text-gray-600">{(metrics.projectedAnnualTaxableRevenue * profitabilityCoeff/100).toLocaleString('it-IT', {maximumFractionDigits:0})}€</td></tr><tr className="bg-red-50"><td className="p-3 font-medium text-red-800">Imposta Sostitutiva ({taxRate}%)</td><td className="p-3 text-right text-red-800">{(metrics.totalRevenueTaxableYTD * profitabilityCoeff/100 * taxRate/100).toLocaleString()}€</td><td className="p-3 text-right text-red-800 font-bold">{(metrics.projectedAnnualTaxableRevenue * profitabilityCoeff/100 * taxRate/100).toLocaleString('it-IT', {maximumFractionDigits:0})}€</td></tr><tr className="bg-orange-50"><td className="p-3 font-medium text-orange-800">INPS ({inpsRate}%)</td><td className="p-3 text-right text-orange-800">{(metrics.totalRevenueTaxableYTD * profitabilityCoeff/100 * inpsRate/100).toLocaleString()}€</td><td className="p-3 text-right text-orange-800 font-bold">{(metrics.projectedAnnualTaxableRevenue * profitabilityCoeff/100 * inpsRate/100).toLocaleString('it-IT', {maximumFractionDigits:0})}€</td></tr><tr className="bg-gray-100 border-t border-gray-200"><td className="p-3 font-bold text-gray-700">TOTALE TASSE + INPS</td><td className="p-3 text-right font-bold text-red-600">{((metrics.totalRevenueTaxableYTD * profitabilityCoeff/100 * taxRate/100) + (metrics.totalRevenueTaxableYTD * profitabilityCoeff/100 * inpsRate/100)).toLocaleString()}€</td><td className="p-3 text-right font-bold text-red-600">{((metrics.projectedAnnualTaxableRevenue * profitabilityCoeff/100 * taxRate/100) + (metrics.projectedAnnualTaxableRevenue * profitabilityCoeff/100 * inpsRate/100)).toLocaleString('it-IT', {maximumFractionDigits:0})}€</td></tr><tr className="bg-green-50 border-t-2 border-green-200"><td className="p-3 font-bold text-green-900">NETTO REALE STIMATO</td><td className="p-3 text-right font-bold text-green-900">{(metrics.totalRevenueYTD - (metrics.totalRevenueTaxableYTD * profitabilityCoeff/100 * (taxRate+inpsRate)/100 + metrics.totalExpensesYTD)).toLocaleString()}€</td><td className="p-3 text-right font-bold text-green-900 text-lg">{(metrics.projectedAnnualRevenue - (metrics.projectedAnnualTaxableRevenue * profitabilityCoeff/100 * (taxRate+inpsRate)/100 + metrics.projectedAnnualExpenses)).toLocaleString('it-IT', {maximumFractionDigits:0})}€</td></tr></tbody></table></div>
-                                
-                                {/* --- Scadenziario Fiscale (Flussi di Cassa Anno Successivo) --- */}
-                                <div className="mt-6 border-t pt-4">
-                                    <h3 className="font-bold text-gray-800 mb-2 flex items-center gap-2">
-                                        <CalendarIcon /> Scadenziario Fiscale (Stima Anno Successivo)
-                                    </h3>
-                                    
-                                    <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 text-xs text-yellow-800 mb-4">
-                                        <strong>⚠️ Attenzione (1° Anno Attività):</strong> L'importo da versare l'anno prossimo sarà doppio. Pagherai il saldo dell'anno corrente + l'acconto (100% dell'anno corrente) per l'anno successivo.
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {/* SCADENZA GIUGNO */}
-                                        <div className="border border-indigo-100 rounded-lg bg-indigo-50 p-3 relative">
-                                            <span className="absolute top-2 right-2 text-[10px] font-bold bg-white text-indigo-600 px-2 py-0.5 rounded border border-indigo-200">GIUGNO</span>
-                                            <div className="text-xs text-indigo-700 font-bold uppercase mb-1">Saldo + I° Acconto</div>
-                                            <div className="text-xl font-bold text-indigo-900 mb-2">{fiscalSchedule.firstInstallmentJune.toLocaleString('it-IT', {style:'currency', currency:'EUR'})}</div>
-                                            
-                                            {/* Dettaglio Rateizzazione */}
-                                            <div className="mt-2 pt-2 border-t border-indigo-200">
-                                                <div className="text-[10px] text-indigo-600 font-medium mb-1">Oppure 6 rate mensili (con interessi):</div>
-                                                <div className="flex justify-between items-center text-xs">
-                                                    <span>~ {fiscalSchedule.monthlyInstallmentBase.toLocaleString('it-IT', {style:'currency', currency:'EUR'})} / mese</span>
-                                                    <span className="text-[9px] text-gray-500">(Giu - Nov)</span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* SCADENZA NOVEMBRE */}
-                                        <div className="border border-red-100 rounded-lg bg-red-50 p-3 relative">
-                                            <span className="absolute top-2 right-2 text-[10px] font-bold bg-white text-red-600 px-2 py-0.5 rounded border border-red-200">NOVEMBRE</span>
-                                            <div className="text-xs text-red-700 font-bold uppercase mb-1">II° Acconto</div>
-                                            <div className="text-xl font-bold text-red-900 mb-2">{fiscalSchedule.secondInstallmentNov.toLocaleString('it-IT', {style:'currency', currency:'EUR'})}</div>
-                                            <div className="mt-2 pt-2 border-t border-red-200">
-                                                <div className="text-[10px] text-red-600 font-medium italic">Non rateizzabile.</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-gray-400 mt-2 text-center italic">* Stime basate sul fatturato proiettato. Gli importi rateizzati includono stima interessi.</p>
-                                </div>
-                            </div>
-                            
-                            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center"><h3 className="font-bold text-gray-700 mb-4">Dove vanno i tuoi soldi?</h3><div className="w-full h-64"><canvas ref={taxPieRef} /></div></div>
-                        </div>
-
-                        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm border-l-4 border-l-indigo-500">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2"><CalculatorIcon /> Logistica & Profittabilità Sedi</h2>
-                                <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-200">Basato su Slot Consumati</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 text-center bg-gray-50 p-3 rounded">
-                                <div><div className="text-xs text-gray-500">Costo Carburante</div><input type="number" step="0.01" value={fuelPrice} onChange={e => setFuelPrice(Number(e.target.value))} className="w-16 p-1 text-center font-bold border rounded" /></div>
-                                <div><div className="text-xs text-gray-500">Consumo Veicolo</div><div className="font-bold text-gray-800">{companyInfo?.carFuelConsumption || 16.5} km/l</div></div>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                                {Object.entries(logisticsData.profitByLocation).map(([locId, data]) => {
-                                    const typedData = data as { revenue: number, cost: number, trips: number, distance: number };
-                                    const locInfo = logisticsData.locationInfoMap.get(locId);
-                                    const profit = typedData.revenue - typedData.cost;
-                                    const margin = typedData.revenue > 0 ? (profit / typedData.revenue) * 100 : 0;
-                                    return (
-                                        <div key={locId} className="border rounded p-4 relative overflow-hidden">
-                                            <h4 className="font-bold text-gray-800">{locInfo?.name || 'Sconosciuta'}</h4>
-                                            <div className="text-xs text-gray-500 mb-2">{typedData.trips} Viaggi a/r • {locInfo?.distance}km dist.</div>
-                                            <div className="flex justify-between text-sm"><span className="text-green-600">Generato: {typedData.revenue.toFixed(0)}€</span><span className="text-red-500">Costi: {typedData.cost.toFixed(0)}€</span></div>
-                                            <div className="mt-2 font-bold text-right" style={{color: profit > 0 ? 'green' : 'red'}}>Utile: {profit.toFixed(0)}€ ({margin.toFixed(0)}%)</div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'quotes') && (
                     <div className="animate-slide-up">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
                             <h2 className="text-xl font-bold capitalize">{activeTab}</h2>
-                            <button onClick={() => { if(activeTab === 'transactions') { setEditingTransaction(null); setIsTransModalOpen(true); } else { setDocType(activeTab === 'invoices' ? 'invoice' : 'quote'); setEditingDoc(null); setIsDocModalOpen(true); } }} className="md-btn md-btn-raised md-btn-primary md-btn-sm flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>
+                            
+                            {/* Toggle Cestino */}
+                            <div className="flex items-center gap-3">
+                                {(activeTab === 'invoices' || activeTab === 'quotes') && (
+                                    <button 
+                                        onClick={() => setShowTrash(!showTrash)} 
+                                        className={`md-btn md-btn-sm flex items-center ${showTrash ? 'bg-gray-200 text-gray-800' : 'bg-white border text-gray-500 hover:bg-gray-50'}`}
+                                    >
+                                        <TrashIcon /> 
+                                        <span className="ml-2 hidden sm:inline">{showTrash ? 'Chiudi Cestino' : 'Cestino'}</span>
+                                    </button>
+                                )}
+                                {!showTrash && <button onClick={() => { if(activeTab === 'transactions') { setEditingTransaction(null); setIsTransModalOpen(true); } else { setDocType(activeTab === 'invoices' ? 'invoice' : 'quote'); setEditingDoc(null); setIsDocModalOpen(true); } }} className="md-btn md-btn-raised md-btn-primary md-btn-sm flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>}
+                            </div>
                         </div>
 
                         {/* --- FILTER & SORT TOOLBAR --- */}
@@ -688,7 +673,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                             </div>
                         </div>
 
-                        {activeTab === 'invoices' && selectedInvoiceIds.length > 0 && (<div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex items-center justify-between animate-fade-in"><span className="text-sm text-indigo-800 font-medium">{selectedInvoiceIds.length} fatture selezionate</span><div className="flex gap-2"><button onClick={() => handleSendToAccountant('email')} className="md-btn md-btn-sm bg-white border shadow-sm text-gray-700 flex items-center">📧 Email Commercialista</button><button onClick={() => handleSendToAccountant('whatsapp')} className="md-btn md-btn-sm bg-green-500 text-white shadow-sm flex items-center hover:bg-green-600"><ShareIcon /><span className="ml-1">WhatsApp</span></button></div></div>)}
+                        {activeTab === 'invoices' && selectedInvoiceIds.length > 0 && !showTrash && (<div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg mb-4 flex items-center justify-between animate-fade-in"><span className="text-sm text-indigo-800 font-medium">{selectedInvoiceIds.length} fatture selezionate</span><div className="flex gap-2"><button onClick={() => handleSendToAccountant('email')} className="md-btn md-btn-sm bg-white border shadow-sm text-gray-700 flex items-center">📧 Email Commercialista</button><button onClick={() => handleSendToAccountant('whatsapp')} className="md-btn md-btn-sm bg-green-500 text-white shadow-sm flex items-center hover:bg-green-600"><ShareIcon /><span className="ml-1">WhatsApp</span></button></div></div>)}
                         
                         <div className="md-card overflow-hidden">
                             <div className="overflow-x-auto">
@@ -697,12 +682,39 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     <tbody className="divide-y divide-gray-100">
                                         {activeTab === 'transactions' && getPaginatedData(filteredTransactions).map(t => (<tr key={t.id} className={t.excludeFromStats ? 'opacity-50 bg-gray-50' : ''}><td className="p-3">{new Date(t.date).toLocaleDateString()}</td><td className="p-3 font-medium">{t.description} {t.excludeFromStats && <span className="text-[10px] text-gray-500">(Non Fiscale)</span>}</td><td className={`p-3 text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{t.type === 'income' ? '+' : '-'}{t.amount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{t.status}</span></td><td className="p-3 text-right"><button onClick={() => { setEditingTransaction(t); setIsTransModalOpen(true); }} className="text-blue-600 mx-1"><PencilIcon /></button><button onClick={() => setItemToDelete({id: t.id, type: 'transaction'})} className="text-red-600 mx-1"><TrashIcon /></button></td></tr>))}
                                         
-                                        {activeTab === 'invoices' && getPaginatedData(filteredInvoices).map(i => (<tr key={i.id} className={selectedInvoiceIds.includes(i.id) ? 'bg-indigo-50' : i.isGhost ? 'bg-gray-50 border-l-4 border-gray-300' : ''}><td className="p-3 text-center"><input type="checkbox" checked={selectedInvoiceIds.includes(i.id)} onChange={() => toggleInvoiceSelection(i.id)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" /></td><td className="p-3">{new Date(i.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{i.invoiceNumber || (i.isGhost ? 'SALDO (Ghost)' : 'Bozza')} - {i.clientName}</td><td className="p-3 text-right font-bold">{i.totalAmount}€</td><td className="p-3 text-center"><span className={`px-2 py-1 rounded text-xs ${i.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{i.status}</span></td><td className="p-3 text-right flex justify-end gap-1"><button onClick={() => handlePrintDocument(i, 'Fattura')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button><button onClick={() => { setDocType('invoice'); setEditingDoc(i); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button><button onClick={() => setItemToDelete({id: i.id, type: 'invoice'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button></td></tr>))}
+                                        {activeTab === 'invoices' && getPaginatedData(filteredInvoices).map(i => (<tr key={i.id} className={`${selectedInvoiceIds.includes(i.id) ? 'bg-indigo-50' : i.isGhost ? 'bg-gray-50 border-l-4 border-gray-300' : ''} ${showTrash ? 'opacity-70' : ''}`}><td className="p-3 text-center"><input type="checkbox" checked={selectedInvoiceIds.includes(i.id)} onChange={() => toggleInvoiceSelection(i.id)} className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" disabled={showTrash} /></td><td className="p-3">{new Date(i.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{i.invoiceNumber || (i.isGhost ? 'SALDO (Ghost)' : 'Bozza')} - {i.clientName}</td><td className="p-3 text-right font-bold">{i.totalAmount}€</td><td className="p-3 text-center"><span className={`px-2 py-1 rounded text-xs ${i.status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{i.status}</span></td><td className="p-3 text-right flex justify-end gap-1">
+                                            {showTrash ? (
+                                                <>
+                                                    <button onClick={() => handleRestore(i.id, 'invoice')} className="md-icon-btn text-green-600 hover:bg-green-50" title="Ripristina"><RestoreIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: i.id, type: 'invoice'})} className="md-icon-btn text-red-600 hover:bg-red-50" title="Elimina Definitivamente"><TrashIcon /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handlePrintDocument(i, 'Fattura')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button>
+                                                    <button onClick={() => { setDocType('invoice'); setEditingDoc(i); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: i.id, type: 'invoice'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button>
+                                                </>
+                                            )}
+                                        </td></tr>))}
                                         
-                                        {activeTab === 'quotes' && getPaginatedData(filteredQuotes).map(q => (<tr key={q.id}><td className="p-3">{new Date(q.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{q.quoteNumber} - {q.clientName}</td><td className="p-3 text-right font-bold">{q.totalAmount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{q.status}</span></td><td className="p-3 text-right flex justify-end gap-1">{q.status !== DocumentStatus.Converted && (<button onClick={() => handleConvertQuote(q)} className="md-icon-btn text-green-600 hover:bg-green-50" title="Converti in Fattura"><DocumentCheckIcon /></button>)}<button onClick={() => handlePrintDocument(q, 'Preventivo')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button><button onClick={() => { setDocType('quote'); setEditingDoc(q); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button><button onClick={() => setItemToDelete({id: q.id, type: 'quote'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button></td></tr>))}
+                                        {activeTab === 'quotes' && getPaginatedData(filteredQuotes).map(q => (<tr key={q.id} className={showTrash ? 'opacity-70' : ''}><td className="p-3">{new Date(q.issueDate).toLocaleDateString()}</td><td className="p-3 font-medium">{q.quoteNumber} - {q.clientName}</td><td className="p-3 text-right font-bold">{q.totalAmount}€</td><td className="p-3 text-center"><span className="px-2 py-1 bg-gray-100 rounded text-xs">{q.status}</span></td><td className="p-3 text-right flex justify-end gap-1">
+                                            {showTrash ? (
+                                                <>
+                                                    <button onClick={() => handleRestore(q.id, 'quote')} className="md-icon-btn text-green-600 hover:bg-green-50" title="Ripristina"><RestoreIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: q.id, type: 'quote'})} className="md-icon-btn text-red-600 hover:bg-red-50" title="Elimina Definitivamente"><TrashIcon /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {q.status !== DocumentStatus.Converted && (<button onClick={() => handleConvertQuote(q)} className="md-icon-btn text-green-600 hover:bg-green-50" title="Converti in Fattura"><DocumentCheckIcon /></button>)}
+                                                    <button onClick={() => handlePrintDocument(q, 'Preventivo')} className="md-icon-btn text-gray-600 hover:text-indigo-600" title="Stampa PDF"><PrinterIcon /></button>
+                                                    <button onClick={() => { setDocType('quote'); setEditingDoc(q); setIsDocModalOpen(true); }} className="md-icon-btn text-blue-600 hover:bg-blue-50"><PencilIcon /></button>
+                                                    <button onClick={() => setItemToDelete({id: q.id, type: 'quote'})} className="md-icon-btn text-red-600 hover:bg-red-50"><TrashIcon /></button>
+                                                </>
+                                            )}
+                                        </td></tr>))}
                                     </tbody>
                                 </table>
-                                {(activeTab === 'transactions' ? filteredTransactions : activeTab === 'invoices' ? filteredInvoices : filteredQuotes).length === 0 && <p className="text-center text-gray-400 py-8 text-sm italic">Nessun elemento trovato.</p>}
+                                {(activeTab === 'transactions' ? filteredTransactions : activeTab === 'invoices' ? filteredInvoices : filteredQuotes).length === 0 && <p className="text-center text-gray-400 py-8 text-sm italic">{showTrash ? 'Cestino vuoto.' : 'Nessun elemento trovato.'}</p>}
                             </div>
                             <Pagination 
                                 currentPage={currentPage} 
@@ -718,7 +730,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
             {isTransModalOpen && <Modal onClose={() => setIsTransModalOpen(false)}><TransactionForm transaction={editingTransaction} onSave={handleSaveTransaction} onCancel={() => setIsTransModalOpen(false)} /></Modal>}
             {isDocModalOpen && <Modal onClose={() => setIsDocModalOpen(false)} size="lg"><DocumentForm doc={editingDoc} type={docType} clients={clients} onSave={handleSaveDoc} onCancel={() => setIsDocModalOpen(false)} /></Modal>}
-            <ConfirmModal isOpen={!!itemToDelete} onClose={() => setItemToDelete(null)} onConfirm={handleDeleteConfirm} title="Elimina Elemento" message="Sei sicuro di voler eliminare questo elemento?" isDangerous={true} />
+            
+            <ConfirmModal 
+                isOpen={!!itemToDelete} 
+                onClose={() => setItemToDelete(null)} 
+                onConfirm={handleDeleteConfirm} 
+                title={showTrash ? "Elimina Definitivamente" : "Elimina Elemento"}
+                message={
+                    showTrash 
+                    ? "Questa azione è irreversibile. Il documento verrà cancellato permanentemente e il numero progressivo sarà di nuovo disponibile (se sequenziale)."
+                    : (itemToDelete?.type === 'invoice' 
+                        ? "La fattura verrà spostata nel cestino e la relativa transazione finanziaria verrà ELIMINATA definitivamente per correttezza contabile. Confermi?" 
+                        : "L'elemento verrà spostato nel cestino.")
+                }
+                isDangerous={true} 
+            />
         </div>
     );
 };

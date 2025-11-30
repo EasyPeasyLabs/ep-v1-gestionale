@@ -301,3 +301,37 @@ export const permanentDeleteQuote = async (id: string): Promise<void> => {
     const quoteDoc = doc(db, 'quotes', id);
     await deleteDoc(quoteDoc);
 };
+
+// --- CLEANUP HELPER (Hard Delete Financials for Enrollment) ---
+export const cleanupEnrollmentFinancials = async (clientId: string, childName: string): Promise<void> => {
+    // 1. Trova ed elimina Fatture collegate (identificate da note o convenzione)
+    // Non avendo un link ID diretto sull'enrollment verso la fattura, usiamo una ricerca euristica sicura
+    // basata sul cliente e sul nome del bambino nelle note (generato da executePayment).
+    const invoices = await getInvoices();
+    
+    // Filtra fatture del cliente che menzionano il bambino nelle note
+    // Nota: questo include anche eventuali fatture "Ghost" di saldo
+    const targetInvoices = invoices.filter(i => 
+        i.clientId === clientId && 
+        (i.notes?.includes(childName) || i.items.some(item => item.description.includes(childName)))
+    );
+
+    for (const inv of targetInvoices) {
+        // Elimina fisicamente la transazione collegata alla fattura
+        await deleteTransactionByRelatedId(inv.id);
+        // Elimina fisicamente la fattura
+        await permanentDeleteInvoice(inv.id);
+    }
+
+    // 2. Trova ed elimina Transazioni "Contanti" (senza fattura)
+    // Queste hanno una descrizione specifica generata in Enrollments.tsx
+    const transactions = await getTransactions();
+    const targetTrans = transactions.filter(t => 
+        t.description.includes(`Incasso Iscrizione (Contanti): ${childName}`) ||
+        t.description.includes(`Incasso Iscrizione (Contanti) - ${childName}`)
+    );
+
+    for (const t of targetTrans) {
+        await permanentDeleteTransaction(t.id);
+    }
+};

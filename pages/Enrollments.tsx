@@ -3,8 +3,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation } from '../services/enrollmentService';
-import { addTransaction, deleteTransactionByRelatedId, addInvoice } from '../services/financeService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
+import { addTransaction, deleteTransactionByRelatedId, addInvoice, cleanupEnrollmentFinancials } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -137,7 +137,17 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     });
 
     const [recoveryModalState, setRecoveryModalState] = useState<{ isOpen: boolean; enrollment: Enrollment | null; maxRecoverable: number; }>({ isOpen: false, enrollment: null, maxRecoverable: 0 });
-    const [confirmState, setConfirmState] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; isDangerous: boolean; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, isDangerous: false });
+    
+    // Delete Modal State
+    const [deleteModalState, setDeleteModalState] = useState<{
+        isOpen: boolean;
+        enrollment: Enrollment | null;
+        scope: 'single' | 'all';
+    }>({
+        isOpen: false,
+        enrollment: null,
+        scope: 'single'
+    });
 
     // Drag and Drop State
     const [draggedEnrollmentId, setDraggedEnrollmentId] = useState<string | null>(null);
@@ -479,7 +489,46 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handleRecoveryRequest = (e: React.MouseEvent, enr: Enrollment, absentCount: number) => { e.stopPropagation(); setRecoveryModalState({ isOpen: true, enrollment: enr, maxRecoverable: absentCount }); };
     const handleConfirmRecovery = async (date: string, startTime: string, endTime: string, count: number, locName: string, locColor: string) => { if (!recoveryModalState.enrollment) return; setRecoveryModalState(prev => ({ ...prev, isOpen: false })); setLoading(true); try { await addRecoveryLessons(recoveryModalState.enrollment.id, date, startTime, endTime, count, locName, locColor); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Recupero programmato con successo!"); } catch (err) { alert("Errore recupero."); } finally { setLoading(false); } };
-    const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => { e.stopPropagation(); setConfirmState({ isOpen: true, title: "Elimina", message: "Eliminare definitivamente?", isDangerous: true, onConfirm: async () => { setLoading(true); await deleteEnrollment(enr.id); await deleteTransactionByRelatedId(enr.id); await fetchData(); setLoading(false); } }); };
+    
+    // --- DELETE HANDLERS ---
+    const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => { 
+        e.stopPropagation(); 
+        setDeleteModalState({ isOpen: true, enrollment: enr, scope: 'single' });
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteModalState.enrollment) return;
+        const target = deleteModalState.enrollment;
+        const scope = deleteModalState.scope;
+        setDeleteModalState(prev => ({...prev, isOpen: false}));
+        setLoading(true);
+
+        try {
+            if (scope === 'single') {
+                // Elimina SOLO questa iscrizione e i suoi dati finanziari
+                await cleanupEnrollmentFinancials(target.clientId, target.childName);
+                await deleteEnrollment(target.id);
+            } else {
+                // Elimina TUTTE le iscrizioni del cliente e TUTTI i dati finanziari collegati
+                const allEnrollments = await getEnrollmentsForClient(target.clientId);
+                
+                // 1. Elimina i dati finanziari globali (Fatture/Transazioni del cliente)
+                await cleanupEnrollmentFinancials(target.clientId, target.childName);
+                
+                // 2. Elimina tutte le iscrizioni
+                for (const enr of allEnrollments) {
+                    await deleteEnrollment(enr.id);
+                }
+            }
+            await fetchData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (err) {
+            console.error("Delete error:", err);
+            alert("Errore durante l'eliminazione.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // --- Helper per estrarre dati derivati ---
     const getChildAge = (enrollment: Enrollment): string => {
@@ -1041,6 +1090,57 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </Modal>
             )}
 
+            {/* Delete Confirmation Modal with Options */}
+            {deleteModalState.isOpen && deleteModalState.enrollment && (
+                <Modal onClose={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} size="md">
+                    <div className="p-6">
+                        <div className="flex items-center gap-3 mb-4 text-red-600">
+                            <TrashIcon />
+                            <h3 className="text-lg font-bold">Elimina Iscrizione</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-6">
+                            Stai per eliminare l'iscrizione di <strong>{deleteModalState.enrollment.childName}</strong>. 
+                            Questa azione è irreversibile.
+                        </p>
+                        
+                        <div className="space-y-3 mb-6">
+                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'single' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
+                                <input 
+                                    type="radio" 
+                                    name="deleteScope"
+                                    checked={deleteModalState.scope === 'single'} 
+                                    onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'single' }))}
+                                    className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-bold text-gray-800">Elimina solo questa</span>
+                                    <span className="block text-xs text-gray-500">Rimuove solo questa iscrizione e i relativi movimenti finanziari.</span>
+                                </div>
+                            </label>
+
+                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'all' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
+                                <input 
+                                    type="radio" 
+                                    name="deleteScope"
+                                    checked={deleteModalState.scope === 'all'} 
+                                    onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'all' }))}
+                                    className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
+                                />
+                                <div className="ml-3">
+                                    <span className="block text-sm font-bold text-gray-800">Elimina tutte (Cliente)</span>
+                                    <span className="block text-xs text-gray-500">Rimuove TUTTE le iscrizioni storiche e i dati finanziari di questo cliente.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                            <button onClick={handleConfirmDelete} className="md-btn md-btn-raised md-btn-red md-btn-sm">Conferma Eliminazione</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
             {/* Other modals ... */}
             {isModalOpen && (
                 <Modal onClose={() => setIsModalOpen(false)} size="lg">
@@ -1048,7 +1148,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </Modal>
             )}
             {recoveryModalState.isOpen && recoveryModalState.enrollment && <RecoveryModal enrollment={recoveryModalState.enrollment} maxRecoverable={recoveryModalState.maxRecoverable} suppliers={suppliers} onClose={() => setRecoveryModalState(prev => ({ ...prev, isOpen: false }))} onConfirm={handleConfirmRecovery} />}
-            <ConfirmModal isOpen={confirmState.isOpen} onClose={() => setConfirmState(prev => ({ ...prev, isOpen: false }))} onConfirm={confirmState.onConfirm} title={confirmState.title} message={confirmState.message} isDangerous={confirmState.isDangerous} />
         </div>
     );
 };
