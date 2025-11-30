@@ -16,7 +16,7 @@ const defaultCompanyInfo: Omit<CompanyInfo, 'id'> = {
     vatNumber: 'IT 09038130721',
     address: 'VIA CHIANCARO 2 N, 70010 ADELFIA (BARI)',
     email: 'labeasypeasy@gmail.com',
-    phone: '(+39) 340 523 4353',
+    phone: '+39 3405234353',
     logoBase64: DEFAULT_LOGO_BASE64,
     carFuelConsumption: 16.5 // km/l default
 };

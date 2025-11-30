@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck } from '../services/settingsService';
+import { requestNotificationPermission } from '../services/fcmService';
+import { auth } from '../firebase/config';
 import { applyTheme, getSavedTheme, defaultTheme } from '../utils/theme';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -11,6 +13,7 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import ClockIcon from '../components/icons/ClockIcon';
+import BellIcon from '../components/icons/BellIcon';
 
 // ... (SubscriptionForm and TemplateForm retained as is) ...
 const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; }> = ({ sub, onSave, onCancel }) => { const [name, setName] = useState(sub?.name || ''); const [price, setPrice] = useState(sub?.price || 0); const [lessons, setLessons] = useState(sub?.lessons || 0); const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const subData = { name, price: Number(price), lessons: Number(lessons), durationInDays: Number(durationInDays) }; if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Abbonamento</label></div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div> <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div> </div> <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> </div> </form> ); };
@@ -121,6 +124,9 @@ const Settings: React.FC = () => {
     const [primaryColor, setPrimaryColor] = useState(defaultTheme.primary);
     const [bgColor, setBgColor] = useState(defaultTheme.bgLight);
     
+    // Notification Status
+    const [notifPermission, setNotifPermission] = useState(Notification.permission);
+
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
@@ -231,6 +237,19 @@ const Settings: React.FC = () => {
 
     const handleResetTheme = () => {
         handleColorChange(defaultTheme.primary, defaultTheme.bgLight);
+    };
+
+    const handleEnableNotifications = async () => {
+        const userId = auth.currentUser?.uid;
+        if(userId) {
+            const granted = await requestNotificationPermission(userId);
+            setNotifPermission(granted ? 'granted' : 'denied');
+            if(granted) {
+                new Notification("EP v1", { body: "Notifiche attivate con successo su questo dispositivo!", icon: info?.logoBase64 });
+            } else {
+                alert("Non è stato possibile attivare le notifiche. Controlla i permessi del browser.");
+            }
+        }
     };
 
     const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
@@ -380,7 +399,7 @@ const Settings: React.FC = () => {
                         <button onClick={() => { setEditingCheck(null); setIsCheckModalOpen(true); }} className="md-btn md-btn-sm md-btn-primary"><PlusIcon /> Nuovo</button>
                     </div>
                     
-                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                    <div className="space-y-3 max-h-60 overflow-y-auto mb-4">
                         {checks.map(check => (
                             <div key={check.id} className={`p-3 rounded border flex justify-between items-start ${check.pushEnabled ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200 opacity-70'}`}>
                                 <div>
@@ -400,6 +419,42 @@ const Settings: React.FC = () => {
                             </div>
                         ))}
                         {checks.length === 0 && <p className="text-sm text-gray-400 italic text-center py-2">Nessun controllo pianificato.</p>}
+                    </div>
+
+                    {/* Stato Servizio Notifiche - Diagnostic Panel */}
+                    <div className="p-3 bg-slate-50 rounded border border-slate-200">
+                        <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
+                            <BellIcon /> Diagnostica Notifiche Push
+                        </h3>
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <p className="text-sm text-gray-800 font-medium">
+                                    Target: <span className="font-mono text-indigo-700">Admin (+39 3405234353)</span>
+                                </p>
+                                <p className="text-[10px] text-gray-500 mt-0.5">
+                                    Le notifiche partono da Firebase e arrivano su questo dispositivo.
+                                </p>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                {notifPermission === 'granted' ? (
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                        <span className="text-xs font-bold text-green-700">Attive</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-1 mb-1">
+                                        <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                                        <span className="text-xs font-bold text-red-700">Non Attive</span>
+                                    </div>
+                                )}
+                                <button 
+                                    onClick={handleEnableNotifications} 
+                                    className="text-[10px] bg-white border border-gray-300 px-2 py-1 rounded hover:bg-gray-50"
+                                >
+                                    {notifPermission === 'granted' ? 'Invia Test' : 'Attiva Ora'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
