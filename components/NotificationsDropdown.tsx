@@ -22,9 +22,9 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
     };
 
     return (
-        // FIX MOBILE: w-[90vw] for mobile width, max-w-[320px] to not exceed standard width, sm:w-80 for desktop.
-        // right-0 aligns to right edge of container.
-        <div className="absolute right-0 mt-2 w-[90vw] max-w-[320px] sm:w-80 bg-white rounded-md shadow-lg z-50 ring-1 ring-black ring-opacity-5 animate-fade-in-down origin-top-right">
+        // FIX MOBILE: Use fixed positioning on mobile to break out of relative parent constraints and ensure visibility.
+        // On desktop (sm+), revert to absolute positioning relative to the bell icon.
+        <div className="fixed right-2 top-16 mt-1 w-[95vw] max-w-[320px] sm:absolute sm:right-0 sm:left-auto sm:top-full sm:mt-2 sm:w-80 bg-white rounded-md shadow-lg z-50 ring-1 ring-black ring-opacity-5 animate-fade-in-down origin-top-right">
             <div className="px-4 py-2 border-b flex justify-between items-center">
                 <h3 className="text-sm font-semibold text-slate-700">Notifiche</h3>
                 {notifications.length > 0 && (
