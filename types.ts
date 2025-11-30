@@ -361,6 +361,7 @@ export enum PaymentMethod {
     CreditCard = 'Carta di Credito',
     PayPal = 'PayPal',
     Other = 'Altro',
+    Bancomat = 'Bancomat'
 }
 
 export enum TransactionStatus {
@@ -382,6 +383,7 @@ export interface Transaction {
     allocationType?: 'general' | 'location' | 'enrollment'; // Dove imputare il costo
     allocationId?: string; // ID della Sede o dell'Iscrizione
     allocationName?: string; // Nome denormalizzato per display rapido
+    excludeFromStats?: boolean; // Se true, non conta come ricavo fiscale (es. Contanti non fatturati)
     isDeleted?: boolean; // Soft Delete
 }
 

@@ -121,8 +121,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enrollment: Enrollment | null;
         date: string;
         method: PaymentMethod;
-        generateInvoice: boolean;
-        isDeposit: boolean;
+        generateInvoice: boolean; // Usato per Contanti
+        isDeposit: boolean; // Acconto
         depositAmount: number;
     }>({
         isOpen: false,
@@ -175,7 +175,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enr: Enrollment, 
         paymentDateStr: string, 
         method: PaymentMethod, 
-        generateInvoice: boolean,
+        generateInvoice: boolean, // Rilevante solo per contanti ora
         isDeposit: boolean,
         depositAmount: number
     ) => {
@@ -194,7 +194,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 allocationName: enr.locationName
             };
 
-            if (generateInvoice) {
+            // Regola: Auto-Fattura per Bonifico, Paypal, Bancomat. Opzionale per Contanti.
+            // Se "Da Fatturare" è true (o forzato da metodo), generiamo fattura.
+            const shouldGenerateInvoice = (method !== PaymentMethod.Cash) || generateInvoice;
+
+            if (shouldGenerateInvoice) {
+                // Generazione Fattura Reale
                 const desc = isDeposit 
                     ? `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`
                     : `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
@@ -231,14 +236,17 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     });
                 }
 
+                // LOGICA ACCONTO: Genera Fattura Fantasma per il saldo
                 if (isDeposit) {
                     const balance = fullPrice - depositAmount;
                     if (balance > 0) {
                         const ghostInvoice: InvoiceInput = {
                             clientId: enr.clientId,
                             clientName: clientName,
-                            issueDate: new Date().toISOString(), 
-                            dueDate: enr.endDate, 
+                            // Issue Date = Oggi (per tracking), Due Date = Tra 30gg o Fine Corso? 
+                            // Prompt dice avviso dopo 30gg dal pagamento acconto.
+                            issueDate: paymentIsoDate, 
+                            dueDate: enr.endDate, // Scadenza tecnica, ma l'avviso parte dopo 30gg dall'issueDate
                             status: DocumentStatus.Draft,
                             paymentMethod: PaymentMethod.BankTransfer,
                             items: [{ 
@@ -251,29 +259,36 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             hasStampDuty: balance > 77,
                             notes: 'Fattura generata automaticamente come saldo.',
                             invoiceNumber: '',
-                            isGhost: true
+                            isGhost: true // Flag per saldo futuro
                         };
                         await addInvoice(ghostInvoice);
                     }
                 }
                 alert(isDeposit ? `Acconto di ${actualAmount}€ registrato. Generata fattura fantasma per il saldo.` : `Pagamento registrato! Generata Fattura n. ${invoiceNumber}.`);
             } else {
+                // NO FATTURA (Solo Contanti non fiscali)
                 if (actualAmount > 0) {
                     await addTransaction({
                         date: paymentIsoDate,
-                        description: `Incasso Iscrizione: ${enr.childName}`,
+                        description: `Incasso Iscrizione (Contanti): ${enr.childName}`,
                         amount: actualAmount,
                         type: TransactionType.Income,
                         category: TransactionCategory.Sales,
                         paymentMethod: method,
                         status: TransactionStatus.Completed,
+                        excludeFromStats: true, // NON FISCALE
                         ...allocationData // Collega alla Sede
                     });
                 }
-                alert(`Pagamento registrato (Solo Transazione).`);
+                alert(`Pagamento registrato (Solo Transazione interna).`);
             }
 
-            await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
+            // Se stiamo pagando un saldo, non dobbiamo rigenerare slot.
+            // L'iscrizione è già attiva. Se era Pending, diventa Active.
+            if (enr.status === EnrollmentStatus.Pending) {
+                await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
+            }
+            
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
             
@@ -426,7 +441,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
-        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, generateInvoice: true, isDeposit: false, depositAmount: (enr.price || 0) / 2 });
+        setPaymentModalState({ 
+            isOpen: true, 
+            enrollment: enr, 
+            date: new Date().toISOString().split('T')[0], 
+            method: PaymentMethod.BankTransfer, // Default safe
+            generateInvoice: true, 
+            isDeposit: false, 
+            depositAmount: (enr.price || 0) / 2 
+        });
     };
 
     const handleConfirmPayment = async () => {
@@ -855,8 +878,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                     {/* Hover Actions */}
                                                                     {!isMoveMode && (
                                                                         <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                                                                            {isPending && !isUnassigned && (
-                                                                                <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento">
+                                                                            {/* Tasto Pagamento attivo anche se non pending, per gestire i saldi successivi */}
+                                                                            {!isUnassigned && (
+                                                                                <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento / Saldo">
                                                                                     <span className="font-bold text-xs">€</span>
                                                                                 </button>
                                                                             )}
@@ -893,53 +917,86 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
-                        <p className="text-sm text-gray-500 mb-4">Attiva la card <strong>{paymentModalState.enrollment.childName}</strong> sbloccando {paymentModalState.enrollment.lessonsTotal} slot.</p>
-                        <div className="md-input-group">
+                        <p className="text-sm text-gray-500 mb-4">
+                            Pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.<br/>
+                            Totale Iscrizione: <span className="font-bold text-indigo-600">{paymentModalState.enrollment.price}€</span>
+                        </p>
+                        
+                        <div className="md-input-group mb-4">
                             <input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" />
-                            <label className="md-input-label !top-0">Data</label>
+                            <label className="md-input-label !top-0">Data Pagamento</label>
+                        </div>
+
+                        <div className="md-input-group mb-4">
+                            <select 
+                                value={paymentModalState.method} 
+                                onChange={(e) => {
+                                    const method = e.target.value as PaymentMethod;
+                                    setPaymentModalState(prev => ({ 
+                                        ...prev, 
+                                        method, 
+                                        generateInvoice: method !== PaymentMethod.Cash // Default per contanti = false
+                                    }));
+                                }} 
+                                className="md-input"
+                            >
+                                {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <label className="md-input-label !top-0">Metodo Pagamento</label>
                         </div>
                         
-                        {/* Deposit Logic */}
-                        <div className="mt-4 bg-gray-50 p-3 rounded border border-gray-200">
+                        {/* Logic Acconto */}
+                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200">
                             <div className="flex items-center mb-2">
                                 <input 
                                     type="checkbox" 
+                                    id="accontoCheck"
                                     checked={paymentModalState.isDeposit}
                                     onChange={e => setPaymentModalState(prev => ({ ...prev, isDeposit: e.target.checked }))}
                                     className="h-4 w-4 text-indigo-600 rounded"
                                 />
-                                <label className="ml-2 text-sm font-bold text-gray-700">Acconto</label>
+                                <label htmlFor="accontoCheck" className="ml-2 text-sm font-bold text-gray-700">Pagamento in Acconto</label>
                             </div>
+                            
                             {paymentModalState.isDeposit && (
                                 <div className="animate-fade-in pl-6">
-                                    <label className="text-xs text-gray-500 block">Importo Acconto</label>
+                                    <label className="text-xs text-gray-500 block">Importo Versato Ora</label>
                                     <input 
                                         type="number" 
                                         value={paymentModalState.depositAmount}
                                         onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))}
                                         className="w-full p-1 border rounded text-sm font-bold"
                                     />
-                                    <p className="text-xs text-orange-600 mt-1">
-                                        Saldo restante: {(paymentModalState.enrollment.price || 0) - paymentModalState.depositAmount}€
-                                        <br/>Verrà generata una fattura fantasma per il saldo.
-                                    </p>
+                                    <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
+                                        Rimanenza (Saldo): <strong>{(paymentModalState.enrollment.price || 0) - paymentModalState.depositAmount}€</strong>
+                                        <br/>Verrà generata una notifica di saldo tra 30 giorni.
+                                    </div>
                                 </div>
                             )}
                         </div>
 
-                        <div className="mt-4 flex items-center bg-blue-50 p-2 rounded">
-                            <input 
-                                type="checkbox" 
-                                checked={paymentModalState.generateInvoice}
-                                onChange={e => setPaymentModalState(prev => ({...prev, generateInvoice: e.target.checked}))}
-                                className="h-4 w-4 text-blue-600 rounded"
-                            />
-                            <label className="ml-2 text-xs text-blue-800 font-medium">Genera Documento Fiscale</label>
-                        </div>
+                        {/* Logic Fattura per Contanti */}
+                        {paymentModalState.method === PaymentMethod.Cash && (
+                            <div className="mt-4 flex items-center bg-blue-50 p-2 rounded border border-blue-100">
+                                <input 
+                                    type="checkbox" 
+                                    id="invCheck"
+                                    checked={paymentModalState.generateInvoice}
+                                    onChange={e => setPaymentModalState(prev => ({...prev, generateInvoice: e.target.checked}))}
+                                    className="h-4 w-4 text-blue-600 rounded"
+                                />
+                                <label htmlFor="invCheck" className="ml-2 text-xs text-blue-800 font-medium">Genera Fattura Fiscale</label>
+                            </div>
+                        )}
+                        {paymentModalState.method === PaymentMethod.Cash && !paymentModalState.generateInvoice && (
+                            <p className="text-[10px] text-gray-500 mt-1 italic pl-1">
+                                Nota: Le entrate in contanti senza fattura non vengono conteggiate come ricavo fiscale (imponibile), ma appaiono nel flusso di cassa.
+                            </p>
+                        )}
 
                         <div className="mt-6 flex justify-end gap-2">
                             <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                            <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma & Attiva</button>
+                            <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma Pagamento</button>
                         </div>
                     </div>
                 </Modal>

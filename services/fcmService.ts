@@ -10,20 +10,19 @@ const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7
 const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if ('serviceWorker' in navigator) {
     try {
-      // FIX: Costruiamo l'URL assoluto basato sull'origine corrente per evitare
-      // errori di "origin mismatch" in ambienti di preview cloud o CDN.
-      // Questo risolve l'errore: "The origin of the provided scriptURL does not match the current origin".
-      const swUrl = `${window.location.origin}/firebase-messaging-sw.js`;
+      // FIX: Usiamo un percorso relativo assoluto.
+      // Non usiamo window.location.origin perché in ambienti di preview può differire dall'origine reale di esecuzione,
+      // causando errori di sicurezza (Origin Mismatch).
+      // Rimuoviamo anche 'scope: "/"' per lasciare che il browser usi il default (la root), evitando risoluzioni errate.
+      const swUrl = '/firebase-messaging-sw.js';
       
-      const registration = await navigator.serviceWorker.register(swUrl, {
-        scope: '/'
-      });
+      const registration = await navigator.serviceWorker.register(swUrl);
       return registration;
     } catch (err: any) {
       console.error('[FCM Service] Errore CRITICO registrazione SW:', err);
-      // Tentativo di fallback
+      // Tentativo di fallback con percorso relativo corrente
       try {
-          const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+          const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
           return registration;
       } catch (fallbackErr) {
           console.error('[FCM Service] Fallback fallito:', fallbackErr);

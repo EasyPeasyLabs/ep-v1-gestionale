@@ -103,16 +103,18 @@ export const getNotifications = async (): Promise<Notification[]> => {
     invoices.forEach(inv => {
         if (inv.isDeleted) return; 
 
-        // Notifica Saldo (Fattura Fantasma in scadenza)
+        // Notifica Saldo (Fattura Fantasma in scadenza o scaduta)
+        // La regola è: avviso visibile solo dopo 30 giorni dal pagamento dell'acconto.
+        // Siccome creiamo la Ghost Invoice al momento dell'acconto, controlliamo issueDate.
         if (inv.isGhost && inv.status === DocumentStatus.Draft) {
-            const dueDate = new Date(inv.dueDate);
-            if (dueDate >= today && dueDate <= sevenDaysFromNow) {
-                const diffTime = dueDate.getTime() - today.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            const createdDate = new Date(inv.issueDate);
+            const daysSinceCreation = Math.floor((today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            if (daysSinceCreation >= 30) {
                 notifications.push({
                     id: `inv-balance-${inv.id}`,
                     type: 'balance_due',
-                    message: `SALDO DOVUTO tra ${diffDays} giorni: ${inv.clientName} (${inv.totalAmount.toFixed(2)}€). Attiva fattura a saldo.`,
+                    message: `SALDO DOVUTO: Sono passati 30gg dall'acconto di ${inv.clientName}. Saldo: ${inv.totalAmount.toFixed(2)}€.`,
                     clientId: inv.clientId,
                     date: new Date().toISOString(),
                     linkPage: 'Finance',
