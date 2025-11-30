@@ -103,11 +103,24 @@ const Settings: React.FC = () => {
                 
                 try {
                     addLog("Tentativo invio notifica LOCALE di test...");
-                    const n = new Notification("EP v1: Test", { 
-                        body: "Se leggi questo, il browser permette le notifiche!", 
-                        icon: info?.logoBase64 
-                    });
-                    addLog("Notifica locale inviata. Se non la vedi, controlla 'Non Disturbare' o le impostazioni del telefono.");
+                    
+                    // FIX ANDROID: Use Service Worker registration instead of new Notification()
+                    if ('serviceWorker' in navigator) {
+                        const registration = await navigator.serviceWorker.ready;
+                        await registration.showNotification("EP v1: Test", { 
+                            body: "Se leggi questo, il browser permette le notifiche!", 
+                            icon: info?.logoBase64,
+                            tag: 'test-notification'
+                        });
+                        addLog("Notifica inviata tramite Service Worker (Mobile Friendly)!");
+                    } else {
+                        // Fallback desktop legacy
+                        new Notification("EP v1: Test", { 
+                            body: "Se leggi questo, il browser permette le notifiche!", 
+                            icon: info?.logoBase64 
+                        });
+                        addLog("Notifica inviata tramite API Standard.");
+                    }
                 } catch (e: any) {
                     addLog("Errore invio notifica locale: " + e.message);
                 }

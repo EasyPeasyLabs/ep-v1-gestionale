@@ -58,19 +58,28 @@ const NotificationScheduler: React.FC = () => {
         };
     }, []);
 
-    const sendNotification = (check: PeriodicCheck) => {
+    const sendNotification = async (check: PeriodicCheck) => {
         if (!('Notification' in window)) return;
         
         // Tenta di inviare solo se permesso concesso
         if (Notification.permission === 'granted') {
             try {
-                // Utilizziamo il logo dell'app se disponibile
-                new Notification(`EP Planner: ${check.category}`, {
+                const title = `EP Planner: ${check.category}`;
+                const options = {
                     body: check.note || `È ora del controllo periodico: ${check.subCategory || check.category}`,
                     icon: '/lemon_logo_150px.png',
                     tag: `ep-check-${check.id}`, // Tag univoco per evitare duplicati nel centro notifiche
                     requireInteraction: true // Richiede azione utente per sparire (più visibile)
-                });
+                };
+
+                // FIX: Uso del Service Worker per compatibilità Android Chrome
+                if ('serviceWorker' in navigator) {
+                    const registration = await navigator.serviceWorker.ready;
+                    await registration.showNotification(title, options);
+                } else {
+                    // Fallback per browser desktop vecchi o non-SW
+                    new Notification(title, options);
+                }
             } catch (e) {
                 console.warn("Errore invio notifica:", e);
             }
