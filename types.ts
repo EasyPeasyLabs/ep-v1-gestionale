@@ -250,6 +250,16 @@ export interface LessonActivity {
     date: string;
 }
 
+export interface AttendanceArchiveItem {
+    id: string; // lessonId
+    date: string;
+    childName: string;
+    locationName: string;
+    startTime: string;
+    endTime: string;
+    value: number; // Valore economico dello slot
+}
+
 // --- Notifications ---
 export interface Notification {
     id: string;

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons } from '../services/enrollmentService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation } from '../services/enrollmentService';
 import { addTransaction, deleteTransactionByRelatedId, addInvoice } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -32,7 +32,6 @@ const RecoveryModal: React.FC<{
     onClose: () => void;
     onConfirm: (date: string, time: string, endTime: string, count: number, locName: string, locColor: string) => void;
 }> = ({ enrollment, maxRecoverable, suppliers, onClose, onConfirm }) => {
-    // ... (Code for Recovery Modal - Same as before)
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [count, setCount] = useState(1);
     const originalSupplier = suppliers.find(s => s.id === enrollment.supplierId);
@@ -138,6 +137,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [recoveryModalState, setRecoveryModalState] = useState<{ isOpen: boolean; enrollment: Enrollment | null; maxRecoverable: number; }>({ isOpen: false, enrollment: null, maxRecoverable: 0 });
     const [confirmState, setConfirmState] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; isDangerous: boolean; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, isDangerous: false });
 
+    // Drag and Drop State
+    const [draggedEnrollmentId, setDraggedEnrollmentId] = useState<string | null>(null);
+
+    // --- MOVE MODE STATE (Mobile Friendly) ---
+    const [isMoveMode, setIsMoveMode] = useState(false);
+    const [moveSourceId, setMoveSourceId] = useState<string | null>(null);
+
     // Fetch Data
     const fetchData = useCallback(async () => {
         try {
@@ -181,10 +187,19 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             const client = clients.find(c => c.id === enr.clientId);
             const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
 
+            // INFO PER ALLOCAZIONE COSTI/RICAVI ALLA SEDE (Iniziale)
+            const allocationData = {
+                allocationType: 'location' as const,
+                allocationId: enr.locationId,
+                allocationName: enr.locationName
+            };
+
             if (generateInvoice) {
                 const desc = isDeposit 
                     ? `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`
                     : `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+
+                const itemNotes = `Sede: ${enr.locationName}`;
 
                 const invoiceInput: InvoiceInput = {
                     clientId: enr.clientId,
@@ -193,7 +208,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     dueDate: paymentIsoDate,
                     status: DocumentStatus.PendingSDI, 
                     paymentMethod: method,
-                    items: [{ description: desc, quantity: 1, price: actualAmount, notes: 'Generata automaticamente' }],
+                    items: [{ description: desc, quantity: 1, price: actualAmount, notes: itemNotes }],
                     totalAmount: actualAmount,
                     hasStampDuty: actualAmount > 77, 
                     notes: `Rif. Iscrizione ${enr.childName}`,
@@ -211,7 +226,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         category: TransactionCategory.Sales,
                         paymentMethod: method,
                         status: TransactionStatus.Completed,
-                        relatedDocumentId: invoiceId, 
+                        relatedDocumentId: invoiceId,
+                        ...allocationData // Collega alla Sede
                     });
                 }
 
@@ -229,7 +245,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 description: `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`, 
                                 quantity: 1, 
                                 price: balance,
-                                notes: `A saldo della fattura di acconto n. ${invoiceNumber}`
+                                notes: `Sede: ${enr.locationName} - A saldo della fattura di acconto n. ${invoiceNumber}`
                             }],
                             totalAmount: balance,
                             hasStampDuty: balance > 77,
@@ -251,9 +267,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         category: TransactionCategory.Sales,
                         paymentMethod: method,
                         status: TransactionStatus.Completed,
-                        allocationType: 'enrollment',
-                        allocationId: enr.id,
-                        allocationName: enr.childName
+                        ...allocationData // Collega alla Sede
                     });
                 }
                 alert(`Pagamento registrato (Solo Transazione).`);
@@ -269,6 +283,104 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             setLoading(false);
         }
     };
+
+    // --- Core Move Logic (Used by Drop and Click) ---
+    const executeMove = async (
+        enrollmentId: string, 
+        targetLocId: string, 
+        targetLocName: string, 
+        targetLocColor: string, 
+        targetDayIndex: number, 
+        targetStartTime: string, 
+        targetEndTime: string
+    ) => {
+        const original = enrollments.find(en => en.id === enrollmentId);
+        if (!original) return;
+
+        // Calcola la prossima data utile
+        const today = new Date();
+        const todayDay = today.getDay(); // 0-6
+        let diff = targetDayIndex - todayDay;
+        if (diff < 0) diff += 7; // Se target è passato questa settimana, vai alla prossima
+        
+        const nextDate = new Date(today);
+        nextDate.setDate(today.getDate() + diff);
+        const nextDateStr = nextDate.toISOString().split('T')[0];
+
+        if (window.confirm(`Spostare ${original.childName} a ${daysOfWeekMap[targetDayIndex]} ${targetStartTime}? L'iscrizione sarà aggiornata con il nuovo orario per le lezioni future.`)) {
+            setLoading(true);
+            try {
+                await bulkUpdateLocation(
+                    [enrollmentId],
+                    nextDateStr,
+                    targetLocId,
+                    targetLocName,
+                    targetLocColor,
+                    targetStartTime,
+                    targetEndTime
+                );
+                await fetchData();
+            } catch (err) {
+                console.error("Errore spostamento:", err);
+                alert("Errore durante lo spostamento.");
+            } finally {
+                setLoading(false);
+                setMoveSourceId(null);
+                setIsMoveMode(false);
+            }
+        }
+    };
+
+    // --- Drag & Drop Handlers ---
+    const handleDragStart = (e: React.DragEvent, id: string) => {
+        setDraggedEnrollmentId(id);
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", id);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault(); 
+        e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = (
+        e: React.DragEvent, 
+        targetLocId: string, 
+        targetLocName: string, 
+        targetLocColor: string, 
+        targetDayIndex: number, 
+        targetStartTime: string, 
+        targetEndTime: string
+    ) => {
+        e.preventDefault();
+        const droppedId = draggedEnrollmentId;
+        setDraggedEnrollmentId(null);
+        if (droppedId) {
+            executeMove(droppedId, targetLocId, targetLocName, targetLocColor, targetDayIndex, targetStartTime, targetEndTime);
+        }
+    };
+
+    // --- Move Mode Handlers (Touch/Click) ---
+    const handleCardClick = (e: React.MouseEvent, id: string) => {
+        if (isMoveMode) {
+            e.stopPropagation(); // Evita di aprire il dettaglio/modifica
+            setMoveSourceId(prev => prev === id ? null : id); // Toggle selezione
+        }
+    };
+
+    const handleSlotClick = (
+        locId: string, 
+        locName: string, 
+        locColor: string, 
+        dayIdx: number, 
+        start: string, 
+        end: string
+    ) => {
+        if (isMoveMode && moveSourceId) {
+            executeMove(moveSourceId, locId, locName, locColor, dayIdx, start, end);
+        }
+    };
+
 
     const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
@@ -302,13 +414,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const getFirstAppointmentData = (enrollment: Enrollment) => {
         if (enrollment.appointments && enrollment.appointments.length > 0) {
-            const first = enrollment.appointments[0];
-            const date = new Date(first.date);
+            // Find the next scheduled appointment, or fallback to the first one if all are past/consumed
+            const now = new Date();
+            const next = enrollment.appointments.find(a => new Date(a.date) >= now) || enrollment.appointments[0];
+            const date = new Date(next.date);
             return {
                 dayIndex: date.getDay(),
                 dayName: daysOfWeekMap[date.getDay()],
-                startTime: first.startTime,
-                endTime: first.endTime
+                startTime: next.startTime,
+                endTime: next.endTime
             };
         }
         return { dayIndex: 9, dayName: 'Da Definire', startTime: '', endTime: '' };
@@ -336,10 +450,32 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     // --- Filtering Logic ---
     const filteredEnrollments = useMemo(() => {
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+        oneWeekAgo.setHours(0, 0, 0, 0);
+
         let result = enrollments.filter(enr => {
-            // Esclude completati ed expired dalla vista principale se non filtrati diversamente
-            // (La logica "Recinti" funziona meglio con Active/Pending)
-            if (enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired) return false;
+            // --- Visibility Rule: Hide old exhausted/expired cards ---
+            // Hide if lessons are exhausted AND it happened more than a week ago
+            const isExhausted = enr.lessonsRemaining <= 0 || enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired;
+            
+            if (isExhausted) {
+                let lastRelevantDate = new Date(enr.endDate); // Default to endDate (expiry)
+                
+                // If we have present appointments, use the last one as the "consumption date"
+                const presentApps = enr.appointments?.filter(a => a.status === 'Present');
+                if (presentApps && presentApps.length > 0) {
+                    const lastPres = presentApps.reduce((latest, current) => 
+                        new Date(current.date) > new Date(latest.date) ? current : latest
+                    );
+                    lastRelevantDate = new Date(lastPres.date);
+                }
+
+                // If the relevant date is older than 1 week, hide it from the fence
+                if (lastRelevantDate < oneWeekAgo) {
+                    return false;
+                }
+            }
 
             // Search Term
             if (searchTerm) {
@@ -388,25 +524,35 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Structure: Location -> Day -> TimeSlot -> Enrollments[]
     const groupedEnrollments = useMemo(() => {
         const groups: Record<string, { // Location Key
+            locationId: string;
             locationName: string;
             locationColor: string;
             days: Record<number, { // Day Index Key
                 dayName: string;
                 slots: Record<string, { // Time Key (Start-End)
                     timeRange: string;
+                    start: string;
+                    end: string;
                     items: Enrollment[];
                 }>
             }>
         }> = {};
 
+        // Inizializza i gruppi con le sedi dai Supplier
+        // Se volessimo mostrare recinti vuoti, itereremmo su suppliers. 
+        // Per ora iteriamo sugli enrollment per mostrare solo i recinti attivi.
+        
         filteredEnrollments.forEach(enr => {
             const locName = enr.locationName || 'Sede Non Definita';
+            const locId = enr.locationId || 'unknown';
+            // Il colore del recinto è dato dall'iscrizione (che lo eredita dalla location)
+            // Se l'iscrizione è pending o exhausted, il colore viene comunque usato per il recinto
             const locColor = enr.locationColor || '#ccc';
             const appData = getFirstAppointmentData(enr);
             const timeKey = appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D';
 
             if (!groups[locName]) {
-                groups[locName] = { locationName: locName, locationColor: locColor, days: {} };
+                groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
             }
             
             if (!groups[locName].days[appData.dayIndex]) {
@@ -414,7 +560,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             }
 
             if (!groups[locName].days[appData.dayIndex].slots[timeKey]) {
-                groups[locName].days[appData.dayIndex].slots[timeKey] = { timeRange: timeKey, items: [] };
+                groups[locName].days[appData.dayIndex].slots[timeKey] = { 
+                    timeRange: timeKey, 
+                    start: appData.startTime, 
+                    end: appData.endTime, 
+                    items: [] 
+                };
             }
 
             groups[locName].days[appData.dayIndex].slots[timeKey].items.push(enr);
@@ -425,7 +576,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             ...loc,
             days: Object.entries(loc.days)
                 .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)) // Sort by Day Index (Mon=1, ...)
-                .map(([_, day]) => ({
+                .map(([idx, day]) => ({
+                    dayIndex: Number(idx),
                     ...day,
                     slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange))
                 }))
@@ -438,9 +590,26 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         <div>
             {/* --- HEADER --- */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold">Iscrizioni</h1>
-                    <p className="mt-1 text-gray-500">Gestisci le iscrizioni attive per sede e orario.</p>
+                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                    <div>
+                        <h1 className="text-3xl font-bold">Iscrizioni</h1>
+                        <p className="mt-1 text-gray-500">Gestione dei "recinti" e dotazione slot.</p>
+                    </div>
+                    {/* MOVE BUTTON TOGGLE (Mobile Only Visual Aid) */}
+                    <button 
+                        onClick={() => { setIsMoveMode(!isMoveMode); setMoveSourceId(null); }} 
+                        className={`md-btn md-btn-sm md:hidden mt-2 ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}
+                    >
+                        {isMoveMode ? (
+                            <span className="flex items-center font-bold">
+                                <span className="animate-pulse mr-2">👆</span> Scegli...
+                            </span>
+                        ) : (
+                            <span className="flex items-center">
+                                ✋ Sposta
+                            </span>
+                        )}
+                    </button>
                 </div>
 
                 {/* Search & Filters Bar */}
@@ -495,6 +664,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </div>
             </div>
             
+            {/* Banner Istruzioni Move Mode */}
+            {isMoveMode && (
+                <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">
+                    {moveSourceId ? 
+                        <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : 
+                        <span>Tocca un'iscrizione per selezionarla.</span>
+                    }
+                </div>
+            )}
+
             {/* --- CONTENT --- */}
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <div className="space-y-8 pb-10">
@@ -519,7 +698,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
                                         <div className="space-y-4">
                                             {dayGroup.slots.map((slotGroup, slotIdx) => (
-                                                <div key={slotIdx} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                                <div 
+                                                    key={slotIdx} 
+                                                    className={`rounded-lg p-3 border transition-all ${
+                                                        isMoveMode && moveSourceId ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 ring-2 ring-indigo-200 ring-offset-1' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
+                                                    }`}
+                                                    onDragOver={handleDragOver}
+                                                    onDrop={(e) => handleDrop(e, locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}
+                                                    onClick={() => handleSlotClick(locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}
+                                                >
                                                     {/* RECINTO ORARIO */}
                                                     <div className="flex items-center mb-3">
                                                         <span className="bg-white text-slate-600 border border-slate-200 text-xs font-mono font-bold px-2 py-1 rounded shadow-sm">
@@ -532,44 +719,76 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                                         {slotGroup.items.map(enr => {
                                                             const childAge = getChildAge(enr);
+                                                            const isSelectedForMove = moveSourceId === enr.id;
+                                                            const isPending = enr.status === EnrollmentStatus.Pending;
+                                                            const isExhausted = enr.lessonsRemaining <= 0;
+                                                            
+                                                            // Colore card: dipende dallo stato
+                                                            let cardBorderColor = locGroup.locationColor;
+                                                            let cardBg = 'bg-white';
+                                                            let opacity = 'opacity-100';
+
+                                                            if (isPending) {
+                                                                cardBorderColor = '#fbbf24'; // Amber
+                                                                cardBg = 'bg-amber-50';
+                                                            } else if (isExhausted) {
+                                                                cardBorderColor = '#9ca3af'; // Gray
+                                                                cardBg = 'bg-gray-100';
+                                                                opacity = 'opacity-75';
+                                                            }
+
                                                             return (
                                                                 <div 
-                                                                    key={enr.id} 
-                                                                    className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative group cursor-default"
-                                                                    style={{ borderLeftWidth: '5px', borderLeftColor: enr.locationColor || '#9ca3af' }}
+                                                                    key={enr.id}
+                                                                    draggable={!isExhausted}
+                                                                    onDragStart={(e) => !isExhausted && handleDragStart(e, enr.id)}
+                                                                    onClick={(e) => handleCardClick(e, enr.id)}
+                                                                    className={`p-3 rounded-lg border shadow-sm transition-all relative group 
+                                                                        ${cardBg} ${opacity} border-gray-200 hover:shadow-md cursor-grab active:cursor-grabbing
+                                                                        ${draggedEnrollmentId === enr.id ? 'opacity-50 ring-2 ring-indigo-300' : ''}
+                                                                        ${isSelectedForMove ? 'ring-4 ring-indigo-500 transform scale-95 border-indigo-300 z-10' : ''}
+                                                                    `}
+                                                                    style={{ borderLeftWidth: '5px', borderLeftColor: cardBorderColor }}
                                                                 >
                                                                     <div className="flex justify-between items-start">
                                                                         <div>
-                                                                            <h4 className="font-bold text-gray-800 text-sm">{enr.childName}</h4>
+                                                                            <h4 className={`font-bold text-sm text-gray-800`}>{enr.childName}</h4>
                                                                             <p className="text-[10px] text-gray-500">{childAge}</p>
                                                                         </div>
-                                                                        {enr.status === 'Active' ? 
-                                                                            <span className="w-2 h-2 bg-green-500 rounded-full" title="Attivo"></span> : 
-                                                                            <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" title="In Attesa"></span>
-                                                                        }
+                                                                        {isPending && <span className="text-[9px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-bold uppercase">Dormiente</span>}
+                                                                        {isExhausted && <span className="text-[9px] bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded font-bold uppercase">Esaurito</span>}
                                                                     </div>
                                                                     
-                                                                    <p className="text-xs text-gray-600 mt-2 truncate" title={enr.subscriptionName}>{enr.subscriptionName}</p>
+                                                                    <div className="mt-2 flex items-center justify-between">
+                                                                        <p className="text-xs text-gray-600 truncate flex-1 pr-2" title={enr.subscriptionName}>{enr.subscriptionName}</p>
+                                                                        <div className="text-xs font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap" title="Slot Consumati / Totali">
+                                                                            <span className="font-bold text-indigo-600">{enr.lessonsTotal - enr.lessonsRemaining}</span>
+                                                                            <span className="text-gray-400">/</span>
+                                                                            <span className="font-bold text-gray-600">{enr.lessonsTotal}</span>
+                                                                        </div>
+                                                                    </div>
                                                                     
                                                                     {/* Hover Actions */}
-                                                                    <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                                                                        {enr.status === 'Pending' && (
-                                                                            <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento">
-                                                                                <span className="font-bold text-xs">€</span>
+                                                                    {!isMoveMode && (
+                                                                        <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
+                                                                            {isPending && (
+                                                                                <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento">
+                                                                                    <span className="font-bold text-xs">€</span>
+                                                                                </button>
+                                                                            )}
+                                                                            <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica">
+                                                                                <PencilIcon />
                                                                             </button>
-                                                                        )}
-                                                                        <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica">
-                                                                            <PencilIcon />
-                                                                        </button>
-                                                                        <button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina">
-                                                                            <TrashIcon />
-                                                                        </button>
-                                                                        {enr.status === 'Active' && (
-                                                                            <button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero">
-                                                                                <RefreshIcon />
+                                                                            <button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina">
+                                                                                <TrashIcon />
                                                                             </button>
-                                                                        )}
-                                                                    </div>
+                                                                            {!isExhausted && !isPending && (
+                                                                                <button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero">
+                                                                                    <RefreshIcon />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
@@ -590,6 +809,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
+                        <p className="text-sm text-gray-500 mb-4">Attiva la card <strong>{paymentModalState.enrollment.childName}</strong> sbloccando {paymentModalState.enrollment.lessonsTotal} slot.</p>
                         <div className="md-input-group">
                             <input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" />
                             <label className="md-input-label !top-0">Data</label>
@@ -635,7 +855,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
                         <div className="mt-6 flex justify-end gap-2">
                             <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                            <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma</button>
+                            <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma & Attiva</button>
                         </div>
                     </div>
                 </Modal>

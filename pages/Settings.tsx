@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate } from '../services/settingsService';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory } from '../types';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck } from '../services/settingsService';
 import { applyTheme, getSavedTheme, defaultTheme } from '../utils/theme';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -10,89 +10,88 @@ import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import UploadIcon from '../components/icons/UploadIcon';
+import ClockIcon from '../components/icons/ClockIcon';
 
+// ... (SubscriptionForm and TemplateForm retained as is) ...
+const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; }> = ({ sub, onSave, onCancel }) => { const [name, setName] = useState(sub?.name || ''); const [price, setPrice] = useState(sub?.price || 0); const [lessons, setLessons] = useState(sub?.lessons || 0); const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const subData = { name, price: Number(price), lessons: Number(lessons), durationInDays: Number(durationInDays) }; if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Abbonamento</label></div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div> <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div> </div> <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> </div> </form> ); };
+const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { const [subject, setSubject] = useState(template.subject); const [body, setBody] = useState(template.body); const [signature, setSignature] = useState(template.signature); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...template, subject, body, signature }); }; const placeholders = template.id === 'payment' ? ['{{fornitore}}', '{{descrizione}}'] : ['{{cliente}}', '{{bambino}}', '{{data}}']; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">Modifica Template: {template.label}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> <strong>Variabili disponibili:</strong> {placeholders.join(', ')} </div> <div className="md-input-group"> <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " /> <label className="md-input-label">Oggetto / Titolo</label> </div> <div className="md-input-group"> <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label> </div> <div className="md-input-group"> <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Firma</label> </div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button> </div> </form> ); };
 
-const SubscriptionForm: React.FC<{
-    sub?: SubscriptionType | null;
-    onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void;
-    onCancel: () => void;
-}> = ({ sub, onSave, onCancel }) => {
-    const [name, setName] = useState(sub?.name || '');
-    const [price, setPrice] = useState(sub?.price || 0);
-    const [lessons, setLessons] = useState(sub?.lessons || 0);
-    const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0);
+// --- NEW CHECK FORM ---
+const CheckForm: React.FC<{ 
+    check?: PeriodicCheck | null; 
+    onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; 
+    onCancel: () => void 
+}> = ({ check, onSave, onCancel }) => {
+    const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments);
+    const [subCategory, setSubCategory] = useState(check?.subCategory || '');
+    const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []);
+    const [startTime, setStartTime] = useState(check?.startTime || '09:00');
+    const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false);
+    const [note, setNote] = useState(check?.note || '');
+
+    const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+
+    const toggleDay = (day: number) => {
+        setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+    };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const subData = { name, price: Number(price), lessons: Number(lessons), durationInDays: Number(durationInDays) };
-        if (sub?.id) { onSave({ ...subData, id: sub.id }); } 
-        else { onSave(subData); }
+        const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note };
+        if (check?.id) onSave({ ...data, id: check.id }); else onSave(data);
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
-            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
-                <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2>
+        <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
+            <div className="p-6 pb-2 border-b">
+                <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2>
             </div>
-            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
-                <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Abbonamento</label></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div>
-                    <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="md-input-group">
+                    <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input">
+                        {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <label className="md-input-label">Categoria</label>
                 </div>
-                <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div>
+                <div className="md-input-group">
+                    <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " />
+                    <label className="md-input-label">Dettaglio (es. Commercialista)</label>
+                </div>
+                
+                <div>
+                    <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label>
+                    <div className="flex flex-wrap gap-2">
+                        {daysMap.map((d, i) => (
+                            <button 
+                                key={i} 
+                                type="button"
+                                onClick={() => toggleDay(i)}
+                                className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+                            >
+                                {d}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="md-input-group">
+                    <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" />
+                    <label className="md-input-label !top-0">Orario Notifica</label>
+                </div>
+
+                <div className="flex items-center gap-2 mt-2">
+                    <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" />
+                    <label className="text-sm text-gray-700">Abilita Notifica Push</label>
+                </div>
+
+                <div className="md-input-group">
+                    <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea>
+                    <label className="md-input-label">Nota / Messaggio</label>
+                </div>
             </div>
-            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+            <div className="p-4 border-t flex justify-end gap-2 bg-gray-50">
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button>
-            </div>
-        </form>
-    );
-};
-
-const TemplateForm: React.FC<{
-    template: CommunicationTemplate;
-    onSave: (t: CommunicationTemplate) => void;
-    onCancel: () => void;
-}> = ({ template, onSave, onCancel }) => {
-    const [subject, setSubject] = useState(template.subject);
-    const [body, setBody] = useState(template.body);
-    const [signature, setSignature] = useState(template.signature);
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSave({ ...template, subject, body, signature });
-    };
-
-    const placeholders = template.id === 'payment' 
-        ? ['{{fornitore}}', '{{descrizione}}']
-        : ['{{cliente}}', '{{bambino}}', '{{data}}'];
-
-    return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
-            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
-                <h2 className="text-xl font-bold text-gray-800">Modifica Template: {template.label}</h2>
-            </div>
-            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
-                <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800">
-                    <strong>Variabili disponibili:</strong> {placeholders.join(', ')}
-                </div>
-                <div className="md-input-group">
-                    <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " />
-                    <label className="md-input-label">Oggetto / Titolo</label>
-                </div>
-                <div className="md-input-group">
-                    <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea>
-                    <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label>
-                </div>
-                <div className="md-input-group">
-                    <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea>
-                    <label className="text-xs text-gray-500 mt-1 block">Firma</label>
-                </div>
-            </div>
-            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
-                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button>
             </div>
         </form>
     );
@@ -103,6 +102,8 @@ const Settings: React.FC = () => {
     const [info, setInfo] = useState<CompanyInfo | null>(null);
     const [subscriptions, setSubscriptions] = useState<SubscriptionType[]>([]);
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
+    const [checks, setChecks] = useState<PeriodicCheck[]>([]);
+    
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -114,20 +115,26 @@ const Settings: React.FC = () => {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<CommunicationTemplate | null>(null);
 
+    const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
+    const [editingCheck, setEditingCheck] = useState<PeriodicCheck | null>(null);
+
     const [primaryColor, setPrimaryColor] = useState(defaultTheme.primary);
     const [bgColor, setBgColor] = useState(defaultTheme.bgLight);
     
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [companyData, subsData, templatesData] = await Promise.all([
+            const [companyData, subsData, templatesData, checksData] = await Promise.all([
                 getCompanyInfo(), 
                 getSubscriptionTypes(),
-                getCommunicationTemplates()
+                getCommunicationTemplates(),
+                getPeriodicChecks()
             ]);
             setInfo(companyData); 
             setSubscriptions(subsData);
             setTemplates(templatesData);
+            setChecks(checksData);
+            
             const savedTheme = getSavedTheme();
             setPrimaryColor(savedTheme.primary);
             setBgColor(savedTheme.bg);
@@ -199,6 +206,23 @@ const Settings: React.FC = () => {
         fetchAllData();
     };
 
+    const handleSaveCheck = async (c: PeriodicCheckInput | PeriodicCheck) => {
+        if ('id' in c) await updatePeriodicCheck(c.id, c);
+        else await addPeriodicCheck(c);
+        setIsCheckModalOpen(false);
+        setEditingCheck(null);
+        fetchAllData();
+        window.dispatchEvent(new Event('EP_DataUpdated')); // Update scheduler
+    };
+
+    const handleDeleteCheck = async (id: string) => {
+        if(confirm("Eliminare questo controllo periodico?")) {
+            await deletePeriodicCheck(id);
+            fetchAllData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        }
+    };
+
     const handleColorChange = (newPrimary: string, newBg: string) => {
         setPrimaryColor(newPrimary);
         setBgColor(newBg);
@@ -209,16 +233,18 @@ const Settings: React.FC = () => {
         handleColorChange(defaultTheme.primary, defaultTheme.bgLight);
     };
 
+    const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+
     if (loading) return <div className="mt-8 flex justify-center items-center h-64"><Spinner /></div>;
     if (error) return <p className="text-center text-red-500 py-8">{error}</p>;
 
   return (
     <div>
         <h1 className="text-3xl font-bold">Impostazioni</h1>
-        <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali e i listini.</p>
+        <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali, i listini e il planner operativo.</p>
 
         {/* --- SEZIONE UNICA: Impostazioni Generali & Listini --- */}
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8 pb-10">
             
             {/* Colonna Sinistra */}
             <div className="space-y-8">
@@ -344,6 +370,39 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Planner & Controlli Periodici */}
+                <div className="md-card p-6 bg-white border-l-4 border-indigo-500">
+                    <div className="flex justify-between items-center border-b pb-3 mb-3">
+                        <div>
+                            <h2 className="text-lg font-bold text-gray-800">Planner & Controlli</h2>
+                            <p className="text-xs text-gray-500">Notifiche operative ricorrenti</p>
+                        </div>
+                        <button onClick={() => { setEditingCheck(null); setIsCheckModalOpen(true); }} className="md-btn md-btn-sm md-btn-primary"><PlusIcon /> Nuovo</button>
+                    </div>
+                    
+                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                        {checks.map(check => (
+                            <div key={check.id} className={`p-3 rounded border flex justify-between items-start ${check.pushEnabled ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200 opacity-70'}`}>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold uppercase tracking-wider">{check.category}</span>
+                                        {check.pushEnabled && <span className="text-[9px] bg-green-100 text-green-800 px-1 rounded">PUSH</span>}
+                                    </div>
+                                    <p className="text-sm font-medium text-gray-800">{check.subCategory || 'Generico'}</p>
+                                    <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                        <ClockIcon /> {check.startTime} • {check.daysOfWeek.map(d => daysMap[d].substring(0,3)).join(', ')}
+                                    </div>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button onClick={() => { setEditingCheck(check); setIsCheckModalOpen(true); }} className="md-icon-btn edit p-1"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteCheck(check.id)} className="md-icon-btn delete p-1"><TrashIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                        {checks.length === 0 && <p className="text-sm text-gray-400 italic text-center py-2">Nessun controllo pianificato.</p>}
+                    </div>
+                </div>
+
                 {/* Template Comunicazioni */}
                 <div className="md-card p-6">
                     <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Template Comunicazioni</h2>
@@ -371,6 +430,12 @@ const Settings: React.FC = () => {
         {isTemplateModalOpen && editingTemplate && (
             <Modal onClose={() => setIsTemplateModalOpen(false)}>
                 <TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} />
+            </Modal>
+        )}
+
+        {isCheckModalOpen && (
+            <Modal onClose={() => setIsCheckModalOpen(false)}>
+                <CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} />
             </Modal>
         )}
 

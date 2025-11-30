@@ -56,8 +56,6 @@ const isItalianHoliday = (date: Date): boolean => {
     if (d === 25 && m === 12) return true; // Natale
     if (d === 26 && m === 12) return true; // S.Stefano
 
-    // Pasqua e Pasquetta richiederebbero un calcolo complesso, 
-    // per ora semplifichiamo omettendo o usando una libreria esterna in futuro.
     return false;
 };
 
@@ -76,10 +74,12 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
 
     appointments[appIndex].status = 'Absent';
 
+    // Se si recupera, lo slot non viene consumato, quindi lessonsRemaining non cambia.
+    // Se NON si recupera mai più, teoricamente è perso, ma qui gestiamo solo lo status.
+    
     let updatedData: Partial<Enrollment> = { appointments };
 
-    // 2. Logica di Recupero (Slittamento Automatico) - Legacy logic
-    // Se viene usata la modale di recupero manuale, questo flag potrebbe essere false
+    // 2. Logica di Recupero (Slittamento Automatico)
     if (shouldReschedule) {
         const sortedApps = [...appointments].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const lastApp = sortedApps[sortedApps.length - 1];
@@ -118,6 +118,39 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
     updatedData.appointments = appointments;
     await updateDoc(enrollmentDocRef, updatedData);
 };
+
+// --- Funzione per segnare PRESENZA (Consuma Slot) ---
+export const registerPresence = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    
+    if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    
+    const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
+    if (appIndex === -1) throw new Error("Lezione non trovata");
+
+    // Evita di consumare due volte lo stesso slot
+    if (appointments[appIndex].status === 'Present') return;
+
+    appointments[appIndex].status = 'Present';
+    
+    // IMPORTANTE: Aggiorna location della lezione puntuale con quella attuale dell'iscrizione
+    // Questo serve per il calcolo retroattivo della profittabilità basato su dove è stata SVOLTA la lezione
+    appointments[appIndex].locationName = enrollment.locationName;
+    appointments[appIndex].locationColor = enrollment.locationColor;
+
+    // Decrementa slot rimanenti
+    const newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
+
+    await updateDoc(enrollmentDocRef, { 
+        appointments: appointments,
+        lessonsRemaining: newRemaining
+    });
+};
+
 
 // --- Nuova funzione per recupero manuale (Modale Recupera) ---
 export const addRecoveryLessons = async (
@@ -168,63 +201,6 @@ export const addRecoveryLessons = async (
 };
 
 
-/**
- * AUTOMAZIONE "BACKEND": Consolida le lezioni passate.
- * Range: 'today', 'month', 'quarter'
- */
-export const consolidateAppointments = async (range: 'today' | 'month' | 'quarter' = 'today'): Promise<number> => {
-    const q = query(enrollmentCollectionRef, where("status", "==", EnrollmentStatus.Active));
-    const snapshot = await getDocs(q);
-    
-    const batch = writeBatch(db);
-    const now = new Date();
-    
-    // Calcola data limite indietro nel tempo
-    const limitDate = new Date(now);
-    limitDate.setHours(0,0,0,0);
-    
-    if (range === 'month') {
-        limitDate.setDate(1); // Primo del mese
-    } else if (range === 'quarter') {
-        limitDate.setMonth(limitDate.getMonth() - 3);
-    }
-    // 'today' è il default (solo lezioni fino ad oggi/adesso)
-
-    let updatesCount = 0;
-
-    snapshot.docs.forEach(docSnap => {
-        const enrollment = docSnap.data() as Enrollment;
-        let needsUpdate = false;
-        let newLessonsRemaining = enrollment.lessonsRemaining;
-        
-        const updatedAppointments = (enrollment.appointments || []).map(app => {
-            const appDateTime = new Date(`${app.date.split('T')[0]}T${app.endTime}:00`);
-            
-            // Check se è nel range temporale selezionato E nel passato
-            if (appDateTime < now && appDateTime >= limitDate && (!app.status || app.status === 'Scheduled')) {
-                needsUpdate = true;
-                newLessonsRemaining = Math.max(0, newLessonsRemaining - 1);
-                return { ...app, status: 'Present' as AppointmentStatus };
-            }
-            return app;
-        });
-
-        if (needsUpdate) {
-            batch.update(docSnap.ref, {
-                appointments: updatedAppointments,
-                lessonsRemaining: newLessonsRemaining
-            });
-            updatesCount++;
-        }
-    });
-
-    if (updatesCount > 0) {
-        await batch.commit();
-    }
-    
-    return updatesCount;
-};
-
 // Helper interno per generare lezioni future (duplicato logico da EnrollmentForm per uso server-side)
 const generateAppointmentsInternal = (startDate: Date, startTime: string, endTime: string, numLessons: number, locName: string, locColor: string, childName: string): Appointment[] => {
     const appointments: Appointment[] = [];
@@ -248,8 +224,8 @@ const generateAppointmentsInternal = (startDate: Date, startTime: string, endTim
     return appointments;
 };
 
-// Funzione massiva per SPLIT e sposta location/orario da calendario
-// Modifica Enterprise: Chiude le vecchie iscrizioni e ne crea di nuove per le lezioni residue
+// Funzione massiva per spostamento location/orario (Move Logic)
+// UPDATED: Non splitta più l'iscrizione. Aggiorna semplicemente location e lezioni future.
 export const bulkUpdateLocation = async (
     enrollmentIds: string[], 
     fromDate: string, 
@@ -261,7 +237,6 @@ export const bulkUpdateLocation = async (
 ): Promise<void> => {
     const batch = writeBatch(db);
     
-    // Assicuriamo che la data di taglio sia a mezzanotte locale per un confronto corretto
     const fromDateObj = new Date(fromDate);
     fromDateObj.setHours(0,0,0,0);
 
@@ -270,79 +245,37 @@ export const bulkUpdateLocation = async (
         const snap = await getDoc(docRef);
         
         if (snap.exists()) {
-            const data = snap.data();
-            const originalId = snap.id;
-            const enr = { ...data, id: originalId } as Enrollment;
+            const enr = snap.data() as Enrollment;
             
-            // 1. Filtra lezioni passate (da mantenere nella vecchia iscrizione)
-            // Consideriamo "passate" tutte le lezioni con data strettamente ANTECEDENTE alla data di modifica
-            // Se la data di modifica è oggi, la lezione di oggi (se esiste nel vecchio orario) viene rimossa 
-            // perché verrà rigenerata nel nuovo orario.
-            const oldAppointments = (enr.appointments || []).filter(app => {
+            // 1. Identifica le lezioni future (da aggiornare)
+            // Una lezione è futura se la sua data è >= alla data di spostamento
+            const appointments = (enr.appointments || []).map(app => {
                 const appDate = new Date(app.date);
-                // Confronto date pure (senza orario se app.date fosse ISO completo) per sicurezza o timestamp
-                return appDate < fromDateObj; 
+                if (appDate >= fromDateObj && app.status !== 'Present' && app.status !== 'Absent') {
+                    // Aggiorna location e orario se forniti
+                    return {
+                        ...app,
+                        locationName: newLocationName,
+                        locationColor: newLocationColor,
+                        startTime: newStartTime || app.startTime,
+                        endTime: newEndTime || app.endTime,
+                        // Nota: La data rimane la stessa (stesso giorno della settimana previsto)
+                        // A meno che non si voglia ricalcolare completamente il calendario, ma per ora
+                        // la richiesta è "spostare nel recinto", che implica cambio location.
+                        // Se l'orario cambia, si assume che il giorno della settimana rimanga compatibile
+                        // o che l'utente stia spostando su un giorno compatibile.
+                    };
+                }
+                return app;
             });
 
-            // 2. Calcola lezioni rimanenti
-            // Se lezioni totali erano 10, e ne ho fatte 4 (oldAppointments), ne devo generare 6 nuove.
-            const totalOriginal = enr.appointments?.length || 0;
-            const futureAppointmentsCount = totalOriginal - oldAppointments.length;
-            
-            if (futureAppointmentsCount <= 0) {
-                // Se non ci sono lezioni future, aggiorniamo solo i metadati della corrente (opzionale)
-                // oppure saltiamo. Per ora saltiamo perché non c'è nulla da "spostare".
-                continue; 
-            }
-
-            // 3. Chiudi Vecchia Iscrizione
-            // Data fine = giorno prima della modifica
-            const closeDate = new Date(fromDateObj);
-            closeDate.setDate(closeDate.getDate() - 1);
-
+            // 2. Aggiorna l'iscrizione
             batch.update(docRef, {
-                appointments: oldAppointments, // TRONCAMENTO: Rimuove fisicamente i futuri
-                status: EnrollmentStatus.Completed,
-                endDate: closeDate.toISOString(),
-                lessonsRemaining: 0 // Resettiamo a 0 perché il saldo passa alla nuova
-            });
-
-            // 4. Crea Nuova Iscrizione (Continuazione)
-            const newRef = doc(collection(db, 'enrollments'));
-            
-            // Genera nuovi appuntamenti con i nuovi orari/luoghi a partire dalla data di modifica
-            const startGenDate = new Date(fromDate); 
-            
-            const newAppointments = generateAppointmentsInternal(
-                startGenDate,
-                newStartTime || enr.appointments[0]?.startTime || '09:00', // Fallback se non c'è orario
-                newEndTime || enr.appointments[0]?.endTime || '10:00',
-                futureAppointmentsCount,
-                newLocationName,
-                newLocationColor,
-                enr.childName
-            );
-
-            // Calcola nuova data fine stimata
-            const lastAppDate = newAppointments.length > 0 ? newAppointments[newAppointments.length - 1].date : fromDate;
-            
-            const newEnrollment: Enrollment = {
-                ...enr, // Copia tutti i campi (incluso note, rating, ecc.)
-                id: newRef.id,
-                startDate: fromDate, // Inizia dalla modifica
-                endDate: lastAppDate, // Finisce quando finiscono le lezioni residue
-                status: EnrollmentStatus.Active,
                 locationId: newLocationId,
                 locationName: newLocationName,
                 locationColor: newLocationColor,
-                appointments: newAppointments,
-                lessonsTotal: futureAppointmentsCount, // Totale del nuovo pacchetto "residuo"
-                lessonsRemaining: futureAppointmentsCount,
-                price: 0, // Importante: Prezzo 0 perché già pagato nella precedente
-                previousEnrollmentId: originalId, // Link alla storia
-            };
-
-            batch.set(newRef, newEnrollment);
+                appointments: appointments
+            });
         }
     }
     await batch.commit();

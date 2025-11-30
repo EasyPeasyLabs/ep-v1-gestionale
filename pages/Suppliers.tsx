@@ -14,15 +14,229 @@ import ImportModal from '../components/ImportModal';
 import { importSuppliersFromExcel } from '../services/importService';
 import NotesManager from '../components/NotesManager';
 
-// ... (Icons & Helpers StarIcon, FuelIcon, calculateFuelRating, etc. preserved) ...
+// Helpers & Icons
 const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => ( <svg onClick={onClick} xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${filled ? 'text-yellow-400' : 'text-gray-300'} ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${className}`} viewBox="0 0 20 20" fill="currentColor"> <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /> </svg> );
-const FuelIcon: React.FC<{ className?: string }> = ({ className }) => ( <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /> <path strokeLinecap="round" strokeLinejoin="round" d="M12 12v.01M12 16v.01M12 20v.01" stroke="none"/> <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /> </svg> );
 const calculateFuelRating = (distance: number) => { if (distance <= 5) return 5; if (distance <= 15) return 4; if (distance <= 30) return 3; if (distance <= 60) return 2; return 1; };
 const getAverageRating = (rating?: SupplierRating) => { if (!rating) return 0; const sum = (rating.responsiveness || 0) + (rating.partnership || 0) + (rating.negotiation || 0); return sum > 0 ? (sum / 3).toFixed(1) : 0; };
+const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// Placeholder for full forms (assume existing implementation)
-const SupplierForm: React.FC<any> = ({ supplier, onSave, onCancel }) => <div>Form Placeholder</div>; 
-const LocationForm: React.FC<any> = ({ location, onSave, onCancel }) => <div>Location Form</div>;
+// --- LOCATION FORM (Nested) ---
+const LocationForm: React.FC<{ 
+    location: LocationInput | Location; 
+    onSave: (loc: LocationInput | Location) => void; 
+    onCancel: () => void 
+}> = ({ location, onSave, onCancel }) => {
+    const [name, setName] = useState(location.name || '');
+    const [address, setAddress] = useState(location.address || '');
+    const [city, setCity] = useState(location.city || '');
+    const [capacity, setCapacity] = useState(location.capacity || 0);
+    const [rentalCost, setRentalCost] = useState(location.rentalCost || 0);
+    const [distance, setDistance] = useState(location.distance || 0);
+    const [color, setColor] = useState(location.color || '#3b82f6');
+    
+    // Availability Slots
+    const [slots, setSlots] = useState<AvailabilitySlot[]>(location.availability || []);
+    
+    const [newSlotDay, setNewSlotDay] = useState(1); // Lunedì
+    const [newSlotStart, setNewSlotStart] = useState('16:00');
+    const [newSlotEnd, setNewSlotEnd] = useState('18:00');
+
+    const handleAddSlot = () => {
+        setSlots([...slots, { dayOfWeek: Number(newSlotDay), startTime: newSlotStart, endTime: newSlotEnd }]);
+    };
+
+    const removeSlot = (idx: number) => {
+        setSlots(slots.filter((_, i) => i !== idx));
+    };
+
+    const handleSubmit = () => {
+        onSave({ 
+            ...location, 
+            name, address, city, capacity, rentalCost, distance, color, availability: slots 
+        });
+    };
+
+    return (
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mt-4 animate-fade-in">
+            <h4 className="font-bold text-sm text-gray-700 mb-3 uppercase">{('id' in location) ? 'Modifica Sede' : 'Nuova Sede'}</h4>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <div className="md-input-group"><input type="text" value={name} onChange={e => setName(e.target.value)} className="md-input text-sm" placeholder=" "/><label className="md-input-label text-xs">Nome Sede (es. Sala Grande)</label></div>
+                <div className="md-input-group"><input type="text" value={city} onChange={e => setCity(e.target.value)} className="md-input text-sm" placeholder=" "/><label className="md-input-label text-xs">Città</label></div>
+            </div>
+            <div className="md-input-group mb-3"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input text-sm" placeholder=" "/><label className="md-input-label text-xs">Indirizzo</label></div>
+            
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div><label className="text-[10px] text-gray-500">Capienza</label><input type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
+                <div><label className="text-[10px] text-gray-500">Costo Nolo (€)</label><input type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
+                <div><label className="text-[10px] text-gray-500">Distanza (km)</label><input type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
+                <div><label className="text-[10px] text-gray-500">Colore Calendario</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-7 border rounded cursor-pointer"/></div>
+            </div>
+
+            {/* Slots */}
+            <div className="border-t border-gray-200 pt-3">
+                <label className="block text-xs font-bold text-gray-600 mb-2">Disponibilità Oraria</label>
+                <div className="flex gap-2 items-end mb-2">
+                    <select value={newSlotDay} onChange={e => setNewSlotDay(Number(e.target.value))} className="text-xs border rounded p-1 bg-white">
+                        {daysMap.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                    </select>
+                    <input type="time" value={newSlotStart} onChange={e => setNewSlotStart(e.target.value)} className="text-xs border rounded p-1"/>
+                    <span className="text-gray-400">-</span>
+                    <input type="time" value={newSlotEnd} onChange={e => setNewSlotEnd(e.target.value)} className="text-xs border rounded p-1"/>
+                    <button type="button" onClick={handleAddSlot} className="md-btn md-btn-sm md-btn-green px-2 py-0 h-7">+</button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {slots.map((s, i) => (
+                        <span key={i} className="inline-flex items-center px-2 py-1 rounded bg-white border border-gray-300 text-[10px] font-medium text-gray-700">
+                            {daysMap[s.dayOfWeek]} {s.startTime}-{s.endTime}
+                            <button onClick={() => removeSlot(i)} className="ml-1 text-red-500 hover:text-red-700 font-bold">×</button>
+                        </span>
+                    ))}
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
+                <button onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button onClick={handleSubmit} className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva Sede</button>
+            </div>
+        </div>
+    );
+};
+
+// --- SUPPLIER FORM ---
+const SupplierForm: React.FC<{ 
+    supplier?: Supplier | null; 
+    onSave: (data: SupplierInput | Supplier) => void; 
+    onCancel: () => void 
+}> = ({ supplier, onSave, onCancel }) => {
+    const [companyName, setCompanyName] = useState(supplier?.companyName || '');
+    const [vatNumber, setVatNumber] = useState(supplier?.vatNumber || '');
+    const [email, setEmail] = useState(supplier?.email || '');
+    const [phone, setPhone] = useState(supplier?.phone || '');
+    const [address, setAddress] = useState(supplier?.address || '');
+    const [city, setCity] = useState(supplier?.city || '');
+    const [province, setProvince] = useState(supplier?.province || '');
+    const [zipCode, setZipCode] = useState(supplier?.zipCode || '');
+    
+    const [locations, setLocations] = useState<Location[]>(supplier?.locations || []);
+    const [rating, setRating] = useState<SupplierRating>(supplier?.rating || { responsiveness: 0, partnership: 0, negotiation: 0 });
+    const [notesHistory, setNotesHistory] = useState<Note[]>(supplier?.notesHistory || []);
+
+    const [editingLocation, setEditingLocation] = useState<Partial<Location> | null>(null);
+    const [isEditingLoc, setIsEditingLoc] = useState(false);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const data: any = {
+            companyName, vatNumber, email, phone, address, city, province, zipCode,
+            locations, rating, notesHistory
+        };
+        if (supplier?.id) onSave({ ...data, id: supplier.id });
+        else onSave(data);
+    };
+
+    const handleSaveLocation = (loc: LocationInput | Location) => {
+        if ('id' in loc && loc.id && !String(loc.id).startsWith('temp')) {
+            setLocations(locations.map(l => l.id === loc.id ? (loc as Location) : l));
+        } else {
+            // New or temp
+            const newLoc = { ...loc, id: ('id' in loc ? loc.id : undefined) || `temp-${Date.now()}` } as Location;
+            if (editingLocation && editingLocation.id) {
+                 setLocations(locations.map(l => l.id === editingLocation.id ? newLoc : l));
+            } else {
+                setLocations([...locations, newLoc]);
+            }
+        }
+        setIsEditingLoc(false);
+        setEditingLocation(null);
+    };
+
+    const handleDeleteLocation = (id: string) => {
+        if(confirm('Eliminare questa sede?')) {
+            setLocations(locations.filter(l => l.id !== id));
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-800">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-6">
+                {/* Dati Anagrafici */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="md-input-group"><input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Ragione Sociale</label></div>
+                    <div className="md-input-group"><input type="text" value={vatNumber} onChange={e => setVatNumber(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">P.IVA / C.F.</label></div>
+                    <div className="md-input-group"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Email</label></div>
+                    <div className="md-input-group"><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
+                </div>
+                <div className="md-input-group"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Indirizzo</label></div>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="md-input-group"><input type="text" value={city} onChange={e => setCity(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Città</label></div>
+                    <div className="md-input-group"><input type="text" value={province} onChange={e => setProvince(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Prov.</label></div>
+                    <div className="md-input-group"><input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">CAP</label></div>
+                </div>
+
+                {/* Sedi */}
+                <div>
+                    <div className="flex justify-between items-center mb-2 border-b pb-1">
+                        <h3 className="font-bold text-gray-700">Sedi & Disponibilità</h3>
+                        {!isEditingLoc && <button type="button" onClick={() => { setEditingLocation({}); setIsEditingLoc(true); }} className="text-xs text-indigo-600 font-bold hover:underline">+ Aggiungi Sede</button>}
+                    </div>
+                    
+                    {isEditingLoc && editingLocation && (
+                        <LocationForm location={editingLocation as Location} onSave={handleSaveLocation} onCancel={() => setIsEditingLoc(false)} />
+                    )}
+
+                    <div className="space-y-2 mt-2">
+                        {locations.map(loc => (
+                            <div key={loc.id} className="bg-white border rounded p-3 flex justify-between items-center hover:shadow-sm transition-shadow">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full" style={{backgroundColor: loc.color}}></span>
+                                        <span className="font-bold text-sm text-gray-800">{loc.name}</span>
+                                    </div>
+                                    <p className="text-xs text-gray-500">{loc.address}, {loc.city}</p>
+                                    <div className="flex gap-1 mt-1">
+                                        {loc.availability?.map((slot, i) => (
+                                            <span key={i} className="text-[9px] bg-gray-100 px-1 rounded text-gray-600">{daysMap[slot.dayOfWeek].substring(0,3)} {slot.startTime}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button type="button" onClick={() => { setEditingLocation(loc); setIsEditingLoc(true); }} className="md-icon-btn edit p-1"><PencilIcon/></button>
+                                    <button type="button" onClick={() => handleDeleteLocation(loc.id)} className="md-icon-btn delete p-1"><TrashIcon/></button>
+                                </div>
+                            </div>
+                        ))}
+                        {locations.length === 0 && !isEditingLoc && <p className="text-xs text-gray-400 italic">Nessuna sede registrata.</p>}
+                    </div>
+                </div>
+
+                {/* Rating & Note */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 className="font-bold text-gray-700 mb-2 border-b pb-1">Rating</h3>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center"><span className="text-xs">Reattività</span><div className="flex">{[1,2,3,4,5].map(s => <StarIcon key={s} filled={s <= rating.responsiveness} onClick={() => setRating({...rating, responsiveness: s})} className="w-4 h-4"/>)}</div></div>
+                            <div className="flex justify-between items-center"><span className="text-xs">Partnership</span><div className="flex">{[1,2,3,4,5].map(s => <StarIcon key={s} filled={s <= rating.partnership} onClick={() => setRating({...rating, partnership: s})} className="w-4 h-4"/>)}</div></div>
+                            <div className="flex justify-between items-center"><span className="text-xs">Negoziazione</span><div className="flex">{[1,2,3,4,5].map(s => <StarIcon key={s} filled={s <= rating.negotiation} onClick={() => setRating({...rating, negotiation: s})} className="w-4 h-4"/>)}</div></div>
+                        </div>
+                    </div>
+                    <div>
+                        <NotesManager notesHistory={notesHistory} onSave={setNotesHistory} label="Note Fornitore" />
+                    </div>
+                </div>
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button>
+            </div>
+        </form>
+    );
+};
 
 const Suppliers: React.FC = () => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -45,7 +259,17 @@ const Suppliers: React.FC = () => {
     useEffect(() => { fetchSuppliers(); }, [fetchSuppliers]);
 
     const handleOpenModal = (supplier: Supplier | null = null) => { setEditingSupplier(supplier); setIsModalOpen(true); };
-    const handleSaveSupplier = async (supplierData: SupplierInput | Supplier) => { /* ... existing save logic ... */ setIsModalOpen(false); fetchSuppliers(); };
+    const handleSaveSupplier = async (supplierData: SupplierInput | Supplier) => { 
+        try {
+            if ('id' in supplierData) await updateSupplier(supplierData.id, supplierData);
+            else await addSupplier(supplierData);
+            setIsModalOpen(false); 
+            fetchSuppliers();
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante il salvataggio");
+        }
+    };
 
     // Helper to find earliest availability day
     const getEarliestDay = (supplier: Supplier): number => {
@@ -71,8 +295,6 @@ const Suppliers: React.FC = () => {
         const nameB = b.companyName.toLowerCase();
         return sortOrder === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
     });
-
-    const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 
     return (
         <div>
@@ -125,7 +347,7 @@ const Suppliers: React.FC = () => {
                                             <div className="flex gap-1">
                                                 {loc.availability?.map((slot, i) => (
                                                     <span key={i} className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-bold text-indigo-600">
-                                                        {daysMap[slot.dayOfWeek]}
+                                                        {daysMap[slot.dayOfWeek].substring(0,3)}
                                                     </span>
                                                 ))}
                                             </div>
@@ -135,7 +357,17 @@ const Suppliers: React.FC = () => {
                                 </div>
                             </div>
                             <div className="mt-4 pt-4 border-t flex justify-end space-x-2">
-                                <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit"><PencilIcon /></button>
+                                {showTrash ? (
+                                    <>
+                                        <button onClick={() => restoreSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn"><RestoreIcon /></button>
+                                        <button onClick={() => permanentDeleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit"><PencilIcon /></button>
+                                        <button onClick={() => deleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button>
+                                    </>
+                                )}
                             </div>
                         </div>
                     );

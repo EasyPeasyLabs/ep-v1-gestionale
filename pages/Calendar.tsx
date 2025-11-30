@@ -2,373 +2,255 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Lesson, LessonInput, Supplier, Enrollment, Appointment, EnrollmentStatus } from '../types';
 import { getLessons, addLesson, updateLesson, deleteLesson } from '../services/calendarService';
-import { getAllEnrollments, bulkUpdateLocation } from '../services/enrollmentService';
+import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 
-// ... (LessonForm omitted - unchanged, keep existing code) ...
-const LessonForm: React.FC<{ lesson?: Lesson | null; selectedDate?: Date | null; onSave: (item: LessonInput | Lesson) => void; onCancel: () => void; }> = ({ lesson, selectedDate, onSave, onCancel }) => { const [date, setDate] = useState(lesson?.date.split('T')[0] || selectedDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0]); const [startTime, setStartTime] = useState(lesson?.startTime || '09:00'); const [endTime, setEndTime] = useState(lesson?.endTime || '10:00'); const [supplierId, setSupplierId] = useState(lesson?.supplierId || ''); const [locationId, setLocationId] = useState(lesson?.locationId || ''); const [suppliers, setSuppliers] = useState<Supplier[]>([]); const [loading, setLoading] = useState(true); const selectedSupplier = suppliers.find(s => s.id === supplierId); useEffect(() => { const fetchSuppliersData = async () => { setLoading(true); const data = await getSuppliers(); setSuppliers(data); if (!lesson?.id && data.length > 0) { const firstSupplier = data[0]; setSupplierId(firstSupplier.id); if (firstSupplier.locations.length > 0) { setLocationId(firstSupplier.locations[0].id); } } setLoading(false); }; fetchSuppliersData(); }, [lesson]); const handleSupplierChange = (newSupplierId: string) => { setSupplierId(newSupplierId); const newSupplier = suppliers.find(s => s.id === newSupplierId); setLocationId(newSupplier?.locations[0]?.id || ''); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const supplier = suppliers.find(s => s.id === supplierId); const location = supplier?.locations.find(l => l.id === locationId); if (!supplier || !location) return; const lessonData: LessonInput = { date: new Date(date).toISOString(), startTime, endTime, supplierId, locationId, supplierName: supplier.companyName, locationName: location.name, locationColor: location.color, }; if (lesson?.id) { onSave({ ...lessonData, id: lesson.id }); } else { onSave(lessonData); } }; if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">{lesson ? 'Modifica Lezione Manuale' : 'Nuova Lezione Manuale'}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="md-input-group"><input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} required className="md-input"/><label htmlFor="date" className="md-input-label !top-0 !text-xs !text-gray-500">Data</label></div> <div className="grid grid-cols-2 gap-4"> <div className="md-input-group"><input id="start" type="time" value={startTime} onChange={e => setStartTime(e.target.value)} required className="md-input"/><label htmlFor="start" className="md-input-label !top-0 !text-xs !text-gray-500">Orario Inizio</label></div> <div className="md-input-group"><input id="end" type="time" value={endTime} onChange={e => setEndTime(e.target.value)} required className="md-input"/><label htmlFor="end" className="md-input-label !top-0 !text-xs !text-gray-500">Orario Fine</label></div> </div> <div className="md-input-group"> <select id="supplier" value={supplierId} onChange={e => handleSupplierChange(e.target.value)} required className="md-input"> <option value="" disabled>Seleziona un fornitore</option> {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.companyName}</option>)} </select> <label htmlFor="supplier" className="md-input-label !top-0 !text-xs !text-gray-500">Fornitore</label> </div> <div className="md-input-group"> <select id="location" value={locationId} onChange={e => setLocationId(e.target.value)} required disabled={!selectedSupplier || selectedSupplier.locations.length === 0} className="md-input"> <option value="" disabled>Seleziona una sede</option> {selectedSupplier?.locations.map(loc => <option key={loc.id} value={loc.id}>{loc.name} ({loc.city})</option>)} </select> <label htmlFor="location" className="md-input-label !top-0 !text-xs !text-gray-500">Sede</label> </div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> </div> </form> ); };
-
-// --- Edit Group Modal (Per spostamenti massivi) ---
-const EditGroupModal: React.FC<{
-    event: CalendarEvent;
-    allEnrollments: Enrollment[]; 
-    onClose: () => void;
-    onSave: (date: string, locId: string, locName: string, locColor: string, startTime: string, endTime: string, selectedIds: string[]) => void;
-    targetDate?: string; // Nuova prop per la data di destinazione
-}> = ({ event, allEnrollments, onClose, onSave, targetDate }) => {
-    const [effectiveDate, setEffectiveDate] = useState(targetDate || event.date.split('T')[0]);
-    const [supplierId, setSupplierId] = useState('');
-    const [locationId, setLocationId] = useState('');
-    const [startTime, setStartTime] = useState(event.startTime);
-    const [endTime, setEndTime] = useState(event.endTime);
-    
-    // Partecipanti
-    const groupEnrollments = useMemo(() => {
-        return allEnrollments.filter(e => event.enrollmentIds?.includes(e.id));
-    }, [allEnrollments, event.enrollmentIds]);
-
-    const [selectedIds, setSelectedIds] = useState<string[]>(event.enrollmentIds || []);
-    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-
-    useEffect(() => {
-        getSuppliers().then(setSuppliers);
-    }, []);
-
-    const selectedSupplier = suppliers.find(s => s.id === supplierId);
-
-    const handleConfirm = () => {
-        if (!selectedSupplier) return;
-        const loc = selectedSupplier.locations.find(l => l.id === locationId);
-        if (!loc) return;
-        onSave(effectiveDate, loc.id, loc.name, loc.color, startTime, endTime, selectedIds);
-    };
-
-    return (
-        <Modal onClose={onClose} size="lg">
-            <div className="p-6">
-                <h3 className="text-xl font-bold mb-2">Sposta Lezione</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                    Stai spostando <strong>{groupEnrollments.length} iscritti</strong>. 
-                    Le lezioni passate rimarranno invariate.
-                </p>
-                <div className="space-y-4">
-                    <div className="md-input-group">
-                        <input type="date" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} className="md-input font-bold" />
-                        <label className="md-input-label !top-0">Nuova Data (Inizio Validità)</label>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="md-input-group">
-                            <select value={supplierId} onChange={e => {setSupplierId(e.target.value); setLocationId('');}} className="md-input">
-                                <option value="">Scegli Fornitore...</option>
-                                {suppliers.map(s => <option key={s.id} value={s.id}>{s.companyName}</option>)}
-                            </select>
-                            <label className="md-input-label !top-0">Nuovo Fornitore</label>
-                        </div>
-                        <div className="md-input-group">
-                            <select value={locationId} onChange={e => setLocationId(e.target.value)} disabled={!selectedSupplier} className="md-input">
-                                <option value="">Scegli Sede...</option>
-                                {selectedSupplier?.locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                            </select>
-                            <label className="md-input-label !top-0">Nuova Sede</label>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" />
-                        <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="md-input" />
-                    </div>
-                </div>
-                <div className="mt-6 flex justify-end gap-2">
-                    <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                    <button onClick={handleConfirm} disabled={!locationId} className="md-btn md-btn-raised md-btn-primary md-btn-sm">Conferma Spostamento</button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-// ... (Calendar Component Logic) ...
-interface CalendarEvent {
-    id: string;
+// --- Types for Calendar Logic ---
+interface CalendarCluster {
+    id: string; // Unique key for React list
     date: string;
     startTime: string;
     endTime: string;
-    title: string;
-    color: string;
-    isManual: boolean; 
-    locationName?: string;
-    enrolledCount?: number;
-    maxCapacity?: number;
-    enrollmentIds?: string[];
+    locationName: string;
+    locationColor: string;
+    count: number; // Numero totale cartellini
+    isManual?: boolean; // Per distinguere lezioni extra manuali
+    title?: string; // Per lezioni manuali
 }
 
 const Calendar: React.FC = () => {
-    // ... (Existing states) ...
-    const [events, setEvents] = useState<CalendarEvent[]>([]);
-    const [rawEnrollments, setRawEnrollments] = useState<Enrollment[]>([]); 
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [clusters, setClusters] = useState<CalendarCluster[]>([]);
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [lessonToDelete, setLessonToDelete] = useState<string | null>(null);
-    
-    // Group Edit State
-    const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
-    const [selectedGroupEvent, setSelectedGroupEvent] = useState<CalendarEvent | null>(null);
-    
-    // --- MOVE MODE STATE ---
-    const [isMoveMode, setIsMoveMode] = useState(false);
-    const [eventToMove, setEventToMove] = useState<CalendarEvent | null>(null);
-    const [moveTargetDate, setMoveTargetDate] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
+    // --- Data Fetching & Aggregation Logic ---
     const fetchData = useCallback(async () => {
-        // ... (Existing fetch logic - unchanged) ...
         try {
             setLoading(true);
-            const [manualLessons, enrollments, suppliers] = await Promise.all([getLessons(), getAllEnrollments(), getSuppliers()]);
-            setRawEnrollments(enrollments); 
+            const [enrollments, manualLessons, suppliers] = await Promise.all([
+                getAllEnrollments(), 
+                getLessons(),
+                getSuppliers()
+            ]);
 
-            const locationMap = new Map<string, { name: string; capacity: number; color: string }>();
-            suppliers.forEach(s => { s.locations.forEach(l => { locationMap.set(l.id, { name: l.name, capacity: l.capacity || 0, color: l.color }); }); });
-            const calendarEvents: CalendarEvent[] = [];
-            manualLessons.forEach(l => { calendarEvents.push({ id: l.id, date: l.date, startTime: l.startTime, endTime: l.endTime, title: `EXTRA: ${l.locationName}`, color: l.locationColor || '#94a3b8', isManual: true, locationName: l.locationName }); });
+            const clusterMap = new Map<string, CalendarCluster>();
 
-            const groupedAppointments = new Map<string, { date: string; startTime: string; endTime: string; locationId: string; count: number; locationName: string; color: string; capacity: number; enrollmentIds: string[] }>();
+            // 0. Costruiamo una Mappa di Disponibilità per Sede (Nome Sede -> Set di Giorni Index)
+            // Questo serve per filtrare appuntamenti "fantasma" che rimangono in giorni dove la sede non lavora
+            // (es. dopo uno spostamento da Martedì a Venerdì, i vecchi martedì non devono apparire se la nuova sede lavora solo Venerdì)
+            const locationAvailabilityMap = new Map<string, Set<number>>();
+            suppliers.forEach(s => {
+                s.locations.forEach(l => {
+                    const days = new Set(l.availability?.map(a => a.dayOfWeek) || []);
+                    // Normalizziamo il nome per sicurezza
+                    if (l.name) locationAvailabilityMap.set(l.name.trim(), days);
+                });
+            });
 
+            // 1. Process Enrollments (Cartellini)
             enrollments.forEach(enr => {
-                if (enr.status !== EnrollmentStatus.Active && enr.status !== EnrollmentStatus.Pending && enr.status !== EnrollmentStatus.Completed) return;
-                
-                if (enr.appointments) {
+                // Consideriamo solo iscrizioni attive, in attesa o completate (storico)
+                if (enr.appointments && enr.appointments.length > 0) {
                     enr.appointments.forEach(app => {
-                        const locationId = enr.locationId;
-                        const key = `${app.date}_${app.startTime}_${locationId}`;
-                        const locInfo = locationMap.get(locationId);
-                        if (!groupedAppointments.has(key)) {
-                            groupedAppointments.set(key, { date: app.date, startTime: app.startTime, endTime: app.endTime, locationId: locationId, count: 0, locationName: locInfo?.name || app.locationName, color: locInfo?.color || app.locationColor || enr.locationColor || '#3b82f6', capacity: locInfo?.capacity || 0, enrollmentIds: [] });
+                        const appDateObj = new Date(app.date);
+                        const dayOfWeek = appDateObj.getDay(); // 0-6
+                        
+                        // Normalizziamo la data a stringa YYYY-MM-DD
+                        const dateKey = app.date.split('T')[0];
+                        
+                        // Determina la location corrente
+                        // Se l'appuntamento ha una location specifica salvata (es. lezione passata confermata), usa quella.
+                        // Altrimenti usa quella dell'iscrizione (es. lezione futura o spostata).
+                        const locName = (app.locationName || enr.locationName || 'N/D').trim();
+                        const locColor = app.locationColor || enr.locationColor || '#ccc';
+                        
+                        // --- FILTRO DI COERENZA (Availability Check) ---
+                        // Se la sede identificata NON ha disponibilità per questo giorno della settimana,
+                        // nascondiamo l'appuntamento. Questo risolve il problema visivo degli spostamenti.
+                        const allowedDays = locationAvailabilityMap.get(locName);
+                        // Se la mappa ha la sede, controlliamo il giorno. Se la sede non è in mappa (es. cancellata), mostriamo per sicurezza (o nascondiamo, policy permissiva qui).
+                        if (allowedDays && !allowedDays.has(dayOfWeek)) {
+                            return; // SKIP: La sede X non lavora di Martedì, quindi non mostrare questo appuntamento.
                         }
-                        const group = groupedAppointments.get(key);
-                        if (group) { group.count++; group.enrollmentIds.push(enr.id); }
+
+                        // Chiave di raggruppamento: DATA + ORARIO + SEDE
+                        const key = `${dateKey}_${app.startTime}_${locName}`;
+
+                        if (!clusterMap.has(key)) {
+                            clusterMap.set(key, {
+                                id: key,
+                                date: app.date,
+                                startTime: app.startTime,
+                                endTime: app.endTime,
+                                locationName: locName,
+                                locationColor: locColor,
+                                count: 0
+                            });
+                        }
+
+                        const cluster = clusterMap.get(key);
+                        if (cluster) {
+                            cluster.count++;
+                        }
                     });
                 }
             });
 
-            groupedAppointments.forEach((group, key) => {
-                calendarEvents.push({ id: key, date: group.date, startTime: group.startTime, endTime: group.endTime, title: `${group.locationName}`, locationName: group.locationName, color: group.color, isManual: false, enrolledCount: group.count, maxCapacity: group.capacity, enrollmentIds: group.enrollmentIds });
+            // 2. Process Manual Lessons (Extra)
+            // Le lezioni manuali NON subiscono il filtro di disponibilità perché sono eccezioni/extra.
+            manualLessons.forEach(ml => {
+                const dateKey = ml.date.split('T')[0];
+                const key = `${dateKey}_${ml.startTime}_${ml.locationName}_MANUAL`; 
+                
+                clusterMap.set(key, {
+                    id: ml.id,
+                    date: ml.date,
+                    startTime: ml.startTime,
+                    endTime: ml.endTime,
+                    locationName: ml.locationName,
+                    locationColor: ml.locationColor || '#94a3b8',
+                    count: 0, // 0 indica che è manuale/extra
+                    isManual: true,
+                    title: 'EXTRA'
+                });
             });
-            setEvents(calendarEvents);
-        } catch (err) { setError("Impossibile caricare il calendario."); } finally { setLoading(false); }
-    }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
-    
-    // Handler unico per click su evento
-    const handleEventClick = (event: CalendarEvent, date: Date | null) => {
-        if (isMoveMode) {
-            // Mobile: Click-to-move fallback
-            if (!event.isManual) {
-                setEventToMove(event);
-            } else {
-                alert("Puoi spostare solo i gruppi di lezione, non le lezioni manuali (per ora).");
-            }
-            return;
-        }
-
-        // Normal Behavior
-        if (event && !event.isManual) {
-            setSelectedGroupEvent(event);
-            setMoveTargetDate(null); // Reset
-            setIsGroupModalOpen(true);
-            return;
-        }
-        const lessonToEdit = event ? { id: event.id, date: event.date, startTime: event.startTime, endTime: event.endTime, supplierId: '', locationId: '', supplierName: '', locationName: '' } as Lesson : null;
-        setEditingLesson(lessonToEdit); setSelectedDate(date); setIsModalOpen(true); 
-    };
-
-    // --- DRAG AND DROP HANDLERS ---
-    const handleDragStart = (e: React.DragEvent, event: CalendarEvent) => {
-        if (event.isManual) {
-            e.preventDefault(); // Prevent dragging manual lessons for now
-            return;
-        }
-        e.dataTransfer.setData("eventId", event.id);
-        // Optional: Set drag image or effect
-        e.dataTransfer.effectAllowed = "move";
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault(); // Necessary to allow dropping
-        e.dataTransfer.dropEffect = "move";
-    };
-
-    const handleDrop = (e: React.DragEvent, targetDate: Date) => {
-        e.preventDefault();
-        const eventId = e.dataTransfer.getData("eventId");
-        const movedEvent = events.find(ev => ev.id === eventId);
-        
-        if (movedEvent && !movedEvent.isManual) {
-            // Apri la modale di conferma con i dati preimpostati
-            setSelectedGroupEvent(movedEvent);
-            setMoveTargetDate(targetDate.toISOString().split('T')[0]);
-            setIsGroupModalOpen(true);
-        }
-    };
-
-    // Handler per click sul giorno (vuoto o con eventi)
-    const handleDayClick = (day: Date) => {
-        if (!day) return;
-
-        if (isMoveMode && eventToMove) {
-            // Mobile Drop
-            setSelectedGroupEvent(eventToMove);
-            setMoveTargetDate(day.toISOString().split('T')[0]); 
-            setIsGroupModalOpen(true);
-            
-            setIsMoveMode(false);
-            setEventToMove(null);
-            return;
-        }
-
-        handleOpenModal(null, day);
-    };
-
-    const handleOpenModal = (item: CalendarEvent | null = null, date: Date | null = null) => { 
-        if (item) handleEventClick(item, date);
-        else {
-            setEditingLesson(null); setSelectedDate(date); setIsModalOpen(true); 
-        }
-    };
-
-    const handleGroupSave = async (date: string, locId: string, locName: string, locColor: string, start: string, end: string, selectedIds: string[]) => {
-        setIsGroupModalOpen(false);
-        setLoading(true);
-        try {
-            await bulkUpdateLocation(
-                selectedIds, 
-                date,
-                locId,
-                locName,
-                locColor,
-                start,
-                end
-            );
-            await fetchData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert("Spostamento completato. Lezioni aggiornate.");
-        } catch (e) {
-            alert("Errore aggiornamento gruppo.");
-            console.error(e);
+            setClusters(Array.from(clusterMap.values()));
+            setError(null);
+        } catch (err) {
+            console.error(err);
+            setError("Impossibile caricare il calendario.");
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    // --- Helper Colors ---
+    const getTextColorForBg = (bgColor: string) => {
+        if (!bgColor) return '#000';
+        const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
+        const r = parseInt(color.substring(0, 2), 16);
+        const g = parseInt(color.substring(2, 4), 16);
+        const b = parseInt(color.substring(4, 6), 16);
+        return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#000' : '#fff';
     };
 
-    const handleSaveLesson = async (item: LessonInput | Lesson) => { if ('id' in item) { await updateLesson(item.id, item); } else { await addLesson(item); } setIsModalOpen(false); setEditingLesson(null); fetchData(); };
-    const handleDeleteClick = (id: string, isManual: boolean) => { if (!isManual) return; setLessonToDelete(id); };
-    const handleConfirmDelete = async () => { if(lessonToDelete) { await deleteLesson(lessonToDelete); fetchData(); setLessonToDelete(null); } };
+    // --- Calendar Grid Rendering Logic ---
+    const { monthGrid, daysOfWeek } = useMemo(() => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const firstDayOfMonth = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        // 0 = Domenica -> index 6. Lunedì (1) -> index 0.
+        const startDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
+        
+        const grid: (Date | null)[] = Array(startDayIndex).fill(null);
+        for (let day = 1; day <= daysInMonth; day++) {
+            grid.push(new Date(year, month, day));
+        }
+        return { 
+            monthGrid: grid, 
+            daysOfWeek: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] 
+        };
+    }, [currentDate]);
 
-    // ... (Calendar Grid Rendering Logic) ...
-    const { monthGrid, daysOfWeek } = useMemo(() => { const year = currentDate.getFullYear(); const month = currentDate.getMonth(); const firstDayOfMonth = new Date(year, month, 1).getDay(); const daysInMonth = new Date(year, month + 1, 0).getDate(); const startDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1; const grid: (Date | null)[] = Array(startDayIndex).fill(null); for (let day = 1; day <= daysInMonth; day++) { grid.push(new Date(year, month, day)); } return { monthGrid: grid, daysOfWeek: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] }; }, [currentDate]);
-    const getTextColorForBg = (bgColor?: string) => { if (!bgColor) return '#212121'; const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor; const r = parseInt(color.substring(0, 2), 16), g = parseInt(color.substring(2, 4), 16), b = parseInt(color.substring(4, 6), 16); return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#212121' : '#ffffff'; };
-    const changeMonth = (delta: number) => { setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1)); };
+    const changeMonth = (delta: number) => {
+        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
+    };
 
     return (
         <div>
-            {/* Header ... */}
+            {/* Header */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-4">
                 <h1 className="text-3xl font-bold">Calendario</h1>
-                
                 <div className="flex gap-2">
-                    {/* MOVE BUTTON TOGGLE (Mobile Only Visual Aid) */}
-                    <button 
-                        onClick={() => { setIsMoveMode(!isMoveMode); setEventToMove(null); }} 
-                        className={`md-btn md-btn-sm md:hidden ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}
-                    >
-                        {isMoveMode ? (
-                            <span className="flex items-center font-bold">
-                                <span className="animate-pulse mr-2">👆</span> Scegli...
-                            </span>
-                        ) : (
-                            <span className="flex items-center">
-                                ✋ Sposta
-                            </span>
-                        )}
+                    {/* Placeholder per azioni future (es. Aggiungi Extra) */}
+                    <button className="md-btn md-btn-raised md-btn-green md-btn-sm opacity-50 cursor-not-allowed">
+                        <PlusIcon /><span className="ml-2">Nuovo</span>
                     </button>
-
-                    <button onClick={() => handleOpenModal(null, new Date())} className="md-btn md-btn-raised md-btn-green md-btn-sm"><PlusIcon /><span className="ml-2">Extra</span></button>
                 </div>
             </div>
             
-            {isMoveMode && (
-                <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">
-                    {eventToMove ? 
-                        <span>Selezionato: <strong>{eventToMove.locationName}</strong>. Tocca il giorno di destinazione.</span> : 
-                        <span>Tocca una lezione per spostarla.</span>
-                    }
-                </div>
-            )}
-
             <div className="mt-2 md-card p-2 md:p-6">
+                {/* Navigazione Mese */}
                 <div className="flex justify-between items-center mb-4">
                     <button onClick={() => changeMonth(-1)} className="md-icon-btn h-10 w-10 bg-gray-100 rounded-full font-bold">&lt;</button>
-                    <h2 className="text-lg md:text-xl font-bold capitalize text-center">{currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}</h2>
+                    <h2 className="text-lg md:text-xl font-bold capitalize text-center">
+                        {currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}
+                    </h2>
                     <button onClick={() => changeMonth(1)} className="md-icon-btn h-10 w-10 bg-gray-100 rounded-full font-bold">&gt;</button>
                 </div>
 
                  {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
                  <div className="grid grid-cols-7 gap-1">
-                     {daysOfWeek.map(day => <div key={day} className="text-center font-bold text-xs md:text-sm p-1 md:p-2" style={{color: 'var(--md-text-secondary)'}}>{day}</div>)}
-                     {monthGrid.map((day, index) => (
-                        <div 
-                            key={index} 
-                            className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors
-                                ${day ? (isMoveMode && eventToMove ? 'bg-green-50 cursor-pointer hover:bg-green-100 border-green-200' : 'bg-white cursor-pointer') : 'bg-gray-50'}
-                            `}
-                            style={{borderColor: 'var(--md-divider)'}} 
-                            onDragOver={handleDragOver}
-                            onDrop={(e) => day && handleDrop(e, day)}
-                            onClick={() => day && handleDayClick(day)}
-                        >
-                             {day && <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>}
-                             <div className="space-y-1 overflow-y-auto flex-1 custom-scrollbar">
-                                {day && events.filter(ev => new Date(ev.date).toDateString() === day.toDateString()).sort((a,b) => a.startTime.localeCompare(b.startTime)).map(event => {
-                                        const textColor = getTextColorForBg(event.color);
-                                        const locAbbr = (event.locationName || 'UNK').substring(0, 3).toUpperCase();
-                                        const isSelected = eventToMove?.id === event.id;
-                                        
-                                        return (
-                                            <div 
-                                                key={event.id} 
-                                                draggable={!event.isManual}
-                                                onDragStart={(e) => handleDragStart(e, event)}
-                                                className={`p-1 rounded shadow-sm flex flex-col justify-between relative cursor-grab active:cursor-grabbing
-                                                    ${isSelected ? 'ring-2 ring-offset-1 ring-amber-500 transform scale-95 opacity-80' : ''}
-                                                `} 
-                                                style={{ backgroundColor: event.color, color: textColor, minHeight: event.isManual ? 'auto' : '36px' }} 
-                                                onClick={(e) => { e.stopPropagation(); handleEventClick(event, day); }}
-                                            >
-                                                 {event.isManual ? (
-                                                    <div className="flex justify-between items-center text-[10px] leading-tight"><span className="font-bold truncate">{event.startTime} - {event.title}</span><button onClick={(e) => {e.stopPropagation(); handleDeleteClick(event.id, true);}} className="opacity-60 ml-1 hover:text-red-600 font-bold">×</button></div>
-                                                 ) : (
-                                                    <><div className="text-[10px] md:text-[11px] font-bold leading-tight">{locAbbr}. {event.startTime}</div><div className="text-[9px] md:text-[10px] text-right font-mono opacity-90 mt-0.5">{event.enrolledCount} / {event.maxCapacity}</div></>
-                                                 )}
-                                            </div>
-                                        )
-                                })}
-                             </div>
+                     {/* Intestazioni Giorni */}
+                     {daysOfWeek.map(day => (
+                        <div key={day} className="text-center font-bold text-xs md:text-sm p-1 md:p-2" style={{color: 'var(--md-text-secondary)'}}>
+                            {day}
                         </div>
                      ))}
+                     
+                     {/* Celle Giorni */}
+                     {monthGrid.map((day, index) => {
+                        // Filtra gli eventi per questo giorno
+                        const dayEvents = day 
+                            ? clusters
+                                .filter(c => new Date(c.date).toDateString() === day.toDateString())
+                                .sort((a,b) => a.startTime.localeCompare(b.startTime))
+                            : [];
+
+                        return (
+                            <div 
+                                key={index} 
+                                className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors ${day ? 'bg-white' : 'bg-gray-50'}`}
+                                style={{borderColor: 'var(--md-divider)'}} 
+                            >
+                                 {day && (
+                                     <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>
+                                         {day.getDate()}
+                                     </span>
+                                 )}
+                                 
+                                 {/* Lista Eventi Aggregati */}
+                                 <div className="space-y-1 overflow-y-auto flex-1 custom-scrollbar">
+                                     {dayEvents.map(event => {
+                                         const textColor = getTextColorForBg(event.locationColor);
+                                         const locPrefix = event.locationName.substring(0, 3).toUpperCase();
+                                         
+                                         return (
+                                             <div 
+                                                key={event.id}
+                                                className="rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center"
+                                                style={{ backgroundColor: event.locationColor, color: textColor }}
+                                             >
+                                                 {/* Label: 3 Lettere Sede + Orario */}
+                                                 <span className="truncate mr-1">
+                                                     {event.isManual ? 'EXTRA' : locPrefix} {event.startTime}
+                                                 </span>
+                                                 {/* Numero Totale Cartellini */}
+                                                 {!event.isManual && (
+                                                     <span className="bg-white/30 px-1 rounded text-[9px]">
+                                                         {event.count}
+                                                     </span>
+                                                 )}
+                                             </div>
+                                         );
+                                     })}
+                                 </div>
+                            </div>
+                        );
+                     })}
                  </div>
                  }
             </div>
-
-            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)}><LessonForm lesson={editingLesson} selectedDate={selectedDate} onSave={handleSaveLesson} onCancel={() => {setIsModalOpen(false); setEditingLesson(null);}} /></Modal>}
-            {isGroupModalOpen && selectedGroupEvent && <EditGroupModal event={selectedGroupEvent} allEnrollments={rawEnrollments} onClose={() => setIsGroupModalOpen(false)} onSave={handleGroupSave} targetDate={moveTargetDate || undefined} />}
-            <ConfirmModal isOpen={!!lessonToDelete} onClose={() => setLessonToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Lezione" message="Sei sicuro di voler eliminare questa lezione extra?" isDangerous={true} />
         </div>
     );
 };

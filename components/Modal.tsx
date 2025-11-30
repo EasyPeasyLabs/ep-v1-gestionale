@@ -1,5 +1,5 @@
 
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useEffect } from 'react';
 
 interface ModalProps {
   children: ReactNode;
@@ -9,6 +9,20 @@ interface ModalProps {
 
 const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
   
+  // Gestione blocco scroll del body quando la modale è aperta
+  useEffect(() => {
+    // Salva lo stile originale
+    const originalOverflow = document.body.style.overflow;
+    
+    // Blocca lo scroll
+    document.body.style.overflow = 'hidden';
+    
+    // Ripristina alla chiusura
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   const sizeClasses = {
     md: 'max-w-md',
     lg: 'max-w-lg',
@@ -18,7 +32,7 @@ const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4 animate-fade-in"
+      className="fixed inset-0 bg-slate-900/60 z-[100] flex justify-center items-center p-4 animate-fade-in backdrop-blur-sm"
       aria-labelledby="modal-title"
       role="dialog"
       aria-modal="true"
@@ -26,7 +40,7 @@ const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
     >
       {/* 
          FIX MOBILE & SCROLLING: 
-         - max-h-[90dvh]: Limits height to 90% viewport
+         - max-h-[90dvh]: Limits height to 90% viewport (gestisce barra indirizzi mobile)
          - h-fit: Adapts to content, but respects max-h
          - w-full: Occupa larghezza disponibile
          - overflow-hidden: Ensures border-radius works and clips content

@@ -287,3 +287,24 @@ Generazione dei file di bootstrap per il nuovo progetto.
 ### Riepilogo delle Attività
 1.  **Generazione File**: Creati i file `Contesto_1.md` e `Architettura_1.md` contenenti le specifiche per il nuovo progetto "EP Public".
 2.  **Istruzioni**: Questi file verranno utilizzati come prompt iniziale per l'AI nel nuovo repository.
+
+---
+
+## Sessione 20 (9 Giugno 2024)
+
+### Obiettivo della Sessione
+Miglioramento UX Mobile per le Iscrizioni e gestione storico spostamenti.
+
+### Riepilogo delle Attività
+1.  **UX Mobile Iscrizioni (Move Mode)**:
+    -   Implementata la modalità "Sposta" (`isMoveMode`) in `Enrollments.tsx`.
+    -   Risolto il problema del Drag & Drop su dispositivi touch: l'utente ora può toccare una card per selezionarla e toccare uno slot orario per spostarla.
+    -   Aggiunto pulsante toggle "✋ Sposta" visibile solo su mobile.
+
+2.  **Storico Iscrizioni Spostate**:
+    -   Le iscrizioni "vecchie" derivanti da uno spostamento (status `Completed`) ora rimangono visibili nella griglia.
+    -   **Visualizzazione**: Applicato stile distintivo (scala di grigi, opacità 60%, bordo grigio) per differenziarle chiaramente dalle iscrizioni attive.
+    -   **Interazioni**: Disabilitato Drag & Drop, Click e Modifica su queste card per prevenire errori. Mantenuta solo la possibilità di eliminazione (per pulizia storico).
+
+3.  **Dettagli Fattura**:
+    -   Aggiornata la generazione fatture da iscrizione per includere il nome della **Sede** nelle note dell'articolo, migliorando la chiarezza contabile.

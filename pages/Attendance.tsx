@@ -1,24 +1,22 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Appointment, Enrollment, EnrollmentStatus } from '../types';
-import { getAllEnrollments, registerAbsence, consolidateAppointments } from '../services/enrollmentService';
+import { getAllEnrollments, registerAbsence, registerPresence } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
-import CheckCircleIcon from '../components/icons/ChecklistIcon'; // Riutilizziamo un'icona esistente o simile
 
 // Interfaccia estesa per visualizzare le lezioni nella lista presenze
 interface AttendanceItem extends Appointment {
     enrollmentId: string;
     childName: string;
     subscriptionName: string;
+    lessonsRemaining: number;
 }
 
 const Attendance: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-    const [consolidating, setConsolidating] = useState(false);
-    const [consolidateRange, setConsolidateRange] = useState<'today' | 'month' | 'quarter'>('today');
     
     // Modal State per conferma assenza
     const [confirmState, setConfirmState] = useState<{
@@ -35,30 +33,10 @@ const Attendance: React.FC = () => {
         isDangerous: false
     });
 
-    // Funzione per consolidare le lezioni passate (Simulazione Backend Automation)
-    const handleConsolidation = useCallback(async () => {
-        setConsolidating(true);
-        try {
-            const count = await consolidateAppointments(consolidateRange);
-            if (count > 0) {
-                console.log(`Consolidate ${count} iscrizioni con lezioni passate.`);
-                // Emettiamo evento globale per aggiornare le altre viste (es. Dashboard o Iscrizioni)
-                window.dispatchEvent(new Event('EP_DataUpdated'));
-            } else {
-                alert("Nessuna lezione da aggiornare nel periodo selezionato.");
-            }
-        } catch (e) {
-            console.error("Errore consolidamento automatico:", e);
-        } finally {
-            setConsolidating(false);
-        }
-    }, [consolidateRange]);
-
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);
         try {
             const enrollments = await getAllEnrollments();
-            
             const items: AttendanceItem[] = [];
             
             enrollments.forEach((enr: Enrollment) => {
@@ -72,7 +50,8 @@ const Attendance: React.FC = () => {
                                     ...app,
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
-                                    subscriptionName: enr.subscriptionName
+                                    subscriptionName: enr.subscriptionName,
+                                    lessonsRemaining: enr.lessonsRemaining
                                 });
                             }
                         });
@@ -80,9 +59,6 @@ const Attendance: React.FC = () => {
                 }
             });
 
-            // Ordina per orario
-            items.sort((a, b) => a.startTime.localeCompare(b.startTime));
-            
             setAttendanceItems(items);
         } catch (err) {
             console.error("Errore caricamento presenze:", err);
@@ -91,10 +67,24 @@ const Attendance: React.FC = () => {
         }
     }, [selectedDate]);
 
-    // All'avvio
-    useEffect(() => {
-        fetchAttendanceData();
-    }, [fetchAttendanceData]); 
+    useEffect(() => { fetchAttendanceData(); }, [fetchAttendanceData]); 
+
+    // Grouping Logic: Location -> Items
+    const groupedItems = useMemo(() => {
+        const groups: Record<string, AttendanceItem[]> = {};
+        attendanceItems.forEach(item => {
+            const loc = item.locationName || 'Sede Non Definita';
+            if (!groups[loc]) groups[loc] = [];
+            groups[loc].push(item);
+        });
+        
+        // Sort items inside groups by time
+        Object.keys(groups).forEach(key => {
+            groups[key].sort((a,b) => a.startTime.localeCompare(b.startTime));
+        });
+
+        return groups;
+    }, [attendanceItems]);
 
     const handleDateChange = (offset: number) => {
         const date = new Date(selectedDate);
@@ -102,23 +92,34 @@ const Attendance: React.FC = () => {
         setSelectedDate(date.toISOString().split('T')[0]);
     };
 
+    const handleMarkPresence = async (item: AttendanceItem) => {
+        try {
+            setLoading(true);
+            await registerPresence(item.enrollmentId, item.lessonId);
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (err) {
+            console.error(err);
+            alert("Errore segnando la presenza.");
+            setLoading(false);
+        }
+    };
+
     const handleMarkAbsence = (item: AttendanceItem) => {
         setConfirmState({
             isOpen: true,
-            title: "Registra Assenza",
-            message: `Il bambino ${item.childName} risulta assente per la lezione delle ${item.startTime}. Vuoi far slittare automaticamente questa lezione alla prima data utile disponibile?`,
+            title: "Assenza & Recupero",
+            message: `Il bambino ${item.childName} è assente. Vuoi riprogrammare lo slot per il futuro? Se annulli, l'assenza viene registrata ma lo slot non viene automaticamente riprogrammato.`,
             isDangerous: false,
             onConfirm: async () => {
                 try {
                     setLoading(true);
-                    // true = recupero automatico
-                    await registerAbsence(item.enrollmentId, item.lessonId, true); 
+                    await registerAbsence(item.enrollmentId, item.lessonId, true); // True = Reschedule logic
                     await fetchAttendanceData();
-                    // Anche dopo un'assenza registrata, forziamo un refresh globale
                     window.dispatchEvent(new Event('EP_DataUpdated'));
                 } catch (err) {
-                    console.error("Errore registrazione assenza:", err);
-                    alert("Errore durante la registrazione dell'assenza.");
+                    console.error("Errore assenza:", err);
+                    alert("Errore.");
                     setLoading(false);
                 }
             }
@@ -127,145 +128,75 @@ const Attendance: React.FC = () => {
 
     return (
         <div>
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold">Registro Presenze</h1>
-                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
-                        Gestisci le presenze giornaliere e i recuperi automatici.
-                    </p>
-                </div>
-                
-                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-gray-200 shadow-sm">
-                    <select 
-                        value={consolidateRange} 
-                        onChange={(e) => setConsolidateRange(e.target.value as any)}
-                        className="text-sm border-none bg-gray-50 rounded px-2 py-1.5 focus:ring-0 cursor-pointer"
-                    >
-                        <option value="today">Solo Oggi</option>
-                        <option value="month">Tutto il Mese</option>
-                        <option value="quarter">Ultimi 3 Mesi</option>
-                    </select>
-                    <button 
-                        onClick={() => { handleConsolidation().then(fetchAttendanceData); }} 
-                        disabled={consolidating}
-                        className="md-btn md-btn-raised md-btn-primary text-xs flex items-center h-8"
-                    >
-                        {consolidating ? <Spinner /> : (
-                            <>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                                Aggiorna Stato
-                            </>
-                        )}
-                    </button>
-                </div>
-            </div>
+            <h1 className="text-3xl font-bold mb-2">Registro Presenze</h1>
+            <p className="mt-1 mb-6" style={{color: 'var(--md-text-secondary)'}}>
+                Gestione giornaliera suddivisa per Recinto (Sede).
+            </p>
 
-            {/* Barra di Navigazione Data */}
+            {/* Navigazione Data */}
             <div className="md-card p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center space-x-4">
                     <button onClick={() => handleDateChange(-1)} className="md-btn md-btn-flat text-2xl font-bold">&lt;</button>
                     <div className="text-center">
-                         <input 
-                            type="date" 
-                            value={selectedDate} 
-                            onChange={(e) => setSelectedDate(e.target.value)} 
-                            className="text-lg font-bold bg-transparent border-b border-gray-300 focus:border-indigo-500 outline-none text-center"
-                        />
-                        <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">
-                            {new Date(selectedDate).toLocaleDateString('it-IT', { weekday: 'long' })}
-                        </div>
+                         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="text-lg font-bold bg-transparent border-b border-gray-300 focus:border-indigo-500 outline-none text-center"/>
+                        <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{new Date(selectedDate).toLocaleDateString('it-IT', { weekday: 'long' })}</div>
                     </div>
                     <button onClick={() => handleDateChange(1)} className="md-btn md-btn-flat text-2xl font-bold">&gt;</button>
                 </div>
-                <button 
-                    onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} 
-                    className="text-sm text-indigo-600 font-medium hover:underline"
-                >
-                    Torna a Oggi
-                </button>
+                <button onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} className="text-sm text-indigo-600 font-medium hover:underline">Torna a Oggi</button>
             </div>
 
-            {loading ? (
-                <div className="flex justify-center py-12"><Spinner /></div>
-            ) : (
-                <div className="md-card p-0 overflow-hidden">
-                    {attendanceItems.length === 0 ? (
-                        <div className="p-8 text-center text-gray-500 italic">
-                            Nessuna lezione in programma per questa data.
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Orario</th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Allievo</th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Sede / Aula</th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Stato</th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Azioni</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {attendanceItems.map((item, idx) => {
-                                        const isAbsent = item.status === 'Absent';
-                                        const isPresent = item.status === 'Present';
-                                        
-                                        // Determina se la lezione è nel passato (quindi teoricamente "svolta")
-                                        const lessonEnd = new Date(`${item.date.split('T')[0]}T${item.endTime}:00`);
-                                        const isPast = lessonEnd < new Date();
-
-                                        return (
-                                            <tr key={idx} className={`hover:bg-gray-50 transition-colors ${isAbsent ? 'bg-red-50' : ''}`}>
-                                                <td className="p-4 font-medium whitespace-nowrap">
-                                                    {item.startTime} - {item.endTime}
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="font-bold text-gray-800">{item.childName}</div>
-                                                    <div className="text-xs text-gray-500">{item.subscriptionName}</div>
-                                                </td>
-                                                <td className="p-4">
-                                                    <div className="flex items-center">
-                                                        <span className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: item.locationColor || '#ccc' }}></span>
-                                                        <span className="text-sm">{item.locationName}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="p-4 text-center">
-                                                    {isAbsent ? (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                                            Assente
-                                                        </span>
-                                                    ) : isPresent ? (
-                                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            Presente
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                            Programmata
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="p-4 text-right">
-                                                    {!isAbsent && !isPresent && isPast && (
-                                                        <span className="text-xs text-amber-600 italic mr-2">In attesa di aggiornamento...</span>
-                                                    )}
-                                                    {!isAbsent && (
-                                                        <button 
-                                                            onClick={() => handleMarkAbsence(item)}
-                                                            className="text-xs bg-white border border-red-200 hover:bg-red-50 text-red-600 px-3 py-1.5 rounded transition-colors shadow-sm"
-                                                        >
-                                                            Segna Assenza
+            {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
+                <div className="space-y-8">
+                    {Object.keys(groupedItems).length === 0 && <div className="text-center py-12 text-gray-500 italic">Nessuna lezione in programma oggi.</div>}
+                    
+                    {Object.entries(groupedItems).map(([locationName, items]) => {
+                        const typedItems = items as AttendanceItem[];
+                        return (
+                        <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex items-center gap-3">
+                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: typedItems[0]?.locationColor || '#ccc' }}></span>
+                                <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locationName}</h2>
+                                <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">{typedItems.length} allievi</span>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                                {typedItems.map(item => {
+                                    const isPresent = item.status === 'Present';
+                                    const isAbsent = item.status === 'Absent';
+                                    return (
+                                        <div key={item.lessonId} className={`p-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors ${isAbsent ? 'bg-red-50' : isPresent ? 'bg-green-50' : ''}`}>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-mono font-bold text-sm text-gray-600">{item.startTime} - {item.endTime}</span>
+                                                    <h3 className="font-bold text-gray-900">{item.childName}</h3>
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1 ml-14">
+                                                    Slot residui: <strong>{item.lessonsRemaining}</strong>
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-2 mt-3 md:mt-0 ml-14 md:ml-0">
+                                                {isPresent ? (
+                                                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-200">PRESENTE (Slot Consumato)</span>
+                                                ) : isAbsent ? (
+                                                    <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full border border-red-200">ASSENTE</span>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => handleMarkPresence(item)} className="px-3 py-1.5 bg-white border border-green-500 text-green-600 rounded text-xs font-bold hover:bg-green-50 transition-colors">
+                                                            ✓ Presente
                                                         </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                        <button onClick={() => handleMarkAbsence(item)} className="px-3 py-1.5 bg-white border border-red-300 text-red-500 rounded text-xs font-medium hover:bg-red-50 transition-colors">
+                                                            ✕ Assente
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
-                    )}
+                    )})}
                 </div>
             )}
 
@@ -276,8 +207,8 @@ const Attendance: React.FC = () => {
                 title={confirmState.title}
                 message={confirmState.message}
                 isDangerous={confirmState.isDangerous}
-                confirmText="Sì, recupera"
-                cancelText="Annulla"
+                confirmText="Sì, recupera slot"
+                cancelText="Solo Assenza"
             />
         </div>
     );

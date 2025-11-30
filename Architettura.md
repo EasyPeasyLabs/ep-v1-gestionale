@@ -50,66 +50,11 @@ Lo stato è gestito principalmente a livello di componente tramite i React Hooks
 - **Event Bus**: È stato introdotto un semplice sistema di eventi custom (`window.dispatchEvent('EP_DataUpdated')`) per notificare i componenti (es. `Header` per le notifiche) quando i dati vengono modificati in altre parti dell'app.
 - **PWA Dinamica**: La gestione del file `manifest.json` (essenziale per l'installazione dell'app) è ibrida. Esiste un file statico di fallback (`public/manifest.json`), ma `App.tsx` genera a runtime un manifest "virtuale" (Blob URL) che inietta il logo aziendale recuperato da Firestore come icona dell'app e forza il nome a "EP v1".
 
-### 3.3. Routing
+### 3.3. UX Mobile & Interazioni
 
-Il routing è gestito internamente dal componente `App.tsx` attraverso uno stato (`currentPage`). Questo approccio è semplice e adatto per un'applicazione gestionale interna. Il cambio di pagina avviene tramite la funzione `setCurrentPage`, passata come prop.
-
-### 3.4. Pagina Pubblica & Buffer Database (Nuova Feature)
-
-Per gestire la raccolta iscrizioni online in sicurezza ("Lead Generation"), viene adottato il pattern **"Buffer Database"** con separazione fisica dei progetti:
-
-1.  **Front-End Pubblico (Progetto Separato)**: Un'applicazione web distinta (repo `ep-iscrizioni-public`), accessibile a chiunque senza login. Usa un proprio progetto Firebase dedicato (**Project B**).
-2.  **Database "Buffer" (Project B)**: Un database Firestore separato con regole di sicurezza che permettono la scrittura pubblica (`create`) ma non la lettura/modifica. Contiene solo i dati grezzi dei lead.
-3.  **Importazione (EP v.1 - Project A)**: L'applicazione principale EP v.1 implementerà una funzione "Importa dal Web". Questa funzione utilizzerà una connessione secondaria a Firebase inizializzata con le credenziali di Project B (solo lato Admin) per leggere i lead, importarli nel database principale (Project A) e cancellarli dal buffer.
-    *   Questo garantisce un "Air Gap" di sicurezza: il database principale non è mai esposto pubblicamente.
-
-## 4. Architettura Backend (Firebase)
-
-### 4.1. Firestore Data Model
-
-Il database NoSQL Firestore è strutturato in collection di documenti.
-
-- `clients`: Contiene le anagrafiche dei clienti.
-  - **Struttura**: Include un array `children` per i genitori. 
-  - **Novità**: Supporto per `notesHistory` (array di oggetti {id, date, content}) sia per il genitore che per i figli, sostituendo la logica della singola stringa note. Supporto campi avanzati figli: `rating` (4 criteri), `tags`.
-- `suppliers`: Contiene i fornitori e le loro sedi (`locations` nested). 
-  - **Novità**: Supporto `notesHistory` anche per Fornitori e Location.
-- `settings`: Collection che contiene documenti singleton per le impostazioni globali (`companyInfo`).
-- `subscriptionTypes`: Collection per i tipi di abbonamento/pacchetti lezione.
-- `periodicChecks`: Collection per la gestione del planner delle verifiche periodiche.
-- `lessons`: Contiene le lezioni manuali/extra create a calendario.
-- `enrollments`: Collection centrale che lega un allievo a un corso.
-  - **Struttura**: Contiene un array `appointments` che elenca tutte le date previste per il corso.
-  - **Stato Lezioni**: Ogni oggetto in `appointments` ha un campo `status` (`Scheduled`, `Present`, `Absent`, `Cancelled`) per tracciare la frequenza.
-  - **Automazione Finanziaria**: Il pagamento genera una Fattura e una Transazione collegata a essa.
-- `transactions`: Collection per tutte le transazioni finanziarie.
-  - Supporta nuova categoria `Capital` (Capitale Iniziale) per gestire budget di partenza.
-- `invoices` & `quotes`: Collection per i documenti fiscali.
-- `activities`: Collection "Libreria" delle attività didattiche disponibili.
-- `lesson_activities`: Collection di log che associa una lezione (`lessonId`) a una o più attività svolte (`activityIds`).
-- `fcm_tokens`: Collection di sistema per memorizzare i token dei dispositivi autorizzati a ricevere notifiche push.
-
-### 4.2. Cloud Functions
-
-Le Cloud Functions (Gen 2) eseguono logica server-side critica.
-- `checkPeriodicNotifications`: Funzione schedulata (Cron Job ogni minuto) che controlla la collection `periodicChecks` e invia notifiche multicast ai device registrati in `fcm_tokens` se l'orario e il giorno coincidono.
-
-### 4.3. Firebase Authentication
-
-Viene utilizzato il servizio di autenticazione di Firebase per gestire il login degli utenti tramite email e password.
-
-## 5. Moduli Funzionali
-
-L'applicazione è suddivisa logicamente nei seguenti moduli:
-
-- **Dashboard**: Vista d'insieme con KPI, grafici finanziari, avvisi e occupazione aule. Include la tab **Qualità & Rating** per analisi aggregata.
-- **Clienti**: Gestione CRUD completa dei clienti e profilazione dettagliata figli (rating/tag/storico note).
-- **Fornitori**: Gestione CRUD completa dei fornitori con storico note e sedi.
-- **Calendario**: Pianificazione lezioni e visualizzazione occupazione.
-- **Finanza**: Gestione transazioni, fatture, preventivi, automazione pagamenti e **Capitale Iniziale**.
-- **CRM**: Gestione rinnovi, scadenze e sistema di **Comunicazione Libera** (invio messaggi manuali o massivi a liste di distribuzione via Email/WhatsApp).
-- **Iscrizioni**: Gestione dei contratti attivi, monitoraggio avanzamento lezioni (progress bar).
-- **Registro Presenze**: Modulo per la gestione giornaliera delle lezioni. Permette di segnare assenze e gestire automaticamente i recuperi.
-- **Lezioni (Log Attività)**: Modulo per assegnare e tracciare le attività didattiche svolte durante ogni lezione.
-- **Attività**: Libreria/Repository delle attività didattiche (titolo, tema, materiali, link).
-- **Impostazioni**: Configurazione dati aziendali, listini, **Planner Verifiche Periodiche** e diagnostica notifiche.
+L'applicazione adotta strategie specifiche per l'uso mobile:
+- **Move Mode (Macchina a Stati)**: Nella gestione delle iscrizioni (`Enrollments.tsx`) e Calendario, è stata implementata una logica ibrida per lo spostamento degli elementi:
+  - **Desktop**: Drag & Drop nativo HTML5.
+  - **Mobile**: Modalità "Sposta" esplicita attivabile via pulsante. Utilizza una logica *Tap-to-Select* (Sorgente) -> *Tap-to-Place* (Destinazione) per aggirare i limiti del Drag & Drop su touch screen e prevenire scroll accidentali.
+- **Visual Feedback**: Uso intensivo di indicatori visivi (bordi colorati, opacità, grayscale per stati inattivi/storici) per comunicare lo stato degli oggetti senza hover.
+- **Navigazione**: Sidebar a scomparsa con backdrop blur e menu header ottimizzato.
