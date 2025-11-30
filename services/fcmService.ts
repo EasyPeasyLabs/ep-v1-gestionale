@@ -10,33 +10,18 @@ const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7
 const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if ('serviceWorker' in navigator) {
     try {
-      // FIX: Usiamo un percorso relativo invece di assoluto per evitare errori 404
-      // quando l'app è ospitata in una sottocartella (es. istudio.google.com).
-      // Il browser risolverà './' rispetto all'URL corrente.
       const swUrl = './firebase-messaging-sw.js';
-      
       const registration = await navigator.serviceWorker.register(swUrl, {
-        scope: './' // Definisce lo scope relativo alla posizione attuale
+        scope: './'
       });
-      
-      console.log('[FCM Service] Service Worker registrato con successo. Scope:', registration.scope);
       return registration;
     } catch (err: any) {
-      // Suppress specific origin errors in dev environments
-      if (err.message && err.message.includes("scriptURL")) {
-          console.warn('[FCM Service] Service Worker registration skipped due to environment restrictions (Script URL origin mismatch). Push notifications might not work.');
-          return null;
-      }
-      
       console.error('[FCM Service] Errore CRITICO registrazione SW:', err);
-      
-      // Tentativo di fallback per percorsi radice se il relativo fallisce (es. deep linking)
+      // Tentativo di fallback
       try {
-          console.log('[FCM Service] Tento fallback su percorso assoluto...');
           const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
           return registration;
       } catch (fallbackErr) {
-          console.error('[FCM Service] Fallito anche il fallback.', fallbackErr);
           return null;
       }
     }
@@ -44,81 +29,51 @@ const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null
   return null;
 };
 
-export const requestNotificationPermission = async (userId: string): Promise<boolean> => {
-  console.log("[FCM Service] 1. Inizio procedura richiesta permessi...");
+// Modificata per ritornare un oggetto dettagliato invece di boolean
+export const requestNotificationPermission = async (userId: string): Promise<{ success: boolean; token?: string; error?: string; step?: string }> => {
   
-  // Assicura che il SW sia registrato prima di chiedere il token
-  const registration = await registerServiceWorker();
-
-  if (!VAPID_KEY) {
-      console.error("[FCM Service] ❌ ERRORE CONFIGURAZIONE: Manca la VAPID KEY.");
-      return false;
+  // 1. Check Browser Support
+  if (!('Notification' in window)) {
+      return { success: false, error: "Questo browser non supporta le notifiche." };
   }
 
+  // 2. Registrazione SW
+  const registration = await registerServiceWorker();
+  if (!registration) {
+      return { success: false, error: "Impossibile registrare il Service Worker. Verifica di essere su HTTPS o localhost." };
+  }
+
+  // 3. Richiesta Permesso Utente
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+      return { success: false, error: "Permesso negato dall'utente nelle impostazioni del browser." };
+  }
+
+  // 4. Recupero Token Firebase
   try {
-    if (!('Notification' in window)) {
-      console.warn("[FCM Service] Questo browser non supporta le notifiche desktop.");
-      return false;
-    }
+      if (!VAPID_KEY) return { success: false, error: "VAPID KEY mancante nel codice." };
 
-    // 1. Richiesta permesso al browser
-    const permission = await Notification.requestPermission();
-    console.log(`[FCM Service] 3. Risposta utente: ${permission}`);
-
-    if (permission === 'granted') {
-      console.log("[FCM Service] 4. Permesso accordato. Tento di ottenere il token...");
+      const activeRegistration = registration || await navigator.serviceWorker.ready;
       
-      try {
-          // FIX: Passiamo direttamente la registration ottenuta o attendiamo che sia pronta
-          // Questo risolve il problema dove getRegistration('/path') falliva o ritornava undefined
-          const activeRegistration = registration || await navigator.serviceWorker.ready;
+      const currentToken = await getToken(messaging, { 
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: activeRegistration
+      });
 
-          const currentToken = await getToken(messaging, { 
-              vapidKey: VAPID_KEY,
-              serviceWorkerRegistration: activeRegistration
-          });
-
-          if (currentToken) {
-            console.log('[FCM Service] 5. FCM Token ottenuto:', currentToken);
-            await saveTokenToDatabase(currentToken, userId);
-            return true;
-          } else {
-            console.warn('[FCM Service] 5b. Nessun token disponibile.');
-            return false;
-          }
-      } catch (tokenError: any) {
-          console.error('[FCM Service] Errore recupero token:', tokenError);
-
-          // LOGICA DI AUTO-RIPARAZIONE
-          if (tokenError.message?.includes("applicationServerKey") || 
-              tokenError.message?.includes("Subscription failed") ||
-              tokenError.message?.includes("not valid")) {
-              
-              console.warn("[FCM Service] Rilevata sottoscrizione corrotta/vecchia. Tento pulizia...");
-              try {
-                  const reg = await navigator.serviceWorker.getRegistration();
-                  if (reg) {
-                      const sub = await reg.pushManager.getSubscription();
-                      if (sub) {
-                          await sub.unsubscribe();
-                          console.log("[FCM Service] Vecchia sottoscrizione rimossa con successo. Riprova a cliccare il pulsante.");
-                          alert("Il sistema ha rimosso una configurazione obsoleta. Per favore, clicca di nuovo su 'Rinizializza Servizio' per completare la correzione.");
-                          return false;
-                      }
-                  }
-              } catch (cleanErr) {
-                  console.error("[FCM Service] Impossibile pulire la sottoscrizione:", cleanErr);
-              }
-          }
-          return false;
+      if (currentToken) {
+        await saveTokenToDatabase(currentToken, userId);
+        return { success: true, token: currentToken };
+      } else {
+        return { success: false, error: "Firebase non ha restituito nessun token (Token Null)." };
       }
-    } else {
-      console.warn('[FCM Service] Permesso notifiche negato.');
-      return false;
-    }
-  } catch (error) {
-    console.error('[FCM Service] ERRORE CRITICO:', error);
-    return false;
+  } catch (error: any) {
+      console.error('[FCM Service] Error:', error);
+      let errMsg = error.message || "Errore sconosciuto";
+      
+      if (errMsg.includes("Subscription failed")) errMsg = "Sottoscrizione fallita (VAPID Key errata o Push Service bloccato).";
+      if (errMsg.includes("communication with the push service")) errMsg = "Impossibile contattare i server di notifica (Blocco di rete/AdBlock?).";
+      
+      return { success: false, error: errMsg };
   }
 };
 
