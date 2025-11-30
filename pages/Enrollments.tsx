@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation } from '../services/enrollmentService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation } from '../services/enrollmentService';
 import { addTransaction, deleteTransactionByRelatedId, addInvoice } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -24,7 +24,7 @@ interface EnrollmentsProps {
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// --- Modal Recupero ---
+// --- Modal Recupero (Omissis - Same as before) ---
 const RecoveryModal: React.FC<{
     enrollment: Enrollment;
     maxRecoverable: number;
@@ -297,7 +297,49 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         const original = enrollments.find(en => en.id === enrollmentId);
         if (!original) return;
 
-        // Calcola la prossima data utile
+        // SE ISCRIZIONE E' UNASSIGNED (NUOVA): Logica di Attivazione
+        if (original.locationId === 'unassigned') {
+            if (window.confirm(`Assegnare ${original.childName} a ${targetLocName} (${daysOfWeekMap[targetDayIndex]} ${targetStartTime})? Verranno generate tutte le lezioni.`)) {
+                setLoading(true);
+                try {
+                    // Trova il Supplier ID associato a questa Location ID
+                    // Dato che groupedEnrollments è per display, usiamo i dati raw suppliers
+                    let targetSupplierId = '';
+                    let targetSupplierName = '';
+                    
+                    suppliers.forEach(s => {
+                        const foundLoc = s.locations.find(l => l.id === targetLocId);
+                        if (foundLoc) {
+                            targetSupplierId = s.id;
+                            targetSupplierName = s.companyName;
+                        }
+                    });
+
+                    await activateEnrollmentWithLocation(
+                        enrollmentId,
+                        targetSupplierId,
+                        targetSupplierName,
+                        targetLocId,
+                        targetLocName,
+                        targetLocColor,
+                        targetDayIndex,
+                        targetStartTime,
+                        targetEndTime
+                    );
+                    await fetchData();
+                } catch (err) {
+                    console.error("Errore assegnazione:", err);
+                    alert("Errore durante l'assegnazione.");
+                } finally {
+                    setLoading(false);
+                    setMoveSourceId(null);
+                    setIsMoveMode(false);
+                }
+            }
+            return;
+        }
+
+        // SE ISCRIZIONE GIA' ESISTENTE: Logica di Spostamento (Standard)
         const today = new Date();
         const todayDay = today.getDay(); // 0-6
         let diff = targetDayIndex - todayDay;
@@ -429,7 +471,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     };
 
     // --- Dynamic Options for Selects ---
-    const availableLocations = useMemo(() => Array.from(new Set(enrollments.map(e => e.locationName))).filter(Boolean).sort(), [enrollments]);
+    const availableLocations = useMemo(() => Array.from(new Set(enrollments.map(e => e.locationName))).filter(l => l && l !== 'Sede Non Definita').sort(), [enrollments]);
     const availableAges = useMemo(() => {
         const ages = new Set<string>();
         enrollments.forEach(e => {
@@ -538,29 +580,59 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             }>
         }> = {};
 
-        // Inizializza i gruppi con le sedi dai Supplier
-        // Se volessimo mostrare recinti vuoti, itereremmo su suppliers. 
-        // Per ora iteriamo sugli enrollment per mostrare solo i recinti attivi.
-        
+        // 1. Inizializza i gruppi con le sedi dai Supplier (così anche i recinti vuoti appaiono)
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                // Initialize structure for available slots
+                const locKey = l.name;
+                groups[locKey] = { 
+                    locationId: l.id, 
+                    locationName: l.name, 
+                    locationColor: l.color || '#ccc', 
+                    days: {} 
+                };
+                
+                // Pre-populate days from availability
+                if (l.availability) {
+                    l.availability.forEach(slot => {
+                        if (!groups[locKey].days[slot.dayOfWeek]) {
+                            groups[locKey].days[slot.dayOfWeek] = { dayName: daysOfWeekMap[slot.dayOfWeek], slots: {} };
+                        }
+                        const timeKey = `${slot.startTime} - ${slot.endTime}`;
+                        if (!groups[locKey].days[slot.dayOfWeek].slots[timeKey]) {
+                            groups[locKey].days[slot.dayOfWeek].slots[timeKey] = {
+                                timeRange: timeKey,
+                                start: slot.startTime,
+                                end: slot.endTime,
+                                items: []
+                            };
+                        }
+                    });
+                }
+            });
+        });
+
+        // 2. Distribuisci le iscrizioni
         filteredEnrollments.forEach(enr => {
             const locName = enr.locationName || 'Sede Non Definita';
-            const locId = enr.locationId || 'unknown';
-            // Il colore del recinto è dato dall'iscrizione (che lo eredita dalla location)
-            // Se l'iscrizione è pending o exhausted, il colore viene comunque usato per il recinto
-            const locColor = enr.locationColor || '#ccc';
+            const locId = enr.locationId || 'unassigned';
+            const locColor = enr.locationColor || '#e5e7eb';
             const appData = getFirstAppointmentData(enr);
-            const timeKey = appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D';
+            
+            // Gestione speciale per "Unassigned"
+            const timeKey = locId === 'unassigned' ? 'Da Assegnare' : (appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D');
+            const dayIdx = locId === 'unassigned' ? 99 : appData.dayIndex; // 99 pushes to bottom if sorted asc, but we want it top? Sort logic below handles location order.
 
             if (!groups[locName]) {
                 groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
             }
             
-            if (!groups[locName].days[appData.dayIndex]) {
-                groups[locName].days[appData.dayIndex] = { dayName: appData.dayName, slots: {} };
+            if (!groups[locName].days[dayIdx]) {
+                groups[locName].days[dayIdx] = { dayName: locId === 'unassigned' ? 'In Attesa' : appData.dayName, slots: {} };
             }
 
-            if (!groups[locName].days[appData.dayIndex].slots[timeKey]) {
-                groups[locName].days[appData.dayIndex].slots[timeKey] = { 
+            if (!groups[locName].days[dayIdx].slots[timeKey]) {
+                groups[locName].days[dayIdx].slots[timeKey] = { 
                     timeRange: timeKey, 
                     start: appData.startTime, 
                     end: appData.endTime, 
@@ -568,11 +640,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 };
             }
 
-            groups[locName].days[appData.dayIndex].slots[timeKey].items.push(enr);
+            groups[locName].days[dayIdx].slots[timeKey].items.push(enr);
         });
 
         // Convert to Arrays for rendering and sort
-        return Object.values(groups).sort((a,b) => a.locationName.localeCompare(b.locationName)).map(loc => ({
+        const sortedGroups = Object.values(groups).sort((a,b) => {
+            // Force "Sede Non Definita" to top
+            if (a.locationId === 'unassigned') return -1;
+            if (b.locationId === 'unassigned') return 1;
+            return a.locationName.localeCompare(b.locationName);
+        });
+
+        return sortedGroups.map(loc => ({
             ...loc,
             days: Object.entries(loc.days)
                 .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)) // Sort by Day Index (Mon=1, ...)
@@ -583,7 +662,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 }))
         }));
 
-    }, [filteredEnrollments]);
+    }, [filteredEnrollments, suppliers]);
 
 
     return (
@@ -682,9 +761,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     {groupedEnrollments.map((locGroup, locIdx) => (
                         <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                             {/* RECINTO SEDE */}
-                            <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex items-center gap-3">
+                            <div className={`px-6 py-3 border-b border-gray-200 flex items-center gap-3 ${locGroup.locationId === 'unassigned' ? 'bg-gray-200' : 'bg-gray-50'}`}>
                                 <div className="w-4 h-4 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: locGroup.locationColor }}></div>
                                 <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locGroup.locationName}</h2>
+                                {locGroup.locationId === 'unassigned' && <span className="text-xs bg-gray-600 text-white px-2 py-0.5 rounded">Trascina nei recinti</span>}
                             </div>
 
                             <div className="p-6 space-y-6">
@@ -722,6 +802,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                             const isSelectedForMove = moveSourceId === enr.id;
                                                             const isPending = enr.status === EnrollmentStatus.Pending;
                                                             const isExhausted = enr.lessonsRemaining <= 0;
+                                                            const isUnassigned = enr.locationId === 'unassigned';
                                                             
                                                             // Colore card: dipende dallo stato
                                                             let cardBorderColor = locGroup.locationColor;
@@ -735,6 +816,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                 cardBorderColor = '#9ca3af'; // Gray
                                                                 cardBg = 'bg-gray-100';
                                                                 opacity = 'opacity-75';
+                                                            } else if (isUnassigned) {
+                                                                cardBorderColor = '#6b7280';
+                                                                cardBg = 'bg-gray-50';
                                                             }
 
                                                             return (
@@ -771,7 +855,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                     {/* Hover Actions */}
                                                                     {!isMoveMode && (
                                                                         <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                                                                            {isPending && (
+                                                                            {isPending && !isUnassigned && (
                                                                                 <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento">
                                                                                     <span className="font-bold text-xs">€</span>
                                                                                 </button>
@@ -782,7 +866,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                             <button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina">
                                                                                 <TrashIcon />
                                                                             </button>
-                                                                            {!isExhausted && !isPending && (
+                                                                            {!isExhausted && !isPending && !isUnassigned && (
                                                                                 <button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero">
                                                                                     <RefreshIcon />
                                                                                 </button>

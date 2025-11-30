@@ -201,28 +201,68 @@ export const addRecoveryLessons = async (
 };
 
 
-// Helper interno per generare lezioni future (duplicato logico da EnrollmentForm per uso server-side)
-const generateAppointmentsInternal = (startDate: Date, startTime: string, endTime: string, numLessons: number, locName: string, locColor: string, childName: string): Appointment[] => {
+// --- NEW: Attivazione Iscrizione (Genera Appuntamenti) ---
+// Usata quando si trascina un cartellino "Da Assegnare" in un recinto valido
+export const activateEnrollmentWithLocation = async (
+    enrollmentId: string,
+    supplierId: string,
+    supplierName: string,
+    locationId: string,
+    locationName: string,
+    locationColor: string,
+    dayOfWeek: number, // 0-6
+    startTime: string,
+    endTime: string
+): Promise<void> => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    
+    if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    
+    // Calcola la data del primo appuntamento (startDate originale adjusted to dayOfWeek)
+    let currentDate = new Date(enrollment.startDate);
+    // Se la startDate è nel passato rispetto a oggi, usiamo oggi come base?
+    // Policy: Se è da assegnare, probabilmente si vuole iniziare dalla prima data utile.
+    // Tuttavia, rispettiamo la startDate dell'enrollment se possibile, allineandola al giorno corretto.
+    
+    // Align to target day of week
+    while (currentDate.getDay() !== dayOfWeek) {
+        currentDate.setDate(currentDate.getDate() + 1);
+    }
+    // If the aligned date is before the original startDate (due to week wrapping), add a week
+    // (Wait, logic above always moves forward).
+    
     const appointments: Appointment[] = [];
-    let currentDate = new Date(startDate);
-    let lessonsScheduled = 0;
+    const lessonsTotal = enrollment.lessonsTotal;
 
-    while (lessonsScheduled < numLessons) {
+    for (let i = 0; i < lessonsTotal; i++) {
         appointments.push({
             lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
             date: currentDate.toISOString(),
             startTime: startTime,
             endTime: endTime,
-            locationName: locName,
-            locationColor: locColor,
-            childName: childName,
+            locationName: locationName,
+            locationColor: locationColor,
+            childName: enrollment.childName,
             status: 'Scheduled'
         });
         currentDate.setDate(currentDate.getDate() + 7);
-        lessonsScheduled++;
     }
-    return appointments;
+
+    // Aggiorna Enrollment
+    await updateDoc(enrollmentDocRef, {
+        supplierId,
+        supplierName,
+        locationId,
+        locationName,
+        locationColor,
+        appointments: appointments,
+        startDate: appointments[0]?.date || enrollment.startDate // Aggiorna start reale
+    });
 };
+
 
 // Funzione massiva per spostamento location/orario (Move Logic)
 // UPDATED: Non splitta più l'iscrizione. Aggiorna semplicemente location e lezioni future.
