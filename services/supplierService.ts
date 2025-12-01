@@ -10,16 +10,17 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
     const data = doc.data();
     return {
         id: doc.id,
-        companyName: data.companyName,
-        vatNumber: data.vatNumber,
-        address: data.address,
-        zipCode: data.zipCode,
-        city: data.city,
-        province: data.province,
-        email: data.email,
-        phone: data.phone,
+        companyName: data.companyName || '', // Safety default
+        vatNumber: data.vatNumber || '',
+        address: data.address || '',
+        zipCode: data.zipCode || '',
+        city: data.city || '',
+        province: data.province || '',
+        email: data.email || '',
+        phone: data.phone || '',
         locations: (data.locations || []).map((loc: any) => ({
             ...loc,
+            name: loc.name || 'Sede senza nome',
             // Ensure new fields have defaults for existing data
             notes: loc.notes || '',
             notesHistory: loc.notesHistory || [],

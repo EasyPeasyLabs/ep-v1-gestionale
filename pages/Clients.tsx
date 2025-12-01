@@ -417,9 +417,9 @@ const Clients: React.FC = () => {
         let result = clients.filter(c => showTrash ? c.isDeleted : !c.isDeleted);
 
         result = result.filter(c => {
-            const term = searchTerm.toLowerCase();
+            const term = (searchTerm || '').toLowerCase();
             
-            // 1. Base Search with Safe Checks (Fixes White Screen Crash)
+            // 1. Base Search with Safe Checks
             let match = false;
             if (c.clientType === ClientType.Parent) {
                 const p = c as ParentClient;

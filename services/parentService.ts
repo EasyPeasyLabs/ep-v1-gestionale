@@ -2,51 +2,78 @@
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
-import { Client, ClientInput, ClientType, ParentClient } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient } from '../types';
 
 const clientCollectionRef = collection(db, 'clients');
 
 const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
     const data = doc.data();
-    const client = { id: doc.id, ...data } as Client;
+    // Inizializza l'oggetto base. Cast a 'any' temporaneo per flessibilità nel mapping.
+    const client = { id: doc.id, ...data } as any;
     
-    // Assicura che `children` sia sempre un array e abbia i nuovi campi
+    // 1. NORMALIZZAZIONE TIPO CLIENTE (Inferenza)
+    // Se clientType manca, proviamo a dedurlo dai dati presenti
+    if (!client.clientType) {
+        if (client.type === 'parent' || client.type === 'institutional') {
+            // Supporto legacy per campo 'type'
+            client.clientType = client.type;
+        } else if (client.firstName || client.lastName || client.taxCode || (client.children && client.children.length > 0)) {
+            // Se ha nome, cognome, CF o figli, è sicuramente un Genitore
+            client.clientType = ClientType.Parent;
+        } else if (client.companyName || client.vatNumber) {
+            // Se ha ragione sociale o P.IVA, è un Ente
+            client.clientType = ClientType.Institutional;
+        } else {
+            // Fallback: se ha solo 'name' generico, assumiamo Genitore per default
+            client.clientType = ClientType.Parent;
+        }
+    }
+
+    // 2. SANITIZZAZIONE DATI (Prevenzione Campi Vuoti)
     if (client.clientType === ClientType.Parent) {
         const parent = client as ParentClient;
         
-        if (!parent.children) {
+        // Mappatura fallback per nomi
+        parent.firstName = parent.firstName || data.name || ''; // Usa 'name' se firstName manca
+        parent.lastName = parent.lastName || '';
+        
+        parent.email = parent.email || '';
+        parent.phone = parent.phone || '';
+        parent.address = parent.address || '';
+        
+        // Gestione Array Figli
+        if (!Array.isArray(parent.children)) {
             parent.children = [];
         } else {
-            // Map existing children to new structure with defaults if missing
+            // Mappa e pulisce ogni figlio
             parent.children = parent.children.map((c: any) => ({
-                ...c,
+                id: c.id || Date.now().toString() + Math.random(),
+                name: c.name || 'Senza Nome',
+                age: c.age || '',
                 notes: c.notes || '',
-                notesHistory: c.notesHistory || [],
-                tags: c.tags || [],
-                rating: c.rating || {
-                    learning: 0,
-                    behavior: 0,
-                    attendance: 0,
-                    hygiene: 0
-                }
+                notesHistory: Array.isArray(c.notesHistory) ? c.notesHistory : [],
+                tags: Array.isArray(c.tags) ? c.tags : [],
+                rating: c.rating || { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
             }));
         }
         
-        // Default values for new Parent fields (safety check)
-        if (!parent.notes) parent.notes = '';
-        if (!parent.notesHistory) parent.notesHistory = [];
-        if (!parent.tags) parent.tags = [];
-        if (!parent.rating) {
-            parent.rating = {
-                availability: 0,
-                complaints: 0,
-                churnRate: 0,
-                distance: 0
-            };
-        }
+        // Valori di default
+        if (!parent.rating) parent.rating = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
+        
+    } else {
+        // Gestione Enti
+        const inst = client as InstitutionalClient;
+        inst.companyName = inst.companyName || data.name || 'Ente Senza Nome'; // Usa 'name' come fallback
+        inst.vatNumber = inst.vatNumber || '';
+        inst.email = inst.email || '';
+        inst.phone = inst.phone || '';
     }
     
-    return client;
+    // Campi comuni sicuri
+    client.notesHistory = Array.isArray(client.notesHistory) ? client.notesHistory : [];
+    client.tags = Array.isArray(client.tags) ? client.tags : [];
+    
+    return client as Client;
 };
 
 export const getClients = async (): Promise<Client[]> => {

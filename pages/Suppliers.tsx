@@ -321,8 +321,9 @@ const Suppliers: React.FC = () => {
             if (sortOrder === 'day_asc') {
                 return getEarliestDay(a) - getEarliestDay(b);
             }
-            const nameA = a.companyName.toLowerCase();
-            const nameB = b.companyName.toLowerCase();
+            // FIX: SAFE GUARD against missing companyName to avoid crash
+            const nameA = (a.companyName || '').toLowerCase();
+            const nameB = (b.companyName || '').toLowerCase();
             return sortOrder === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
         });
         

@@ -23,7 +23,8 @@ import ConfirmModal from '../components/ConfirmModal';
 const ChatIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> );
 
 // --- Helpers ---
-const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
+// FIX: Added safe access for undefined names
+const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName || ''} ${(c as ParentClient).lastName || ''}` : ((c as InstitutionalClient).companyName || '');
 
 // --- Communication Modal (Invio Diretto) ---
 const CommunicationModal: React.FC<{ 
@@ -42,7 +43,7 @@ const CommunicationModal: React.FC<{
 
     const filteredList = recipientsType === 'clients' 
         ? clients.filter(c => getClientName(c).toLowerCase().includes(searchTerm.toLowerCase()))
-        : suppliers.filter(s => s.companyName.toLowerCase().includes(searchTerm.toLowerCase()));
+        : suppliers.filter(s => (s.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()));
 
     const toggleId = (id: string) => {
         setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -427,7 +428,7 @@ const CRM: React.FC = () => {
             const rents: PendingRent[] = [];
             transactions.forEach(t => {
                 if (t.status === TransactionStatus.Pending && t.category === TransactionCategory.Rent) {
-                    const supplier = suppliersData.find(s => t.description.toLowerCase().includes(s.companyName.toLowerCase()));
+                    const supplier = suppliersData.find(s => t.description.toLowerCase().includes((s.companyName || '').toLowerCase()));
                     rents.push({ transaction: t, supplier, locationColor: '#ccc' });
                 }
             });
