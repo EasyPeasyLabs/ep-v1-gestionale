@@ -851,7 +851,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <>
-                    {/* ... (Overview, CFO, Controlling, Analytics remain largely same, just wrapping in fragments if needed) ... */}
                     {/* --- OVERVIEW (Densità Massima) --- */}
                     {activeTab === 'overview' && (
                         <div className="animate-fade-in space-y-6">
@@ -933,11 +932,131 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         </div>
                     )}
 
-                    {/* --- CFO (STRATEGY & PLANNING) --- */}
+                    {/* --- CFO (STRATEGY & PLANNING) - RIPRISTINATA --- */}
                     {activeTab === 'cfo' && (
                         <div className="space-y-8 animate-slide-up">
-                            {/* CARD 0, 1, 2... (Code omitted for brevity, identical to previous version) */}
-                            {/* ... */}
+                            {/* Card 0: Fiscal Projection */}
+                            <div className="md-card p-6 border-l-4 border-indigo-600">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <CalculatorIcon /> Proiezione Fiscale 2025 (Forfettario Start-up)
+                                </h3>
+                                
+                                <div className="mb-6">
+                                    <div className="flex justify-between text-xs mb-1 font-bold text-gray-600">
+                                        <span>Plafond 85.000€</span>
+                                        <span>{engineData.fiscal.limitProgress.toFixed(1)}% Utilizzato</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                        <div 
+                                            className={`h-3 rounded-full transition-all duration-1000 ${engineData.fiscal.limitProgress > 80 ? 'bg-red-500' : 'bg-indigo-500'}`} 
+                                            style={{ width: `${Math.min(engineData.fiscal.limitProgress, 100)}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="text-xs text-right mt-1 text-gray-500">Residuo: {engineData.fiscal.remainingCeiling.toFixed(2)}€</p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                                    <div className="bg-gray-50 p-3 rounded border border-gray-200">
+                                        <p className="text-gray-500 text-xs uppercase font-bold">Imponibile (78%)</p>
+                                        <p className="text-xl font-mono font-bold text-gray-800 mt-1">{engineData.fiscal.taxableIncome.toFixed(2)}€</p>
+                                        <p className="text-[10px] text-gray-400">Su fatturato incassato</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-3 rounded border border-gray-200">
+                                        <p className="text-gray-500 text-xs uppercase font-bold">INPS (26.23%)</p>
+                                        <p className="text-xl font-mono font-bold text-orange-600 mt-1">{engineData.fiscal.inpsTotal.toFixed(2)}€</p>
+                                        <p className="text-[10px] text-gray-400">Gestione Separata</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-3 rounded border border-gray-200">
+                                        <p className="text-gray-500 text-xs uppercase font-bold">Imposta Sost. (5%)</p>
+                                        <p className="text-xl font-mono font-bold text-red-600 mt-1">{engineData.fiscal.taxTotal.toFixed(2)}€</p>
+                                        <p className="text-[10px] text-gray-400">Aliquota Start-up</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 1: Installments Simulator */}
+                            <div className="md-card p-6 border-l-4 border-teal-500">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4">🔮 Simulatore Rate & Acconti (Anno Successivo)</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div>
+                                        <p className="text-sm text-gray-600 mb-3">
+                                            Stimiamo il carico fiscale totale per Giugno e Novembre dell'anno prossimo, basato sul fatturato attuale.
+                                        </p>
+                                        <ul className="space-y-2 text-sm">
+                                            <li className="flex justify-between border-b border-dashed pb-1">
+                                                <span>Saldo 2025:</span> <span className="font-bold">{engineData.fiscal.installmentsProjection.saldo2025.toFixed(2)}€</span>
+                                            </li>
+                                            <li className="flex justify-between border-b border-dashed pb-1">
+                                                <span>I Acconto 2026 (50%):</span> <span className="font-bold">{engineData.fiscal.installmentsProjection.acconto1_2026.toFixed(2)}€</span>
+                                            </li>
+                                            <li className="flex justify-between bg-teal-50 p-1 rounded font-bold text-teal-800">
+                                                <span>TOTALE GIUGNO:</span> <span>{engineData.fiscal.installmentsProjection.totalDueJune.toFixed(2)}€</span>
+                                            </li>
+                                            <li className="flex justify-between text-xs text-gray-500 pt-1">
+                                                <span>Rata Mensile (x6):</span> <span>{engineData.fiscal.installmentsProjection.installmentAmount.toFixed(2)}€</span>
+                                            </li>
+                                            <li className="flex justify-between pt-2 border-t border-teal-200 font-bold text-orange-700">
+                                                <span>II Acconto (Nov):</span> <span>{engineData.fiscal.installmentsProjection.acconto2_2026.toFixed(2)}€</span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <div className="flex flex-col justify-center items-center bg-teal-50 rounded-xl p-4 border border-teal-100">
+                                        <div className="text-4xl font-bold text-teal-600 mb-1">{engineData.fiscal.monthlySavingQuota.toFixed(0)}€</div>
+                                        <p className="text-xs font-bold text-teal-800 uppercase tracking-wide">Accantonamento Mensile</p>
+                                        <p className="text-[10px] text-center text-teal-600 mt-2 px-4">
+                                            Metti da parte questa cifra ogni mese per coprire tasse e acconti senza stress.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 2: AI CFO (Interactive) */}
+                            <div className="md-card p-6 border-l-4 border-purple-600 bg-purple-50/50">
+                                <h3 className="text-lg font-bold text-purple-900 mb-4 flex items-center gap-2">
+                                    🤖 AI CFO: Reverse Engineering
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-purple-800 uppercase block mb-1">Obiettivo Netto Mensile (€)</label>
+                                            <input 
+                                                type="number" 
+                                                value={simParams.targetNetMonthly} 
+                                                onChange={(e) => setSimParams({...simParams, targetNetMonthly: Number(e.target.value)})} 
+                                                className="w-full p-2 border border-purple-200 rounded text-purple-900 font-bold bg-white focus:ring-purple-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-purple-800 uppercase block mb-1">Prezzo Medio Lezione (€)</label>
+                                            <input 
+                                                type="number" 
+                                                value={simParams.avgLessonPrice} 
+                                                onChange={(e) => setSimParams({...simParams, avgLessonPrice: Number(e.target.value)})} 
+                                                className="w-full p-2 border border-purple-200 rounded text-purple-900 font-bold bg-white focus:ring-purple-500"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <p className="text-sm text-purple-800">Per guadagnare <strong>{simParams.targetNetMonthly}€ netti</strong> al mese, considerando le tue spese attuali e le tasse stimate:</p>
+                                        <div className="bg-white p-3 rounded-lg shadow-sm border border-purple-100 space-y-2">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-600">Fatturato Mensile:</span>
+                                                <span className="font-bold text-purple-700">{engineData.ai.requiredMonthlyRevenue.toFixed(0)}€</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-600">Lezioni Necessarie:</span>
+                                                <span className="font-bold text-purple-700">{engineData.ai.lessonsNeeded.toFixed(0)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-600">Allievi (4 lez/mese):</span>
+                                                <span className="font-bold text-purple-700">{engineData.ai.studentsNeeded.toFixed(0)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 3: Strategic Alerts */}
                             <div className="md-card p-6 border-l-4 border-blue-500 bg-blue-50/50">
                                 <h3 className="text-lg font-bold text-blue-900 mb-3">🔭 Strategia & Allarmi</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -971,11 +1090,99 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         </div>
                     )}
 
-                    {/* --- CONTROLLING (REALITY & OPERATIONS) --- */}
+                    {/* --- CONTROLLING (REALITY & OPERATIONS) - RIPRISTINATA --- */}
                     {activeTab === 'controlling' && (
                         <div className="space-y-8 animate-slide-up">
-                            {/* ... (Code omitted for brevity, identical to previous version) ... */}
-                            {/* ... */}
+                            
+                            {/* Card 1: Profittabilità Immobiliare (Analisi per Sede) */}
+                            <div className="md-card p-6 border-t-4 border-indigo-500">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    🏢 Profittabilità Immobiliare (Sedi)
+                                </h3>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                                    {/* Chart */}
+                                    <div className="h-64 relative">
+                                        <canvas ref={el => controllingChartRef.current = el}></canvas>
+                                    </div>
+                                    
+                                    {/* Table */}
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
+                                                <tr>
+                                                    <th className="px-3 py-2">Sede</th>
+                                                    <th className="px-3 py-2 text-right">Ricavi</th>
+                                                    <th className="px-3 py-2 text-right">Costi Nolo</th>
+                                                    <th className="px-3 py-2 text-right">Margine</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {locationAnalysis.map((loc, idx) => (
+                                                    <tr key={idx} className="hover:bg-gray-50">
+                                                        <td className="px-3 py-2 font-bold text-gray-700">{loc.name}</td>
+                                                        <td className="px-3 py-2 text-right text-green-600 font-mono">{loc.revenue.toFixed(0)}€</td>
+                                                        <td className="px-3 py-2 text-right text-red-600 font-mono">-{loc.rentCost.toFixed(0)}€</td>
+                                                        <td className="px-3 py-2 text-right">
+                                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${loc.margin > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                {loc.marginPercent.toFixed(0)}%
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {locationAnalysis.length === 0 && <tr><td colSpan={4} className="p-4 text-center text-gray-400 italic">Nessun dato per sede.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 2: Efficienza Logistica (TCO) */}
+                            <div className="md-card p-6 border-t-4 border-amber-500 bg-amber-50/30">
+                                <h3 className="text-lg font-bold text-amber-900 mb-4 flex items-center gap-2">
+                                    🚚 Efficienza Logistica (TCO Veicolo)
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                    <div>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-sm font-bold text-gray-600">Costo Carburante (€/L)</span>
+                                            <input 
+                                                type="number" 
+                                                step="0.01" 
+                                                value={simParams.fuelCost} 
+                                                onChange={e => setSimParams({...simParams, fuelCost: Number(e.target.value)})} 
+                                                className="w-20 p-1 border rounded text-right font-bold bg-white"
+                                            />
+                                        </div>
+                                        <div className="space-y-3 text-sm">
+                                            <div className="flex justify-between border-b border-amber-200 pb-1">
+                                                <span>Km Totali Percorsi (A/R):</span>
+                                                <span className="font-bold">{engineData.logistics.totalKm.toFixed(0)} km</span>
+                                            </div>
+                                            <div className="flex justify-between text-amber-800">
+                                                <span>Carburante Stimato:</span>
+                                                <span className="font-bold">{engineData.logistics.estimatedFuelCost.toFixed(2)}€</span>
+                                            </div>
+                                            <div className="flex justify-between text-gray-600">
+                                                <span>Usura/Ammortamento:</span>
+                                                <span className="font-bold">{engineData.logistics.estimatedWearCost.toFixed(2)}€</span>
+                                            </div>
+                                            <div className="flex justify-between text-gray-600">
+                                                <span>Fissi (Assic./Bollo):</span>
+                                                <span className="font-bold">{engineData.logistics.fixedCosts.toFixed(2)}€</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col justify-center items-center bg-white rounded-xl shadow-sm p-4 border border-amber-100">
+                                        <p className="text-xs font-bold text-amber-800 uppercase mb-1">Costo Totale Logistica</p>
+                                        <p className="text-3xl font-bold text-amber-600 mb-2">{engineData.logistics.totalLogisticsCost.toFixed(2)}€</p>
+                                        <p className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">
+                                            Incidenza: <strong>{engineData.logistics.impactPerKm.toFixed(2)} €/km</strong>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Card 3: Costi Struttura */}
                             <div className="md-card p-6 border-t-4 border-gray-500 bg-gray-50">
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">🏢 Costi di Struttura (Overhead)</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

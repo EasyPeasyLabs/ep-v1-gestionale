@@ -33,9 +33,6 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// Helpers (getChildRating, getParentRating, RatingRow, RatingLegend, ClientForm) remain unchanged ...
-// ... [Omissis for brevity since unchanged] ...
-// Re-inserting helper functions for context
 const getChildRating = (child: Child) => {
     if (!child.rating) return 0;
     const { learning, behavior, attendance, hygiene } = child.rating;
@@ -97,7 +94,8 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     const [numberOfChildren, setNumberOfChildren] = useState((client as InstitutionalClient)?.numberOfChildren || 0);
     const [ageRange, setAgeRange] = useState((client as InstitutionalClient)?.ageRange || '');
 
-    // Ratings & Notes (For Parent & Children)
+    // Ratings & Notes (For Parent & Children & Institutional)
+    // Cast to ParentClient is safe for initial state as BaseClient has notesHistory too
     const [parentRating, setParentRating] = useState<ParentRating>((client as ParentClient)?.rating || { availability: 0, complaints: 0, churnRate: 0, distance: 0 });
     const [notesHistory, setNotesHistory] = useState<Note[]>((client as ParentClient)?.notesHistory || []);
     
@@ -135,14 +133,13 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const common = { email, phone, address, zipCode, city, province, clientType };
+        const common = { email, phone, address, zipCode, city, province, clientType, notesHistory };
         
         if (clientType === ClientType.Parent) {
             const parentData: any = {
                 ...common,
                 firstName, lastName, taxCode, children,
-                rating: parentRating,
-                notesHistory
+                rating: parentRating
             };
             if (client?.id) { onSave({ ...parentData, id: client.id }); } else { onSave(parentData); }
         } else {
@@ -170,11 +167,11 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
                 <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg overflow-x-auto">
                     <button type="button" onClick={() => setActiveTab('general')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap px-2 ${activeTab === 'general' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Anagrafica</button>
                     {clientType === ClientType.Parent && (
-                        <>
-                            <button type="button" onClick={() => setActiveTab('children')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap px-2 ${activeTab === 'children' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Figli ({children.length})</button>
-                            <button type="button" onClick={() => setActiveTab('rating')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap px-2 ${activeTab === 'rating' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Valutazione</button>
-                        </>
+                        <button type="button" onClick={() => setActiveTab('children')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap px-2 ${activeTab === 'children' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>Figli ({children.length})</button>
                     )}
+                    <button type="button" onClick={() => setActiveTab('rating')} className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap px-2 ${activeTab === 'rating' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500'}`}>
+                        {clientType === ClientType.Parent ? 'Valutazione' : 'Note'}
+                    </button>
                 </div>
             </div>
 
@@ -211,7 +208,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
                     </>
                 )}
 
-                {activeTab === 'children' && (
+                {activeTab === 'children' && clientType === ClientType.Parent && (
                     <div className="space-y-4">
                         <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                             <h4 className="text-xs font-bold text-gray-600 uppercase mb-2">Aggiungi Figlio</h4>
@@ -238,29 +235,31 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
                 {activeTab === 'rating' && (
                     <div className="space-y-6">
-                        {/* Parent Rating */}
-                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                            <h4 className="font-bold text-blue-800 mb-3 text-sm uppercase">Valutazione Genitore</h4>
-                            <RatingRow label="Disponibilità" value={parentRating.availability} onChange={v => setParentRating(p => ({...p, availability: v}))} />
-                            <RatingRow label="Atteggiamento (Lamentele)" value={parentRating.complaints} onChange={v => setParentRating(p => ({...p, complaints: v}))} />
-                            <RatingRow label="Fedeltà (Churn)" value={parentRating.churnRate} onChange={v => setParentRating(p => ({...p, churnRate: v}))} />
-                            <RatingRow label="Vicinanza Sede" value={parentRating.distance} onChange={v => setParentRating(p => ({...p, distance: v}))} />
-                        </div>
+                        {/* Parent Specific Ratings */}
+                        {clientType === ClientType.Parent && (
+                            <>
+                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                                    <h4 className="font-bold text-blue-800 mb-3 text-sm uppercase">Valutazione Genitore</h4>
+                                    <RatingRow label="Disponibilità" value={parentRating.availability} onChange={v => setParentRating(p => ({...p, availability: v}))} />
+                                    <RatingRow label="Atteggiamento (Lamentele)" value={parentRating.complaints} onChange={v => setParentRating(p => ({...p, complaints: v}))} />
+                                    <RatingRow label="Fedeltà (Churn)" value={parentRating.churnRate} onChange={v => setParentRating(p => ({...p, churnRate: v}))} />
+                                    <RatingRow label="Vicinanza Sede" value={parentRating.distance} onChange={v => setParentRating(p => ({...p, distance: v}))} />
+                                </div>
 
-                        {/* Children Rating */}
-                        {children.map((child, idx) => (
-                            <div key={child.id} className="bg-green-50 p-4 rounded-lg border border-green-100">
-                                <h4 className="font-bold text-green-800 mb-3 text-sm uppercase">Valutazione: {child.name}</h4>
-                                <RatingRow label="Apprendimento" value={child.rating?.learning || 0} onChange={v => handleChildRatingChange(idx, 'learning', v)} />
-                                <RatingRow label="Condotta" value={child.rating?.behavior || 0} onChange={v => handleChildRatingChange(idx, 'behavior', v)} />
-                                <RatingRow label="Frequenza" value={child.rating?.attendance || 0} onChange={v => handleChildRatingChange(idx, 'attendance', v)} />
-                                <RatingRow label="Igiene/Salute" value={child.rating?.hygiene || 0} onChange={v => handleChildRatingChange(idx, 'hygiene', v)} />
-                            </div>
-                        ))}
+                                {children.map((child, idx) => (
+                                    <div key={child.id} className="bg-green-50 p-4 rounded-lg border border-green-100">
+                                        <h4 className="font-bold text-green-800 mb-3 text-sm uppercase">Valutazione: {child.name}</h4>
+                                        <RatingRow label="Apprendimento" value={child.rating?.learning || 0} onChange={v => handleChildRatingChange(idx, 'learning', v)} />
+                                        <RatingRow label="Condotta" value={child.rating?.behavior || 0} onChange={v => handleChildRatingChange(idx, 'behavior', v)} />
+                                        <RatingRow label="Frequenza" value={child.rating?.attendance || 0} onChange={v => handleChildRatingChange(idx, 'attendance', v)} />
+                                        <RatingRow label="Igiene/Salute" value={child.rating?.hygiene || 0} onChange={v => handleChildRatingChange(idx, 'hygiene', v)} />
+                                    </div>
+                                ))}
+                                <RatingLegend />
+                            </>
+                        )}
 
-                        <RatingLegend />
-
-                        <NotesManager notesHistory={notesHistory} onSave={setNotesHistory} label="Note Famiglia" />
+                        <NotesManager notesHistory={notesHistory} onSave={setNotesHistory} label={`Note ${clientType === ClientType.Parent ? 'Famiglia' : 'Ente'}`} />
                     </div>
                 )}
             </div>
@@ -352,9 +351,6 @@ const Clients: React.FC = () => {
                 // Cascading delete simulation for single client
                 const clientId = clientToProcess.id;
                 await deleteClient(clientId);
-                // We should also delete enrollments here to be consistent, but "Soft Delete" keeps them for restore?
-                // If soft deleting client, maybe keep enrollments but mark as inactive?
-                // For simplicity, soft delete just hides. Hard delete is where we clean.
             }
             else if (clientToProcess.action === 'restore') await restoreClient(clientToProcess.id);
             else {
@@ -423,17 +419,17 @@ const Clients: React.FC = () => {
         result = result.filter(c => {
             const term = searchTerm.toLowerCase();
             
-            // 1. Base Search
+            // 1. Base Search with Safe Checks (Fixes White Screen Crash)
             let match = false;
             if (c.clientType === ClientType.Parent) {
                 const p = c as ParentClient;
-                match = p.firstName.toLowerCase().includes(term) || 
-                        p.lastName.toLowerCase().includes(term) || 
-                        p.email.toLowerCase().includes(term) ||
-                        p.children.some(child => child.name.toLowerCase().includes(term));
+                match = (p.firstName || '').toLowerCase().includes(term) || 
+                        (p.lastName || '').toLowerCase().includes(term) || 
+                        (p.email || '').toLowerCase().includes(term) ||
+                        (p.children || []).some(child => (child.name || '').toLowerCase().includes(term));
             } else {
                 const i = c as InstitutionalClient;
-                match = i.companyName.toLowerCase().includes(term) || i.email.toLowerCase().includes(term);
+                match = (i.companyName || '').toLowerCase().includes(term) || (i.email || '').toLowerCase().includes(term);
             }
 
             // 2. Search in Enrollments (Location Name, Supplier)
@@ -473,19 +469,19 @@ const Clients: React.FC = () => {
             let nameB = '', surnameB = '';
 
             if (a.clientType === ClientType.Parent) {
-                nameA = (a as ParentClient).firstName;
-                surnameA = (a as ParentClient).lastName;
+                nameA = (a as ParentClient).firstName || '';
+                surnameA = (a as ParentClient).lastName || '';
             } else {
-                nameA = (a as InstitutionalClient).companyName;
-                surnameA = (a as InstitutionalClient).companyName; // Fallback
+                nameA = (a as InstitutionalClient).companyName || '';
+                surnameA = (a as InstitutionalClient).companyName || ''; // Fallback
             }
 
             if (b.clientType === ClientType.Parent) {
-                nameB = (b as ParentClient).firstName;
-                surnameB = (b as ParentClient).lastName;
+                nameB = (b as ParentClient).firstName || '';
+                surnameB = (b as ParentClient).lastName || '';
             } else {
-                nameB = (b as InstitutionalClient).companyName;
-                surnameB = (b as InstitutionalClient).companyName;
+                nameB = (b as InstitutionalClient).companyName || '';
+                surnameB = (b as InstitutionalClient).companyName || '';
             }
 
             switch (sortOrder) {
@@ -576,11 +572,14 @@ const Clients: React.FC = () => {
                         const isParent = client.clientType === ClientType.Parent;
                         const parentClient = client as ParentClient;
                         const instClient = client as InstitutionalClient;
+                        
+                        // Safe Checks for Display Name
                         const displayName = isParent 
                             ? (nameFormat === 'first_last' 
-                                ? `${parentClient.firstName} ${parentClient.lastName}` 
-                                : `${parentClient.lastName} ${parentClient.firstName}`)
-                            : instClient.companyName;
+                                ? `${parentClient.firstName || ''} ${parentClient.lastName || ''}` 
+                                : `${parentClient.lastName || ''} ${parentClient.firstName || ''}`)
+                            : instClient.companyName || 'Senza Nome';
+                            
                         const parentRatingAvg = isParent ? getParentRating(parentClient.rating) : 0;
                         
                         const locationColors = getClientLocationColors(client.id);
@@ -621,7 +620,7 @@ const Clients: React.FC = () => {
                                                     const cAvg = getChildRating(child);
                                                     return (
                                                         <span key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex items-center shadow-sm">
-                                                            {child.name}
+                                                            {child.name || 'Senza nome'}
                                                             {Number(cAvg) > 0 && (
                                                                 <span className="ml-1.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
                                                                     {cAvg} <StarIcon filled={true} className="w-2 h-2 ml-0.5" />

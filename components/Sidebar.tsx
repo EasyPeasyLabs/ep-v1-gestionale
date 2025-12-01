@@ -125,11 +125,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
   ];
 
   const handleNavClick = (page: Page) => {
+    // DEBUG LISTENER 1: Click su elemento menu
+    console.log('[DEBUG 1] Sidebar: Click su menu', page);
     setCurrentPage(page);
     setIsOpen(false);
   }
 
   const toggleSubMenu = (label: string) => {
+      // DEBUG LISTENER 2: Click su sottomenu
+      console.log('[DEBUG 2] Sidebar: Toggle sottomenu', label);
       setExpandedMenu(prev => prev === label ? null : label);
   }
 

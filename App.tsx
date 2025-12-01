@@ -120,6 +120,8 @@ const App: React.FC = () => {
 
   // Funzione di navigazione centralizzata che supporta parametri
   const handleNavigation = (page: Page, params?: any) => {
+      // DEBUG LISTENER 3: Cambio stato pagina
+      console.log('[DEBUG 3] App: handleNavigation verso', page);
       setCurrentPage(page);
       setPageParams(params || null);
   };
@@ -127,6 +129,9 @@ const App: React.FC = () => {
   const renderContent = () => {
     if (!user) return null; // Should not happen if user is logged in
     
+    // DEBUG LISTENER 4: Rendering content
+    console.log('[DEBUG 4] App: rendering content per', currentPage);
+
     // Use a key to force remounting and trigger the animation
     return (
         <div key={currentPage} className="animate-slide-up h-full">
