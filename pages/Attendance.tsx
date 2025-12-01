@@ -4,6 +4,7 @@ import { Appointment, Enrollment, EnrollmentStatus } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
+import CalendarIcon from '../components/icons/CalendarIcon';
 
 // Interfaccia estesa per visualizzare le lezioni nella lista presenze
 interface AttendanceItem extends Appointment {
@@ -13,10 +14,17 @@ interface AttendanceItem extends Appointment {
     lessonsRemaining: number;
 }
 
+// Helpers Date
+const getStartOfWeek = (d: Date) => { const date = new Date(d); const day = date.getDay(); const diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
+const getEndOfWeek = (d: Date) => { const date = getStartOfWeek(d); date.setDate(date.getDate() + 6); return date; };
+const getStartOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+const getEndOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
 const Attendance: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     
     // Modal State per conferma assenza
     const [confirmState, setConfirmState] = useState<{
@@ -39,13 +47,32 @@ const Attendance: React.FC = () => {
             const enrollments = await getAllEnrollments();
             const items: AttendanceItem[] = [];
             
+            // Calcola Range Date
+            let start = new Date(currentDate);
+            let end = new Date(currentDate);
+            
+            start.setHours(0,0,0,0);
+            end.setHours(23,59,59,999);
+
+            if (viewMode === 'week') {
+                start = getStartOfWeek(currentDate);
+                start.setHours(0,0,0,0);
+                end = getEndOfWeek(currentDate);
+                end.setHours(23,59,59,999);
+            } else if (viewMode === 'month') {
+                start = getStartOfMonth(currentDate);
+                end = getEndOfMonth(currentDate);
+                end.setHours(23,59,59,999);
+            }
+
             enrollments.forEach((enr: Enrollment) => {
                 // Consideriamo solo iscrizioni attive o in attesa (che occupano il posto)
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments) {
                         enr.appointments.forEach((app: Appointment) => {
-                            // Filtra per la data selezionata
-                            if (app.date.startsWith(selectedDate)) {
+                            const appDate = new Date(app.date);
+                            // Filtra per range
+                            if (appDate >= start && appDate <= end) {
                                 items.push({
                                     ...app,
                                     enrollmentId: enr.id,
@@ -65,31 +92,51 @@ const Attendance: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedDate]);
+    }, [currentDate, viewMode]);
 
     useEffect(() => { fetchAttendanceData(); }, [fetchAttendanceData]); 
 
-    // Grouping Logic: Location -> Items
-    const groupedItems = useMemo(() => {
-        const groups: Record<string, AttendanceItem[]> = {};
+    // Grouping Logic: Location -> Date (if not daily) -> Items
+    const groupedData = useMemo(() => {
+        const locationGroups: Record<string, Record<string, AttendanceItem[]>> = {}; // Location -> DateString -> Items
+        
         attendanceItems.forEach(item => {
             const loc = item.locationName || 'Sede Non Definita';
-            if (!groups[loc]) groups[loc] = [];
-            groups[loc].push(item);
+            const dateKey = new Date(item.date).toDateString(); // Group by day
+
+            if (!locationGroups[loc]) locationGroups[loc] = {};
+            if (!locationGroups[loc][dateKey]) locationGroups[loc][dateKey] = [];
+            
+            locationGroups[loc][dateKey].push(item);
         });
         
         // Sort items inside groups by time
-        Object.keys(groups).forEach(key => {
-            groups[key].sort((a,b) => a.startTime.localeCompare(b.startTime));
+        Object.keys(locationGroups).forEach(loc => {
+            Object.keys(locationGroups[loc]).forEach(date => {
+                locationGroups[loc][date].sort((a,b) => a.startTime.localeCompare(b.startTime));
+            });
         });
 
-        return groups;
+        return locationGroups;
     }, [attendanceItems]);
 
-    const handleDateChange = (offset: number) => {
-        const date = new Date(selectedDate);
-        date.setDate(date.getDate() + offset);
-        setSelectedDate(date.toISOString().split('T')[0]);
+    const handleNavigate = (direction: number) => {
+        const newDate = new Date(currentDate);
+        if (viewMode === 'day') newDate.setDate(newDate.getDate() + direction);
+        else if (viewMode === 'week') newDate.setDate(newDate.getDate() + (direction * 7));
+        else if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + direction);
+        setCurrentDate(newDate);
+    };
+
+    const getRangeLabel = () => {
+        const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+        if (viewMode === 'day') return currentDate.toLocaleDateString('it-IT', { weekday: 'long', ...options });
+        if (viewMode === 'week') {
+            const start = getStartOfWeek(currentDate);
+            const end = getEndOfWeek(currentDate);
+            return `${start.getDate()} - ${end.getDate()} ${end.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}`;
+        }
+        return currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
     };
 
     const handleMarkPresence = async (item: AttendanceItem) => {
@@ -128,72 +175,107 @@ const Attendance: React.FC = () => {
 
     return (
         <div>
-            <h1 className="text-3xl font-bold mb-2">Registro Presenze</h1>
-            <p className="mt-1 mb-6" style={{color: 'var(--md-text-secondary)'}}>
-                Gestione giornaliera suddivisa per Recinto (Sede).
-            </p>
-
-            {/* Navigazione Data */}
-            <div className="md-card p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center space-x-4">
-                    <button onClick={() => handleDateChange(-1)} className="md-btn md-btn-flat text-2xl font-bold">&lt;</button>
-                    <div className="text-center">
-                         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="text-lg font-bold bg-transparent border-b border-gray-300 focus:border-indigo-500 outline-none text-center"/>
-                        <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">{new Date(selectedDate).toLocaleDateString('it-IT', { weekday: 'long' })}</div>
-                    </div>
-                    <button onClick={() => handleDateChange(1)} className="md-btn md-btn-flat text-2xl font-bold">&gt;</button>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold mb-1">Registro Presenze</h1>
+                    <p className="text-gray-500">Gestione presenze e recuperi.</p>
                 </div>
-                <button onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} className="text-sm text-indigo-600 font-medium hover:underline">Torna a Oggi</button>
+                
+                {/* View Toggles */}
+                <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
+                    <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
+                    <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
+                    <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
+                </div>
+            </div>
+
+            {/* Navigazione Calendario */}
+            <div className="md-card p-4 mb-6 flex items-center justify-between bg-white border-l-4 border-indigo-500 shadow-sm">
+                <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&lt;</button>
+                
+                <div className="flex items-center gap-3">
+                    <CalendarIcon />
+                    <div className="text-center">
+                        <span className="block text-lg font-bold text-gray-800 capitalize">{getRangeLabel()}</span>
+                        {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
+                    </div>
+                </div>
+
+                <button onClick={() => handleNavigate(1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&gt;</button>
             </div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
-                <div className="space-y-8">
-                    {Object.keys(groupedItems).length === 0 && <div className="text-center py-12 text-gray-500 italic">Nessuna lezione in programma oggi.</div>}
+                <div className="space-y-8 animate-fade-in">
+                    {Object.keys(groupedData).length === 0 && <div className="text-center py-12 text-gray-500 italic bg-gray-50 rounded-xl border border-dashed border-gray-300">Nessuna lezione in programma nel periodo selezionato.</div>}
                     
-                    {Object.entries(groupedItems).map(([locationName, items]) => {
-                        const typedItems = items as AttendanceItem[];
+                    {Object.entries(groupedData).map(([locationName, datesMap]) => {
+                        // Ordina le date
+                        const sortedDates = Object.keys(datesMap).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
+                        const firstItem = datesMap[sortedDates[0]][0];
+
                         return (
-                        <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex items-center gap-3">
-                                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: typedItems[0]?.locationColor || '#ccc' }}></span>
+                        <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+                            {/* RECINTO HEADER */}
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-colors">
+                                <span className="w-4 h-4 rounded-full shadow-sm ring-2 ring-white" style={{ backgroundColor: firstItem?.locationColor || '#ccc' }}></span>
                                 <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locationName}</h2>
-                                <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full">{typedItems.length} allievi</span>
+                                <span className="text-xs bg-white border border-gray-300 text-gray-600 px-2 py-0.5 rounded-full font-mono">
+                                    {Object.values(datesMap).reduce((acc, curr) => acc + curr.length, 0)} lez.
+                                </span>
                             </div>
+
                             <div className="divide-y divide-gray-100">
-                                {typedItems.map(item => {
-                                    const isPresent = item.status === 'Present';
-                                    const isAbsent = item.status === 'Absent';
-                                    return (
-                                        <div key={item.lessonId} className={`p-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-colors ${isAbsent ? 'bg-red-50' : isPresent ? 'bg-green-50' : ''}`}>
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="font-mono font-bold text-sm text-gray-600">{item.startTime} - {item.endTime}</span>
-                                                    <h3 className="font-bold text-gray-900">{item.childName}</h3>
+                                {sortedDates.map(dateKey => (
+                                    <div key={dateKey}>
+                                        {/* Date Header (Se non è Daily View) */}
+                                        {viewMode !== 'day' && (
+                                            <div className="px-6 py-2 bg-indigo-50/50 text-xs font-bold text-indigo-800 uppercase border-b border-indigo-100/50 flex items-center">
+                                                <CalendarIcon /> <span className="ml-2">{new Date(dateKey).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long'})}</span>
+                                            </div>
+                                        )}
+
+                                        {datesMap[dateKey].map(item => {
+                                            const isPresent = item.status === 'Present';
+                                            const isAbsent = item.status === 'Absent';
+                                            return (
+                                                <div key={item.lessonId} className={`px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-all border-l-4 ${isAbsent ? 'border-l-red-400 bg-red-50/30' : isPresent ? 'border-l-green-400 bg-green-50/30' : 'border-l-transparent'}`}>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="font-mono font-bold text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">{item.startTime} - {item.endTime}</span>
+                                                            <h3 className="font-bold text-gray-900 text-base">{item.childName}</h3>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 mt-1 ml-1">
+                                                            <span className="text-xs text-gray-500">{item.subscriptionName}</span>
+                                                            <span className="text-[10px] text-gray-400">•</span>
+                                                            <span className="text-xs text-gray-500">Slot residui: <strong>{item.lessonsRemaining}</strong></span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center gap-2 mt-3 md:mt-0 md:ml-4">
+                                                        {isPresent ? (
+                                                            <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-200 shadow-sm flex items-center gap-1">
+                                                                ✓ PRESENTE
+                                                            </span>
+                                                        ) : isAbsent ? (
+                                                            <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full border border-red-200 shadow-sm flex items-center gap-1">
+                                                                ✕ ASSENTE
+                                                            </span>
+                                                        ) : (
+                                                            <>
+                                                                <button onClick={() => handleMarkPresence(item)} className="px-4 py-2 bg-white border border-green-500 text-green-600 rounded-lg text-xs font-bold hover:bg-green-50 hover:shadow-md transition-all active:scale-95">
+                                                                    ✓ Presente
+                                                                </button>
+                                                                <button onClick={() => handleMarkAbsence(item)} className="px-4 py-2 bg-white border border-red-300 text-red-500 rounded-lg text-xs font-medium hover:bg-red-50 hover:shadow-md transition-all active:scale-95">
+                                                                    ✕ Assente
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <p className="text-xs text-gray-500 mt-1 ml-14">
-                                                    Slot residui: <strong>{item.lessonsRemaining}</strong>
-                                                </p>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-2 mt-3 md:mt-0 ml-14 md:ml-0">
-                                                {isPresent ? (
-                                                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-200">PRESENTE (Slot Consumato)</span>
-                                                ) : isAbsent ? (
-                                                    <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full border border-red-200">ASSENTE</span>
-                                                ) : (
-                                                    <>
-                                                        <button onClick={() => handleMarkPresence(item)} className="px-3 py-1.5 bg-white border border-green-500 text-green-600 rounded text-xs font-bold hover:bg-green-50 transition-colors">
-                                                            ✓ Presente
-                                                        </button>
-                                                        <button onClick={() => handleMarkAbsence(item)} className="px-3 py-1.5 bg-white border border-red-300 text-red-500 rounded text-xs font-medium hover:bg-red-50 transition-colors">
-                                                            ✕ Assente
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                            );
+                                        })}
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     )})}

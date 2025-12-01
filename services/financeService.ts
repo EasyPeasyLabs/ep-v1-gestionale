@@ -66,6 +66,34 @@ export const deleteTransactionByRelatedId = async (relatedId: string): Promise<v
     await batch.commit();
 };
 
+// Eliminazione Noli Automatici per una specifica Sede (Usata quando la sede si svuota)
+export const deleteAutoRentTransactions = async (locationId: string): Promise<void> => {
+    // Cerca transazioni di tipo Expense, Categoria Rent, generate automaticamente (AUTO-RENT) e collegate alla locationId
+    const q = query(
+        transactionCollectionRef, 
+        where("category", "==", TransactionCategory.Rent),
+        where("allocationId", "==", locationId)
+    );
+    
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    let count = 0;
+
+    snapshot.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        // Controllo di sicurezza extra: elimina solo quelle generate automaticamente o esplicitamente noli
+        if (data.relatedDocumentId && String(data.relatedDocumentId).startsWith('AUTO-RENT')) {
+            batch.delete(docSnap.ref);
+            count++;
+        }
+    });
+
+    if (count > 0) {
+        await batch.commit();
+        console.log(`Eliminate ${count} transazioni di nolo automatico per la sede ${locationId}`);
+    }
+};
+
 // Funzione di Batch per aggiungere multiple transazioni
 export const batchAddTransactions = async (transactions: TransactionInput[]): Promise<void> => {
     const batch = writeBatch(db);
@@ -75,40 +103,6 @@ export const batchAddTransactions = async (transactions: TransactionInput[]): Pr
     });
     await batch.commit();
 };
-
-// --- MASSIVE RESET FUNCTION (DANGER ZONE) ---
-export const resetFinancialData = async (type: TransactionType): Promise<void> => {
-    // 1. Trova tutte le transazioni del tipo specificato (Entrate o Uscite)
-    const q = query(transactionCollectionRef, where("type", "==", type));
-    const snapshot = await getDocs(q);
-
-    // Nota: Firestore batch ha un limite di 500 operazioni. 
-    // Per sicurezza in un reset massivo, usiamo un approccio a chunk o iterativo con Promise.all per piccoli gruppi.
-    // Qui usiamo un approccio iterativo sicuro.
-    
-    const deletePromises = snapshot.docs.map(async (docSnap) => {
-        const t = docSnap.data() as Transaction;
-        
-        // A. Elimina la transazione
-        await deleteDoc(docSnap.ref);
-
-        // B. Elimina il documento collegato (Fattura Attiva o Passiva) se presente
-        if (t.relatedDocumentId) {
-            // Se è un'entrata, cerchiamo nelle fatture (invoices)
-            if (type === TransactionType.Income) {
-                const invoiceRef = doc(db, 'invoices', t.relatedDocumentId);
-                // Tentiamo l'eliminazione. Se non esiste (già cancellata), Firestore non dà errore.
-                await deleteDoc(invoiceRef);
-            }
-            // Se è un'uscita, potenzialmente ci sono fatture passive o noli, 
-            // ma attualmente non abbiamo una collection 'passive_invoices' separata strict.
-            // Se in futuro ci sarà, aggiungere qui la logica.
-        }
-    });
-
-    await Promise.all(deletePromises);
-};
-
 
 // --- Rent Expenses Automation ---
 export const calculateRentTransactions = (
@@ -193,9 +187,6 @@ const getNextDocumentNumber = async (collectionName: string, prefix: string, pad
     if (!snapshot.empty) {
         snapshot.docs.forEach(d => {
             const data = d.data();
-            // Salta i documenti eliminati per il calcolo del numero progressivo? 
-            // Di solito NO, il buco di numerazione fiscale non è ammesso. 
-            // Quindi consideriamo anche i cancellati per la numerazione.
             
             const num = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
             if (num && num.includes(currentYear)) {
@@ -238,7 +229,6 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
 
     snapshot.docs.forEach((docSnap) => {
         const invoice = docSnap.data() as Invoice;
-        // Non marchiamo come overdue se è nel cestino
         if (!invoice.isDeleted) {
             const dueDate = new Date(invoice.dueDate);
             if (dueDate < today) {
@@ -336,18 +326,23 @@ export const permanentDeleteQuote = async (id: string): Promise<void> => {
     await deleteDoc(quoteDoc);
 };
 
-// --- CLEANUP HELPER (Hard Delete Financials for Enrollment) ---
-export const cleanupEnrollmentFinancials = async (clientId: string, childName: string): Promise<void> => {
-    // 1. Trova ed elimina Fatture collegate (identificate da note o convenzione)
-    // Non avendo un link ID diretto sull'enrollment verso la fattura, usiamo una ricerca euristica sicura
-    // basata sul cliente e sul nome del bambino nelle note (generato da executePayment).
+// --- CLEANUP HELPER (Hard Delete Financials & Operational for Enrollment) ---
+// Now accepts the whole Enrollment object to clean up linked lessons/activities
+export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promise<void> => {
+    const clientId = enrollment.clientId;
+    const childName = enrollment.childName;
+
+    // 1. FATTURE & TRANSAZIONI INCASSO
+    // Trova ed elimina Fatture collegate (identificate da note o convenzione)
     const invoices = await getInvoices();
+    const searchName = childName.toLowerCase();
     
-    // Filtra fatture del cliente che menzionano il bambino nelle note
-    // Nota: questo include anche eventuali fatture "Ghost" di saldo
     const targetInvoices = invoices.filter(i => 
         i.clientId === clientId && 
-        (i.notes?.includes(childName) || i.items.some(item => item.description.includes(childName)))
+        (
+            (i.notes && i.notes.toLowerCase().includes(searchName)) || 
+            i.items.some(item => item.description.toLowerCase().includes(searchName))
+        )
     );
 
     for (const inv of targetInvoices) {
@@ -357,15 +352,71 @@ export const cleanupEnrollmentFinancials = async (clientId: string, childName: s
         await permanentDeleteInvoice(inv.id);
     }
 
-    // 2. Trova ed elimina Transazioni "Contanti" (senza fattura)
-    // Queste hanno una descrizione specifica generata in Enrollments.tsx
+    // 2. TRANSAZIONI "CONTANTI"
     const transactions = await getTransactions();
-    const targetTrans = transactions.filter(t => 
-        t.description.includes(`Incasso Iscrizione (Contanti): ${childName}`) ||
-        t.description.includes(`Incasso Iscrizione (Contanti) - ${childName}`)
-    );
+    const targetIncomeTrans = transactions.filter(t => {
+        const desc = t.description.toLowerCase();
+        return (t.type === TransactionType.Income) && 
+               (desc.includes(`incasso iscrizione (contanti): ${searchName}`) ||
+                desc.includes(`incasso iscrizione (contanti) - ${searchName}`));
+    });
 
-    for (const t of targetTrans) {
+    for (const t of targetIncomeTrans) {
         await permanentDeleteTransaction(t.id);
+    }
+
+    // 3. REGISTRO ATTIVITÀ (Lesson Activities)
+    // Elimina i collegamenti tra lezioni e attività per questo enrollment
+    if (enrollment.appointments && enrollment.appointments.length > 0) {
+        const lessonIds = enrollment.appointments.map(a => a.lessonId);
+        await deleteLessonActivitiesForEnrollment(lessonIds);
+    }
+};
+
+// Elimina i record lesson_activities collegati a un array di lessonIds
+const deleteLessonActivitiesForEnrollment = async (lessonIds: string[]): Promise<void> => {
+    if (lessonIds.length === 0) return;
+    
+    // Firestore "in" query ha un limite di 30 (o 10). Facciamo tutto client-side filter per semplicità 
+    // visto che non abbiamo un indice diretto enrollmentId in lesson_activities
+    const collectionRef = collection(db, 'lesson_activities');
+    const snapshot = await getDocs(collectionRef);
+    const batch = writeBatch(db);
+    let count = 0;
+
+    snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        if (lessonIds.includes(data.lessonId)) {
+            batch.delete(docSnap.ref);
+            count++;
+        }
+    });
+
+    if (count > 0) {
+        await batch.commit();
+        console.log(`Eliminate ${count} attività didattiche collegate.`);
+    }
+};
+
+// Nuova funzione per eliminare massivamente tutte le transazioni di un tipo (reset)
+export const resetFinancialData = async (type: TransactionType): Promise<void> => {
+    const q = query(transactionCollectionRef, where("type", "==", type));
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    let count = 0;
+
+    snapshot.docs.forEach((docSnap) => {
+        const t = docSnap.data() as Transaction;
+        batch.delete(docSnap.ref);
+        count++;
+        
+        // Se è un'entrata e ha un documento collegato (Fattura), eliminiamo anche quello per coerenza?
+        // Il prompt chiede "ENTRATE: Elimina tutte". Se elimino la transazione, la fattura rimane ma "non pagata".
+        // Per una pulizia "Enterprise", se elimino l'incasso, dovrei forse segnare la fattura come non pagata o eliminarla.
+        // Qui scegliamo di eliminare solo i movimenti finanziari come richiesto (Ledger reset).
+    });
+
+    if (count > 0) {
+        await batch.commit();
     }
 };

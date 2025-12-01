@@ -245,6 +245,7 @@ const Suppliers: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
     const [showTrash, setShowTrash] = useState(false);
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
     
     // Sort State
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'day_asc'>('day_asc');
@@ -278,6 +279,24 @@ const Suppliers: React.FC = () => {
         } catch (e) {
             console.error(e);
             alert("Errore durante il salvataggio");
+        }
+    };
+
+    const handleConfirmDeleteAll = async () => {
+        setIsDeleteAllModalOpen(false);
+        setLoading(true);
+        try {
+            const allSuppliers = await getSuppliers();
+            for (const s of allSuppliers) {
+                await permanentDeleteSupplier(s.id);
+            }
+            await fetchSuppliers();
+            alert("Tutti i fornitori sono stati eliminati. Le sedi e le lezioni collegate non saranno più disponibili.");
+        } catch (err) {
+            console.error(err);
+            alert("Errore eliminazione totale.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -321,6 +340,7 @@ const Suppliers: React.FC = () => {
             <div className="flex flex-wrap gap-4 justify-between items-center">
                 <div><h1 className="text-3xl font-bold">Fornitori</h1><p className="mt-1 text-gray-500">Gestione sedi e anagrafiche.</p></div>
                 <div className="flex gap-2">
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
                     <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /></button>
                     {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green"><PlusIcon /><span className="ml-2">Nuovo</span></button>}
                 </div>
@@ -405,6 +425,16 @@ const Suppliers: React.FC = () => {
             )}
             
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="2xl"><SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={() => setIsModalOpen(false)} /></Modal>}
+
+            <ConfirmModal 
+                isOpen={isDeleteAllModalOpen}
+                onClose={() => setIsDeleteAllModalOpen(false)}
+                onConfirm={handleConfirmDeleteAll}
+                title="ELIMINA TUTTI I FORNITORI"
+                message="⚠️ ATTENZIONE: Stai per eliminare TUTTI i fornitori e le relative sedi. Questa operazione renderà orfane le lezioni collegate a queste sedi. Confermi?"
+                isDangerous={true}
+                confirmText="Sì, Elimina TUTTO"
+            />
         </div>
     );
 };

@@ -4,7 +4,7 @@ import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, Transactio
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
-import { addTransaction, deleteTransactionByRelatedId, addInvoice, cleanupEnrollmentFinancials } from '../services/financeService';
+import { addTransaction, deleteTransactionByRelatedId, addInvoice, cleanupEnrollmentFinancials, deleteAutoRentTransactions } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -115,6 +115,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
     
     const [paymentModalState, setPaymentModalState] = useState<{
         isOpen: boolean;
@@ -500,24 +501,42 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         if (!deleteModalState.enrollment) return;
         const target = deleteModalState.enrollment;
         const scope = deleteModalState.scope;
+        const locationId = target.locationId;
+        
         setDeleteModalState(prev => ({...prev, isOpen: false}));
         setLoading(true);
 
         try {
             if (scope === 'single') {
-                // Elimina SOLO questa iscrizione e i suoi dati finanziari
-                await cleanupEnrollmentFinancials(target.clientId, target.childName);
+                // 1. Elimina entrate, fatture e ATTIVITÀ collegate (Deep Clean)
+                await cleanupEnrollmentFinancials(target);
+                
+                // 2. Elimina iscrizione
                 await deleteEnrollment(target.id);
+
+                // 3. CHECK PER NOLO ORFANO
+                // Conta quante iscrizioni rimangono per questa location
+                if (locationId && locationId !== 'unassigned') {
+                    const remainingInLocation = enrollments.filter(e => e.locationId === locationId && e.id !== target.id);
+                    if (remainingInLocation.length === 0) {
+                        await deleteAutoRentTransactions(locationId);
+                    }
+                }
+
             } else {
-                // Elimina TUTTE le iscrizioni del cliente e TUTTI i dati finanziari collegati
+                // Elimina TUTTE (Cliente)
                 const allEnrollments = await getEnrollmentsForClient(target.clientId);
                 
-                // 1. Elimina i dati finanziari globali (Fatture/Transazioni del cliente)
-                await cleanupEnrollmentFinancials(target.clientId, target.childName);
-                
-                // 2. Elimina tutte le iscrizioni
                 for (const enr of allEnrollments) {
+                    await cleanupEnrollmentFinancials(enr);
                     await deleteEnrollment(enr.id);
+                    
+                    if (enr.locationId && enr.locationId !== 'unassigned') {
+                        const remaining = enrollments.filter(e => e.locationId === enr.locationId && e.clientId !== target.clientId);
+                        if (remaining.length === 0) {
+                            await deleteAutoRentTransactions(enr.locationId);
+                        }
+                    }
                 }
             }
             await fetchData();
@@ -525,6 +544,30 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         } catch (err) {
             console.error("Delete error:", err);
             alert("Errore durante l'eliminazione.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleConfirmDeleteAll = async () => {
+        setIsDeleteAllModalOpen(false);
+        setLoading(true);
+        try {
+            // Fetch current fresh data
+            const allEnrollments = await getAllEnrollments();
+            for (const enr of allEnrollments) {
+                await cleanupEnrollmentFinancials(enr);
+                await deleteEnrollment(enr.id);
+                if (enr.locationId && enr.locationId !== 'unassigned') {
+                    await deleteAutoRentTransactions(enr.locationId);
+                }
+            }
+            await fetchData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+            alert("Tutte le iscrizioni e i dati correlati sono stati eliminati.");
+        } catch (err) {
+            console.error("Error deleting all:", err);
+            alert("Errore durante l'eliminazione totale.");
         } finally {
             setLoading(false);
         }
@@ -820,12 +863,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         </button>
                     </div>
 
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
                     <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center">
                         <PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span>
                     </button>
                 </div>
             </div>
             
+            {/* ... (Rest of content) ... */}
             {/* Banner Istruzioni Move Mode */}
             {isMoveMode && (
                 <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">
@@ -1140,6 +1185,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     </div>
                 </Modal>
             )}
+
+            <ConfirmModal 
+                isOpen={isDeleteAllModalOpen}
+                onClose={() => setIsDeleteAllModalOpen(false)}
+                onConfirm={handleConfirmDeleteAll}
+                title="ELIMINA TUTTE LE ISCRIZIONI"
+                message="⚠️ ATTENZIONE: Stai per eliminare TUTTE le iscrizioni attive e storiche. Questa azione cancellerà a cascata anche tutte le Lezioni, Presenze, Transazioni e Fatture collegate. Questa operazione è irreversibile. Confermi?"
+                isDangerous={true}
+                confirmText="Sì, Elimina TUTTO"
+            />
 
             {/* Other modals ... */}
             {isModalOpen && (

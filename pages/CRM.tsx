@@ -4,7 +4,7 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions } from '../services/financeService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getCommunicationLogs, logCommunication, deleteCommunicationLog, getCampaigns, addCampaign, updateCampaign, deleteCampaign } from '../services/crmService';
+import { getCommunicationLogs, logCommunication, deleteCommunicationLog, getCampaigns, addCampaign, updateCampaign, deleteCampaign, updateCommunicationLog } from '../services/crmService';
 import { getCommunicationTemplates } from '../services/settingsService';
 import { uploadCampaignFile } from '../services/storageService';
 import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate } from '../types';
@@ -13,9 +13,11 @@ import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import PencilIcon from '../components/icons/PencilIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import Pagination from '../components/Pagination';
+import ConfirmModal from '../components/ConfirmModal';
 
 // --- Icons ---
 const ChatIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> );
@@ -48,30 +50,78 @@ const CommunicationModal: React.FC<{
 
     const handleSend = async () => {
         const recipientsList: string[] = [];
+        const targetPhones: string[] = []; // Accumula i numeri di telefono
+
         if (recipientsType === 'custom') {
             recipientsList.push(customRecipient);
+            // Se il canale è WhatsApp, assumiamo che l'input manuale sia un numero
+            if (channel === 'whatsapp') {
+                targetPhones.push(customRecipient);
+            }
         } else {
             selectedIds.forEach(id => {
-                const name = recipientsType === 'clients' 
-                    ? getClientName(clients.find(c => c.id === id)!) 
-                    : suppliers.find(s => s.id === id)?.companyName || '';
-                recipientsList.push(name);
+                let name = '';
+                let phone = '';
+
+                if (recipientsType === 'clients') {
+                    const c = clients.find(x => x.id === id);
+                    if (c) {
+                        name = getClientName(c);
+                        phone = c.phone;
+                    }
+                } else {
+                    const s = suppliers.find(x => x.id === id);
+                    if (s) {
+                        name = s.companyName;
+                        phone = s.phone;
+                    }
+                }
+
+                if (name) recipientsList.push(name);
+                if (phone) targetPhones.push(phone);
             });
         }
 
         if (recipientsList.length === 0) return alert("Seleziona almeno un destinatario.");
 
-        // Simulazione invio (in realtà aprirebbe WA o mailto)
+        // Logica Invio
         if (channel === 'whatsapp') {
+            if (targetPhones.length === 0) {
+                return alert("Nessun numero di telefono trovato per i destinatari selezionati.");
+            }
+
             const encodedMsg = encodeURIComponent(`*${subject}*\n\n${message}`);
-            window.open(`https://wa.me/?text=${encodedMsg}`, '_blank');
+            
+            // Apri le chat. Attenzione: i browser bloccano popup multipli.
+            targetPhones.forEach(rawPhone => {
+                // 1. Pulisce il numero: rimuove tutto tranne le cifre
+                let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+
+                // 2. Rimuove '00' iniziale se presente (standard internazionale)
+                if (cleanPhone.startsWith('00')) {
+                    cleanPhone = cleanPhone.substring(2);
+                }
+
+                // 3. Logica Prefisso Italia (Smart Fix)
+                // Se il numero ha 10 cifre (es. 3331234567), assumiamo sia un mobile italiano senza prefisso.
+                // Aggiungiamo '39' automaticamente. Se ne ha 12 ed inizia con 39, è già corretto.
+                if (cleanPhone.length === 10) {
+                    cleanPhone = '39' + cleanPhone;
+                }
+
+                if (cleanPhone) {
+                    window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
+                }
+            });
+
         } else {
             const bcc = recipientsType === 'custom' ? customRecipient : ''; 
+            // Nota: mailto con troppi destinatari potrebbe troncarsi o non aprirsi.
             const mailto = `mailto:?bcc=${bcc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
             window.location.href = mailto;
         }
 
-        // Logga
+        // Logga l'azione
         await logCommunication({
             date: new Date().toISOString(),
             channel,
@@ -102,7 +152,7 @@ const CommunicationModal: React.FC<{
                     </div>
 
                     {recipientsType === 'custom' ? (
-                        <input type="text" value={customRecipient} onChange={e => setCustomRecipient(e.target.value)} className="md-input" placeholder="Email o Telefono..." />
+                        <input type="text" value={customRecipient} onChange={e => setCustomRecipient(e.target.value)} className="md-input" placeholder={channel === 'whatsapp' ? "Numero di telefono (es. 3331234567)" : "Email o Telefono..."} />
                     ) : (
                         <div className="border rounded-md h-40 overflow-hidden flex flex-col">
                             <div className="p-2 border-b bg-gray-50">
@@ -147,20 +197,71 @@ const CommunicationModal: React.FC<{
     );
 };
 
+// --- Log Editor (Edit History) ---
+const LogEditor: React.FC<{
+    log: CommunicationLog;
+    onSave: () => void;
+    onCancel: () => void;
+}> = ({ log, onSave, onCancel }) => {
+    const [subject, setSubject] = useState(log.subject);
+    const [message, setMessage] = useState(log.message);
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await updateCommunicationLog(log.id, { subject, message });
+            onSave();
+        } catch (e) {
+            alert("Errore durante l'aggiornamento.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full max-h-[80vh]">
+            <div className="p-6 border-b flex-shrink-0">
+                <h3 className="text-xl font-bold text-gray-800">Modifica Log Archivio</h3>
+            </div>
+            <div className="flex-1 p-6 space-y-4">
+                <div className="md-input-group">
+                    <input type="text" value={subject} onChange={e => setSubject(e.target.value)} className="md-input" placeholder=" " />
+                    <label className="md-input-label">Oggetto / Titolo</label>
+                </div>
+                <div className="md-input-group">
+                    <textarea rows={8} value={message} onChange={e => setMessage(e.target.value)} className="md-input" placeholder="Messaggio..." />
+                </div>
+                <p className="text-xs text-gray-500 italic">Nota: La modifica aggiorna solo il record nel database, non invia nuovi messaggi.</p>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
+                <button onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button onClick={handleSave} disabled={saving} className="md-btn md-btn-raised md-btn-primary">
+                    {saving ? 'Salvataggio...' : 'Salva Modifiche'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // --- Campaign Wizard ---
 const CampaignWizard: React.FC<{ 
     onClose: () => void; 
     onSave: () => void;
     clients: Client[];
-}> = ({ onClose, onSave, clients }) => {
+    campaign?: Campaign; // Optional for edit mode
+}> = ({ onClose, onSave, clients, campaign }) => {
     const [step, setStep] = useState(1);
-    const [name, setName] = useState('');
-    const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
-    const [subject, setSubject] = useState('');
-    const [content, setContent] = useState('');
-    const [mediaUrl, setMediaUrl] = useState('');
-    const [targetType, setTargetType] = useState('all');
-    const [scheduleDate, setScheduleDate] = useState('');
+    const [name, setName] = useState(campaign?.name || '');
+    const [channel, setChannel] = useState<'email' | 'whatsapp'>(campaign?.channel || 'email');
+    const [subject, setSubject] = useState(campaign?.subject || '');
+    const [content, setContent] = useState(campaign?.message || '');
+    const [mediaUrl, setMediaUrl] = useState(campaign?.mediaLinks || '');
+    const [targetType, setTargetType] = useState('all'); // Logic to be refined if editing
+    
+    // Date formatting for input type=date
+    const initialDate = campaign?.startDate ? new Date(campaign.startDate).toISOString().split('T')[0] : '';
+    const [scheduleDate, setScheduleDate] = useState(initialDate);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if(e.target.files?.[0]) {
@@ -180,21 +281,27 @@ const CampaignWizard: React.FC<{
             type: 'client'
         }));
 
-        await addCampaign({
+        const campaignData: CampaignInput = {
             name, channel, subject, message: content, mediaLinks: mediaUrl,
             recipients: recipients.slice(0, 5), // Demo limit
             startDate: scheduleDate || new Date().toISOString(),
             time: '09:00',
             frequency: 'once', repeatCount: 1,
             status: 'active', sentCount: 0, nextRun: scheduleDate || new Date().toISOString()
-        });
+        };
+
+        if (campaign) {
+            await updateCampaign(campaign.id, campaignData);
+        } else {
+            await addCampaign(campaignData);
+        }
         onSave();
     };
 
     return (
         <div className="flex flex-col h-full max-h-[90vh]">
             <div className="p-6 border-b bg-indigo-600 text-white flex-shrink-0">
-                <h3 className="text-xl font-bold">Creazione Campagna</h3>
+                <h3 className="text-xl font-bold">{campaign ? 'Modifica Campagna' : 'Creazione Campagna'}</h3>
                 <p className="text-xs opacity-80">Step {step} di 3</p>
             </div>
             
@@ -272,6 +379,12 @@ const CRM: React.FC = () => {
     // UI State for Modals
     const [isFreeCommOpen, setIsFreeCommOpen] = useState(false);
     const [isCampaignWizardOpen, setIsCampaignWizardOpen] = useState(false);
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+    
+    // CRUD States
+    const [editingCampaign, setEditingCampaign] = useState<Campaign | undefined>(undefined);
+    const [editingLog, setEditingLog] = useState<CommunicationLog | undefined>(undefined);
+    const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string; type: 'campaign' | 'log' } | null>(null);
 
     // Pagination
     const [archivePage, setArchivePage] = useState(1);
@@ -333,8 +446,66 @@ const CRM: React.FC = () => {
 
     const handleCampaignSaved = () => {
         setIsCampaignWizardOpen(false);
+        setEditingCampaign(undefined);
         fetchData();
-        alert("Campagna pianificata!");
+        alert("Campagna salvata!");
+    };
+
+    const handleLogSaved = () => {
+        setEditingLog(undefined);
+        fetchData();
+    };
+
+    // --- CRUD Handlers ---
+    const handleEditCampaign = (c: Campaign) => {
+        setEditingCampaign(c);
+        setIsCampaignWizardOpen(true);
+    };
+
+    const handleEditLog = (l: CommunicationLog) => {
+        setEditingLog(l);
+    };
+
+    const handleDeleteRequest = (id: string, type: 'campaign' | 'log') => {
+        setDeleteConfirm({ isOpen: true, id, type });
+    };
+
+    const confirmDelete = async () => {
+        if (!deleteConfirm) return;
+        setLoading(true);
+        try {
+            if (deleteConfirm.type === 'campaign') {
+                await deleteCampaign(deleteConfirm.id);
+            } else {
+                await deleteCommunicationLog(deleteConfirm.id);
+            }
+            await fetchData();
+        } catch (e) {
+            alert("Errore durante l'eliminazione.");
+        } finally {
+            setLoading(false);
+            setDeleteConfirm(null);
+        }
+    };
+
+    const handleConfirmDeleteAll = async () => {
+        setIsDeleteAllModalOpen(false);
+        setLoading(true);
+        try {
+            if (activeTab === 'campaigns') {
+                const all = await getCampaigns();
+                for (const c of all) await deleteCampaign(c.id);
+            } else if (activeTab === 'archive') {
+                const all = await getCommunicationLogs();
+                for (const l of all) await deleteCommunicationLog(l.id);
+            }
+            await fetchData();
+            alert("Eliminazione completata.");
+        } catch (err) {
+            alert("Errore durante l'eliminazione.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const paginatedLogs = useMemo(() => {
@@ -348,8 +519,11 @@ const CRM: React.FC = () => {
             <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
                 <div><h1 className="text-3xl font-bold">CRM</h1><p className="mt-1 text-gray-500">Gestione relazioni e comunicazioni.</p></div>
                 <div className="flex gap-2">
+                    {activeTab !== 'overview' && (
+                        <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
+                    )}
                     <button onClick={() => setIsFreeCommOpen(true)} className="md-btn md-btn-raised md-btn-green flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>
-                    <button onClick={() => setIsCampaignWizardOpen(true)} className="md-btn md-btn-flat border border-gray-300 bg-white flex items-center"><CalendarIcon /><span className="ml-2">Campagna</span></button>
+                    <button onClick={() => { setEditingCampaign(undefined); setIsCampaignWizardOpen(true); }} className="md-btn md-btn-flat border border-gray-300 bg-white flex items-center"><CalendarIcon /><span className="ml-2">Campagna</span></button>
                 </div>
             </div>
             
@@ -399,12 +573,18 @@ const CRM: React.FC = () => {
                 {activeTab === 'campaigns' && (
                     <div className="animate-slide-up space-y-4">
                         {campaigns.map(c => (
-                            <div key={c.id} className="md-card p-4 flex justify-between items-center">
+                            <div key={c.id} className="md-card p-4 flex justify-between items-center group">
                                 <div>
                                     <h4 className="font-bold text-gray-800">{c.name}</h4>
                                     <p className="text-xs text-gray-500">{c.status} • Next: {new Date(c.nextRun).toLocaleDateString()}</p>
                                 </div>
-                                <span className={`px-2 py-1 rounded text-xs font-bold ${c.channel === 'email' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>{c.channel.toUpperCase()}</span>
+                                <div className="flex items-center gap-3">
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${c.channel === 'email' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>{c.channel.toUpperCase()}</span>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => handleEditCampaign(c)} className="md-icon-btn edit"><PencilIcon /></button>
+                                        <button onClick={() => handleDeleteRequest(c.id, 'campaign')} className="md-icon-btn delete"><TrashIcon /></button>
+                                    </div>
+                                </div>
                             </div>
                         ))}
                         {campaigns.length === 0 && <p className="text-center text-gray-500 py-10">Nessuna campagna attiva.</p>}
@@ -415,10 +595,16 @@ const CRM: React.FC = () => {
                     <div className="animate-slide-up">
                         <div className="space-y-3">
                             {paginatedLogs.map(log => (
-                                <div key={log.id} className="bg-white border rounded p-4 shadow-sm">
+                                <div key={log.id} className="bg-white border rounded p-4 shadow-sm group">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="text-xs text-gray-400">{new Date(log.date).toLocaleString()}</span>
-                                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-bold uppercase">{log.channel}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-400">{new Date(log.date).toLocaleString()}</span>
+                                            <span className="text-xs bg-gray-100 px-2 py-0.5 rounded font-bold uppercase">{log.channel}</span>
+                                        </div>
+                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleEditLog(log)} className="md-icon-btn edit p-1"><PencilIcon /></button>
+                                            <button onClick={() => handleDeleteRequest(log.id, 'log')} className="md-icon-btn delete p-1"><TrashIcon /></button>
+                                        </div>
                                     </div>
                                     <h4 className="font-bold text-sm text-gray-800">{log.subject}</h4>
                                     <p className="text-xs text-gray-600 mt-1 line-clamp-2">{log.message}</p>
@@ -453,12 +639,42 @@ const CRM: React.FC = () => {
             {isCampaignWizardOpen && (
                 <Modal onClose={() => setIsCampaignWizardOpen(false)} size="lg">
                     <CampaignWizard 
+                        campaign={editingCampaign}
                         onClose={() => setIsCampaignWizardOpen(false)}
                         onSave={handleCampaignSaved}
                         clients={clients}
                     />
                 </Modal>
             )}
+
+            {editingLog && (
+                <Modal onClose={() => setEditingLog(undefined)} size="lg">
+                    <LogEditor 
+                        log={editingLog} 
+                        onSave={handleLogSaved} 
+                        onCancel={() => setEditingLog(undefined)} 
+                    />
+                </Modal>
+            )}
+
+            <ConfirmModal 
+                isOpen={!!deleteConfirm}
+                onClose={() => setDeleteConfirm(null)}
+                onConfirm={confirmDelete}
+                title={deleteConfirm?.type === 'campaign' ? "Elimina Campagna" : "Elimina Log"}
+                message="Sei sicuro di voler eliminare questo elemento? L'operazione è irreversibile."
+                isDangerous={true}
+            />
+
+            <ConfirmModal 
+                isOpen={isDeleteAllModalOpen}
+                onClose={() => setIsDeleteAllModalOpen(false)}
+                onConfirm={handleConfirmDeleteAll}
+                title={`ELIMINA TUTTO (${activeTab.toUpperCase()})`}
+                message="⚠️ ATTENZIONE: Stai per eliminare TUTTI i record di questa sezione. Questa operazione è irreversibile. Confermi?"
+                isDangerous={true}
+                confirmText="Sì, Elimina TUTTO"
+            />
         </div>
     );
 };

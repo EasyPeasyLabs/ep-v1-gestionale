@@ -22,6 +22,11 @@ export const logCommunication = async (comm: CommunicationLogInput): Promise<str
     return docRef.id;
 };
 
+export const updateCommunicationLog = async (id: string, log: Partial<CommunicationLogInput>): Promise<void> => {
+    const docRef = doc(db, 'communications', id);
+    await updateDoc(docRef, log);
+};
+
 export const deleteCommunicationLog = async (id: string): Promise<void> => {
     const docRef = doc(db, 'communications', id);
     await deleteDoc(docRef);

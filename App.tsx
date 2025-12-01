@@ -20,11 +20,13 @@ import Attendance from './pages/Attendance';
 import AttendanceArchive from './pages/AttendanceArchive';
 import Activities from './pages/Activities';
 import ActivityLog from './pages/ActivityLog';
+import Homeworks from './pages/Homeworks';
+import Initiatives from './pages/Initiatives';
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -142,6 +144,10 @@ const App: React.FC = () => {
                     return <Activities />;
                   case 'ActivityLog':
                     return <ActivityLog />;
+                  case 'Homeworks':
+                    return <Homeworks />;
+                  case 'Initiatives':
+                    return <Initiatives />;
                   case 'Clients':
                     return <Clients />;
                   case 'Suppliers':

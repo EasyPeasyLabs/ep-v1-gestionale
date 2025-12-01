@@ -188,6 +188,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setActiveSupplierCount(activeSupplierIds.size);
 
         // 2. Calcolo Lezioni Erogate (Mese Corrente)
+        // Conta SOLO le lezioni delle iscrizioni attive.
+        // Ignora le lezioni manuali "extra" che non hanno allievi, per coerenza con lo stato "0 iscrizioni = 0 lezioni".
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -203,12 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 });
             }
         });
-        manualLessons.forEach(ml => {
-            const d = new Date(ml.date);
-            if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                lessonsCount++;
-            }
-        });
+        
         setLessonsThisMonth(lessonsCount);
 
         // 3. Calcolo Occupazione Dettagliata (Saturazione)
@@ -293,6 +290,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 }
             });
             
+            // Manual lessons are counted in weekly overview as they occupy slots
             manualLessons.forEach(ml => {
                 if(new Date(ml.date).toDateString() === currentDay.toDateString()) {
                     dayLessonCount++;
@@ -611,6 +609,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                                 )}
                             </div>
                         } 
+                        onClick={() => setCurrentPage && setCurrentPage('Suppliers')}
                         icon={<SuppliersIcon />}
                         colorClass="bg-indigo-50 text-indigo-600"
                     />

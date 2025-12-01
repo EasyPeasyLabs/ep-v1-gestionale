@@ -12,6 +12,7 @@ import CRMIcon from './icons/CRMIcon';
 import ChecklistIcon from './icons/ChecklistIcon';
 import ClipboardIcon from './icons/ClipboardIcon';
 import BookOpenIcon from './icons/BookOpenIcon';
+import ChevronDownIcon from './icons/ChevronDownIcon';
 import { getCompanyInfo } from '../services/settingsService';
 
 // Nuova icona Pallone da Calcio per Attività
@@ -38,11 +39,12 @@ const EuroCoinIcon = () => (
   </svg>
 );
 
-const ArchiveIcon = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-    </svg>
-);
+interface NavItem {
+    page?: Page;
+    label: string;
+    icon: React.ReactNode;
+    subItems?: { page: Page; label: string }[];
+}
 
 interface SidebarProps {
   currentPage: Page;
@@ -54,6 +56,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, isOpen, setIsOpen }) => {
   const [logoSrc, setLogoSrc] = useState<string>('');
+  const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
 
   useEffect(() => {
       const fetchLogo = async () => {
@@ -74,25 +77,60 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
       return () => window.removeEventListener('EP_DataUpdated', handleUpdate);
   }, []);
 
+  // Espandi automaticamente il menu se la pagina corrente è un sottomenu
+  useEffect(() => {
+      if (currentPage === 'Attendance' || currentPage === 'AttendanceArchive') {
+          setExpandedMenu('Presenze');
+      } else if (currentPage === 'ActivityLog' || currentPage === 'Homeworks') {
+          setExpandedMenu('Registro Elettronico');
+      } else if (currentPage === 'Activities' || currentPage === 'Initiatives') {
+          setExpandedMenu('Attività');
+      }
+  }, [currentPage]);
+
   // Definizione Menu
-  const navItems: { page: Page; label: string; icon: React.ReactNode }[] = [
+  const navItems: NavItem[] = [
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
-    { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
-    { page: 'ActivityLog', label: 'Lezioni', icon: <BookOpenIcon /> }, 
-    { page: 'Attendance', label: 'Registro Presenze', icon: <ClipboardIcon /> },
-    { page: 'AttendanceArchive', label: 'Archivio Presenze', icon: <ArchiveIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },
+    { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
+    { 
+        label: 'Registro Elettronico', 
+        icon: <BookOpenIcon />,
+        subItems: [
+            { page: 'ActivityLog', label: 'Lezioni' },
+            { page: 'Homeworks', label: 'Compiti' }
+        ]
+    }, 
+    { 
+      label: 'Presenze', 
+      icon: <ClipboardIcon />,
+      subItems: [
+          { page: 'Attendance', label: 'Registro' },
+          { page: 'AttendanceArchive', label: 'Archivio' }
+      ]
+    },
     { page: 'Finance', label: 'Finanza', icon: <EuroCoinIcon /> },
     { page: 'CRM', label: 'CRM', icon: <CRMIcon /> },
     { page: 'Clients', label: 'Clienti', icon: <ClientsIcon /> },
     { page: 'Suppliers', label: 'Fornitori', icon: <SuppliersIcon /> },
-    { page: 'Activities', label: 'Attività', icon: <SoccerBallIcon /> }, 
+    { 
+      label: 'Attività', 
+      icon: <SoccerBallIcon />,
+      subItems: [
+          { page: 'Activities', label: 'Activities' }, // Libreria
+          { page: 'Initiatives', label: 'Iniziative' } // Peek-a-Boo & Altro
+      ]
+    }, 
     { page: 'Settings', label: 'Impostazioni', icon: <SettingsIcon /> },
   ];
 
   const handleNavClick = (page: Page) => {
     setCurrentPage(page);
     setIsOpen(false);
+  }
+
+  const toggleSubMenu = (label: string) => {
+      setExpandedMenu(prev => prev === label ? null : label);
   }
 
   return (
@@ -128,13 +166,66 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
 
         {/* Navigation List */}
         <ul className="flex-1 px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
+          {navItems.map((item, idx) => {
+            
+            if (item.subItems) {
+                // Render Group Item (Collapsible)
+                const isExpanded = expandedMenu === item.label;
+                const isActiveParent = item.subItems.some(sub => sub.page === currentPage);
+
+                return (
+                    <li key={`group-${idx}`} className="mb-1">
+                        <button
+                            onClick={() => toggleSubMenu(item.label)}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out group
+                                ${isActiveParent 
+                                    ? 'bg-indigo-50 text-indigo-700' 
+                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                }`}
+                        >
+                            <div className="flex items-center">
+                                <span className={`mr-3 transition-colors ${isActiveParent ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                    {item.icon}
+                                </span>
+                                {item.label}
+                            </div>
+                            <span className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                                <ChevronDownIcon />
+                            </span>
+                        </button>
+                        
+                        {/* Sub Items */}
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-40 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                            <ul className="space-y-1 pl-11 pr-2">
+                                {item.subItems.map(sub => {
+                                    const isSubActive = currentPage === sub.page;
+                                    return (
+                                        <li key={sub.page}>
+                                            <button
+                                                onClick={() => handleNavClick(sub.page)}
+                                                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all
+                                                    ${isSubActive 
+                                                        ? 'bg-white text-indigo-600 shadow-sm border border-gray-100' 
+                                                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                                                    }`}
+                                            >
+                                                {sub.label}
+                                            </button>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                    </li>
+                );
+            }
+
+            // Render Single Item
             const isActive = currentPage === item.page;
             return (
-              item.page !== 'Profile' && (
                 <li key={item.page}>
                   <button
-                    onClick={() => handleNavClick(item.page)}
+                    onClick={() => item.page && handleNavClick(item.page)}
                     className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out group relative
                       ${isActive 
                         ? 'bg-indigo-50 text-indigo-700' 
@@ -150,7 +241,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                     {isActive && <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-indigo-600"></div>}
                   </button>
                 </li>
-              )
             );
           })}
         </ul>

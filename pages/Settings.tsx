@@ -15,8 +15,73 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
 
-// ... (SubscriptionForm, TemplateForm, CheckForm retained exactly as previous) ...
-const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; }> = ({ sub, onSave, onCancel }) => { const [name, setName] = useState(sub?.name || ''); const [price, setPrice] = useState(sub?.price || 0); const [lessons, setLessons] = useState(sub?.lessons || 0); const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const subData = { name, price: Number(price), lessons: Number(lessons), durationInDays: Number(durationInDays) }; if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="md-input-group"><input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label htmlFor="subName" className="md-input-label">Nome Abbonamento</label></div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div> <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div> </div> <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> </div> </form> ); };
+// --- Components ---
+
+const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; }> = ({ sub, onSave, onCancel }) => { 
+    const [name, setName] = useState(sub?.name || ''); 
+    const [price, setPrice] = useState(sub?.price || 0); 
+    const [lessons, setLessons] = useState(sub?.lessons || 0); 
+    const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0);
+    const [target, setTarget] = useState<'kid' | 'adult'>(sub?.target || 'kid'); // Default Kids
+
+    const handleSubmit = (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        
+        // Auto-Prefix Logic
+        let finalName = name;
+        const prefix = target === 'kid' ? 'K - ' : 'A - ';
+        if (!finalName.startsWith(prefix) && !finalName.startsWith(target === 'kid' ? 'K-' : 'A-')) {
+            finalName = prefix + finalName;
+        }
+
+        const subData = { 
+            name: finalName, 
+            price: Number(price), 
+            lessons: Number(lessons), 
+            durationInDays: Number(durationInDays),
+            target
+        }; 
+        if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } 
+    }; 
+    
+    return ( 
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> 
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> 
+                <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> 
+            </div> 
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
+                
+                {/* Target Selection */}
+                <div className="flex gap-4 mb-4">
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
+                        <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" />
+                        👶 Bambini (K)
+                    </label>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
+                        <input type="radio" name="target" value="adult" checked={target === 'adult'} onChange={() => setTarget('adult')} className="hidden" />
+                        🧑 Adulti (A)
+                    </label>
+                </div>
+
+                <div className="md-input-group">
+                    <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
+                    <label htmlFor="subName" className="md-input-label">Nome Abbonamento (Prefisso {target === 'kid' ? 'K' : 'A'} auto)</label>
+                </div> 
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
+                    <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div> 
+                    <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div> 
+                </div> 
+                <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> 
+            </div> 
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> 
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> 
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> 
+            </div> 
+        </form> 
+    ); 
+};
+
 const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { const [subject, setSubject] = useState(template.subject); const [body, setBody] = useState(template.body); const [signature, setSignature] = useState(template.signature); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...template, subject, body, signature }); }; const placeholders = template.id === 'payment' ? ['{{fornitore}}', '{{descrizione}}'] : ['{{cliente}}', '{{bambino}}', '{{data}}']; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">Modifica Template: {template.label}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> <strong>Variabili disponibili:</strong> {placeholders.join(', ')} </div> <div className="md-input-group"> <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " /> <label className="md-input-label">Oggetto / Titolo</label> </div> <div className="md-input-group"> <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label> </div> <div className="md-input-group"> <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Firma</label> </div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button> </div> </form> ); };
 const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); const [subCategory, setSubCategory] = useState(check?.subCategory || ''); const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); const [startTime, setStartTime] = useState(check?.startTime || '09:00'); const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); const [note, setNote] = useState(check?.note || ''); const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; const toggleDay = (day: number) => { setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; if (check?.id) onSave({ ...data, id: check.id }); else onSave(data); }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> <div className="p-6 pb-2 border-b"> <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> </div> <div className="flex-1 overflow-y-auto p-6 space-y-4"> <div className="md-input-group"> <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)} </select> <label className="md-input-label">Categoria</label> </div> <div className="md-input-group"> <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> <label className="md-input-label">Dettaglio (es. Commercialista)</label> </div> <div> <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> <div className="flex flex-wrap gap-2"> {daysMap.map((d, i) => ( <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > {d} </button> ))} </div> </div> <div className="md-input-group"> <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> <label className="md-input-label !top-0">Orario Notifica</label> </div> <div className="flex items-center gap-2 mt-2"> <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> <label className="text-sm text-gray-700">Abilita Notifica Push</label> </div> <div className="md-input-group"> <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> <label className="md-input-label">Nota / Messaggio</label> </div> </div> <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> </div> </form> ); };
 
@@ -188,7 +253,7 @@ const Settings: React.FC = () => {
 
             {/* Colonna Destra */}
             <div className="space-y-8">
-                {/* Abbonamenti (omissis, retained) */}
+                {/* Abbonamenti */}
                 <div className="md-card p-6">
                     <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
                         <h2 className="text-lg font-semibold">Abbonamenti</h2>
@@ -197,7 +262,15 @@ const Settings: React.FC = () => {
                     <div className="mt-4 space-y-3">
                         {subscriptions.map(sub => (
                             <div key={sub.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-100">
-                                <div><p className="font-medium">{sub.name}</p><p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p></div>
+                                <div>
+                                    <p className="font-medium flex items-center gap-2">
+                                        {sub.name}
+                                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${sub.target === 'adult' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            {sub.target === 'adult' ? 'Adulti' : 'Bambini'}
+                                        </span>
+                                    </p>
+                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
+                                </div>
                                 <div className="flex items-center gap-3"><span className="font-bold text-sm">{sub.price}€</span><div className="flex space-x-1"><button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon /></button></div></div>
                             </div>
                         ))}

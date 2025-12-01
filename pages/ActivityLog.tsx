@@ -1,11 +1,19 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Enrollment, Appointment, LessonActivity, EnrollmentStatus } from '../types';
+import { Activity, Appointment, LessonActivity, EnrollmentStatus, Homework } from '../types';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getActivities, getLessonActivities, saveLessonActivities } from '../services/activityService';
+import { getHomeworks } from '../services/homeworkService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
+import CalendarIcon from '../components/icons/CalendarIcon';
+
+// Helpers Date
+const getStartOfWeek = (d: Date) => { const date = new Date(d); const day = date.getDay(); const diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
+const getEndOfWeek = (d: Date) => { const date = getStartOfWeek(d); date.setDate(date.getDate() + 6); return date; };
+const getStartOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+const getEndOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 
 // --- Componente Selezione Attività (Modal) ---
 const SelectActivityModal: React.FC<{
@@ -82,7 +90,11 @@ const ActivityLog: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [lessons, setLessons] = useState<LessonRow[]>([]);
     const [activities, setActivities] = useState<Activity[]>([]);
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [homeworks, setHomeworks] = useState<Homework[]>([]); // New State
+    
+    // View State
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     
     // Selection State
     const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([]);
@@ -96,19 +108,39 @@ const ActivityLog: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [allEnrollments, allActivities] = await Promise.all([
+            const [allEnrollments, allActivities, allHomeworks] = await Promise.all([
                 getAllEnrollments(),
-                getActivities()
+                getActivities(),
+                getHomeworks()
             ]);
             setActivities(allActivities);
+            setHomeworks(allHomeworks);
 
-            // Flatten appointments for the selected date
+            // Calcola Range Date
+            let start = new Date(currentDate);
+            let end = new Date(currentDate);
+            
+            start.setHours(0,0,0,0);
+            end.setHours(23,59,59,999);
+
+            if (viewMode === 'week') {
+                start = getStartOfWeek(currentDate);
+                start.setHours(0,0,0,0);
+                end = getEndOfWeek(currentDate);
+                end.setHours(23,59,59,999);
+            } else if (viewMode === 'month') {
+                start = getStartOfMonth(currentDate);
+                end = getEndOfMonth(currentDate);
+                end.setHours(23,59,59,999);
+            }
+
             const dailyLessons: LessonRow[] = [];
             allEnrollments.forEach(enr => {
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments) {
                         enr.appointments.forEach(app => {
-                            if (app.date.startsWith(selectedDate)) {
+                            const appDate = new Date(app.date);
+                            if (appDate >= start && appDate <= end) {
                                 dailyLessons.push({
                                     ...app,
                                     enrollmentId: enr.id,
@@ -145,7 +177,7 @@ const ActivityLog: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedDate]);
+    }, [currentDate, viewMode]);
 
     useEffect(() => {
         fetchData();
@@ -166,10 +198,23 @@ const ActivityLog: React.FC = () => {
         });
     }, [sortOrder]);
 
-    const handleDateChange = (offset: number) => {
-        const date = new Date(selectedDate);
-        date.setDate(date.getDate() + offset);
-        setSelectedDate(date.toISOString().split('T')[0]);
+    const handleNavigate = (direction: number) => {
+        const newDate = new Date(currentDate);
+        if (viewMode === 'day') newDate.setDate(newDate.getDate() + direction);
+        else if (viewMode === 'week') newDate.setDate(newDate.getDate() + (direction * 7));
+        else if (viewMode === 'month') newDate.setMonth(newDate.getMonth() + direction);
+        setCurrentDate(newDate);
+    };
+
+    const getRangeLabel = () => {
+        const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+        if (viewMode === 'day') return currentDate.toLocaleDateString('it-IT', { weekday: 'long', ...options });
+        if (viewMode === 'week') {
+            const start = getStartOfWeek(currentDate);
+            const end = getEndOfWeek(currentDate);
+            return `${start.getDate()} - ${end.getDate()} ${end.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}`;
+        }
+        return currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
     };
 
     const toggleLessonSelection = (lessonId: string) => {
@@ -178,17 +223,9 @@ const ActivityLog: React.FC = () => {
         );
     };
 
-    const handleSelectAll = () => {
-        if (selectedLessonIds.length === lessons.length) {
-            setSelectedLessonIds([]);
-        } else {
-            setSelectedLessonIds(lessons.map(l => l.lessonId));
-        }
-    };
-
     const handleAssignActivities = async (activityIds: string[]) => {
         try {
-            await saveLessonActivities(selectedLessonIds, activityIds, selectedDate);
+            await saveLessonActivities(selectedLessonIds, activityIds, new Date().toISOString()); // Use generic date for log creation, lessons have their own dates
             setIsModalOpen(false);
             fetchData(); // Refresh to show new assignments
         } catch (err) {
@@ -197,129 +234,185 @@ const ActivityLog: React.FC = () => {
         }
     };
 
+    // Grouping Logic for Render: Date -> Location -> Lessons
+    const groupedView = (() => {
+        const grouped: Record<string, Record<string, LessonRow[]>> = {}; // Date -> Location -> Lessons
+        
+        lessons.forEach(l => {
+            const dateKey = new Date(l.date).toDateString();
+            const locKey = l.locationName || 'Sede Non Definita';
+            
+            if(!grouped[dateKey]) grouped[dateKey] = {};
+            if(!grouped[dateKey][locKey]) grouped[dateKey][locKey] = [];
+            
+            grouped[dateKey][locKey].push(l);
+        });
+
+        // Sort keys
+        const sortedDates = Object.keys(grouped).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
+        return { sortedDates, grouped };
+    })();
+
+    // Helper to find homeworks for a specific date and location
+    const getHomeworksForContext = (dateKey: string, locationName: string) => {
+        const dateStr = new Date(dateKey).toISOString().split('T')[0];
+        return homeworks.filter(h => 
+            h.assignedDate === dateStr && 
+            h.assignedLocationName === locationName
+        );
+    };
+
     return (
         <div>
-            <div className="flex flex-wrap justify-between items-center mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold">Lezioni</h1>
-                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>
-                        Programma e traccia le attività didattiche svolte in ogni lezione.
+                    <h1 className="text-3xl font-bold mb-1">Lezioni</h1>
+                    <p className="text-gray-500">
+                        Programma e traccia le attività didattiche.
                     </p>
                 </div>
                 
-                {selectedLessonIds.length > 0 && (
-                    <button 
-                        onClick={() => setIsModalOpen(true)} 
-                        className="md-btn md-btn-raised md-btn-green animate-fade-in"
-                    >
-                        Assegna Attività ({selectedLessonIds.length})
-                    </button>
-                )}
+                <div className="flex gap-2 items-center">
+                    {/* View Toggles */}
+                    <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
+                        <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
+                        <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
+                        <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
+                    </div>
+
+                    {selectedLessonIds.length > 0 && (
+                        <button 
+                            onClick={() => setIsModalOpen(true)} 
+                            className="md-btn md-btn-raised md-btn-green animate-fade-in"
+                        >
+                            Assegna ({selectedLessonIds.length})
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* Navigazione Data & Filtri */}
-            <div className="md-card p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center space-x-4">
-                    <button onClick={() => handleDateChange(-1)} className="md-btn md-btn-flat text-2xl font-bold">&lt;</button>
-                    <div className="text-center">
-                         <input 
-                            type="date" 
-                            value={selectedDate} 
-                            onChange={(e) => setSelectedDate(e.target.value)} 
-                            className="text-lg font-bold bg-transparent border-b border-gray-300 focus:border-gray-500 outline-none text-center"
-                        />
-                        <div className="text-xs text-gray-500 mt-1 uppercase tracking-wide">
-                            {new Date(selectedDate).toLocaleDateString('it-IT', { weekday: 'long' })}
-                        </div>
-                    </div>
-                    <button onClick={() => handleDateChange(1)} className="md-btn md-btn-flat text-2xl font-bold">&gt;</button>
-                </div>
+            {/* Navigazione Data */}
+            <div className="md-card p-4 mb-6 flex items-center justify-between bg-white border-l-4 border-indigo-500 shadow-sm">
+                <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&lt;</button>
                 
-                <div className="flex items-center gap-4 w-full sm:w-auto">
-                    <button 
-                        onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])} 
-                        className="text-sm text-gray-600 font-medium hover:underline whitespace-nowrap"
-                    >
-                        Torna a Oggi
-                    </button>
-                    <div className="w-full sm:w-40">
-                        <select 
-                            value={sortOrder} 
-                            onChange={(e) => setSortOrder(e.target.value as any)} 
-                            className="block w-full bg-white border rounded-md py-1.5 px-3 text-sm focus:outline-none focus:ring-1 focus:border-indigo-500 focus:ring-indigo-500 shadow-sm"
-                            style={{borderColor: 'var(--md-divider)'}}
-                        >
-                            <option value="time_asc">Orario (Cresc)</option>
-                            <option value="time_desc">Orario (Decr)</option>
-                        </select>
+                <div className="flex items-center gap-3">
+                    <CalendarIcon />
+                    <div className="text-center">
+                        <span className="block text-lg font-bold text-gray-800 capitalize">{getRangeLabel()}</span>
+                        {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
                     </div>
                 </div>
+
+                <button onClick={() => handleNavigate(1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&gt;</button>
             </div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
-                <div className="md-card p-0 overflow-hidden">
-                     {lessons.length === 0 ? (
-                        <div className="p-12 text-center text-gray-500 italic">
-                            Nessuna lezione in programma per questa data.
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-50 border-b">
-                                    <tr>
-                                        <th className="p-4 w-10">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={lessons.length > 0 && selectedLessonIds.length === lessons.length}
-                                                onChange={handleSelectAll}
-                                                className="h-4 w-4 text-gray-600 rounded border-gray-300 focus:ring-gray-500"
-                                            />
-                                        </th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Orario</th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Allievo</th>
-                                        <th className="p-4 text-xs font-semibold text-gray-500 uppercase">Attività Svolte / Programmate</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {lessons.map((lesson) => (
-                                        <tr key={lesson.lessonId} className={`hover:bg-gray-50 ${selectedLessonIds.includes(lesson.lessonId) ? 'bg-gray-100' : ''}`}>
-                                            <td className="p-4">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedLessonIds.includes(lesson.lessonId)}
-                                                    onChange={() => toggleLessonSelection(lesson.lessonId)}
-                                                    className="h-4 w-4 text-gray-600 rounded border-gray-300 focus:ring-gray-500"
-                                                />
-                                            </td>
-                                            <td className="p-4 whitespace-nowrap font-medium text-sm">
-                                                {lesson.startTime} - {lesson.endTime}
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="font-bold text-gray-800 text-sm">{lesson.childName}</div>
-                                                <div className="text-xs text-gray-500 flex items-center mt-1">
-                                                    <span className="w-2 h-2 rounded-full mr-1" style={{ backgroundColor: lesson.locationColor || '#ccc' }}></span>
-                                                    {lesson.locationName}
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                {lesson.assignedActivities.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {lesson.assignedActivities.map(act => (
-                                                            <span key={act.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-800">
-                                                                {act.title}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-xs text-gray-400 italic">Nessuna attività registrata</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                <div className="space-y-8 animate-fade-in">
+                     {lessons.length === 0 && (
+                        <div className="p-12 text-center text-gray-500 italic bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                            Nessuna lezione in programma nel periodo selezionato.
                         </div>
                     )}
+
+                    {/* Rendering Grouped: Date -> Location -> Table */}
+                    {groupedView.sortedDates.map(dateKey => (
+                        <div key={dateKey} className="space-y-4">
+                            {/* Date Header Separator (Only for Week/Month view) */}
+                            {viewMode !== 'day' && (
+                                <div className="flex items-center gap-4 py-4">
+                                    <div className="h-px bg-gray-300 flex-1"></div>
+                                    <span className="text-sm font-bold text-gray-600 uppercase bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
+                                        {new Date(dateKey).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long'})}
+                                    </span>
+                                    <div className="h-px bg-gray-300 flex-1"></div>
+                                </div>
+                            )}
+
+                            {Object.keys(groupedView.grouped[dateKey]).sort().map(locName => {
+                                const locLessons = groupedView.grouped[dateKey][locName];
+                                const locColor = locLessons[0]?.locationColor || '#ccc';
+                                
+                                // Check for homework assigned to this location on this day
+                                const assignedHomeworks = getHomeworksForContext(dateKey, locName);
+
+                                return (
+                                    <div key={locName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                        {/* RECINTO HEADER (Location) */}
+                                        <div className="bg-gray-50 px-6 py-3 border-b border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-colors">
+                                            <span className="w-4 h-4 rounded-full shadow-sm ring-2 ring-white" style={{ backgroundColor: locColor }}></span>
+                                            <h2 className="text-sm font-bold text-gray-800 uppercase tracking-wide">{locName}</h2>
+                                            <span className="text-xs text-gray-500 bg-white border px-2 py-0.5 rounded-full">{locLessons.length} lez.</span>
+                                        </div>
+                                        
+                                        {/* HOMEWORK DISPLAY */}
+                                        {assignedHomeworks.length > 0 && (
+                                            <div className="px-6 py-2 bg-yellow-50 border-b border-yellow-100 flex flex-col gap-1">
+                                                <h4 className="text-[10px] font-bold text-yellow-700 uppercase">Compiti Assegnati:</h4>
+                                                {assignedHomeworks.map(hw => (
+                                                    <div key={hw.id} className="text-xs text-yellow-900 flex items-center gap-2">
+                                                        <span className="font-bold">• {hw.title}</span>
+                                                        <span className="text-yellow-600 italic">
+                                                            ({hw.type === 'textbook' ? `Manuale: ${hw.textbookName || 'N/D'}` : 'Multimedia'})
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left">
+                                                <thead className="bg-white border-b text-xs text-gray-400 uppercase">
+                                                    <tr>
+                                                        <th className="p-4 w-10">#</th>
+                                                        <th className="p-4 font-semibold">Orario</th>
+                                                        <th className="p-4 font-semibold">Allievo</th>
+                                                        <th className="p-4 font-semibold">Attività Svolte</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-50">
+                                                    {locLessons.map((lesson) => (
+                                                        <tr 
+                                                            key={lesson.lessonId} 
+                                                            onClick={() => toggleLessonSelection(lesson.lessonId)}
+                                                            className={`cursor-pointer transition-colors ${selectedLessonIds.includes(lesson.lessonId) ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-gray-50'}`}
+                                                        >
+                                                            <td className="p-4">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={selectedLessonIds.includes(lesson.lessonId)}
+                                                                    onChange={() => toggleLessonSelection(lesson.lessonId)}
+                                                                    className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 pointer-events-none" // Pointer events none because row click handles it
+                                                                />
+                                                            </td>
+                                                            <td className="p-4 whitespace-nowrap font-mono font-bold text-sm text-gray-600">
+                                                                {lesson.startTime} - {lesson.endTime}
+                                                            </td>
+                                                            <td className="p-4">
+                                                                <div className="font-bold text-gray-800 text-sm">{lesson.childName}</div>
+                                                            </td>
+                                                            <td className="p-4">
+                                                                {lesson.assignedActivities.length > 0 ? (
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {lesson.assignedActivities.map(act => (
+                                                                            <span key={act.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                                                                {act.title}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs text-gray-400 italic">Nessuna attività registrata</span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ))}
                 </div>
             )}
 

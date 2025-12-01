@@ -53,6 +53,9 @@ export interface Enrollment {
   subscriptionName: string; // Denormalizzato
   price?: number; // Prezzo pattuito al momento dell'iscrizione
   
+  // Flag per distinguere iscrizioni adulti
+  isAdult?: boolean;
+
   // Nuovi campi per legare l'iscrizione alla sede (Aula)
   supplierId: string;
   supplierName: string;
@@ -210,6 +213,7 @@ export interface SubscriptionType {
     price: number;
     lessons: number;
     durationInDays: number; // Es. 30 per mensile, 90 per trimestrale
+    target?: 'kid' | 'adult'; // K = Kids, A = Adults
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
@@ -249,6 +253,83 @@ export interface LessonActivity {
     activityIds: string[];
     date: string;
 }
+
+// --- HOMEWORK (Compiti) ---
+export interface Homework {
+    id: string;
+    title: string;
+    description: string;
+    
+    // Body Type
+    type: 'textbook' | 'link';
+    
+    // Textbook Details
+    textbookName?: string;
+    pageNumber?: string;
+    exercises?: string;
+    
+    // Link Details
+    linkUrl?: string;
+    
+    // Result
+    expectedOutcome: string;
+    
+    // Assignment (Optional linkage)
+    assignedDate?: string; // ISO String Date only (YYYY-MM-DD) or full ISO
+    assignedLocationId?: string;
+    assignedLocationName?: string;
+    
+    createdAt: string;
+}
+
+export type HomeworkInput = Omit<Homework, 'id'>;
+
+// --- INIZIATIVE & PEEK-A-BOOK ---
+
+export interface Book {
+    id: string;
+    title: string;
+    author?: string;
+    isAvailable: boolean; // Computed or stored
+}
+
+export interface BookLoan {
+    id: string;
+    bookId: string;
+    bookTitle: string;
+    
+    // Chi prende in prestito
+    studentId: string; // childId or clientId
+    studentName: string;
+    
+    // Tracciamento
+    locationId: string;
+    locationName: string;
+    locationColor?: string;
+    
+    borrowDate: string; // ISO
+    dueDate?: string; // ISO (calculated as next lesson)
+    returnDate?: string; // ISO (if returned)
+    status: 'active' | 'returned';
+}
+
+export type BookInput = Omit<Book, 'id'>;
+export type BookLoanInput = Omit<BookLoan, 'id'>;
+
+export interface Initiative {
+    id: string;
+    name: string; // Default: "Peek-a-Boo(k)" or custom
+    description: string;
+    type: 'peek-a-book' | 'standard';
+    
+    // For Standard Initiatives
+    targetLocationIds?: string[]; // Recinti
+    targetLocationNames?: string[]; // Denormalized
+    materials?: string; // List or description
+}
+
+export type InitiativeInput = Omit<Initiative, 'id'>;
+
 
 export interface AttendanceArchiveItem {
     id: string; // lessonId

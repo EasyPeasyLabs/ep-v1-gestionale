@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
 import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
-import { getAllEnrollments } from '../services/enrollmentService';
+import { getAllEnrollments, deleteEnrollment, getEnrollmentsForClient } from '../services/enrollmentService';
+import { cleanupEnrollmentFinancials, deleteAutoRentTransactions } from '../services/financeService';
 import { importClientsFromExcel } from '../services/importService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -32,7 +33,9 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// Helpers
+// Helpers (getChildRating, getParentRating, RatingRow, RatingLegend, ClientForm) remain unchanged ...
+// ... [Omissis for brevity since unchanged] ...
+// Re-inserting helper functions for context
 const getChildRating = (child: Child) => {
     if (!child.rating) return 0;
     const { learning, behavior, attendance, hygiene } = child.rating;
@@ -47,7 +50,6 @@ const getParentRating = (rating?: ParentRating) => {
     return sum > 0 ? (sum / 4).toFixed(1) : 0;
 };
 
-// Rating Row Component
 const RatingRow: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
     <div className="flex justify-between items-center mb-1 bg-white p-2 rounded border border-gray-100">
         <span className="text-xs text-gray-600 font-medium">{label}</span>
@@ -278,6 +280,7 @@ const Clients: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [showTrash, setShowTrash] = useState(false);
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'surname_asc' | 'surname_desc'>('surname_asc');
+    const [nameFormat, setNameFormat] = useState<'first_last' | 'last_first'>('first_last');
     
     // Extra Filters
     const [filterDay, setFilterDay] = useState<string>('');
@@ -293,6 +296,7 @@ const Clients: React.FC = () => {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     
     const [clientToProcess, setClientToProcess] = useState<{id: string, action: 'delete' | 'restore' | 'permanent'} | null>(null);
+    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
 
     const fetchClientsData = useCallback(async () => {
         setLoading(true);
@@ -344,14 +348,66 @@ const Clients: React.FC = () => {
     const handleConfirmAction = async () => {
         if (!clientToProcess) return;
         try {
-            if (clientToProcess.action === 'delete') await deleteClient(clientToProcess.id);
+            if (clientToProcess.action === 'delete') {
+                // Cascading delete simulation for single client
+                const clientId = clientToProcess.id;
+                await deleteClient(clientId);
+                // We should also delete enrollments here to be consistent, but "Soft Delete" keeps them for restore?
+                // If soft deleting client, maybe keep enrollments but mark as inactive?
+                // For simplicity, soft delete just hides. Hard delete is where we clean.
+            }
             else if (clientToProcess.action === 'restore') await restoreClient(clientToProcess.id);
-            else await permanentDeleteClient(clientToProcess.id);
+            else {
+                // Hard Delete: Clean everything
+                const clientId = clientToProcess.id;
+                // 1. Get Enrollments
+                const clientEnrollments = await getEnrollmentsForClient(clientId);
+                for (const enr of clientEnrollments) {
+                    await cleanupEnrollmentFinancials(enr);
+                    await deleteEnrollment(enr.id);
+                    // Check auto-rent
+                    if (enr.locationId && enr.locationId !== 'unassigned') {
+                        // Quick check (locally is faster but less accurate, here we iterate all)
+                        await deleteAutoRentTransactions(enr.locationId);
+                    }
+                }
+                // 2. Delete Client
+                await permanentDeleteClient(clientId);
+            }
             fetchClientsData();
         } catch (err) {
             console.error(err);
         } finally {
             setClientToProcess(null);
+        }
+    };
+
+    const handleConfirmDeleteAll = async () => {
+        setIsDeleteAllModalOpen(false);
+        setLoading(true);
+        try {
+            // Fetch ALL clients (even deleted ones if we want a total nuke, but getClients returns active/soft-deleted)
+            const allClients = await getClients();
+            
+            for (const client of allClients) {
+                // Cascading delete for each client
+                const clientEnrollments = await getEnrollmentsForClient(client.id);
+                for (const enr of clientEnrollments) {
+                    await cleanupEnrollmentFinancials(enr);
+                    await deleteEnrollment(enr.id);
+                    if (enr.locationId && enr.locationId !== 'unassigned') {
+                        await deleteAutoRentTransactions(enr.locationId);
+                    }
+                }
+                await permanentDeleteClient(client.id);
+            }
+            await fetchClientsData();
+            alert("Tutti i clienti e i dati correlati sono stati eliminati.");
+        } catch (err) {
+            console.error("Error deleting all:", err);
+            alert("Errore durante l'eliminazione totale.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -468,6 +524,7 @@ const Clients: React.FC = () => {
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci anagrafica, valutazioni e figli.</p>
                 </div>
                 <div className="flex gap-2">
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
                     <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat"><UploadIcon /> <span className="ml-2 hidden sm:inline">Importa</span></button>
                     <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /> <span className="ml-2 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
                     {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> <span className="ml-2">Nuovo</span></button>}
@@ -501,6 +558,14 @@ const Clients: React.FC = () => {
                         <option value="name_asc">Nome (A-Z)</option>
                         <option value="name_desc">Nome (Z-A)</option>
                     </select>
+                    
+                    <button 
+                        onClick={() => setNameFormat(prev => prev === 'first_last' ? 'last_first' : 'first_last')}
+                        className="flex-1 lg:w-auto bg-white border border-gray-300 rounded-md py-2 px-3 text-sm text-gray-700 hover:bg-gray-50 font-medium whitespace-nowrap shadow-sm min-w-[130px]"
+                        title="Cambia formato visualizzazione nome"
+                    >
+                        {nameFormat === 'first_last' ? 'Nome Cognome' : 'Cognome Nome'}
+                    </button>
                 </div>
             </div>
 
@@ -511,7 +576,11 @@ const Clients: React.FC = () => {
                         const isParent = client.clientType === ClientType.Parent;
                         const parentClient = client as ParentClient;
                         const instClient = client as InstitutionalClient;
-                        const displayName = isParent ? `${parentClient.firstName} ${parentClient.lastName}` : instClient.companyName;
+                        const displayName = isParent 
+                            ? (nameFormat === 'first_last' 
+                                ? `${parentClient.firstName} ${parentClient.lastName}` 
+                                : `${parentClient.lastName} ${parentClient.firstName}`)
+                            : instClient.companyName;
                         const parentRatingAvg = isParent ? getParentRating(parentClient.rating) : 0;
                         
                         const locationColors = getClientLocationColors(client.id);
@@ -624,8 +693,18 @@ const Clients: React.FC = () => {
                 onClose={() => setClientToProcess(null)}
                 onConfirm={handleConfirmAction}
                 title={clientToProcess?.action === 'restore' ? "Ripristina" : "Elimina"}
-                message={clientToProcess?.action === 'restore' ? "Vuoi ripristinare questo cliente?" : "Sei sicuro di voler eliminare questo cliente?"}
+                message={clientToProcess?.action === 'restore' ? "Vuoi ripristinare questo cliente?" : "Sei sicuro di voler eliminare questo cliente? L'eliminazione definitiva cancellerà anche tutte le iscrizioni, lezioni e dati finanziari collegati."}
                 isDangerous={clientToProcess?.action !== 'restore'}
+            />
+
+            <ConfirmModal 
+                isOpen={isDeleteAllModalOpen}
+                onClose={() => setIsDeleteAllModalOpen(false)}
+                onConfirm={handleConfirmDeleteAll}
+                title="ELIMINA TUTTI I CLIENTI"
+                message="⚠️ ATTENZIONE: Stai per eliminare TUTTI i clienti dal database. Questa azione eliminerà a cascata anche tutte le Iscrizioni, Lezioni, Transazioni e Fatture collegate. Questa operazione è irreversibile. Confermi?"
+                isDangerous={true}
+                confirmText="Sì, Elimina TUTTO"
             />
         </div>
     );

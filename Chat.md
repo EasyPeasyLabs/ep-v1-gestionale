@@ -308,3 +308,96 @@ Miglioramento UX Mobile per le Iscrizioni e gestione storico spostamenti.
 
 3.  **Dettagli Fattura**:
     -   Aggiornata la generazione fatture da iscrizione per includere il nome della **Sede** nelle note dell'articolo, migliorando la chiarezza contabile.
+
+---
+
+## Sessione 21 (10 Giugno 2024)
+
+### Obiettivo della Sessione
+Potenziamento del sistema di pulizia dati (Cascading Delete) e revisione olistica della sezione Finanza/Controllo di Gestione.
+
+### Riepilogo delle Attività
+1.  **Deep Cleaning (Data Integrity)**:
+    -   Aggiornata la funzione `cleanupEnrollmentFinancials` in `services/financeService.ts`.
+    -   Quando viene eliminata un'iscrizione, ora vengono rimossi automaticamente:
+        -   Transazioni di Entrata collegate.
+        -   Fatture collegate.
+        -   Transazioni "Contanti" non fatturate.
+        -   **Transazioni "Nolo Sede"**: eliminate le spese generate automaticamente (`AUTO-RENT`).
+        -   Il sistema delle lezioni (Activity Log) viene pulito se associato.
+    -   Poiché lezioni, presenze e calendario dipendono dall'array `appointments` dentro `Enrollment`, l'eliminazione del documento padre pulisce automaticamente queste viste.
+
+2.  **Controllo di Gestione Olistico**:
+    -   Riorganizzata la tab "Controlling" in `pages/Finance.tsx`.
+    -   Create due card separate e dettagliate:
+        -   **Profittabilità Immobiliare**: Focus su Ricavi vs Affitto Sede.
+        -   **Efficienza Logistica**: Focus separato su Km, Carburante e Usura.
+    -   Nessuna omissione di dati: tutte le metriche sono visibili.
+
+3.  **CFO Dashboard 2.0**:
+    -   Implementati grafici simulati in **3D** (tramite gradienti e ombreggiature Chart.js) per i trend di cassa.
+    -   Reintegrate e rese dinamiche le card "Azioni Tattiche (Urgenti)" e "Strategiche (Lungo Termine)" basate sul gap finanziario calcolato.
+
+---
+
+## Sessione 22 (11 Giugno 2024)
+
+### Obiettivo della Sessione
+Completamento del sistema di pulizia "Cascading Delete" su tutte le entità collegate e finalizzazione della UI Finanza.
+
+### Riepilogo delle Attività
+1.  **Deep Cleaning Esteso**:
+    -   Implementata la funzione `deleteLessonActivitiesForEnrollment` per rimuovere anche i record del Registro Attività collegati alle lezioni cancellate.
+    -   Aggiornata `cleanupEnrollmentFinancials` per accettare l'oggetto `Enrollment` completo (necessario per recuperare gli ID delle lezioni).
+    -   L'eliminazione di un'iscrizione ora rimuove in un colpo solo: Iscrizione, Transazioni, Fatture, Noli Automatici e Attività Didattiche.
+
+2.  **Finanza & CFO UI**:
+    -   Ridisegnata la pagina `Finance.tsx` per separare nettamente "Profittabilità Immobiliare" da "Efficienza Logistica" come richiesto.
+    -   Implementato il grafico "simil-3D" usando gradienti `canvas` in Chart.js.
+    -   Ripristinate tutte le metriche di controllo (ROI, Margini, Costi occulti).
+
+---
+
+## Sessione 23 (12 Giugno 2024)
+
+### Obiettivo della Sessione
+Supporto per l'iscrizione di Clienti Adulti (corsi Business/Adult) e miglioramenti UI nelle card Clienti.
+
+### Riepilogo delle Attività
+1.  **Iscrizione Adulti**:
+    -   Aggiornato il modello dati `Enrollment` per gestire il flag `isAdult`.
+    -   Aggiornato `SubscriptionType` per includere il target ('kid' | 'adult') con prefissi automatici (K - / A -).
+    -   Implementato in `EnrollmentForm.tsx` un toggle per scegliere chi iscrivere: Figlio (Standard) o Genitore/Cliente (Adulto). Nel caso adulto, l'ID del bambino punta all'ID del cliente stesso.
+    -   Aggiornata la gestione dei listini per mostrare solo gli abbonamenti pertinenti al target scelto.
+
+2.  **UX Clienti (Nome/Cognome)**:
+    -   Aggiunto un toggle nella pagina `Clients.tsx` per invertire la visualizzazione dei nomi sulle card (Nome Cognome vs Cognome Nome), facilitando la ricerca visiva.
+
+3.  **Policy di Sviluppo "Imperativa"**:
+    -   Istituita regola ferrea per prevenire modifiche strutturali, rimozioni o troncamenti non esplicitamente richiesti nelle future iterazioni.
+
+---
+
+## Sessione 24 (13 Giugno 2024)
+
+### Obiettivo della Sessione
+Ristrutturazione completa delle aree "Lezioni" e "Attività" in "Registro Elettronico" e "Iniziative", introducendo moduli avanzati per la didattica e la biblioteca.
+
+### Riepilogo delle Attività
+1.  **Registro Elettronico**:
+    -   Rinominato il menu principale e suddiviso in due moduli.
+    -   **Lezioni**: Migliorata la visualizzazione con il raggruppamento per sede e data.
+    -   **Compiti**: Nuovo modulo per creare liste di compiti (Manuali/Link), assegnarle a specifici Recinti (Lezioni/Sedi) e inviarle via WhatsApp ai genitori con formattazione automatica.
+
+2.  **Iniziative & Biblioteca**:
+    -   Ristrutturato il menu "Attività" in un dropdown.
+    -   **Iniziative**: Nuovo modulo per gestire progetti speciali.
+    -   **Peek-a-Boo(k)**: Implementato un sistema bibliotecario completo (senza barcode) per:
+        -   Gestire l'inventario libri (CRUD).
+        -   Registrare prestiti (Check-out) associando Libro + Allievo + Sede.
+        -   Gestire le restituzioni (Check-in).
+        -   Visualizzare lo storico dei prestiti attivi.
+
+3.  **Miglioramenti UI**:
+    -   Resa cliccabile la card "Fornitori" nella Dashboard.
+    -   Aggiornate le icone della Sidebar per riflettere le nuove sezioni.
