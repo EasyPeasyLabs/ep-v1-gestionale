@@ -218,6 +218,11 @@ export interface SubscriptionType {
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
 
+export interface RecoveryPolicy {
+    id: string; // 'recoverySettings'
+    policies: Record<string, 'allowed' | 'forbidden'>; // locationId -> 'allowed' | 'forbidden'
+}
+
 export interface Lesson {
     id: string;
     date: string; // ISO String
@@ -464,7 +469,7 @@ export interface Transaction {
     allocationType?: 'general' | 'location' | 'enrollment'; // Dove imputare il costo
     allocationId?: string; // ID della Sede o dell'Iscrizione
     allocationName?: string; // Nome denormalizzato per display rapido
-    excludeFromStats?: boolean; // Se true, non conta come ricavo fiscale (es. Contanti non fatturati)
+    excludeFromStats?: boolean; // Se true, non conta come ricavo fiscale (es. Contanti non fatturati o pro-forma)
     isDeleted?: boolean; // Soft Delete
 }
 

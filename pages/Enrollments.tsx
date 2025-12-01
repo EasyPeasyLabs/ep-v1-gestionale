@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier } from '../types';
+import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
-import { addTransaction, deleteTransactionByRelatedId, addInvoice, cleanupEnrollmentFinancials, deleteAutoRentTransactions } from '../services/financeService';
+import { addTransaction, deleteTransactionByRelatedId, addInvoice, cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices, getTransactions } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -122,18 +122,19 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enrollment: Enrollment | null;
         date: string;
         method: PaymentMethod;
-        generateInvoice: boolean; // Usato per Contanti
+        createInvoice: boolean; // NEW: Toggle "Crea Fattura" vs "Non Crea"
         isDeposit: boolean; // Acconto
-        isBalance: boolean; // NEW: Saldo
+        isBalance: boolean; // Saldo
         depositAmount: number;
+        previousDepositInvoiceNumber?: string; // Auto-detected for balance
     }>({
         isOpen: false,
         enrollment: null,
         date: new Date().toISOString().split('T')[0],
         method: PaymentMethod.BankTransfer,
-        generateInvoice: true,
+        createInvoice: true,
         isDeposit: false,
-        isBalance: false, // NEW
+        isBalance: false,
         depositAmount: 0
     });
 
@@ -188,10 +189,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enr: Enrollment, 
         paymentDateStr: string, 
         method: PaymentMethod, 
-        generateInvoice: boolean, // Rilevante solo per contanti ora
+        createInvoice: boolean,
         isDeposit: boolean,
-        isBalance: boolean, // NEW
-        depositAmount: number
+        isBalance: boolean,
+        depositAmount: number,
+        previousDepositInvoiceNumber?: string
     ) => {
         setLoading(true);
         try {
@@ -208,18 +210,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 allocationName: enr.locationName
             };
 
-            // Regola: Auto-Fattura per Bonifico, Paypal, Bancomat. Opzionale per Contanti.
-            // Se "Da Fatturare" è true (o forzato da metodo), generiamo fattura.
-            const shouldGenerateInvoice = (method !== PaymentMethod.Cash) || generateInvoice;
-
-            if (shouldGenerateInvoice) {
-                // Generazione Fattura Reale
+            // CASE 1: CREATE INVOICE (Taxable or Pro-Forma based on sealing later)
+            if (createInvoice) {
                 let desc = `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
                 if (isDeposit) desc = `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
-                if (isBalance) desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+                if (isBalance) {
+                    desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+                    if (previousDepositInvoiceNumber) {
+                        desc += ` (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
+                    }
+                }
 
                 let itemNotes = `Sede: ${enr.locationName}`;
-                if (isBalance) itemNotes += " - A chiusura del piano rateale/acconto.";
 
                 const invoiceInput: InvoiceInput = {
                     clientId: enr.clientId,
@@ -237,6 +239,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
                 const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
                 
+                // Creates Transaction LINKED to Invoice (Taxable if Invoice is sealed)
                 if (actualAmount > 0) {
                     await addTransaction({
                         date: paymentIsoDate,
@@ -251,17 +254,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     });
                 }
 
-                // LOGICA ACCONTO: Genera Fattura Fantasma per il saldo
+                // Genera Fattura Fantasma per il saldo futuro se è un acconto
                 if (isDeposit) {
                     const balance = fullPrice - depositAmount;
                     if (balance > 0) {
                         const ghostInvoice: InvoiceInput = {
                             clientId: enr.clientId,
                             clientName: clientName,
-                            // Issue Date = Oggi (per tracking), Due Date = Tra 30gg o Fine Corso? 
-                            // Prompt dice avviso dopo 30gg dal pagamento acconto.
                             issueDate: paymentIsoDate, 
-                            dueDate: enr.endDate, // Scadenza tecnica, ma l'avviso parte dopo 30gg dall'issueDate
+                            dueDate: enr.endDate, 
                             status: DocumentStatus.Draft,
                             paymentMethod: PaymentMethod.BankTransfer,
                             items: [{ 
@@ -274,33 +275,31 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             hasStampDuty: balance > 77,
                             notes: 'Fattura generata automaticamente come saldo.',
                             invoiceNumber: '',
-                            isGhost: true // Flag per saldo futuro
+                            isGhost: true 
                         };
                         await addInvoice(ghostInvoice);
                     }
                 }
                 
-                let successMsg = `Pagamento registrato! Generata Fattura n. ${invoiceNumber}.`;
-                if(isDeposit) successMsg = `Acconto di ${actualAmount}€ registrato. Generata fattura fantasma per il saldo.`;
-                if(isBalance) successMsg = `Saldo di ${actualAmount}€ registrato. Ciclo contabile riconciliato.`;
-                
-                alert(successMsg);
+                alert(`Pagamento registrato con FATTURA n. ${invoiceNumber}.`);
+
             } else {
-                // NO FATTURA (Solo Contanti non fiscali)
+                // CASE 2: NO INVOICE (Internal Transaction Only)
+                // Used for cash or internal accounting. Not Taxable (excludeFromStats = true).
                 if (actualAmount > 0) {
                     await addTransaction({
                         date: paymentIsoDate,
-                        description: `Incasso Iscrizione (Contanti): ${enr.childName}`,
+                        description: `Incasso Iscrizione (No Fattura): ${enr.childName} - ${isDeposit ? 'Acconto' : isBalance ? 'Saldo' : 'Totale'}`,
                         amount: actualAmount,
                         type: TransactionType.Income,
                         category: TransactionCategory.Sales,
                         paymentMethod: method,
                         status: TransactionStatus.Completed,
-                        excludeFromStats: true, // NON FISCALE
-                        ...allocationData // Collega alla Sede
+                        excludeFromStats: true, // NON FISCALE (Cash Flow Only)
+                        ...allocationData
                     });
                 }
-                alert(`Pagamento registrato (Solo Transazione interna).`);
+                alert(`Pagamento registrato (Solo Transazione Interna).`);
             }
 
             // Se stiamo pagando un saldo, non dobbiamo rigenerare slot.
@@ -459,17 +458,42 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     };
 
 
-    const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
+    const handlePaymentRequest = async (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
+        
+        // Auto-detect Balance mode
+        // Check invoices for this client/child that are "Acconto"
+        let isBalanceMode = false;
+        let prevInvoiceNum = undefined;
+        let suggestedAmount = (enr.price || 0);
+
+        try {
+            const invoices = await getInvoices();
+            const childName = enr.childName.toLowerCase();
+            const depositInvoice = invoices.find(i => 
+                i.clientId === enr.clientId && 
+                !i.isDeleted && 
+                !i.isGhost && 
+                (i.items.some(item => item.description.toLowerCase().includes('acconto') && item.description.toLowerCase().includes(childName)))
+            );
+
+            if (depositInvoice) {
+                isBalanceMode = true;
+                prevInvoiceNum = depositInvoice.invoiceNumber;
+                suggestedAmount = Math.max(0, (enr.price || 0) - depositInvoice.totalAmount);
+            }
+        } catch(e) { console.error("Error checking invoices", e); }
+
         setPaymentModalState({ 
             isOpen: true, 
             enrollment: enr, 
             date: new Date().toISOString().split('T')[0], 
-            method: PaymentMethod.BankTransfer, // Default safe
-            generateInvoice: true, 
-            isDeposit: false,
-            isBalance: false, // Reset logic
-            depositAmount: (enr.price || 0) / 2 
+            method: PaymentMethod.BankTransfer,
+            createInvoice: true, // Default
+            isDeposit: !isBalanceMode, // Default deposit if not balance
+            isBalance: isBalanceMode, 
+            depositAmount: isBalanceMode ? suggestedAmount : (enr.price || 0) / 2,
+            previousDepositInvoiceNumber: prevInvoiceNum
         });
     };
 
@@ -480,10 +504,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 paymentModalState.enrollment, 
                 paymentModalState.date, 
                 paymentModalState.method,
-                paymentModalState.generateInvoice,
+                paymentModalState.createInvoice, // New Toggle
                 paymentModalState.isDeposit,
-                paymentModalState.isBalance, // NEW param
-                paymentModalState.depositAmount
+                paymentModalState.isBalance,
+                paymentModalState.depositAmount,
+                paymentModalState.previousDepositInvoiceNumber
             );
         }
     };
@@ -1035,14 +1060,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         <div className="md-input-group mb-4">
                             <select 
                                 value={paymentModalState.method} 
-                                onChange={(e) => {
-                                    const method = e.target.value as PaymentMethod;
-                                    setPaymentModalState(prev => ({ 
-                                        ...prev, 
-                                        method, 
-                                        generateInvoice: method !== PaymentMethod.Cash // Default per contanti = false
-                                    }));
-                                }} 
+                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} 
                                 className="md-input"
                             >
                                 {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
@@ -1052,46 +1070,49 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         
                         {/* Logic Acconto / Saldo */}
                         <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
-                            <div className="flex items-center">
-                                <input 
-                                    type="checkbox" 
-                                    id="accontoCheck"
-                                    checked={paymentModalState.isDeposit}
-                                    onChange={e => setPaymentModalState(prev => ({ 
-                                        ...prev, 
-                                        isDeposit: e.target.checked,
-                                        isBalance: e.target.checked ? false : prev.isBalance, // Mutual exclusive
-                                        depositAmount: e.target.checked ? (prev.enrollment?.price || 0) / 2 : prev.depositAmount 
-                                    }))}
-                                    className="h-4 w-4 text-indigo-600 rounded"
-                                />
-                                <label htmlFor="accontoCheck" className="ml-2 text-sm font-bold text-gray-700">Pagamento in Acconto</label>
-                            </div>
+                            <div className="flex gap-4">
+                                <label className="flex items-center cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        name="paymentType"
+                                        checked={paymentModalState.isDeposit}
+                                        onChange={() => setPaymentModalState(prev => ({ 
+                                            ...prev, 
+                                            isDeposit: true,
+                                            isBalance: false, 
+                                            depositAmount: (prev.enrollment?.price || 0) / 2 
+                                        }))}
+                                        className="h-4 w-4 text-indigo-600 rounded"
+                                    />
+                                    <span className="ml-2 text-sm font-bold text-gray-700">In Acconto</span>
+                                </label>
 
-                            <div className="flex items-center">
-                                <input 
-                                    type="checkbox" 
-                                    id="balanceCheck"
-                                    checked={paymentModalState.isBalance}
-                                    onChange={e => setPaymentModalState(prev => ({ 
-                                        ...prev, 
-                                        isBalance: e.target.checked,
-                                        isDeposit: e.target.checked ? false : prev.isDeposit, // Mutual exclusive
-                                        depositAmount: e.target.checked ? (prev.enrollment?.price || 0) / 2 : prev.depositAmount // Suggest remaining? Simplified to 50% or manual.
-                                    }))}
-                                    className="h-4 w-4 text-green-600 rounded"
-                                />
-                                <label htmlFor="balanceCheck" className="ml-2 text-sm font-bold text-green-700">Pagamento a Saldo</label>
+                                <label className="flex items-center cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        name="paymentType"
+                                        checked={paymentModalState.isBalance}
+                                        onChange={() => setPaymentModalState(prev => ({ 
+                                            ...prev, 
+                                            isBalance: true,
+                                            isDeposit: false,
+                                            // Se saldo, suggerisci il rimanente
+                                            depositAmount: prev.enrollment ? (prev.enrollment.price || 0) - (prev.isBalance ? 0 : (prev.enrollment.price || 0) / 2) : 0
+                                        }))}
+                                        className="h-4 w-4 text-green-600 rounded"
+                                    />
+                                    <span className="ml-2 text-sm font-bold text-green-700">A Saldo</span>
+                                </label>
                             </div>
                             
                             {(paymentModalState.isDeposit || paymentModalState.isBalance) && (
-                                <div className="animate-fade-in pl-6 pt-2">
-                                    <label className="text-xs text-gray-500 block">Importo Versato Ora</label>
+                                <div className="animate-fade-in pl-2 pt-2">
+                                    <label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label>
                                     <input 
                                         type="number" 
                                         value={paymentModalState.depositAmount}
                                         onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))}
-                                        className="w-full p-1 border rounded text-sm font-bold"
+                                        className="w-full p-2 border rounded text-sm font-bold text-right"
                                     />
                                     {paymentModalState.isDeposit && (
                                         <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
@@ -1099,33 +1120,46 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                             <br/>Verrà generata una notifica di saldo tra 30 giorni.
                                         </div>
                                     )}
-                                    {paymentModalState.isBalance && (
+                                    {paymentModalState.isBalance && paymentModalState.previousDepositInvoiceNumber && (
                                         <div className="text-xs text-green-600 mt-2 bg-green-50 p-2 rounded">
-                                            Questo pagamento chiuderà il ciclo contabile dell'iscrizione (Carnet esistente).
+                                            A saldo della fattura di acconto n. {paymentModalState.previousDepositInvoiceNumber}
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
 
-                        {/* Logic Fattura per Contanti */}
-                        {paymentModalState.method === PaymentMethod.Cash && (
-                            <div className="mt-4 flex items-center bg-blue-50 p-2 rounded border border-blue-100">
-                                <input 
-                                    type="checkbox" 
-                                    id="invCheck"
-                                    checked={paymentModalState.generateInvoice}
-                                    onChange={e => setPaymentModalState(prev => ({...prev, generateInvoice: e.target.checked}))}
-                                    className="h-4 w-4 text-blue-600 rounded"
-                                />
-                                <label htmlFor="invCheck" className="ml-2 text-xs text-blue-800 font-medium">Genera Fattura Fiscale</label>
+                        {/* Toggle Crea Fattura */}
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Generazione Documento</label>
+                            <div className="flex gap-4">
+                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${!paymentModalState.createInvoice ? 'bg-gray-100 border-gray-300 text-gray-600' : 'bg-white border-gray-200'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="invoiceGen" 
+                                        checked={!paymentModalState.createInvoice} 
+                                        onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: false }))}
+                                        className="hidden" 
+                                    />
+                                    🚫 Non crea fattura
+                                </label>
+                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${paymentModalState.createInvoice ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200'}`}>
+                                    <input 
+                                        type="radio" 
+                                        name="invoiceGen" 
+                                        checked={paymentModalState.createInvoice} 
+                                        onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: true }))}
+                                        className="hidden" 
+                                    />
+                                    📄 Crea fattura
+                                </label>
                             </div>
-                        )}
-                        {paymentModalState.method === PaymentMethod.Cash && !paymentModalState.generateInvoice && (
-                            <p className="text-[10px] text-gray-500 mt-1 italic pl-1">
-                                Nota: Le entrate in contanti senza fattura non vengono conteggiate come ricavo fiscale (imponibile), ma appaiono nel flusso di cassa.
+                            <p className="text-[10px] text-gray-400 mt-2 italic">
+                                {!paymentModalState.createInvoice 
+                                    ? "L'importo verrà registrato solo come Transazione interna (non fiscale)." 
+                                    : "Verrà generata una fattura (SDI o Pro-Forma) e la relativa transazione."}
                             </p>
-                        )}
+                        </div>
 
                         <div className="mt-6 flex justify-end gap-2">
                             <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>

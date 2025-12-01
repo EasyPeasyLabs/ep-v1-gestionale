@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck } from '../services/settingsService';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier } from '../types';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies } from '../services/settingsService';
+import { getSuppliers } from '../services/supplierService';
 import { requestNotificationPermission } from '../services/fcmService';
 import { auth } from '../firebase/config';
 import { applyTheme, getSavedTheme, defaultTheme } from '../utils/theme';
@@ -90,6 +91,8 @@ const Settings: React.FC = () => {
     const [subscriptions, setSubscriptions] = useState<SubscriptionType[]>([]);
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [checks, setChecks] = useState<PeriodicCheck[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [recoveryPolicies, setRecoveryPolicies] = useState<Record<string, 'allowed' | 'forbidden'>>({});
     
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -117,16 +120,20 @@ const Settings: React.FC = () => {
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [companyData, subsData, templatesData, checksData] = await Promise.all([
+            const [companyData, subsData, templatesData, checksData, supsData, recData] = await Promise.all([
                 getCompanyInfo(), 
                 getSubscriptionTypes(),
                 getCommunicationTemplates(),
-                getPeriodicChecks()
+                getPeriodicChecks(),
+                getSuppliers(),
+                getRecoveryPolicies()
             ]);
             setInfo(companyData); 
             setSubscriptions(subsData);
             setTemplates(templatesData);
             setChecks(checksData);
+            setSuppliers(supsData);
+            setRecoveryPolicies(recData);
             
             const savedTheme = getSavedTheme();
             setPrimaryColor(savedTheme.primary);
@@ -151,6 +158,13 @@ const Settings: React.FC = () => {
     const handleDeleteCheck = async (id: string) => { if(confirm("Eliminare questo controllo periodico?")) { await deletePeriodicCheck(id); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } };
     const handleColorChange = (newPrimary: string, newBg: string) => { setPrimaryColor(newPrimary); setBgColor(newBg); applyTheme(newPrimary, newBg); };
     const handleResetTheme = () => { handleColorChange(defaultTheme.primary, defaultTheme.bgLight); };
+
+    // Recovery Policy Handler
+    const handlePolicyChange = async (locationId: string, policy: 'allowed' | 'forbidden') => {
+        const newPolicies = { ...recoveryPolicies, [locationId]: policy };
+        setRecoveryPolicies(newPolicies);
+        await saveRecoveryPolicies(newPolicies);
+    };
 
     // --- DEBUGGING LOGIC ---
     const handleEnableNotifications = async () => {
@@ -274,6 +288,42 @@ const Settings: React.FC = () => {
                                 <div className="flex items-center gap-3"><span className="font-bold text-sm">{sub.price}€</span><div className="flex space-x-1"><button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon /></button></div></div>
                             </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* Politica Recuperi (New Card) */}
+                <div className="md-card p-6 border-l-4 border-orange-500">
+                    <h2 className="text-lg font-semibold border-b pb-3 mb-4">Politica Recuperi</h2>
+                    <p className="text-xs text-gray-500 mb-4">Definisci se le lezioni perse possono essere recuperate per ciascuna sede (recinto).</p>
+                    
+                    <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar">
+                        {suppliers.flatMap(s => s.locations).length === 0 && <p className="text-sm italic text-gray-400">Nessuna sede configurata.</p>}
+                        
+                        {suppliers.flatMap(s => s.locations).map(loc => {
+                            const currentPolicy = recoveryPolicies[loc.id] || 'allowed'; // Default allowed
+                            return (
+                                <div key={loc.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-200">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-3 h-3 rounded-full" style={{backgroundColor: loc.color}}></span>
+                                        <span className="text-sm font-bold text-gray-700">{loc.name}</span>
+                                    </div>
+                                    <div className="flex bg-white rounded border border-gray-300 p-0.5">
+                                        <button 
+                                            onClick={() => handlePolicyChange(loc.id, 'allowed')}
+                                            className={`px-2 py-1 text-[10px] font-bold rounded ${currentPolicy === 'allowed' ? 'bg-green-100 text-green-700 shadow-sm' : 'text-gray-400 hover:bg-gray-50'}`}
+                                        >
+                                            Consenti
+                                        </button>
+                                        <button 
+                                            onClick={() => handlePolicyChange(loc.id, 'forbidden')}
+                                            className={`px-2 py-1 text-[10px] font-bold rounded ${currentPolicy === 'forbidden' ? 'bg-red-100 text-red-700 shadow-sm' : 'text-gray-400 hover:bg-gray-50'}`}
+                                        >
+                                            Vieta
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 

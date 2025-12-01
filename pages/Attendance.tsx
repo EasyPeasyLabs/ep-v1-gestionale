@@ -173,6 +173,43 @@ const Attendance: React.FC = () => {
         });
     };
 
+    // --- Bulk Actions ---
+    const handleBulkMarkPresent = async () => {
+        if (!confirm("Segnare TUTTI gli studenti visualizzati come PRESENTI?")) return;
+        setLoading(true);
+        try {
+            // Filtra solo quelli non ancora segnati (Scheduled) o Assenti per correzione
+            const targets = attendanceItems.filter(i => i.status !== 'Present');
+            for (const item of targets) {
+                await registerPresence(item.enrollmentId, item.lessonId);
+            }
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch(e) {
+            alert("Errore durante l'aggiornamento massivo.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBulkMarkAbsent = async () => {
+        if (!confirm("Segnare TUTTI gli studenti visualizzati come ASSENTI con RECUPERO automatico?")) return;
+        setLoading(true);
+        try {
+            const targets = attendanceItems.filter(i => i.status !== 'Absent');
+            for (const item of targets) {
+                // Apply automatic reschedule logic
+                await registerAbsence(item.enrollmentId, item.lessonId, true); 
+            }
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch(e) {
+            alert("Errore durante l'aggiornamento massivo.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -181,11 +218,21 @@ const Attendance: React.FC = () => {
                     <p className="text-gray-500">Gestione presenze e recuperi.</p>
                 </div>
                 
-                {/* View Toggles */}
-                <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
-                    <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
-                    <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
-                    <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
+                <div className="flex gap-2 items-center">
+                    {/* Bulk Actions */}
+                    <button onClick={handleBulkMarkPresent} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 whitespace-nowrap">
+                        ✓ Tutti Presenti
+                    </button>
+                    <button onClick={handleBulkMarkAbsent} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap">
+                        ✕ Tutti Assenti
+                    </button>
+
+                    {/* View Toggles */}
+                    <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm ml-2">
+                        <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
+                        <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
+                        <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
+                    </div>
                 </div>
             </div>
 

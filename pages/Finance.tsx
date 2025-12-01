@@ -12,7 +12,7 @@ import {
     getQuotes, addQuote, updateQuote, deleteQuote, updateQuoteStatus, 
     calculateRentTransactions, batchAddTransactions,
     permanentDeleteTransaction, permanentDeleteInvoice, permanentDeleteQuote,
-    resetFinancialData // New function
+    resetFinancialData
 } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
@@ -46,6 +46,48 @@ const COEFF_REDDITIVITA = 0.78; // ATECO Istruzione
 const INPS_RATE = 0.2623; // Gestione Separata 2024/25 approx
 const TAX_RATE_STARTUP = 0.05;
 const START_DATE_BUSINESS = new Date('2025-03-01'); // Data Inizio Attività
+
+// --- TESTI ESPLICATIVI ---
+const RENT_CALC_EXPLANATION = `
+**1. Acquisizione dei Parametri Economici**
+Il sistema scansiona l'anagrafica dei tuoi Fornitori. Per ogni Sede (Location) configurata, memorizza due informazioni fondamentali:
+- Il Costo Nolo (il prezzo che paghi per ogni singolo slot/lezione in quella sede).
+- L'ID univoco della sede.
+
+**2. Scansione Storica delle Lezioni (Il "Conteggio")**
+Il sistema analizza tutte le iscrizioni e tutte le lezioni (appuntamenti) presenti nel database, passate e presenti.
+Esegue un filtro molto specifico: conta solo le lezioni con stato "PRESENTE".
+*Nota:* Le lezioni "Programmate" (future) o "Assenti" non vengono conteggiate per generare costi, poiché il nolo si paga solitamente sull'utilizzo effettivo (o comunque questo è l'algoritmo attuale).
+
+**3. Aggregazione Mensile e per Sede**
+Una volta ottenute tutte le lezioni "Presenti", il sistema le raggruppa creando dei "pacchetti" basati su due chiavi:
+- La Sede dove si è svolta la lezione.
+- Il Mese e l'Anno della lezione.
+*Esempio:* Se a Marzo 2025 ci sono state 10 lezioni nella "Sede A" e 5 nella "Sede B", il sistema crea due gruppi distinti.
+
+**4. Calcolo dell'Importo (Moltiplicazione)**
+Per ogni gruppo (Sede + Mese), il sistema applica la formula:
+> Numero Lezioni Presenti × Costo Nolo Unitario della Sede = Totale da Pagare
+
+**5. Verifica Anti-Duplicazione (Idempotenza)**
+Questo è il passaggio di sicurezza più importante. Prima di creare una transazione, il sistema controlla tra le Transazioni esistenti.
+Cerca se esiste già una spesa con:
+- Categoria: "Nolo Sedi"
+- Descrizione che contiene il nome della Sede e il Mese/Anno specifico.
+- Stato: Non cancellata.
+Se la transazione esiste già, il sistema la ignora. Questo ti permette di cliccare il bottone "Calcola Noli" quante volte vuoi senza paura di creare doppioni per i mesi passati già calcolati.
+
+**6. Generazione delle Transazioni**
+Per i soli gruppi che hanno superato il controllo anti-duplicazione, il sistema genera nuove Transazioni di Uscita:
+- Data: Viene impostata automaticamente all'ultimo giorno del mese di riferimento (es. 31 Marzo).
+- Importo: Il totale calcolato al punto 4.
+- Descrizione: "Nolo Sede: [Nome Sede] - [Mese]/[Anno]".
+- Stato: Viene impostata come "Pending" (In sospeso/Da pagare), così ti ricorderai di effettuare il bonifico.
+- Imputazione Costi: La transazione viene "taggata" con l'ID della Sede specifica. Questo è fondamentale per alimentare i grafici del Controllo di Gestione e calcolare la profittabilità di quel recinto specifico.
+
+**7. Salvataggio e Feedback**
+Infine, il sistema scrive tutte le nuove transazioni nel database in un'unica operazione (Batch) e ti mostra un avviso a video indicando quante nuove transazioni di nolo sono state generate.
+`;
 
 // --- SUB-COMPONENTS (Forms) ---
 const TransactionForm: React.FC<{ transaction?: Transaction | null; onSave: (t: TransactionInput | Transaction) => void; onCancel: () => void }> = ({ transaction, onSave, onCancel }) => {
@@ -129,7 +171,7 @@ interface FinanceProps {
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // --- State ---
-    const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'analytics' | 'transactions' | 'invoices' | 'quotes'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'analytics' | 'transactions' | 'invoices' | 'quotes'>('overview');
     
     // Data
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -170,6 +212,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // Modal per eliminazione massiva transazioni
     const [isResetTransModalOpen, setIsResetTransModalOpen] = useState<{isOpen: boolean, type: TransactionType | null}>({isOpen: false, type: null});
 
+    // Modal per Spiegazione Noli
+    const [isRentHelpOpen, setIsRentHelpOpen] = useState(false);
+
     const [confirmState, setConfirmState] = useState<{ isOpen: boolean; title: string; message: string; onConfirm: () => void; isDangerous: boolean; }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, isDangerous: false });
 
     // Pagination
@@ -183,6 +228,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // Overview Chart Ref (NEW)
     const overviewChartRef = useRef<HTMLCanvasElement | null>(null);
     const overviewChartInstance = useRef<Chart | null>(null);
+
+    // Controlling Chart Ref
+    const controllingChartRef = useRef<HTMLCanvasElement | null>(null);
+    const controllingChartInstance = useRef<Chart | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -309,6 +358,57 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         };
     }, [transactions, invoices, enrollments, suppliers, companyInfo, simParams]);
 
+    // --- PROFITABILITY BY LOCATION (For Controlling) ---
+    const locationAnalysis = useMemo(() => {
+        const stats: Record<string, {
+            name: string, 
+            revenue: number, 
+            rentCost: number,
+            otherAllocatedCosts: number, 
+            enrollmentsCount: number,
+            margin: number,
+            marginPercent: number
+        }> = {};
+
+        // 1. Enrollments Revenue
+        enrollments.forEach(enr => {
+            if (enr.status === 'Active' || enr.status === 'Completed') {
+                const locId = enr.locationId || 'unassigned';
+                const locName = enr.locationName || 'Sede Non Definita';
+                
+                if (!stats[locId]) stats[locId] = { name: locName, revenue: 0, rentCost: 0, otherAllocatedCosts: 0, enrollmentsCount: 0, margin: 0, marginPercent: 0 };
+                
+                // Ricavi Iscrizione
+                stats[locId].revenue += enr.price || 0;
+                stats[locId].enrollmentsCount += 1;
+            }
+        });
+
+        // 2. Allocated Costs
+        transactions.forEach(t => {
+            if (!t.isDeleted && t.type === TransactionType.Expense && t.allocationType === 'location' && t.allocationId) {
+                const locId = t.allocationId;
+                if (!stats[locId]) stats[locId] = { name: t.allocationName || 'Sede Sconosciuta', revenue: 0, rentCost: 0, otherAllocatedCosts: 0, enrollmentsCount: 0, margin: 0, marginPercent: 0 };
+                
+                if (t.category === TransactionCategory.Rent) {
+                    stats[locId].rentCost += t.amount;
+                } else {
+                    stats[locId].otherAllocatedCosts += t.amount;
+                }
+            }
+        });
+
+        // 3. Calc Margins
+        return Object.values(stats).map(item => {
+            const totalCosts = item.rentCost + item.otherAllocatedCosts;
+            const margin = item.revenue - totalCosts;
+            const marginPercent = item.revenue > 0 ? (margin / item.revenue) * 100 : 0;
+            return { ...item, totalCosts, margin, marginPercent };
+        }).sort((a,b) => b.revenue - a.revenue);
+
+    }, [enrollments, transactions]);
+
+
     // --- EXPENSE BREAKDOWN CALCULATION (For Overview Card) ---
     const expenseAnalysis = useMemo(() => {
         const categories: Record<string, number> = {};
@@ -404,6 +504,39 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             if (overviewChartInstance.current) overviewChartInstance.current.destroy();
         };
     }, [activeTab, expenseAnalysis]);
+
+    // --- CONTROLLING CHART RENDERER ---
+    useEffect(() => {
+        if (activeTab === 'controlling' && controllingChartRef.current) {
+            if (controllingChartInstance.current) {
+                controllingChartInstance.current.destroy();
+            }
+            const ctx = controllingChartRef.current.getContext('2d');
+            if (ctx) {
+                const labels = locationAnalysis.map(l => l.name);
+                const revenue = locationAnalysis.map(l => l.revenue);
+                const costs = locationAnalysis.map(l => l.totalCosts);
+                
+                controllingChartInstance.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'Ricavi', data: revenue, backgroundColor: '#4ade80', borderRadius: 4 },
+                            { label: 'Costi Diretti', data: costs, backgroundColor: '#f87171', borderRadius: 4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { x: { display: false } }, // Compact
+                        plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 10 } } }
+                    }
+                });
+            }
+        }
+        return () => { if(controllingChartInstance.current) controllingChartInstance.current.destroy(); };
+    }, [activeTab, locationAnalysis]);
 
 
     // --- ANALYTICS CHARTS RENDERER (Original) ---
@@ -551,11 +684,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     <h1 className="text-3xl font-bold">Finanza Enterprise</h1>
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Controllo di gestione, fiscalità, logistica e flussi.</p>
                 </div>
-                {activeTab === 'cfo' ? (
-                    <div className="flex gap-2">
+                {activeTab === 'controlling' ? (
+                    <div className="flex flex-col items-end gap-1">
                         <button onClick={handleGenerateRentTransactions} className="md-btn md-btn-raised bg-purple-600 text-white flex items-center">
                             <SparklesIcon /> <span className="ml-2">Calcola Noli</span>
                         </button>
+                        <button onClick={() => setIsRentHelpOpen(true)} className="text-[10px] text-indigo-600 underline hover:text-indigo-800">Come funziona?</button>
                     </div>
                 ) : (
                     <div className="flex gap-2">
@@ -580,7 +714,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 <nav className="-mb-px flex space-x-6 overflow-x-auto">
                     {[
                         { id: 'overview', label: 'Panoramica' },
-                        { id: 'cfo', label: 'CFO (Controllo)' },
+                        { id: 'cfo', label: 'CFO (Strategia)' },
+                        { id: 'controlling', label: 'Controllo di Gestione (Realtà)' },
                         { id: 'analytics', label: 'Analisi Grafica' },
                         { id: 'transactions', label: 'Transazioni' },
                         { id: 'invoices', label: 'Fatture' },
@@ -676,7 +811,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         </div>
                     )}
 
-                    {/* --- CFO (SIMULATOR + DEEP DATA) --- */}
+                    {/* --- CFO (STRATEGY & PLANNING) --- */}
                     {activeTab === 'cfo' && (
                         <div className="space-y-8 animate-slide-up">
                             
@@ -687,7 +822,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                         <h3 className="text-lg font-bold text-purple-900 flex items-center gap-2">
                                             <SparklesIcon /> AI Financial Planner 2025
                                         </h3>
-                                        <p className="text-xs text-purple-600">Simulazione dinamica basata sui tuoi costi reali.</p>
+                                        <p className="text-xs text-purple-600">Definisci l'obiettivo e scopri il fatturato necessario.</p>
                                     </div>
                                     <div className="bg-white p-2 rounded shadow-sm border border-purple-100">
                                         <label className="text-[10px] font-bold text-purple-800 block mb-1">OBIETTIVO MENSILE (NETTO)</label>
@@ -826,125 +961,162 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                 </div>
                             </div>
 
-                            {/* CARD 2: LOGISTICA AVANZATA (TCO & SIMULATOR) */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                <div className="lg:col-span-2 md-card p-0 border-t-4 border-orange-500 shadow-md">
-                                    <div className="p-4 bg-orange-50 border-b border-orange-100">
-                                        <h3 className="text-lg font-bold text-orange-900 flex items-center gap-2">
-                                            <span className="text-xl">🚗</span> Logistica & TCO Veicolo
-                                        </h3>
+                            {/* AZIONI STRATEGICHE (CFO) */}
+                            <div className="md-card p-6 border-l-4 border-blue-500 bg-blue-50/50">
+                                <h3 className="text-lg font-bold text-blue-900 mb-3">🔭 Strategia & Allarmi</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                    <div className="space-y-2">
+                                        <p className="font-bold text-blue-800 uppercase text-xs">Situazione Corrente</p>
+                                        <ul className="space-y-1">
+                                            {engineData.fiscal.limitProgress > 80 && (
+                                                <li className="flex items-center gap-2 text-red-600 font-bold">
+                                                    🚨 ATTENZIONE LIMITE 85K: Sei all'{engineData.fiscal.limitProgress.toFixed(1)}% del plafond.
+                                                </li>
+                                            )}
+                                            <li className="text-blue-700">
+                                                • Hai emesso {engineData.fiscal.invoicesCount} fatture con bollo (Costo: {engineData.fiscal.totalBolloCost}€).
+                                            </li>
+                                            {engineData.netProfit < 0 && (
+                                                <li className="flex items-center gap-2 text-red-600 font-bold">
+                                                    🚨 Cash Flow Negativo: Spese superiori ai ricavi.
+                                                </li>
+                                            )}
+                                        </ul>
                                     </div>
-                                    <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-6">
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between border-b border-gray-100 pb-1">
-                                                <span className="text-sm text-gray-600">Km Totali (A/R)</span>
-                                                <span className="font-bold">{engineData.logistics.totalKm.toFixed(0)} km</span>
-                                            </div>
-                                            <div className="flex justify-between border-b border-gray-100 pb-1">
-                                                <span className="text-sm text-gray-600">Costo Carburante</span>
-                                                <span className="font-bold text-orange-600">{engineData.logistics.estimatedFuelCost.toFixed(2)}€</span>
-                                            </div>
-                                            <div className="flex justify-between border-b border-gray-100 pb-1">
-                                                <span className="text-sm text-gray-600">Usura (Gomme/Olio)</span>
-                                                <span className="font-bold text-gray-500">{engineData.logistics.estimatedWearCost.toFixed(2)}€</span>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-3">
-                                            <div className="flex justify-between border-b border-gray-100 pb-1">
-                                                <span className="text-sm text-gray-600">Assicurazione/Bollo</span>
-                                                <span className="font-bold text-gray-500">{engineData.logistics.fixedCosts.toFixed(2)}€</span>
-                                            </div>
-                                            <div className="flex justify-between border-b border-gray-100 pb-1">
-                                                <span className="text-sm text-gray-600 font-bold">Costo Totale Logistica</span>
-                                                <span className="font-bold text-red-600">{engineData.logistics.totalLogisticsCost.toFixed(2)}€</span>
-                                            </div>
-                                            <div className="text-[10px] text-gray-400 mt-2">
-                                                Incidenza: <strong>{engineData.logistics.impactPerKm.toFixed(2)} €/km</strong>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Simulator Input */}
-                                        <div className="bg-gray-50 p-3 rounded border border-gray-200">
-                                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Simulatore Costi</label>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs">Prezzo Carburante</span>
-                                                <input 
-                                                    type="number" 
-                                                    step="0.01" 
-                                                    value={simParams.fuelCost} 
-                                                    onChange={e => setSimParams({...simParams, fuelCost: Number(e.target.value)})} 
-                                                    className="w-16 p-1 text-right text-xs border rounded font-bold"
-                                                />
-                                            </div>
-                                            <p className="text-[10px] text-gray-400 text-center mt-2">Modifica il prezzo per aggiornare le stime.</p>
-                                        </div>
+                                    <div className="space-y-2">
+                                        <p className="font-bold text-blue-800 uppercase text-xs">Suggerimenti</p>
+                                        <ul className="space-y-1 text-blue-700">
+                                            <li>• Per raggiungere il target di {simParams.targetNetMonthly}€ netti, mantieni il fatturato sopra i {engineData.ai.requiredMonthlyRevenue.toFixed(0)}€/mese.</li>
+                                            <li>• Accantona {engineData.fiscal.monthlySavingQuota.toFixed(0)}€ questo mese per le tasse future.</li>
+                                        </ul>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    )}
 
-                                {/* CARD 3: COSTI STRUTTURA & COMMERCIALISTA */}
-                                <div className="md-card p-6 border-t-4 border-gray-500 shadow-md">
-                                    <h3 className="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                        <span className="text-xl">💼</span> Admin & Struttura
+                    {/* --- CONTROLLING (REALITY & OPERATIONS) --- */}
+                    {activeTab === 'controlling' && (
+                        <div className="space-y-8 animate-slide-up">
+                            
+                            {/* ROW 1: LOGISTICA & TCO (Realtà Operativa) */}
+                            <div className="md-card p-0 border-t-4 border-orange-500 shadow-md">
+                                <div className="p-4 bg-orange-50 border-b border-orange-100 flex justify-between items-center">
+                                    <h3 className="text-lg font-bold text-orange-900 flex items-center gap-2">
+                                        🚗 Efficienza Logistica (TCO)
                                     </h3>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="text-xs text-gray-500 block mb-1">Costo Commercialista (Annuale)</label>
-                                            <div className="flex gap-2">
-                                                <input 
-                                                    type="number" 
-                                                    value={simParams.accountantCost} 
-                                                    onChange={e => setSimParams({...simParams, accountantCost: Number(e.target.value)})} 
-                                                    className="flex-1 border rounded p-2 text-right font-bold"
-                                                />
-                                                <span className="self-center font-bold">€</span>
-                                            </div>
-                                        </div>
-                                        <div className="pt-4 border-t border-gray-100">
-                                            <div className="flex justify-between text-sm mb-1">
-                                                <span>Affitti Sedi (Totale)</span>
-                                                <span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Rent).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm mb-1">
-                                                <span>Software/Servizi</span>
-                                                <span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Software).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span>
-                                            </div>
-                                        </div>
+                                    <span className="text-[10px] text-orange-600 bg-white px-2 py-1 rounded border border-orange-200">
+                                        Costo per Km: <strong>{engineData.logistics.impactPerKm.toFixed(2)} €/km</strong>
+                                    </span>
+                                </div>
+                                <div className="p-6 grid grid-cols-1 sm:grid-cols-4 gap-6">
+                                    <div className="space-y-2 text-center border-r border-gray-100">
+                                        <p className="text-xs text-gray-500">Km Percorsi (A/R)</p>
+                                        <p className="text-2xl font-bold text-gray-800">{engineData.logistics.totalKm.toFixed(0)}</p>
+                                    </div>
+                                    <div className="space-y-2 text-center border-r border-gray-100">
+                                        <p className="text-xs text-gray-500">Carburante Stimato</p>
+                                        <p className="text-2xl font-bold text-orange-600">{engineData.logistics.estimatedFuelCost.toFixed(0)}€</p>
+                                        <input 
+                                            type="number" step="0.01" 
+                                            value={simParams.fuelCost} 
+                                            onChange={e => setSimParams({...simParams, fuelCost: Number(e.target.value)})} 
+                                            className="text-xs text-center border-b bg-transparent w-12 mx-auto"
+                                        /> <span className="text-[9px]">€/l</span>
+                                    </div>
+                                    <div className="space-y-2 text-center border-r border-gray-100">
+                                        <p className="text-xs text-gray-500">Usura & Manutenzione</p>
+                                        <p className="text-2xl font-bold text-gray-600">{engineData.logistics.estimatedWearCost.toFixed(0)}€</p>
+                                    </div>
+                                    <div className="space-y-2 text-center">
+                                        <p className="text-xs text-gray-500">Costo Totale Logistica</p>
+                                        <p className="text-2xl font-bold text-red-600">{engineData.logistics.totalLogisticsCost.toFixed(0)}€</p>
+                                        <p className="text-[10px] text-gray-400">Include Assic./Bollo ({engineData.logistics.fixedCosts}€)</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* CARD 4: AZIONI STRATEGICHE */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="md-card p-6 border-l-4 border-amber-500 bg-amber-50/50">
-                                    <h3 className="text-lg font-bold text-amber-900 mb-3">⚡ Azioni Tattiche (Urgenti)</h3>
-                                    <ul className="space-y-2 text-sm">
-                                        <li className="flex items-center gap-2 text-red-700">
-                                            ⚠️ <strong>Accantonamento:</strong> Metti da parte {engineData.fiscal.monthlySavingQuota.toFixed(0)}€ questo mese per le tasse.
-                                        </li>
-                                        {engineData.fiscal.limitProgress > 80 && (
-                                            <li className="flex items-center gap-2 text-red-700 animate-pulse font-bold">
-                                                🚨 <strong>ATTENZIONE LIMITE 85K:</strong> Sei all'{engineData.fiscal.limitProgress.toFixed(1)}% del limite.
-                                            </li>
-                                        )}
-                                        {engineData.fiscal.totalFiscalBurden > 3000 && (
-                                            <li className="flex items-center gap-2 text-orange-700">
-                                                ⚠️ <strong>Acconti INPS:</strong> Verifica la disponibilità per la scadenza di Giugno/Novembre.
-                                            </li>
-                                        )}
-                                        {engineData.netProfit < 0 && (
-                                            <li className="flex items-center gap-2 text-red-700 font-bold">
-                                                🚨 <strong>Cash Flow Negativo:</strong> Bloccare spese non essenziali.
-                                            </li>
-                                        )}
-                                    </ul>
+                            {/* ROW 2: PROFITTABILITÀ SEDI (Analisi Granulare) */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                {/* Tabella Sedi */}
+                                <div className="lg:col-span-2 md-card p-6 border-t-4 border-emerald-500">
+                                    <h3 className="text-lg font-bold text-emerald-900 mb-4">📍 Profittabilità per Sede (Recinto)</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
+                                                <tr>
+                                                    <th className="p-3">Sede</th>
+                                                    <th className="p-3 text-right">Ricavi Iscr.</th>
+                                                    <th className="p-3 text-right">Costi Nolo</th>
+                                                    <th className="p-3 text-right">Margine</th>
+                                                    <th className="p-3 text-center">%</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {locationAnalysis.map((loc, i) => (
+                                                    <tr key={i} className="hover:bg-gray-50">
+                                                        <td className="p-3 font-bold text-gray-700">{loc.name}</td>
+                                                        <td className="p-3 text-right font-mono text-green-600">+{loc.revenue.toFixed(2)}€</td>
+                                                        <td className="p-3 text-right font-mono text-red-500">-{loc.rentCost.toFixed(2)}€</td>
+                                                        <td className={`p-3 text-right font-bold ${loc.margin >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                                                            {loc.margin.toFixed(2)}€
+                                                        </td>
+                                                        <td className="p-3 text-center">
+                                                            <span className={`px-2 py-1 rounded text-xs font-bold ${loc.marginPercent > 30 ? 'bg-green-100 text-green-800' : loc.marginPercent > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                                                                {loc.marginPercent.toFixed(0)}%
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {locationAnalysis.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-gray-400">Nessun dato disponibile.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
-                                <div className="md-card p-6 border-l-4 border-blue-500 bg-blue-50/50">
-                                    <h3 className="text-lg font-bold text-blue-900 mb-3">🔭 Azioni Strategiche</h3>
-                                    <ul className="space-y-2 text-sm text-blue-800">
-                                        <li>• <strong>Ottimizzazione:</strong> Rinegoziare nolo sedi se margine &lt; 20%.</li>
-                                        <li>• <strong>Logistica:</strong> Ridurre km a vuoto per abbattere costo usura ({engineData.logistics.impactPerKm.toFixed(2)} €/km).</li>
-                                        <li>• <strong>Target:</strong> Per guadagnare {simParams.targetNetMonthly}€ netti, punta a {engineData.ai.requiredMonthlyRevenue.toFixed(0)}€ di fatturato mensile.</li>
-                                    </ul>
+
+                                {/* Grafico Sedi */}
+                                <div className="md-card p-6 border-t-4 border-blue-500 flex flex-col">
+                                    <h3 className="text-sm font-bold text-gray-600 mb-4 text-center">Confronto Ricavi vs Costi Diretti</h3>
+                                    <div className="flex-1 relative min-h-[200px]">
+                                        <canvas ref={el => controllingChartRef.current = el}></canvas>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* ROW 3: COSTI STRUTTURA (Fissi vs Variabili) */}
+                            <div className="md-card p-6 border-t-4 border-gray-500 bg-gray-50">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4">🏢 Costi di Struttura (Overhead)</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">Commercialista (Annuale)</label>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="number" 
+                                                value={simParams.accountantCost} 
+                                                onChange={e => setSimParams({...simParams, accountantCost: Number(e.target.value)})} 
+                                                className="flex-1 border rounded p-2 text-right font-bold bg-white"
+                                            />
+                                            <span className="self-center font-bold">€</span>
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white rounded border border-gray-200">
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="text-gray-600">Software & Servizi Web</span>
+                                            <span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Software).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 h-1 mt-2">
+                                            <div className="bg-blue-500 h-1" style={{width: '100%'}}></div>
+                                        </div>
+                                    </div>
+                                    <div className="p-3 bg-white rounded border border-gray-200">
+                                        <div className="flex justify-between text-sm mb-1">
+                                            <span className="text-gray-600">Materiali Didattici</span>
+                                            <span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Materials).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span>
+                                        </div>
+                                        <div className="w-full bg-gray-100 h-1 mt-2">
+                                            <div className="bg-purple-500 h-1" style={{width: '100%'}}></div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1046,6 +1218,24 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 isDangerous={true}
                 confirmText="Sì, Procedi"
             />
+
+            {isRentHelpOpen && (
+                <Modal onClose={() => setIsRentHelpOpen(false)} size="lg">
+                    <div className="flex flex-col h-full max-h-[80vh]">
+                        <div className="p-6 border-b flex-shrink-0 bg-indigo-50">
+                            <h3 className="text-xl font-bold text-indigo-900">Come funziona il Calcolo Noli?</h3>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            <div className="prose prose-sm max-w-none text-slate-700 whitespace-pre-wrap leading-relaxed">
+                                {RENT_CALC_EXPLANATION}
+                            </div>
+                        </div>
+                        <div className="p-4 border-t flex justify-end bg-gray-50 flex-shrink-0">
+                            <button onClick={() => setIsRentHelpOpen(false)} className="md-btn md-btn-raised md-btn-primary">Ho capito</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

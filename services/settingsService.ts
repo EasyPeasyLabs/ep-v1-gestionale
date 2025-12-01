@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 // FIX: Corrected Firebase import path.
 import { doc, getDoc, setDoc, collection, getDocs, addDoc, updateDoc, deleteDoc, query, orderBy } from '@firebase/firestore';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, PeriodicCheckInput, CommunicationTemplate } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, PeriodicCheck, PeriodicCheckInput, CommunicationTemplate, RecoveryPolicy } from '../types';
 
 // --- Company Info ---
 const settingsDocRef = doc(db, 'settings', 'companyInfo');
@@ -33,26 +33,21 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
                 carFuelConsumption: data.carFuelConsumption || 16.5
             };
         } else {
-            // Se siamo online e non esiste, lo creiamo. Se siamo offline, getDoc fallisce prima.
-            // Tuttavia, setDoc potrebbe fallire offline se non c'è cache.
             try {
                 await setDoc(settingsDocRef, defaultCompanyInfo);
                 return { id: 'companyInfo', ...defaultCompanyInfo };
             } catch (e) {
-                // Fallback se setDoc fallisce (es. permission/offline)
                 console.warn("Impossibile creare company info default:", e);
                 return { id: 'companyInfo', ...defaultCompanyInfo };
             }
         }
     } catch (e) {
         console.warn("Errore caricamento Company Info (possibile offline):", e);
-        // Fallback ai default se offline e non in cache
         return { id: 'companyInfo', ...defaultCompanyInfo };
     }
 };
 
 export const updateCompanyInfo = async (info: CompanyInfo): Promise<void> => {
-    // Rimuoviamo l'id dall'oggetto prima di salvarlo
     const { id, ...dataToSave } = info;
     await setDoc(settingsDocRef, dataToSave);
 };
@@ -84,13 +79,33 @@ export const deleteSubscriptionType = async (id: string): Promise<void> => {
     await deleteDoc(subDoc);
 };
 
+// --- Recovery Policies ---
+const recoveryDocRef = doc(db, 'settings', 'recoverySettings');
+
+export const getRecoveryPolicies = async (): Promise<Record<string, 'allowed' | 'forbidden'>> => {
+    try {
+        const docSnap = await getDoc(recoveryDocRef);
+        if (docSnap.exists()) {
+            return (docSnap.data() as RecoveryPolicy).policies || {};
+        }
+        return {};
+    } catch(e) {
+        console.warn("Error fetching recovery policies", e);
+        return {};
+    }
+};
+
+export const saveRecoveryPolicies = async (policies: Record<string, 'allowed' | 'forbidden'>): Promise<void> => {
+    await setDoc(recoveryDocRef, { policies });
+};
+
+
 // --- Periodic Checks (Planner) ---
 const periodicChecksCollectionRef = collection(db, 'periodicChecks');
 
 const docToCheck = (doc: any): PeriodicCheck => ({ id: doc.id, ...doc.data() } as PeriodicCheck);
 
 export const getPeriodicChecks = async (): Promise<PeriodicCheck[]> => {
-    // Ordiniamo per categoria per averli raggruppati nella UI
     const q = query(periodicChecksCollectionRef, orderBy('category'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToCheck);
@@ -114,7 +129,6 @@ export const deletePeriodicCheck = async (id: string): Promise<void> => {
 // --- Communication Templates ---
 const templatesRef = collection(db, 'communicationTemplates');
 
-// Default Templates se il DB è vuoto
 const defaultTemplates: CommunicationTemplate[] = [
     {
         id: 'expiry',
@@ -143,7 +157,6 @@ export const getCommunicationTemplates = async (): Promise<CommunicationTemplate
     const snapshot = await getDocs(templatesRef);
     const templates = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CommunicationTemplate));
     
-    // Merge con defaults se mancano
     const merged = [...defaultTemplates];
     templates.forEach(t => {
         const idx = merged.findIndex(d => d.id === t.id);
@@ -154,7 +167,6 @@ export const getCommunicationTemplates = async (): Promise<CommunicationTemplate
 };
 
 export const saveCommunicationTemplate = async (template: CommunicationTemplate): Promise<void> => {
-    // Usiamo setDoc con l'ID specifico (es. 'expiry') per sovrascrivere o creare
     const docRef = doc(db, 'communicationTemplates', template.id);
     await setDoc(docRef, template);
 };
