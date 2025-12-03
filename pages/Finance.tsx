@@ -126,7 +126,12 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
     const [issueDate, setIssueDate] = useState(docData?.issueDate ? docData.issueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
     const [invoiceNumber, setInvoiceNumber] = useState((docData as Invoice)?.invoiceNumber || '');
     const [dueDate, setDueDate] = useState((docData as Invoice)?.dueDate ? (docData as Invoice).dueDate.split('T')[0] : '');
-    const [expiryDate, setExpiryDate] = useState((docData as Quote)?.expiryDate ? (docData as Quote).expiryDate.split('T')[0] : '');
+    
+    // Default Expiry for New Quote: 30 days
+    const defaultExpiry = new Date();
+    defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+    const [expiryDate, setExpiryDate] = useState((docData as Quote)?.expiryDate ? (docData as Quote).expiryDate.split('T')[0] : defaultExpiry.toISOString().split('T')[0]);
+    
     const [items, setItems] = useState<DocumentItem[]>(docData?.items || [{ description: '', quantity: 1, price: 0 }]);
     const [notes, setNotes] = useState(docData?.notes || '');
     const [paymentMethod, setPaymentMethod] = useState(docData?.paymentMethod || PaymentMethod.BankTransfer);
@@ -161,7 +166,9 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
         if (type === 'invoice') { 
             onSave({ ...baseData, dueDate: new Date(dueDate || issueDate).toISOString(), invoiceNumber }); 
         } else { 
-            onSave({ ...baseData, expiryDate: new Date(expiryDate || issueDate).toISOString() }); 
+            // Validazione data scadenza preventivo
+            const finalExpiry = expiryDate || issueDate;
+            onSave({ ...baseData, expiryDate: new Date(finalExpiry).toISOString() }); 
         }
     };
 

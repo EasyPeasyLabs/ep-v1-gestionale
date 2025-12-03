@@ -178,6 +178,7 @@ export const calculateRentTransactions = (
 // --- Document Number Generation ---
 const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
     const coll = collection(db, collectionName);
+    // Use limit to reduce read cost, but assume logic is handled via app or specific query
     const q = query(coll, orderBy('issueDate', 'desc'), limit(50)); 
     const snapshot = await getDocs(q);
     
@@ -287,9 +288,13 @@ const docToQuote = (doc: QueryDocumentSnapshot<DocumentData>): Quote => ({
 } as Quote);
 
 export const getQuotes = async (): Promise<Quote[]> => {
-    const q = query(quoteCollectionRef, orderBy('issueDate', 'desc'));
+    // FIX: Rimosso orderBy lato server per prevenire errori 400 Bad Request su canali LongPolling
+    // se mancano indici o campi. L'ordinamento viene gestito lato client in Finance.tsx.
+    const q = query(quoteCollectionRef);
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToQuote);
+    const quotes = snapshot.docs.map(docToQuote);
+    // Sort client-side to ensure consistency
+    return quotes.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
 };
 
 export const addQuote = async (quote: QuoteInput): Promise<string> => {
@@ -409,11 +414,6 @@ export const resetFinancialData = async (type: TransactionType): Promise<void> =
         const t = docSnap.data() as Transaction;
         batch.delete(docSnap.ref);
         count++;
-        
-        // Se è un'entrata e ha un documento collegato (Fattura), eliminiamo anche quello per coerenza?
-        // Il prompt chiede "ENTRATE: Elimina tutte". Se elimino la transazione, la fattura rimane ma "non pagata".
-        // Per una pulizia "Enterprise", se elimino l'incasso, dovrei forse segnare la fattura come non pagata o eliminarla.
-        // Qui scegliamo di eliminare solo i movimenti finanziari come richiesto (Ledger reset).
     });
 
     if (count > 0) {
