@@ -145,30 +145,45 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const selectedClient = clients.find(c => c.id === clientId);
-        const clientName = selectedClient ? (selectedClient.clientType === ClientType.Parent ? `${(selectedClient as ParentClient).firstName} ${(selectedClient as ParentClient).lastName}` : (selectedClient as InstitutionalClient).companyName) : 'Cliente Manuale';
-        const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0) + (hasStampDuty ? 2 : 0);
+        console.log('[DEBUG] DocumentForm handleSubmit INIZIO');
         
-        // FIX: Ensure ID is preserved rigorously
-        const baseData = { 
-            id: docData?.id, 
-            clientId, 
-            clientName, 
-            issueDate: new Date(issueDate).toISOString(), 
-            items, 
-            notes, 
-            paymentMethod, 
-            hasStampDuty, 
-            totalAmount, 
-            status: docData?.status || DocumentStatus.Draft 
-        };
-        
-        if (type === 'invoice') { 
-            onSave({ ...baseData, dueDate: new Date(dueDate || issueDate).toISOString(), invoiceNumber }); 
-        } else { 
-            // Validazione data scadenza preventivo
-            const finalExpiry = expiryDate || issueDate;
-            onSave({ ...baseData, expiryDate: new Date(finalExpiry).toISOString() }); 
+        try {
+            const selectedClient = clients.find(c => c.id === clientId);
+            console.log('[DEBUG] Selected Client:', selectedClient);
+
+            const clientName = selectedClient ? (selectedClient.clientType === ClientType.Parent ? `${(selectedClient as ParentClient).firstName} ${(selectedClient as ParentClient).lastName}` : (selectedClient as InstitutionalClient).companyName) : 'Cliente Manuale';
+            const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0) + (hasStampDuty ? 2 : 0);
+            
+            console.log('[DEBUG] Calculated Amount:', totalAmount);
+
+            // FIX: Ensure ID is preserved rigorously
+            const baseData = { 
+                id: docData?.id, 
+                clientId, 
+                clientName, 
+                issueDate: new Date(issueDate).toISOString(), 
+                items, 
+                notes, 
+                paymentMethod, 
+                hasStampDuty, 
+                totalAmount, 
+                status: docData?.status || DocumentStatus.Draft 
+            };
+            
+            if (type === 'invoice') { 
+                const payload = { ...baseData, dueDate: new Date(dueDate || issueDate).toISOString(), invoiceNumber }; 
+                console.log('[DEBUG] Sending Invoice Payload to onSave:', payload);
+                onSave(payload);
+            } else { 
+                // Validazione data scadenza preventivo
+                const finalExpiry = expiryDate || issueDate;
+                const payload = { ...baseData, expiryDate: new Date(finalExpiry).toISOString() }; 
+                console.log('[DEBUG] Sending Quote Payload to onSave:', payload);
+                onSave(payload);
+            }
+        } catch (error) {
+            console.error('[DEBUG] ERRORE nel DocumentForm handleSubmit:', error);
+            alert("Errore interno durante la preparazione del documento. Vedi console.");
         }
     };
 
@@ -743,7 +758,45 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const handleDeleteAll = async () => { setIsDeleteAllModalOpen(false); setLoading(true); try { if (activeTab === 'transactions') { for (const t of await getTransactions()) await permanentDeleteTransaction(t.id); } else if (activeTab === 'invoices') { for (const i of await getInvoices()) await permanentDeleteInvoice(i.id); } else if (activeTab === 'quotes') { for (const q of await getQuotes()) await permanentDeleteQuote(q.id); } await fetchData(); alert("Eliminazione completata."); } catch(e) { alert("Errore"); } finally { setLoading(false); } };
     const handleSaveTransaction = async (t: TransactionInput | Transaction) => { try { if ('id' in t) await updateTransaction(t.id, t); else await addTransaction(t as TransactionInput); setIsTransModalOpen(false); fetchData(); } catch (err) { alert("Errore"); } };
     const handleDeleteTransaction = (id: string) => { setConfirmState({ isOpen: true, title: "Elimina", message: "Sicuro?", isDangerous: true, onConfirm: async () => { await deleteTransaction(id); setConfirmState(p => ({...p, isOpen: false})); fetchData(); }}); };
-    const handleSaveDocument = async (docData: any) => { try { if (docData.id) { if (docType === 'invoice') await updateInvoice(docData.id, docData); else await updateQuote(docData.id, docData); } else { if (docType === 'invoice') await addInvoice(docData); else await addQuote(docData); } setIsDocModalOpen(false); fetchData(); } catch (err) { alert("Errore"); } };
+    
+    // --- DEBUG: handleSaveDocument with detailed logs ---
+    const handleSaveDocument = async (docData: any) => { 
+        console.log('[DEBUG] handleSaveDocument called with:', docData);
+        setLoading(true);
+        try { 
+            if (docData.id) { 
+                console.log('[DEBUG] Update Mode');
+                if (docType === 'invoice') {
+                    console.log('[DEBUG] Calling updateInvoice...');
+                    await updateInvoice(docData.id, docData); 
+                } else {
+                    console.log('[DEBUG] Calling updateQuote...');
+                    await updateQuote(docData.id, docData); 
+                }
+                console.log('[DEBUG] Update Success');
+            } else { 
+                console.log('[DEBUG] Create Mode');
+                if (docType === 'invoice') {
+                    console.log('[DEBUG] Calling addInvoice...');
+                    const res = await addInvoice(docData);
+                    console.log('[DEBUG] Invoice Created:', res);
+                } else {
+                    console.log('[DEBUG] Calling addQuote...');
+                    const res = await addQuote(docData);
+                    console.log('[DEBUG] Quote Created:', res);
+                }
+            } 
+            setIsDocModalOpen(false); 
+            fetchData(); 
+        } catch (err) { 
+            console.error('[DEBUG] Error in handleSaveDocument:', err);
+            const msg = err instanceof Error ? err.message : String(err);
+            alert("Errore durante il salvataggio: " + msg); 
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleDeleteDocument = (id: string) => { setConfirmState({ isOpen: true, title: "Elimina", message: "Sicuro?", isDangerous: true, onConfirm: async () => { if (docType === 'invoice') await deleteInvoice(id); else await deleteQuote(id); setConfirmState(p => ({...p, isOpen: false})); fetchData(); }}); };
     const handlePrintDocument = async (doc: Invoice | Quote) => { const companyInfo = await getCompanyInfo(); const client = clients.find(c => c.id === doc.clientId); await generateDocumentPDF(doc, docType === 'invoice' ? 'Fattura' : 'Preventivo', companyInfo, client); };
     const handleGenerateRentTransactions = async () => { const newTrans = calculateRentTransactions(enrollments, suppliers, transactions); if (newTrans.length > 0) { await batchAddTransactions(newTrans); fetchData(); alert(`Generate ${newTrans.length} transazioni.`); } else { alert("Nessun nolo da generare."); } };
