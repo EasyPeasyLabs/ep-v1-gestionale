@@ -253,7 +253,7 @@ Risoluzione problemi di layout nella modale di iscrizione.
 
 ### Riepilogo delle Attività
 1.  **UI Fix Iscrizioni**:
-    -   Aggiornato il componente `EnrollmentForm` per garantire che il contenuto della form sia scrollabile verticalmente (`overflow-y-auto`) mentre l'header e il footer (con i bottoni di azione) rimangono fissi. Questo risolve un problema di usabilità su schermi più piccoli dove i bottoni "Conferma" potevano risultare inaccessibili.
+    -   Aggiornato il componente `EnrollmentForm` per garantire che il contenuto della form sia scrollabile verticalmente (`overflow-y-auto`) mentre l'header e il footer (con i bottoni di azione) rimangono fissi. Questo risolve un problema su schermi piccoli.
 
 ---
 
@@ -270,12 +270,11 @@ Pianificazione della "Pagina Pubblica" (Lead Generation) con architettura sicura
 2.  **Definizione Architettura (Buffer Database)**:
     -   Definita la struttura a "doppio progetto" per sicurezza (Air Gap):
         -   **Progetto A (EP v.1)**: Gestionale Privato (Admin Only).
-        -   **Progetto B (Public)**: Pagina di Iscrizione pubblica che scrive su un database Firebase separato e "sacrificabile".
+        -   **Progetto B (Public)**: Pagina di Iscrizione pubblica che scrive su un database Firebase separato.
     -   EP v.1 leggerà i dati dal Progetto B per importarli come "Nuovi Iscritti".
 
 3.  **Aggiornamento Documentazione**:
     -   Aggiornati `Contesto.md` e `Architettura.md` con le specifiche del nuovo modulo.
-    -   **Fork Operativo**: È stato deciso di sviluppare la parte pubblica in un nuovo contesto (nuova chat/progetto) per mantenere il codice pulito. I file `.md` specifici per il nuovo progetto sono stati generati.
 
 ---
 
@@ -307,7 +306,7 @@ Miglioramento UX Mobile per le Iscrizioni e gestione storico spostamenti.
     -   **Interazioni**: Disabilitato Drag & Drop, Click e Modifica su queste card per prevenire errori. Mantenuta solo la possibilità di eliminazione (per pulizia storico).
 
 3.  **Dettagli Fattura**:
-    -   Aggiornata la generazione fatture da iscrizione per includere il nome della **Sede** nelle note dell'articolo, migliorando la chiarezza contabile.
+    -   Aggiornate la generazione fatture da iscrizione per includere il nome della **Sede** nelle note dell'articolo, migliorando la chiarezza contabile.
 
 ---
 
@@ -325,14 +324,12 @@ Potenziamento del sistema di pulizia dati (Cascading Delete) e revisione olistic
         -   Transazioni "Contanti" non fatturate.
         -   **Transazioni "Nolo Sede"**: eliminate le spese generate automaticamente (`AUTO-RENT`).
         -   Il sistema delle lezioni (Activity Log) viene pulito se associato.
-    -   Poiché lezioni, presenze e calendario dipendono dall'array `appointments` dentro `Enrollment`, l'eliminazione del documento padre pulisce automaticamente queste viste.
 
 2.  **Controllo di Gestione Olistico**:
     -   Riorganizzata la tab "Controlling" in `pages/Finance.tsx`.
     -   Create due card separate e dettagliate:
         -   **Profittabilità Immobiliare**: Focus su Ricavi vs Affitto Sede.
         -   **Efficienza Logistica**: Focus separato su Km, Carburante e Usura.
-    -   Nessuna omissione di dati: tutte le metriche sono visibili.
 
 3.  **CFO Dashboard 2.0**:
     -   Implementati grafici simulati in **3D** (tramite gradienti e ombreggiature Chart.js) per i trend di cassa.
@@ -348,7 +345,6 @@ Completamento del sistema di pulizia "Cascading Delete" su tutte le entità coll
 ### Riepilogo delle Attività
 1.  **Deep Cleaning Esteso**:
     -   Implementata la funzione `deleteLessonActivitiesForEnrollment` per rimuovere anche i record del Registro Attività collegati alle lezioni cancellate.
-    -   Aggiornata `cleanupEnrollmentFinancials` per accettare l'oggetto `Enrollment` completo (necessario per recuperare gli ID delle lezioni).
     -   L'eliminazione di un'iscrizione ora rimuove in un colpo solo: Iscrizione, Transazioni, Fatture, Noli Automatici e Attività Didattiche.
 
 2.  **Finanza & CFO UI**:
@@ -367,14 +363,11 @@ Supporto per l'iscrizione di Clienti Adulti (corsi Business/Adult) e miglioramen
 1.  **Iscrizione Adulti**:
     -   Aggiornato il modello dati `Enrollment` per gestire il flag `isAdult`.
     -   Aggiornato `SubscriptionType` per includere il target ('kid' | 'adult') con prefissi automatici (K - / A -).
-    -   Implementato in `EnrollmentForm.tsx` un toggle per scegliere chi iscrivere: Figlio (Standard) o Genitore/Cliente (Adulto). Nel caso adulto, l'ID del bambino punta all'ID del cliente stesso.
+    -   Implementato in `EnrollmentForm.tsx` un toggle per scegliere chi iscrivere: Figlio (Standard) o Genitore/Cliente (Adulto).
     -   Aggiornata la gestione dei listini per mostrare solo gli abbonamenti pertinenti al target scelto.
 
 2.  **UX Clienti (Nome/Cognome)**:
     -   Aggiunto un toggle nella pagina `Clients.tsx` per invertire la visualizzazione dei nomi sulle card (Nome Cognome vs Cognome Nome), facilitando la ricerca visiva.
-
-3.  **Policy di Sviluppo "Imperativa"**:
-    -   Istituita regola ferrea per prevenire modifiche strutturali, rimozioni o troncamenti non esplicitamente richiesti nelle future iterazioni.
 
 ---
 
@@ -401,3 +394,37 @@ Ristrutturazione completa delle aree "Lezioni" e "Attività" in "Registro Elettr
 3.  **Miglioramenti UI**:
     -   Resa cliccabile la card "Fornitori" nella Dashboard.
     -   Aggiornate le icone della Sidebar per riflettere le nuove sezioni.
+
+---
+
+## Sessione 25 (14 Giugno 2024)
+
+### Obiettivo della Sessione
+Risoluzione bug critici nel modulo Finanza e miglioramento flessibilità gestione documenti.
+
+### Riepilogo delle Attività
+1.  **Fix Duplicazione Fatture**:
+    -   Risolto un problema nel form dei documenti (`Finance.tsx`) che causava la creazione di un nuovo record invece dell'aggiornamento quando si modificava una fattura esistente.
+2.  **Editing Numero Fattura**:
+    -   Reso editabile il campo "Numero Fattura" nel form. Questo permette correzioni manuali alla sequenza automatica in caso di necessità.
+3.  **Gestione Sigillo SDI**:
+    -   Implementata una modale specifica (`SealModal`) per l'inserimento del Codice Identificativo SDI.
+    -   Migliorato il flusso di stato delle fatture da "Pending SDI" a "Sealed SDI" con validazione dell'input.
+
+---
+
+## Sessione 26 (15 Giugno 2024)
+
+### Obiettivo della Sessione
+Ripristino completo e olistico del modulo Finanza (CFO & Controlling) e affinamento logiche strutturali.
+
+### Riepilogo delle Attività
+1.  **Restoration Finance**:
+    -   Recuperate integralmente le funzionalità della pagina `Finance.tsx`: Dashboard CFO, Proiezioni Fiscali (Forfettario/Start-up), Controlling (Real Profitability vs Location Costs) e Analisi Grafica.
+    -   Ripristinati i grafici interattivi e il simulatore di rateazione tasse.
+
+2.  **Ottimizzazioni Funzionali**:
+    -   **Fix Duplicazione Documenti**: Risolto problema di stato residuo nel form fatture/preventivi usando chiavi React univoche.
+    -   **Badge Bozza Interattivo**: Possibilità di cliccare sul badge "Draft" per accedere direttamente al sigillo SDI.
+    -   **Logic Controlling (Real)**: Aggiornato il calcolo della profittabilità per sede per usare le transazioni reali invece delle stime, garantendo precisione contabile.
+    -   **Bulk Delete Transazioni**: Aggiunti comandi per eliminare massivamente tutte le transazioni di Entrata o Uscita, utile per reset contabili.

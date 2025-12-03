@@ -45,7 +45,6 @@ const LIMIT_FORFETTARIO = 85000;
 const COEFF_REDDITIVITA = 0.78; // ATECO Istruzione
 const INPS_RATE = 0.2623; // Gestione Separata 2024/25 approx
 const TAX_RATE_STARTUP = 0.05;
-const START_DATE_BUSINESS = new Date('2025-03-01'); // Data Inizio Attività
 
 // --- TESTI ESPLICATIVI ---
 const RENT_CALC_EXPLANATION = `
@@ -125,6 +124,7 @@ const TransactionForm: React.FC<{ transaction?: Transaction | null; onSave: (t: 
 const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice' | 'quote'; clients: Client[]; onSave: (d: any) => void; onCancel: () => void; }> = ({ docData, type, clients, onSave, onCancel }) => {
     const [clientId, setClientId] = useState(docData?.clientId || '');
     const [issueDate, setIssueDate] = useState(docData?.issueDate ? docData.issueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [invoiceNumber, setInvoiceNumber] = useState((docData as Invoice)?.invoiceNumber || '');
     const [dueDate, setDueDate] = useState((docData as Invoice)?.dueDate ? (docData as Invoice).dueDate.split('T')[0] : '');
     const [expiryDate, setExpiryDate] = useState((docData as Quote)?.expiryDate ? (docData as Quote).expiryDate.split('T')[0] : '');
     const [items, setItems] = useState<DocumentItem[]>(docData?.items || [{ description: '', quantity: 1, price: 0 }]);
@@ -143,15 +143,41 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
         const selectedClient = clients.find(c => c.id === clientId);
         const clientName = selectedClient ? (selectedClient.clientType === ClientType.Parent ? `${(selectedClient as ParentClient).firstName} ${(selectedClient as ParentClient).lastName}` : (selectedClient as InstitutionalClient).companyName) : 'Cliente Manuale';
         const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0) + (hasStampDuty ? 2 : 0);
-        const baseData = { clientId, clientName, issueDate: new Date(issueDate).toISOString(), items, notes, paymentMethod, hasStampDuty, totalAmount, status: docData?.status || DocumentStatus.Draft };
-        if (type === 'invoice') { onSave({ ...baseData, dueDate: new Date(dueDate || issueDate).toISOString() }); } else { onSave({ ...baseData, expiryDate: new Date(expiryDate || issueDate).toISOString() }); }
+        
+        // FIX: Ensure ID is preserved rigorously
+        const baseData = { 
+            id: docData?.id, 
+            clientId, 
+            clientName, 
+            issueDate: new Date(issueDate).toISOString(), 
+            items, 
+            notes, 
+            paymentMethod, 
+            hasStampDuty, 
+            totalAmount, 
+            status: docData?.status || DocumentStatus.Draft 
+        };
+        
+        if (type === 'invoice') { 
+            onSave({ ...baseData, dueDate: new Date(dueDate || issueDate).toISOString(), invoiceNumber }); 
+        } else { 
+            onSave({ ...baseData, expiryDate: new Date(expiryDate || issueDate).toISOString() }); 
+        }
     };
 
     return (
         <form onSubmit={handleSubmit} className="p-6 flex flex-col h-full max-h-[90vh]">
             <h3 className="text-xl font-bold mb-4 flex-shrink-0">{docData ? 'Modifica' : 'Nuovo'} {type === 'invoice' ? 'Fattura' : 'Preventivo'}</h3>
             <div className="flex-1 overflow-y-auto space-y-4 pr-2">
-                <div className="md-input-group"><select value={clientId} onChange={e => setClientId(e.target.value)} required className="md-input"><option value="" disabled>Seleziona Cliente</option>{clientOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select><label className="md-input-label !top-0">Cliente</label></div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="md-input-group"><select value={clientId} onChange={e => setClientId(e.target.value)} required className="md-input"><option value="" disabled>Seleziona Cliente</option>{clientOptions.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select><label className="md-input-label !top-0">Cliente</label></div>
+                    {type === 'invoice' && (
+                        <div className="md-input-group">
+                            <input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} className="md-input" placeholder=" " />
+                            <label className="md-input-label">Numero Fattura (Opzionale/Auto)</label>
+                        </div>
+                    )}
+                </div>
                 <div className="grid grid-cols-2 gap-4"><div className="md-input-group"><input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} required className="md-input" /><label className="md-input-label !top-0">Data Emissione</label></div>{type === 'invoice' ? (<div className="md-input-group"><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required className="md-input" /><label className="md-input-label !top-0">Scadenza</label></div>) : (<div className="md-input-group"><input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} required className="md-input" /><label className="md-input-label !top-0">Validità Fino</label></div>)}</div>
                 <div className="border-t pt-4"><label className="block text-sm font-bold text-gray-700 mb-2">Articoli</label>{items.map((item, idx) => (<div key={idx} className="flex gap-2 mb-2 items-start"><div className="flex-1 space-y-1"><input type="text" placeholder="Descrizione" value={item.description} onChange={e => handleItemChange(idx, 'description', e.target.value)} required className="md-input text-sm py-1" /><input type="text" placeholder="Note (opzionale)" value={item.notes || ''} onChange={e => handleItemChange(idx, 'notes', e.target.value)} className="md-input text-xs py-1 text-gray-500" /></div><input type="number" placeholder="Qta" value={item.quantity} onChange={e => handleItemChange(idx, 'quantity', Number(e.target.value))} className="w-16 border rounded p-1 text-sm text-center" /><input type="number" placeholder="Prezzo" value={item.price} onChange={e => handleItemChange(idx, 'price', Number(e.target.value))} className="w-24 border rounded p-1 text-sm text-right" /><button type="button" onClick={() => handleRemoveItem(idx)} className="text-red-500 hover:text-red-700 font-bold px-2">×</button></div>))}<button type="button" onClick={handleAddItem} className="text-sm text-indigo-600 font-medium hover:underline">+ Aggiungi Riga</button></div>
                 <div className="border-t pt-4 grid grid-cols-2 gap-4"><div><label className="block text-xs text-gray-500 mb-1">Metodo Pagamento</label><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="w-full border rounded p-2 text-sm bg-white">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select></div><div className="flex items-center pt-4"><input type="checkbox" checked={hasStampDuty} onChange={e => setHasStampDuty(e.target.checked)} className="h-4 w-4 text-indigo-600 rounded" /><label className="ml-2 text-sm text-gray-700">Applica Bollo (2€)</label></div></div>
@@ -162,7 +188,7 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
     );
 };
 
-// --- SEAL MODAL (Nuovo Componente) ---
+// --- SEAL MODAL ---
 const SealModal: React.FC<{ 
     invoice: Invoice; 
     onSeal: (sdiId: string) => void; 
@@ -275,7 +301,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const chartsRef = useRef<{[key: string]: Chart}>({});
     const canvasRefs = useRef<{[key: string]: HTMLCanvasElement | null}>({});
     
-    // Overview Chart Ref (NEW)
+    // Overview Chart Ref
     const overviewChartRef = useRef<HTMLCanvasElement | null>(null);
     const overviewChartInstance = useRef<Chart | null>(null);
 
@@ -297,6 +323,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     useEffect(() => { fetchData(); window.addEventListener('EP_DataUpdated', fetchData); return () => window.removeEventListener('EP_DataUpdated', fetchData); }, [fetchData]);
 
+    // Handle Initial Params (e.g. from Notifications)
+    useEffect(() => {
+        if (initialParams) {
+            if (initialParams.tab) setActiveTab(initialParams.tab);
+        }
+    }, [initialParams]);
+
     // --- ENGINE LOGIC: THE CORE ---
     const engineData = useMemo(() => {
         // 1. Core Financials
@@ -316,7 +349,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const totalTaxCurrentYear = inpsCurrentYear + taxCurrentYear;
 
         // Proiezione Acconti per Anno Successivo (2026)
-        // Saldo 2025 (pari alle tasse calcolate) + I Acconto 2026 (50% del saldo) + II Acconto 2026 (50% del saldo)
         const saldo2025 = totalTaxCurrentYear;
         const acconto1_2026 = totalTaxCurrentYear * 0.50; // 50% del 100%
         const acconto2_2026 = totalTaxCurrentYear * 0.50; // 50% del 100%
@@ -326,9 +358,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const installmentAmount = totalDueJune / 6; // N. rate (Giugno -> Novembre)
 
         // Quota Mensile "Salva-Vita" (Accantonamento reale per coprire Saldo + Acconti futuri)
-        // Considerando 10 mesi di attività (Mar-Dic)
         const totalLiabilityToCover = totalDueJune + acconto2_2026;
-        const monthlySavingQuota = totalLiabilityToCover / 10; 
+        const monthlySavingQuota = totalLiabilityToCover / 10; // Su 10 mesi
 
         // Bolli
         const invoicesWithBollo = invoices.filter(i => !i.isDeleted && i.hasStampDuty);
@@ -357,7 +388,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         // 4. AI CFO - Reverse Engineering
         const totalTaxRate = INPS_RATE + TAX_RATE_STARTUP;
         const taxFactor = 1 - (COEFF_REDDITIVITA * totalTaxRate);
-        const monthlyFixedCosts = (totalLogisticsCost + simParams.accountantCost + 1200) / 10; // Su 10 mesi
         const targetAnnualNet = simParams.targetNetMonthly * 10; // Su 10 mesi
         const annualRealCosts = totalLogisticsCost + simParams.accountantCost + expenses; 
         
@@ -385,7 +415,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     acconto1_2026,
                     acconto2_2026,
                     totalDueJune,
-                    installmentAmount // Rata singola (x6)
+                    installmentAmount
                 }
             },
             logistics: {
@@ -420,35 +450,44 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             marginPercent: number
         }> = {};
 
-        // 1. Enrollments Revenue
-        enrollments.forEach(enr => {
-            if (enr.status === 'Active' || enr.status === 'Completed') {
-                const locId = enr.locationId || 'unassigned';
-                const locName = enr.locationName || 'Sede Non Definita';
-                
-                if (!stats[locId]) stats[locId] = { name: locName, revenue: 0, rentCost: 0, otherAllocatedCosts: 0, enrollmentsCount: 0, margin: 0, marginPercent: 0 };
-                
-                // Ricavi Iscrizione
-                stats[locId].revenue += enr.price || 0;
-                stats[locId].enrollmentsCount += 1;
-            }
+        // Initialize from Suppliers
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                stats[l.id] = { 
+                    name: l.name, 
+                    revenue: 0, 
+                    rentCost: 0, 
+                    otherAllocatedCosts: 0, 
+                    enrollmentsCount: 0, 
+                    margin: 0, 
+                    marginPercent: 0 
+                };
+            });
         });
 
-        // 2. Allocated Costs
+        // 1. Transactions Analysis (Revenue & Costs)
         transactions.forEach(t => {
-            if (!t.isDeleted && t.type === TransactionType.Expense && t.allocationType === 'location' && t.allocationId) {
+            if (!t.isDeleted && t.allocationType === 'location' && t.allocationId) {
                 const locId = t.allocationId;
-                if (!stats[locId]) stats[locId] = { name: t.allocationName || 'Sede Sconosciuta', revenue: 0, rentCost: 0, otherAllocatedCosts: 0, enrollmentsCount: 0, margin: 0, marginPercent: 0 };
+                const locName = t.allocationName || 'Sede Sconosciuta';
                 
-                if (t.category === TransactionCategory.Rent) {
-                    stats[locId].rentCost += t.amount;
-                } else {
-                    stats[locId].otherAllocatedCosts += t.amount;
+                if (!stats[locId]) {
+                    stats[locId] = { name: locName, revenue: 0, rentCost: 0, otherAllocatedCosts: 0, enrollmentsCount: 0, margin: 0, marginPercent: 0 };
+                }
+                
+                if (t.type === TransactionType.Income) {
+                    stats[locId].revenue += t.amount;
+                } else if (t.type === TransactionType.Expense) {
+                    if (t.category === TransactionCategory.Rent) {
+                        stats[locId].rentCost += t.amount;
+                    } else {
+                        stats[locId].otherAllocatedCosts += t.amount;
+                    }
                 }
             }
         });
 
-        // 3. Calc Margins
+        // 2. Calc Margins
         return Object.values(stats).map(item => {
             const totalCosts = item.rentCost + item.otherAllocatedCosts;
             const margin = item.revenue - totalCosts;
@@ -456,7 +495,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             return { ...item, totalCosts, margin, marginPercent };
         }).sort((a,b) => b.revenue - a.revenue);
 
-    }, [enrollments, transactions]);
+    }, [suppliers, transactions]);
 
 
     // --- EXPENSE BREAKDOWN CALCULATION (For Overview Card) ---
@@ -507,17 +546,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
             const ctx = overviewChartRef.current.getContext('2d');
             if (ctx) {
-                // Colors palette for breakdown
-                const colors = [
-                    '#6366f1', // Indigo
-                    '#f43f5e', // Rose
-                    '#f59e0b', // Amber
-                    '#10b981', // Emerald
-                    '#3b82f6', // Blue
-                    '#8b5cf6', // Violet
-                    '#ec4899', // Pink
-                    '#64748b'  // Slate
-                ];
+                const colors = ['#6366f1', '#f43f5e', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'];
 
                 overviewChartInstance.current = new Chart(ctx, {
                     type: 'doughnut',
@@ -589,7 +618,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     }, [activeTab, locationAnalysis]);
 
 
-    // --- ANALYTICS CHARTS RENDERER (Original) ---
+    // --- ANALYTICS CHARTS RENDERER ---
     useEffect(() => {
         if (activeTab === 'analytics') {
             const createChart = (id: string, type: any, data: any, options: any) => {
@@ -609,7 +638,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 }
             });
 
-            // 1. Histogram (Bar) - Fatturato vs Spese
             createChart('bar', 'bar', {
                 labels: ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'],
                 datasets: [
@@ -618,7 +646,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 ]
             }, { plugins: { title: { display: true, text: 'Andamento Mensile' } } });
 
-            // 2. Doughnut - Cost Breakdown (Detailed)
             createChart('doughnut', 'doughnut', {
                 labels: ['Logistica (TCO)', 'Tasse (Stima)', 'Commercialista', 'Noli Sedi', 'Altro Operativo'],
                 datasets: [{
@@ -627,13 +654,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         engineData.fiscal.totalFiscalBurden, 
                         engineData.accountant.annualCost, 
                         transactions.filter(t => t.category === TransactionCategory.Rent).reduce((a,b)=>a+b.amount,0), 
-                        Math.max(0, engineData.expenses - engineData.logistics.totalLogisticsCost - engineData.fiscal.totalFiscalBurden) // Residuo
+                        Math.max(0, engineData.expenses - engineData.logistics.totalLogisticsCost - engineData.fiscal.totalFiscalBurden) 
                     ],
                     backgroundColor: ['#f87171', '#fbbf24', '#60a5fa', '#a78bfa', '#9ca3af']
                 }]
             }, { cutout: '60%' });
 
-            // 3. Line - Cash Flow Cumulative
             let cash = 0;
             const flow = monthlyRev.map((inc, i) => { cash += (inc - monthlyExp[i]); return cash; });
             createChart('line', 'line', {
@@ -641,12 +667,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 datasets: [{ label: 'Saldo Progressivo', data: flow, borderColor: '#6366f1', fill: true, backgroundColor: 'rgba(99, 102, 241, 0.1)', tension: 0.4 }]
             }, {});
 
-            // 4. Radar - Business Health
             createChart('radar', 'radar', {
                 labels: ['Liquidità', 'Redditività', 'Efficienza Fiscale', 'Sostenibilità Logistica', 'Crescita'],
                 datasets: [{
                     label: 'Score Aziendale',
-                    data: [85, engineData.margin, 70, 60, 75], // Mock logic for health score based on metrics
+                    data: [85, engineData.margin, 70, 60, 75], // Mock logic
                     backgroundColor: 'rgba(52, 211, 153, 0.2)',
                     borderColor: '#34d399',
                     pointBackgroundColor: '#34d399'
@@ -681,7 +706,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                              (!listFilters.maxAmount || amt <= Number(listFilters.maxAmount));
             const statusMatch = !listFilters.invoiceStatus || item.status === listFilters.invoiceStatus;
             
-            // For archive, also search by sdiId
             const sdiMatch = activeTab === 'archive' ? (item.sdiId || '').includes(listFilters.search) : true;
 
             return searchMatch && dateMatch && amtMatch && statusMatch && sdiMatch;
@@ -785,9 +809,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         body += `\nFINE TRASMISSIONE. Cordiali saluti`;
         
         const encodedBody = encodeURIComponent(body);
-        // Simona Puddu (Numero fittizio o reale se fornito, qui uso placeholder)
-        // Se non ho numero, apro solo whatsapp generico o chiedo
-        // Dato che non ho il numero di Simona Puddu nel prompt, apro la selezione contatto.
         window.open(`https://wa.me/?text=${encodedBody}`, '_blank');
     };
 
@@ -851,88 +872,26 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <>
-                    {/* --- OVERVIEW (Densità Massima) --- */}
+                    {/* --- OVERVIEW --- */}
                     {activeTab === 'overview' && (
                         <div className="animate-fade-in space-y-6">
-                            <p className="text-gray-500 text-sm mb-2">Quadro sintetico dei KPI finanziari.</p>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                <div className="md-card p-6 bg-green-50 border-l-4 border-green-500">
-                                    <h3 className="text-xs font-bold text-green-800 uppercase tracking-wider">Ricavi Totali</h3>
-                                    <p className="text-2xl font-bold text-green-900 mt-2">{engineData.revenue.toFixed(2)}€</p>
-                                    <p className="text-[10px] text-green-600 mt-1">Fatturato lordo</p>
-                                </div>
-                                <div className="md-card p-6 bg-red-50 border-l-4 border-red-500">
-                                    <h3 className="text-xs font-bold text-red-800 uppercase tracking-wider">Costi Totali</h3>
-                                    <p className="text-2xl font-bold text-red-900 mt-2">{engineData.expenses.toFixed(2)}€</p>
-                                    <p className="text-[10px] text-red-600 mt-1">Op + Fiscali + Logistici</p>
-                                </div>
-                                <div className="md-card p-6 bg-indigo-50 border-l-4 border-indigo-500">
-                                    <h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Utile Netto</h3>
-                                    <p className="text-2xl font-bold text-indigo-900 mt-2">{engineData.netProfit.toFixed(2)}€</p>
-                                    <p className="text-[10px] text-indigo-600 mt-1">Cash Flow Reale</p>
-                                </div>
-                                <div className="md-card p-6 bg-blue-50 border-l-4 border-blue-500">
-                                    <h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Margine (MOL)</h3>
-                                    <p className="text-2xl font-bold text-blue-900 mt-2">{engineData.margin.toFixed(1)}%</p>
-                                    <p className="text-[10px] text-blue-600 mt-1">Efficienza Operativa</p>
-                                </div>
+                                <div className="md-card p-6 bg-green-50 border-l-4 border-green-500"><h3 className="text-xs font-bold text-green-800 uppercase tracking-wider">Ricavi Totali</h3><p className="text-2xl font-bold text-green-900 mt-2">{engineData.revenue.toFixed(2)}€</p></div>
+                                <div className="md-card p-6 bg-red-50 border-l-4 border-red-500"><h3 className="text-xs font-bold text-red-800 uppercase tracking-wider">Costi Totali</h3><p className="text-2xl font-bold text-red-900 mt-2">{engineData.expenses.toFixed(2)}€</p></div>
+                                <div className="md-card p-6 bg-indigo-50 border-l-4 border-indigo-500"><h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Utile Netto</h3><p className="text-2xl font-bold text-indigo-900 mt-2">{engineData.netProfit.toFixed(2)}€</p></div>
+                                <div className="md-card p-6 bg-blue-50 border-l-4 border-blue-500"><h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Margine (MOL)</h3><p className="text-2xl font-bold text-blue-900 mt-2">{engineData.margin.toFixed(1)}%</p></div>
                             </div>
-
-                            {/* --- NUOVA CARD: Dove vanno a finire i miei soldi? --- */}
                             <div className="md-card p-6 border-t-4 border-slate-500">
-                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                                    💸 Dove vanno a finire i miei soldi?
-                                </h3>
+                                <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">💸 Dove vanno a finire i miei soldi?</h3>
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
-                                    {/* Charts Section */}
-                                    <div className="h-64 relative flex justify-center items-center">
-                                        <canvas ref={el => overviewChartRef.current = el}></canvas>
-                                        <div className="absolute inset-0 flex flex-col justify-center items-center pointer-events-none">
-                                            <span className="text-xs text-slate-400 font-medium">TOTALE USCITE</span>
-                                            <span className="text-xl font-bold text-slate-800">{expenseAnalysis.totalExpenses.toFixed(2)}€</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Details Breakdown */}
-                                    <div className="lg:col-span-2 overflow-y-auto max-h-72 pr-2 custom-scrollbar">
-                                        <table className="w-full text-sm">
-                                            <thead className="text-xs text-slate-400 border-b border-slate-100">
-                                                <tr>
-                                                    <th className="text-left py-2">Categoria Spesa</th>
-                                                    <th className="text-left py-2">Dettaglio</th>
-                                                    <th className="text-right py-2">Importo</th>
-                                                    <th className="text-right py-2">%</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-50">
-                                                {expenseAnalysis.sortedCategories.map((item, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                        <td className="py-3 font-bold text-slate-700">{item.name}</td>
-                                                        <td className="py-3 text-xs text-slate-500 italic">{item.description}</td>
-                                                        <td className="py-3 text-right font-mono text-red-600 font-medium">-{item.value.toFixed(2)}€</td>
-                                                        <td className="py-3 text-right">
-                                                            <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-bold">
-                                                                {item.percentage.toFixed(1)}%
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                                {expenseAnalysis.sortedCategories.length === 0 && (
-                                                    <tr>
-                                                        <td colSpan={4} className="py-8 text-center text-slate-400 italic">
-                                                            Nessuna spesa registrata per generare il grafico.
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <div className="h-64 relative flex justify-center items-center"><canvas ref={el => overviewChartRef.current = el}></canvas><div className="absolute inset-0 flex flex-col justify-center items-center pointer-events-none"><span className="text-xs text-slate-400 font-medium">TOTALE USCITE</span><span className="text-xl font-bold text-slate-800">{expenseAnalysis.totalExpenses.toFixed(2)}€</span></div></div>
+                                    <div className="lg:col-span-2 overflow-y-auto max-h-72 pr-2 custom-scrollbar"><table className="w-full text-sm"><thead className="text-xs text-slate-400 border-b border-slate-100"><tr><th className="text-left py-2">Categoria Spesa</th><th className="text-left py-2">Dettaglio</th><th className="text-right py-2">Importo</th><th className="text-right py-2">%</th></tr></thead><tbody className="divide-y divide-slate-50">{expenseAnalysis.sortedCategories.map((item, idx) => (<tr key={idx} className="hover:bg-slate-50 transition-colors"><td className="py-3 font-bold text-slate-700">{item.name}</td><td className="py-3 text-xs text-slate-500 italic">{item.description}</td><td className="py-3 text-right font-mono text-red-600 font-medium">-{item.value.toFixed(2)}€</td><td className="py-3 text-right"><span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-bold">{item.percentage.toFixed(1)}%</span></td></tr>))}</tbody></table></div>
                                 </div>
                             </div>
                         </div>
                     )}
-
-                    {/* --- CFO (STRATEGY & PLANNING) - RIPRISTINATA --- */}
+                    
+                    {/* --- CFO (RESTORED) --- */}
                     {activeTab === 'cfo' && (
                         <div className="space-y-8 animate-slide-up">
                             {/* Card 0: Fiscal Projection */}
@@ -1081,6 +1040,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     <div className="space-y-2">
                                         <p className="font-bold text-blue-800 uppercase text-xs">Suggerimenti</p>
                                         <ul className="space-y-1 text-blue-700">
+                                            <li className="cursor-pointer hover:underline" onClick={() => onNavigate && onNavigate('Finance', { tab: 'controlling'})}>
+                                                • Controlla i costi di nolo nella sezione <span className="font-bold">Controlling</span>.
+                                            </li>
                                             <li>• Per raggiungere il target di {simParams.targetNetMonthly}€ netti, mantieni il fatturato sopra i {engineData.ai.requiredMonthlyRevenue.toFixed(0)}€/mese.</li>
                                             <li>• Accantona {engineData.fiscal.monthlySavingQuota.toFixed(0)}€ questo mese per le tasse future.</li>
                                         </ul>
@@ -1090,7 +1052,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         </div>
                     )}
 
-                    {/* --- CONTROLLING (REALITY & OPERATIONS) - RIPRISTINATA --- */}
+                    {/* --- CONTROLLING (REALITY & OPERATIONS) --- */}
                     {activeTab === 'controlling' && (
                         <div className="space-y-8 animate-slide-up">
                             
@@ -1111,7 +1073,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                             <thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
                                                 <tr>
                                                     <th className="px-3 py-2">Sede</th>
-                                                    <th className="px-3 py-2 text-right">Ricavi</th>
+                                                    <th className="px-3 py-2 text-right">Ricavi Reali</th>
                                                     <th className="px-3 py-2 text-right">Costi Nolo</th>
                                                     <th className="px-3 py-2 text-right">Margine</th>
                                                 </tr>
@@ -1141,82 +1103,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                 <h3 className="text-lg font-bold text-amber-900 mb-4 flex items-center gap-2">
                                     🚚 Efficienza Logistica (TCO Veicolo)
                                 </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div>
-                                        <div className="flex justify-between items-center mb-4">
-                                            <span className="text-sm font-bold text-gray-600">Costo Carburante (€/L)</span>
-                                            <input 
-                                                type="number" 
-                                                step="0.01" 
-                                                value={simParams.fuelCost} 
-                                                onChange={e => setSimParams({...simParams, fuelCost: Number(e.target.value)})} 
-                                                className="w-20 p-1 border rounded text-right font-bold bg-white"
-                                            />
-                                        </div>
-                                        <div className="space-y-3 text-sm">
-                                            <div className="flex justify-between border-b border-amber-200 pb-1">
-                                                <span>Km Totali Percorsi (A/R):</span>
-                                                <span className="font-bold">{engineData.logistics.totalKm.toFixed(0)} km</span>
-                                            </div>
-                                            <div className="flex justify-between text-amber-800">
-                                                <span>Carburante Stimato:</span>
-                                                <span className="font-bold">{engineData.logistics.estimatedFuelCost.toFixed(2)}€</span>
-                                            </div>
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Usura/Ammortamento:</span>
-                                                <span className="font-bold">{engineData.logistics.estimatedWearCost.toFixed(2)}€</span>
-                                            </div>
-                                            <div className="flex justify-between text-gray-600">
-                                                <span>Fissi (Assic./Bollo):</span>
-                                                <span className="font-bold">{engineData.logistics.fixedCosts.toFixed(2)}€</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col justify-center items-center bg-white rounded-xl shadow-sm p-4 border border-amber-100">
-                                        <p className="text-xs font-bold text-amber-800 uppercase mb-1">Costo Totale Logistica</p>
-                                        <p className="text-3xl font-bold text-amber-600 mb-2">{engineData.logistics.totalLogisticsCost.toFixed(2)}€</p>
-                                        <p className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">
-                                            Incidenza: <strong>{engineData.logistics.impactPerKm.toFixed(2)} €/km</strong>
-                                        </p>
-                                    </div>
-                                </div>
+                                {/* ... Content ... */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8"><div><div className="flex justify-between items-center mb-4"><span className="text-sm font-bold text-gray-600">Costo Carburante (€/L)</span><input type="number" step="0.01" value={simParams.fuelCost} onChange={e => setSimParams({...simParams, fuelCost: Number(e.target.value)})} className="w-20 p-1 border rounded text-right font-bold bg-white" /></div><div className="space-y-3 text-sm"><div className="flex justify-between border-b border-amber-200 pb-1"><span>Km Totali Percorsi (A/R):</span><span className="font-bold">{engineData.logistics.totalKm.toFixed(0)} km</span></div><div className="flex justify-between text-amber-800"><span>Carburante Stimato:</span><span className="font-bold">{engineData.logistics.estimatedFuelCost.toFixed(2)}€</span></div><div className="flex justify-between text-gray-600"><span>Usura/Ammortamento:</span><span className="font-bold">{engineData.logistics.estimatedWearCost.toFixed(2)}€</span></div><div className="flex justify-between text-gray-600"><span>Fissi (Assic./Bollo):</span><span className="font-bold">{engineData.logistics.fixedCosts.toFixed(2)}€</span></div></div></div><div className="flex flex-col justify-center items-center bg-white rounded-xl shadow-sm p-4 border border-amber-100"><p className="text-xs font-bold text-amber-800 uppercase mb-1">Costo Totale Logistica</p><p className="text-3xl font-bold text-amber-600 mb-2">{engineData.logistics.totalLogisticsCost.toFixed(2)}€</p><p className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">Incidenza: <strong>{engineData.logistics.impactPerKm.toFixed(2)} €/km</strong></p></div></div>
                             </div>
 
                             {/* Card 3: Costi Struttura */}
                             <div className="md-card p-6 border-t-4 border-gray-500 bg-gray-50">
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">🏢 Costi di Struttura (Overhead)</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    <div>
-                                        <label className="text-xs text-gray-500 block mb-1">Commercialista (Annuale)</label>
-                                        <div className="flex gap-2">
-                                            <input 
-                                                type="number" 
-                                                value={simParams.accountantCost} 
-                                                onChange={e => setSimParams({...simParams, accountantCost: Number(e.target.value)})} 
-                                                className="flex-1 border rounded p-2 text-right font-bold bg-white"
-                                            />
-                                            <span className="self-center font-bold">€</span>
-                                        </div>
-                                    </div>
-                                    <div className="p-3 bg-white rounded border border-gray-200">
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className="text-gray-600">Software & Servizi Web</span>
-                                            <span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Software).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 h-1 mt-2">
-                                            <div className="bg-blue-500 h-1" style={{width: '100%'}}></div>
-                                        </div>
-                                    </div>
-                                    <div className="p-3 bg-white rounded border border-gray-200">
-                                        <div className="flex justify-between text-sm mb-1">
-                                            <span className="text-gray-600">Materiali Didattici</span>
-                                            <span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Materials).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span>
-                                        </div>
-                                        <div className="w-full bg-gray-100 h-1 mt-2">
-                                            <div className="bg-purple-500 h-1" style={{width: '100%'}}></div>
-                                        </div>
-                                    </div>
-                                </div>
+                                {/* ... Content ... */}
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6"><div><label className="text-xs text-gray-500 block mb-1">Commercialista (Annuale)</label><div className="flex gap-2"><input type="number" value={simParams.accountantCost} onChange={e => setSimParams({...simParams, accountantCost: Number(e.target.value)})} className="flex-1 border rounded p-2 text-right font-bold bg-white" /><span className="self-center font-bold">€</span></div></div><div className="p-3 bg-white rounded border border-gray-200"><div className="flex justify-between text-sm mb-1"><span className="text-gray-600">Software & Servizi Web</span><span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Software).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span></div><div className="w-full bg-gray-100 h-1 mt-2"><div className="bg-blue-500 h-1" style={{width: '100%'}}></div></div></div><div className="p-3 bg-white rounded border border-gray-200"><div className="flex justify-between text-sm mb-1"><span className="text-gray-600">Materiali Didattici</span><span className="font-bold">{transactions.filter(t => t.category === TransactionCategory.Materials).reduce((a,b)=>a+b.amount,0).toFixed(2)}€</span></div><div className="w-full bg-gray-100 h-1 mt-2"><div className="bg-purple-500 h-1" style={{width: '100%'}}></div></div></div></div>
                             </div>
                         </div>
                     )}
@@ -1224,25 +1119,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {/* --- ANALYTICS --- */}
                     {activeTab === 'analytics' && (
                         <div className="animate-fade-in space-y-6">
-                            <p className="text-gray-500 text-sm mb-4">Analisi visuale avanzata dei flussi.</p>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                <div className="md-card p-4 h-80">
-                                    <h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Fatturato vs Spese (Mensile)</h3>
-                                    <div className="h-64 w-full relative"><canvas ref={el => canvasRefs.current['bar'] = el}></canvas></div>
-                                </div>
-                                <div className="md-card p-4 h-80">
-                                    <h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Ripartizione Costi (Doughnut)</h3>
-                                    <div className="h-64 w-full relative flex justify-center"><canvas ref={el => canvasRefs.current['doughnut'] = el}></canvas></div>
-                                </div>
-                                <div className="md-card p-4 h-80">
-                                    <h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Trend Cash Flow (Lineare)</h3>
-                                    <div className="h-64 w-full relative"><canvas ref={el => canvasRefs.current['line'] = el}></canvas></div>
-                                </div>
-                                <div className="md-card p-4 h-80">
-                                    <h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Analisi Salute Aziendale (Radar)</h3>
-                                    <div className="h-64 w-full relative flex justify-center"><canvas ref={el => canvasRefs.current['radar'] = el}></canvas></div>
-                                </div>
-                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><div className="md-card p-4 h-80"><h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Fatturato vs Spese (Mensile)</h3><div className="h-64 w-full relative"><canvas ref={el => canvasRefs.current['bar'] = el}></canvas></div></div><div className="md-card p-4 h-80"><h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Ripartizione Costi (Doughnut)</h3><div className="h-64 w-full relative flex justify-center"><canvas ref={el => canvasRefs.current['doughnut'] = el}></canvas></div></div><div className="md-card p-4 h-80"><h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Trend Cash Flow (Lineare)</h3><div className="h-64 w-full relative"><canvas ref={el => canvasRefs.current['line'] = el}></canvas></div></div><div className="md-card p-4 h-80"><h3 className="text-sm font-bold text-gray-600 mb-2 text-center">Analisi Salute Aziendale (Radar)</h3><div className="h-64 w-full relative flex justify-center"><canvas ref={el => canvasRefs.current['radar'] = el}></canvas></div></div></div>
                         </div>
                     )}
 
@@ -1292,12 +1169,16 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                                     {item.type === TransactionType.Expense ? '-' : ''}{(item.amount || item.totalAmount).toFixed(2)}€
                                                 </td>
                                                 <td className="p-4 text-center">
-                                                    {item.status === DocumentStatus.PendingSDI ? (
+                                                    {item.status === DocumentStatus.PendingSDI || item.status === DocumentStatus.Draft ? (
                                                         <button 
                                                             onClick={() => handleSealClick(item)}
-                                                            className="px-2 py-1 rounded text-[10px] font-bold uppercase bg-yellow-100 text-yellow-800 hover:bg-yellow-200 transition-colors shadow-sm"
+                                                            className={`px-2 py-1 rounded text-[10px] font-bold uppercase hover:shadow-sm transition-colors ${
+                                                                item.status === DocumentStatus.PendingSDI 
+                                                                    ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' 
+                                                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                            }`}
                                                         >
-                                                            ⚠ Pending SDI
+                                                            {item.status === DocumentStatus.PendingSDI ? '⚠ Pending SDI' : '✎ Draft'}
                                                         </button>
                                                     ) : (
                                                         <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
@@ -1327,7 +1208,18 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             )}
 
             {isTransModalOpen && <Modal onClose={() => setIsTransModalOpen(false)} size="lg"><TransactionForm transaction={editingItem} onSave={handleSaveTransaction} onCancel={() => setIsTransModalOpen(false)} /></Modal>}
-            {isDocModalOpen && <Modal onClose={() => setIsDocModalOpen(false)} size="2xl"><DocumentForm docData={editingItem} type={docType} clients={clients} onSave={handleSaveDocument} onCancel={() => setIsDocModalOpen(false)} /></Modal>}
+            {isDocModalOpen && (
+                <Modal onClose={() => setIsDocModalOpen(false)} size="2xl">
+                    <DocumentForm 
+                        key={editingItem ? editingItem.id : 'new'} 
+                        docData={editingItem} 
+                        type={docType} 
+                        clients={clients} 
+                        onSave={handleSaveDocument} 
+                        onCancel={() => setIsDocModalOpen(false)} 
+                    />
+                </Modal>
+            )}
             
             {/* Seal Modal */}
             {isSealModalOpen && invoiceToSeal && (

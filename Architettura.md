@@ -1,71 +1,99 @@
 
-# Architettura dell'Applicazione "EP v.1"
+# Architettura Tecnica - EP v.1
 
-Questo documento descrive l'architettura software, le scelte tecnologiche e il modello dei dati dell'applicazione gestionale "EP v.1".
+Questo documento descrive in dettaglio l'architettura software, le scelte tecnologiche e il flusso dei dati dell'applicazione "EP v.1".
 
-## 1. Panoramica Generale
+## 1. Stack Tecnologico
 
-"EP v.1" è una Single Page Application (SPA) progettata per gestire tutte le operazioni di una scuola di lingua inglese per bambini. L'architettura è basata su un frontend moderno e reattivo che interagisce con i servizi BaaS (Backend-as-a-Service) di Google Firebase, garantendo scalabilità, sicurezza e sviluppo rapido.
+Il progetto è una Single Page Application (SPA) moderna, basata su un'architettura **Serverless** e **Backend-as-a-Service (BaaS)**.
 
-## 2. Stack Tecnologico
+### Frontend
+-   **Core**: React 19 + TypeScript.
+-   **Build Tool**: Vite (Bundle ESM veloce).
+-   **Styling**: TailwindCSS con Design System custom basato su CSS Variables (tematizzazione dinamica).
+-   **Visualization**: Chart.js con configurazioni avanzate per dashboard finanziarie.
+-   **Reports**: `jspdf` e `jspdf-autotable` per la generazione client-side di PDF (Fatture, Preventivi).
+-   **Excel**: `xlsx` per importazione/esportazione dati massivi.
 
-- **Frontend**:
-  - **Libreria UI**: React.js
-  - **Linguaggio**: TypeScript
-  - **Styling**: TailwindCSS con un sistema di design custom basato su Material Design (variabili CSS).
-  - **Librerie Aggiuntive**: `chart.js` per i grafici (con config avanzate per effetti 3D), `xlsx` per l'import/export da Excel, `jspdf` per la generazione documenti.
-- **Backend (BaaS)**:
-  - **Database**: Google Firestore (NoSQL, document-based)
-  - **Autenticazione**: Firebase Authentication
-  - **Storage**: Firebase Storage (per upload file campagne e allegati attività)
-  - **Serverless**: **Firebase Cloud Functions (Gen 2)** con Node.js 20 per logiche backend complesse (es. cron jobs).
-  - **Scheduler**: **Firebase Cloud Scheduler** per l'esecuzione di task periodici (es. controllo notifiche ogni minuto).
-  - **Notifications**: Sistema Ibrido.
-    - *Frontend*: Scheduler locale (React) per notifiche a browser aperto.
-    - *Backend*: **Web Push Notifications via Firebase Cloud Messaging (FCM)** triggerate dal server per notifiche a browser chiuso (supporto Android/PWA).
-- **Deployment**:
-  - **Hosting**: Vercel
+### Backend (Firebase Ecosystem)
+-   **Database**: Google Cloud Firestore (NoSQL Document Store).
+    -   Modalità Offline: `persistentLocalCache` abilitata per resilienza di rete.
+-   **Auth**: Firebase Authentication (Gestione Admin).
+-   **Storage**: Firebase Cloud Storage (Media, allegati campagne e attività).
+-   **Serverless Functions**: Firebase Cloud Functions Gen 2 (Node.js 20).
+    -   Utilizzate per Task Cron (Scheduler notifiche) e logiche server-side sicure.
+-   **Messaging**: Firebase Cloud Messaging (FCM) per notifiche Web Push (supporto PWA/Android).
 
-## 3. Architettura Frontend
+### Deployment
+-   **Hosting**: Vercel (CI/CD automatico su push Git).
 
-### 3.1. Struttura delle Cartelle
+---
 
-La codebase è organizzata in modo modulare per favorire la manutenibilità e la scalabilità.
+## 2. Architettura Frontend
 
-- `/` (root): Contiene i file di configurazione (`index.html`, `tsconfig.json`, `metadata.json`) e il punto di ingresso dell'app (`index.tsx`).
-- `/components`: Contiene componenti React riutilizzabili e "stupidi" (presentazionali), come `Modal.tsx`, `Spinner.tsx`, `Sidebar.tsx`.
-  - `/components/icons`: Sotto-cartella per componenti SVG icona.
-  - **Note UI**: Le modali sono progettate con `max-h-[90dvh]` e scroll interno per garantire l'accessibilità su tutti i dispositivi.
-- `/pages`: Contiene i componenti "intelligenti" (container) che rappresentano le pagine principali dell'applicazione (es. `Clients.tsx`, `Dashboard.tsx`, `Initiatives.tsx`). Questi componenti gestiscono la logica di business e il recupero dei dati.
-- `/services`: Contiene la logica per la comunicazione con Firebase. Ogni file (es. `homeworkService.ts`, `initiativeService.ts`) astrae le operazioni CRUD per una specifica collection di Firestore.
-- `/firebase`: Contiene la configurazione e l'inizializzazione di Firebase (`config.ts`).
-- `/types`: Contiene le definizioni dei tipi TypeScript (`types.ts`) usate in tutta l'applicazione, garantendo la coerenza del modello dati.
-- `/functions`: Contiene il codice backend Node.js per le Cloud Functions.
-- `/data`: Inizialmente conteneva dati di mock, ora è obsoleto in favore di Firebase.
+L'applicazione segue un'architettura modulare basata su **Componenti** e **Servizi**.
 
-### 3.2. Modello Dati Esteso
+### 2.1 Struttura Cartelle
+-   `/components`: Componenti UI riutilizzabili (presentazionali).
+    -   `Sidebar`, `Header`, `Modal`, `StatCard`.
+-   `/pages`: Componenti Container (Smart) che gestiscono lo stato e la logica di business.
+-   `/services`: Layer di astrazione per le chiamate al database. Ogni entità (es. `financeService.ts`) incapsula la logica CRUD e di business (es. calcoli fiscali).
+-   `/utils`: Helper puri (es. generazione PDF, formattazione date, gestione temi).
 
-Oltre alle entità base (Clienti, Fornitori, Iscrizioni), il sistema gestisce:
-- **Homework**: Compiti assegnati, linkati opzionalmente a date e sedi.
-- **Initiative**: Progetti speciali.
-- **Book & BookLoan**: Sistema di inventario e prestiti per la biblioteca "Peek-a-Boo(k)".
-- **Activity**: Libreria didattica multimediale.
+### 2.2 Core Engines (Logica Applicativa)
 
-### 3.3. Gestione dello Stato e Flusso Dati
+L'intelligenza dell'applicazione risiede in diversi "Motori Logici" eseguiti principalmente client-side per massima reattività:
 
-Lo stato è gestito principalmente a livello di componente tramite i React Hooks (`useState`, `useEffect`, `useCallback`).
-- **Stato Globale**: Non è presente una libreria di state management globale (come Redux o Zustand) per semplicità. Lo stato dell'utente autenticato è gestito nel componente radice `App.tsx` e passato tramite props.
-- **Event Bus**: È stato introdotto un semplice sistema di eventi custom (`window.dispatchEvent('EP_DataUpdated')`) per notificare i componenti (es. `Header` per le notifiche) quando i dati vengono modificati in altre parti dell'app.
-- **PWA Dinamica**: La gestione del file `manifest.json` è ibrida. `App.tsx` genera a runtime un manifest "virtuale" (Blob URL) che inietta il logo aziendale recuperato da Firestore come icona dell'app.
+1.  **Enrollment Engine (`enrollments.tsx`)**:
+    -   Gestisce il ciclo di vita delle iscrizioni.
+    -   Implementa la logica **Move Mode**: una macchina a stati per lo spostamento di lezioni tra "recinti" (Sedi/Orari) via Drag&Drop o Touch.
+    -   Gestisce la generazione automatica delle lezioni (Appointments) basata sulla durata del pacchetto.
 
-### 3.4. UX Mobile & Interazioni
+2.  **Finance & CFO Engine (`finance.tsx`)**:
+    -   Calcola in tempo reale le proiezioni fiscali (Regime Forfettario/Start-up).
+    -   Aggrega transazioni per generare il conto economico (P&L) e lo stato patrimoniale.
+    -   **Controlling**: Incrocia i dati delle Iscrizioni con le Transazioni per calcolare la profittabilità per Sede (Centro di Costo).
 
-L'applicazione adotta strategie specifiche per l'uso mobile:
-- **Move Mode (Macchina a Stati)**: Nella gestione delle iscrizioni (`Enrollments.tsx`) e Calendario, è stata implementata una logica ibrida per lo spostamento degli elementi (Tap-to-Select -> Tap-to-Place).
-- **Visual Feedback**: Uso intensivo di indicatori visivi per comunicare lo stato degli oggetti senza hover.
-- **Navigazione**: Sidebar a scomparsa con backdrop blur e menu header ottimizzato.
+3.  **Notification Engine (`notificationService.ts`)**:
+    -   Sistema ibrido che unifica scadenze (Iscrizioni), alert operativi (Fatture non inviate) e pagamenti pendenti.
+    -   Supporta notifiche in-app e Push.
 
-### 3.5. Integrità Dati e Pulizia (Cascading Deletes)
+### 2.3 Data Integrity (Deep Cleaning)
 
-Per mantenere la coerenza del database, è stata implementata una logica di **Deep Cleaning**:
-- Quando un'iscrizione viene eliminata, il sistema (via `financeService.ts`) intercetta e rimuove tutte le entità correlate (transazioni, fatture, log attività, noli automatici).
+Per garantire la coerenza in un DB NoSQL non relazionale, è stata implementata una logica di **Cascading Delete** via software:
+-   Quando un'entità "padre" (es. Iscrizione o Cliente) viene eliminata, i service (`financeService`, `enrollmentService`) si occupano di eliminare ricorsivamente tutte le entità "figlie" correlate (Lezioni, Presenze, Transazioni, Fatture, Log Attività).
+
+---
+
+## 3. Modello Dati (Firestore)
+
+Il database è strutturato in collezioni principali:
+
+-   `clients`: Anagrafica Genitori ed Enti (include sub-array `children` e `rating`).
+-   `suppliers`: Anagrafica Fornitori e Sedi (`locations` nested con availability slots).
+-   `enrollments`: Entità pivotale che collega Cliente, Bambino, Sede e Pacchetto. Contiene l'array `appointments` (calendario lezioni).
+-   `transactions`: Libro mastro (Ledger) per entrate/uscite. Campi chiave: `allocationId` (per il controllo di gestione), `relatedDocumentId`.
+-   `invoices` / `quotes`: Documenti fiscali.
+-   `lessons`: Lezioni manuali/extra (fuori dal ciclo iscrizioni).
+-   `periodicChecks`: Configurazione scheduler controlli.
+-   `communications` / `campaigns`: Log CRM.
+-   `activities`: Libreria didattica.
+-   `books` / `book_loans`: Gestione biblioteca.
+
+---
+
+## 4. Sicurezza e Performance
+
+-   **Authentication**: Accesso protetto via email/password (Admin).
+-   **Security Rules**: Firestore Rules configurate per permettere lettura/scrittura solo agli utenti autenticati.
+-   **Performance**:
+    -   Uso intensivo di `Promise.all` per il caricamento parallelo dei dati.
+    -   Indicizzazione Firestore (`indexes.json`) per query complesse (ordinamenti e filtri multipli).
+    -   Lazy loading delle rotte (via Vite) per ridurre il bundle iniziale.
+-   **Offline First**: Grazie alla cache persistente di Firestore, l'app è consultabile e parzialmente operativa anche senza rete.
+
+## 5. PWA & Integrazione Mobile
+
+-   **Manifest Dinamico**: Il file `manifest.json` viene manipolato a runtime per iniettare il logo aziendale personalizzato dell'utente.
+-   **Service Worker**: Gestisce la cache degli asset statici e la ricezione delle notifiche Push background.
+-   **Touch Interactions**: L'interfaccia è ottimizzata per il touch (bottoni grandi, swipe, modalità "Sposta" specifica per mobile).

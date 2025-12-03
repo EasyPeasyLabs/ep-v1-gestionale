@@ -14,7 +14,7 @@ Ho già creato:
 
 ## Stato di Avanzamento (Roadmap)
 
-Di seguito lo stato corrente delle funzionalità implementate:
+Di seguito lo stato corrente delle funzionalità implementate al **15 Giugno 2024**:
 
 ### Core Features (Completate)
 - [x] **Autenticazione**: Login Admin via Firebase Auth.
@@ -23,34 +23,39 @@ Di seguito lo stato corrente delle funzionalità implementate:
 - [x] **Iscrizioni**: Workflow iscrizione guidato, generazione automatica lezioni, gestione pagamenti (Acconto/Saldo).
 - [x] **Iscrizioni Adulti**: Supporto per corsi destinati ai genitori/adulti con listini dedicati (Prefissi K/A).
 - [x] **Calendario**: Vista mensile, drag & drop (desktop), gestione lezioni extra.
-- [x] **Finanza**: Dashboard CFO, proiezioni fiscali, gestione Transazioni, Fatture e Preventivi.
-- [x] **Export PDF**: Generazione documenti fiscali professionali.
+- [x] **Finanza**: 
+    - Dashboard CFO (Strategia) con proiezioni fiscali Forfettario/Start-up.
+    - Simulatore rate e acconti anno successivo.
+    - Gestione completa Transazioni, Fatture (con Sigillo SDI) e Preventivi.
+- [x] **Export PDF**: Generazione client-side di documenti fiscali professionali.
 
 ### Advanced Features (Completate)
 - [x] **Registro Elettronico**:
-    - **Lezioni**: Log attività svolte.
-    - **Compiti**: Gestione assegnazione compiti (Manuale o Multimedia/Link). Invio liste compiti via WhatsApp a gruppi (Recinti) o singoli.
+    - **Lezioni**: Log attività svolte e collegamenti didattici.
+    - **Compiti**: Gestione assegnazione compiti (Manuale o Multimedia) e invio WhatsApp.
 - [x] **Iniziative & Biblioteca**:
-    - **Iniziative**: Gestione progetti speciali e materiali.
-    - **Peek-a-Boo(k)**: Sistema di gestione prestiti libri (Inventario, Check-out/Check-in, Tracciamento per studente/sede).
-- [x] **CRM**: Gestione rinnovi, comunicazioni massive, campagne marketing.
-- [x] **Registro Presenze**: Gestione giornaliera, recuperi automatici o manuali.
-- [x] **Registro Attività**: Libreria didattica e assegnazione attività alle lezioni.
+    - **Iniziative**: Gestione progetti speciali.
+    - **Peek-a-Boo(k)**: Sistema bibliotecario (Inventario, Prestiti, Restituzioni per studente/sede).
+- [x] **CRM**: 
+    - Gestione rinnovi e scadenze.
+    - Campagne marketing e comunicazioni massive (Email/WhatsApp).
+    - Archivio Log Comunicazioni.
+- [x] **Registro Presenze**: Gestione giornaliera/mensile, calcolo presenze, recuperi automatici o manuali.
 - [x] **Controllo di Gestione Avanzato**:
-    - Analisi olistica profittabilità Sedi vs Costi.
-    - Separazione netta dei costi logistici e di nolo.
-    - Dashboard CFO con grafici interattivi 3D e azioni strategiche dinamiche.
+    - Analisi profittabilità Sedi (Ricavi Reali vs Costi Nolo).
+    - TCO Logistica (Costo per km, usura, carburante).
+    - AI Reverse Engineering per obiettivi di fatturato.
 - [x] **Rating System**: Valutazione qualitativa a 4 assi per Genitori, Bambini, Fornitori, Sedi.
-- [x] **Notifiche**: Sistema ibrido (Scheduler locale + Push Notifications FCM).
-- [x] **Deep Cleaning (Cascading Delete)**: Eliminazione a cascata di iscrizioni, lezioni, presenze, transazioni, fatture, noli automatici e log attività didattiche.
+- [x] **Notifiche**: Sistema ibrido (Scheduler locale + Push Notifications FCM server-side).
+- [x] **Deep Cleaning (Cascading Delete)**: Integrità referenziale gestita via software (eliminazione a cascata di entità collegate).
 
 ### UX & Mobile (Completate)
-- [x] **Design System**: UI Enterprise con TailwindCSS, animazioni fluide.
-- [x] **PWA**: Icona dinamica personalizzabile, supporto installazione.
+- [x] **Design System**: UI Enterprise con TailwindCSS, animazioni fluide, palette personalizzabile.
+- [x] **PWA**: Icona dinamica personalizzabile, supporto installazione, Service Worker.
 - [x] **Mobile Optimization**:
     - [x] **Move Mode**: Gestione spostamenti iscrizioni touch-friendly.
-    - [x] Layout responsivi e navigazione a schede.
-- [x] **User Preferences**: Toggle visualizzazione Nome/Cognome.
+    - [x] Layout responsivi, bottom navigation tabs e sidebar a scomparsa.
+- [x] **User Preferences**: Toggle visualizzazione Nome/Cognome, Temi colore.
 
 ### In Sviluppo / Next Steps
 - [ ] **Pagina Iscrizioni Pubblica**: Integrazione con "Buffer Database" (Progetto B).
