@@ -1,13 +1,26 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { getAllEnrollments } from '../services/enrollmentService';
-import { Enrollment, EnrollmentStatus } from '../types';
+import { getSuppliers } from '../services/supplierService';
+import { Enrollment, EnrollmentStatus, Supplier } from '../types';
+import { db } from '../firebase/config';
+import { doc, getDoc, updateDoc } from '@firebase/firestore';
 import Spinner from '../components/Spinner';
 import SearchIcon from '../components/icons/SearchIcon';
 import Pagination from '../components/Pagination';
+import PencilIcon from '../components/icons/PencilIcon';
+import Modal from '../components/Modal';
+
+// Icona Scambio Sede
+const SwitchIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+    </svg>
+);
 
 interface ArchiveItem {
-    id: string; // unique key
+    id: string; // Composite key: enrollmentId-lessonId
+    enrollmentId: string; // Store raw enrollment ID
     date: string;
     childName: string;
     locationName: string;
@@ -16,53 +29,186 @@ interface ArchiveItem {
     value: number;
 }
 
+// --- MODALE CAMBIO SEDE ---
+const ChangeLocationModal: React.FC<{
+    enrollmentId: string;
+    childName: string;
+    currentLocationName: string;
+    suppliers: Supplier[];
+    onClose: () => void;
+    onSave: (enrollmentId: string, newLocationId: string, newLocationName: string, newLocationColor: string, fromDate: string) => Promise<void>;
+}> = ({ enrollmentId, childName, currentLocationName, suppliers, onClose, onSave }) => {
+    const [selectedLocId, setSelectedLocId] = useState('');
+    const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
+    const [loading, setLoading] = useState(false);
+
+    // Flatten locations
+    const allLocations = useMemo(() => {
+        const locs: {id: string, name: string, color: string}[] = [];
+        suppliers.forEach(s => s.locations.forEach(l => locs.push({id: l.id, name: l.name, color: l.color})));
+        return locs.sort((a,b) => a.name.localeCompare(b.name));
+    }, [suppliers]);
+
+    const handleConfirm = async () => {
+        if (!selectedLocId || !fromDate) return alert("Seleziona sede e data.");
+        const loc = allLocations.find(l => l.id === selectedLocId);
+        if (!loc) return;
+
+        setLoading(true);
+        await onSave(enrollmentId, loc.id, loc.name, loc.color, fromDate);
+        setLoading(false);
+        onClose();
+    };
+
+    return (
+        <Modal onClose={onClose} size="md">
+            <div className="p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-2">Cambio Sede: {childName}</h3>
+                <p className="text-sm text-gray-500 mb-6">
+                    Attualmente in: <strong>{currentLocationName}</strong>. 
+                    <br/>La modifica influirà sul registro presenze e sui costi di nolo a partire dalla data selezionata.
+                </p>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Nuova Sede</label>
+                        <select 
+                            value={selectedLocId} 
+                            onChange={e => setSelectedLocId(e.target.value)} 
+                            className="md-input bg-white"
+                        >
+                            <option value="">Seleziona...</option>
+                            {allLocations.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    
+                    <div className="md-input-group">
+                        <input 
+                            type="date" 
+                            value={fromDate} 
+                            onChange={e => setFromDate(e.target.value)} 
+                            className="md-input" 
+                        />
+                        <label className="md-input-label !top-0">A partire dal</label>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex justify-end gap-2">
+                    <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                    <button onClick={handleConfirm} disabled={loading || !selectedLocId} className="md-btn md-btn-raised md-btn-primary md-btn-sm">
+                        {loading ? 'Salvataggio...' : 'Conferma Cambio'}
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 const AttendanceArchive: React.FC = () => {
     const [items, setItems] = useState<ArchiveItem[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Modal State
+    const [modalConfig, setModalConfig] = useState<{isOpen: boolean, enrollmentId: string, childName: string, currentLocationName: string} | null>(null);
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 20;
 
+    const fetchArchive = async () => {
+        setLoading(true);
+        try {
+            const [enrollmentsData, suppliersData] = await Promise.all([
+                getAllEnrollments(),
+                getSuppliers()
+            ]);
+            
+            setSuppliers(suppliersData);
+
+            const archive: ArchiveItem[] = [];
+
+            enrollmentsData.forEach((enr: Enrollment) => {
+                const unitValue = (enr.price || 0) / (enr.lessonsTotal || 1);
+                
+                if (enr.appointments) {
+                    enr.appointments.forEach(app => {
+                        if (app.status === 'Present') {
+                            archive.push({
+                                id: `${enr.id}-${app.lessonId}`,
+                                enrollmentId: enr.id,
+                                date: app.date,
+                                childName: enr.childName,
+                                locationName: app.locationName || enr.locationName, // Fallback
+                                locationColor: app.locationColor || enr.locationColor || '#ccc',
+                                startTime: app.startTime,
+                                value: unitValue
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Sort by date desc
+            archive.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            setItems(archive);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchArchive = async () => {
-            setLoading(true);
-            try {
-                const enrollments = await getAllEnrollments();
-                const archive: ArchiveItem[] = [];
-
-                enrollments.forEach((enr: Enrollment) => {
-                    const unitValue = (enr.price || 0) / (enr.lessonsTotal || 1);
-                    
-                    if (enr.appointments) {
-                        enr.appointments.forEach(app => {
-                            if (app.status === 'Present') {
-                                archive.push({
-                                    id: `${enr.id}-${app.lessonId}`,
-                                    date: app.date,
-                                    childName: enr.childName,
-                                    locationName: app.locationName || enr.locationName, // Fallback
-                                    locationColor: app.locationColor || enr.locationColor || '#ccc',
-                                    startTime: app.startTime,
-                                    value: unitValue
-                                });
-                            }
-                        });
-                    }
-                });
-
-                // Sort by date desc
-                archive.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                setItems(archive);
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
         fetchArchive();
     }, []);
+
+    // Logic for Updating Location
+    const handleUpdateLocation = async (enrollmentId: string, newLocationId: string, newLocationName: string, newLocationColor: string, fromDate: string) => {
+        try {
+            const enrRef = doc(db, 'enrollments', enrollmentId);
+            const snap = await getDoc(enrRef);
+            
+            if (snap.exists()) {
+                const enr = snap.data() as Enrollment;
+                const fromDateObj = new Date(fromDate);
+                fromDateObj.setHours(0,0,0,0);
+
+                // 1. Update Appointments (Present or Future or Scheduled) from date
+                const updatedAppointments = (enr.appointments || []).map(app => {
+                    const appDate = new Date(app.date);
+                    // Update if date matches or is future
+                    if (appDate >= fromDateObj) {
+                        return {
+                            ...app,
+                            locationName: newLocationName,
+                            locationColor: newLocationColor
+                        };
+                    }
+                    return app;
+                });
+
+                // 2. Update Enrollment Main Location 
+                // (Assumes the change reflects current status if date is <= now)
+                // Even if date is future, updating main location prepares for future rent calc.
+                await updateDoc(enrRef, {
+                    locationId: newLocationId,
+                    locationName: newLocationName,
+                    locationColor: newLocationColor,
+                    appointments: updatedAppointments
+                });
+
+                alert("Sede aggiornata con successo.");
+                fetchArchive(); // Refresh list
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante l'aggiornamento della sede.");
+        }
+    };
 
     // Reset pagination
     useEffect(() => {
@@ -121,10 +267,24 @@ const AttendanceArchive: React.FC = () => {
                                         </td>
                                         <td className="p-4 font-bold text-gray-800">{item.childName}</td>
                                         <td className="p-4">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
-                                                <span className="w-2 h-2 rounded-full mr-1.5" style={{backgroundColor: item.locationColor}}></span>
-                                                {item.locationName}
-                                            </span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
+                                                    <span className="w-2 h-2 rounded-full mr-1.5" style={{backgroundColor: item.locationColor}}></span>
+                                                    {item.locationName}
+                                                </span>
+                                                <button 
+                                                    onClick={() => setModalConfig({
+                                                        isOpen: true, 
+                                                        enrollmentId: item.enrollmentId, 
+                                                        childName: item.childName, 
+                                                        currentLocationName: item.locationName
+                                                    })}
+                                                    className="text-gray-400 hover:text-indigo-600 p-1 rounded-full hover:bg-indigo-50 transition-colors"
+                                                    title="Cambia Sede (Nuova Sede)"
+                                                >
+                                                    <SwitchIcon />
+                                                </button>
+                                            </div>
                                         </td>
                                         <td className="p-4 text-right font-mono text-green-600 font-bold">
                                             {item.value.toFixed(2)}€
@@ -146,6 +306,17 @@ const AttendanceArchive: React.FC = () => {
                         onPageChange={setCurrentPage} 
                     />
                 </div>
+            )}
+
+            {modalConfig && (
+                <ChangeLocationModal 
+                    enrollmentId={modalConfig.enrollmentId}
+                    childName={modalConfig.childName}
+                    currentLocationName={modalConfig.currentLocationName}
+                    suppliers={suppliers}
+                    onClose={() => setModalConfig(null)}
+                    onSave={handleUpdateLocation}
+                />
             )}
         </div>
     );
