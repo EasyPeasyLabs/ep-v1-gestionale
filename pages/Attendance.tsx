@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Appointment, Enrollment, EnrollmentStatus } from '../types';
-import { getAllEnrollments, registerAbsence, registerPresence } from '../services/enrollmentService';
+import { getAllEnrollments, registerAbsence, registerPresence, resetAppointmentStatus, toggleAppointmentStatus } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import CalendarIcon from '../components/icons/CalendarIcon';
+import PencilIcon from '../components/icons/PencilIcon';
+import TrashIcon from '../components/icons/TrashIcon';
 
 // Interfaccia estesa per visualizzare le lezioni nella lista presenze
 interface AttendanceItem extends Appointment {
@@ -173,6 +175,32 @@ const Attendance: React.FC = () => {
         });
     };
 
+    // --- CRUD Handlers ---
+    const handleToggleStatus = async (item: AttendanceItem) => {
+        try {
+            setLoading(true);
+            await toggleAppointmentStatus(item.enrollmentId, item.lessonId);
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (e) {
+            alert("Errore modifica stato.");
+            setLoading(false);
+        }
+    };
+
+    const handleResetStatus = async (item: AttendanceItem) => {
+        if(!confirm("Eliminare lo stato di presenza/assenza? L'appuntamento tornerà in attesa.")) return;
+        try {
+            setLoading(true);
+            await resetAppointmentStatus(item.enrollmentId, item.lessonId);
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (e) {
+            alert("Errore eliminazione stato.");
+            setLoading(false);
+        }
+    };
+
     // --- Bulk Actions ---
     const handleBulkMarkPresent = async () => {
         if (!confirm("Segnare TUTTI gli studenti visualizzati come PRESENTI?")) return;
@@ -299,14 +327,26 @@ const Attendance: React.FC = () => {
                                                     </div>
                                                     
                                                     <div className="flex items-center gap-2 mt-3 md:mt-0 md:ml-4">
-                                                        {isPresent ? (
-                                                            <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-200 shadow-sm flex items-center gap-1">
-                                                                ✓ PRESENTE
-                                                            </span>
-                                                        ) : isAbsent ? (
-                                                            <span className="px-3 py-1 bg-red-100 text-red-800 text-xs font-bold rounded-full border border-red-200 shadow-sm flex items-center gap-1">
-                                                                ✕ ASSENTE
-                                                            </span>
+                                                        {isPresent || isAbsent ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`px-3 py-1 text-xs font-bold rounded-full border shadow-sm flex items-center gap-1 min-w-[90px] justify-center ${isPresent ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
+                                                                    {isPresent ? '✓ PRESENTE' : '✕ ASSENTE'}
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => handleToggleStatus(item)} 
+                                                                    className="md-icon-btn edit p-1.5 bg-white border border-gray-200 hover:bg-blue-50"
+                                                                    title="Modifica Stato"
+                                                                >
+                                                                    <PencilIcon />
+                                                                </button>
+                                                                <button 
+                                                                    onClick={() => handleResetStatus(item)} 
+                                                                    className="md-icon-btn delete p-1.5 bg-white border border-gray-200 hover:bg-red-50"
+                                                                    title="Elimina Stato"
+                                                                >
+                                                                    <TrashIcon />
+                                                                </button>
+                                                            </div>
                                                         ) : (
                                                             <>
                                                                 <button onClick={() => handleMarkPresence(item)} className="px-4 py-2 bg-white border border-green-500 text-green-600 rounded-lg text-xs font-bold hover:bg-green-50 hover:shadow-md transition-all active:scale-95">

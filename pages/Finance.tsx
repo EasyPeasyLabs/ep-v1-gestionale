@@ -145,20 +145,14 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('[DEBUG] DocumentForm handleSubmit INIZIO');
         
         try {
             const selectedClient = clients.find(c => c.id === clientId);
-            console.log('[DEBUG] Selected Client:', selectedClient);
-
             const clientName = selectedClient ? (selectedClient.clientType === ClientType.Parent ? `${(selectedClient as ParentClient).firstName} ${(selectedClient as ParentClient).lastName}` : (selectedClient as InstitutionalClient).companyName) : 'Cliente Manuale';
             const totalAmount = items.reduce((sum, item) => sum + (item.quantity * item.price), 0) + (hasStampDuty ? 2 : 0);
             
-            console.log('[DEBUG] Calculated Amount:', totalAmount);
-
-            // FIX: Ensure ID is preserved rigorously
-            const baseData = { 
-                id: docData?.id, 
+            // FIX: Ensure ID is preserved rigorously but avoid undefined for new docs
+            const baseData: any = { 
                 clientId, 
                 clientName, 
                 issueDate: new Date(issueDate).toISOString(), 
@@ -169,21 +163,21 @@ const DocumentForm: React.FC<{ docData?: Invoice | Quote | null; type: 'invoice'
                 totalAmount, 
                 status: docData?.status || DocumentStatus.Draft 
             };
+
+            if (docData?.id) {
+                baseData.id = docData.id;
+            }
             
             if (type === 'invoice') { 
-                const payload = { ...baseData, dueDate: new Date(dueDate || issueDate).toISOString(), invoiceNumber }; 
-                console.log('[DEBUG] Sending Invoice Payload to onSave:', payload);
-                onSave(payload);
+                onSave({ ...baseData, dueDate: new Date(dueDate || issueDate).toISOString(), invoiceNumber }); 
             } else { 
                 // Validazione data scadenza preventivo
                 const finalExpiry = expiryDate || issueDate;
-                const payload = { ...baseData, expiryDate: new Date(finalExpiry).toISOString() }; 
-                console.log('[DEBUG] Sending Quote Payload to onSave:', payload);
-                onSave(payload);
+                onSave({ ...baseData, expiryDate: new Date(finalExpiry).toISOString() }); 
             }
         } catch (error) {
-            console.error('[DEBUG] ERRORE nel DocumentForm handleSubmit:', error);
-            alert("Errore interno durante la preparazione del documento. Vedi console.");
+            console.error('Errore creazione payload documento:', error);
+            alert("Errore interno durante la preparazione del documento.");
         }
     };
 
@@ -761,35 +755,25 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     
     // --- DEBUG: handleSaveDocument with detailed logs ---
     const handleSaveDocument = async (docData: any) => { 
-        console.log('[DEBUG] handleSaveDocument called with:', docData);
         setLoading(true);
         try { 
             if (docData.id) { 
-                console.log('[DEBUG] Update Mode');
                 if (docType === 'invoice') {
-                    console.log('[DEBUG] Calling updateInvoice...');
                     await updateInvoice(docData.id, docData); 
                 } else {
-                    console.log('[DEBUG] Calling updateQuote...');
                     await updateQuote(docData.id, docData); 
                 }
-                console.log('[DEBUG] Update Success');
             } else { 
-                console.log('[DEBUG] Create Mode');
                 if (docType === 'invoice') {
-                    console.log('[DEBUG] Calling addInvoice...');
-                    const res = await addInvoice(docData);
-                    console.log('[DEBUG] Invoice Created:', res);
+                    await addInvoice(docData);
                 } else {
-                    console.log('[DEBUG] Calling addQuote...');
-                    const res = await addQuote(docData);
-                    console.log('[DEBUG] Quote Created:', res);
+                    await addQuote(docData);
                 }
             } 
             setIsDocModalOpen(false); 
             fetchData(); 
         } catch (err) { 
-            console.error('[DEBUG] Error in handleSaveDocument:', err);
+            console.error('Error in handleSaveDocument:', err);
             const msg = err instanceof Error ? err.message : String(err);
             alert("Errore durante il salvataggio: " + msg); 
         } finally {

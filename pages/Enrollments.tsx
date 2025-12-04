@@ -24,7 +24,7 @@ interface EnrollmentsProps {
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// --- Modal Recupero (Omissis - Same as before) ---
+// --- Modal Recupero (Aggiornata per Selezione Sede) ---
 const RecoveryModal: React.FC<{
     enrollment: Enrollment;
     maxRecoverable: number;
@@ -34,26 +34,50 @@ const RecoveryModal: React.FC<{
 }> = ({ enrollment, maxRecoverable, suppliers, onClose, onConfirm }) => {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [count, setCount] = useState(1);
-    const originalSupplier = suppliers.find(s => s.id === enrollment.supplierId);
-    const originalLocation = originalSupplier?.locations.find(l => l.id === enrollment.locationId);
+    
+    // Location Selection State
+    // Default: Sede originale dell'iscrizione
+    const originalLocationId = enrollment.locationId;
+    const [selectedLocationId, setSelectedLocationId] = useState(originalLocationId);
+    
     const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
     const [availableSlots, setAvailableSlots] = useState<{start: string, end: string, day: number}[]>([]);
 
+    // Calcola la location corrente in base all'ID selezionato
+    const currentLocation = useMemo(() => {
+        for (const s of suppliers) {
+            const loc = s.locations.find(l => l.id === selectedLocationId);
+            if (loc) return loc;
+        }
+        return null;
+    }, [suppliers, selectedLocationId]);
+
+    // Lista piatta di tutte le location per il dropdown
+    const allLocations = useMemo(() => {
+        const locs: {id: string, name: string}[] = [];
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                locs.push({ id: l.id, name: l.name });
+            });
+        });
+        return locs.sort((a,b) => a.name.localeCompare(b.name));
+    }, [suppliers]);
+
     useEffect(() => {
         const dayOfWeek = new Date(date).getDay();
-        if (originalLocation && originalLocation.availability) {
-            const slots = originalLocation.availability.filter(s => s.dayOfWeek === dayOfWeek);
+        if (currentLocation && currentLocation.availability) {
+            const slots = currentLocation.availability.filter(s => s.dayOfWeek === dayOfWeek);
             setAvailableSlots(slots.map(s => ({ start: s.startTime, end: s.endTime, day: s.dayOfWeek })));
             setSelectedSlotIndex(null); 
         } else {
             setAvailableSlots([]);
         }
-    }, [date, originalLocation]);
+    }, [date, currentLocation]);
 
     const handleConfirm = () => {
-        if (selectedSlotIndex === null || !originalLocation) return;
+        if (selectedSlotIndex === null || !currentLocation) return;
         const slot = availableSlots[selectedSlotIndex];
-        onConfirm(date, slot.start, slot.end, count, originalLocation.name, originalLocation.color);
+        onConfirm(date, slot.start, slot.end, count, currentLocation.name, currentLocation.color);
     };
 
     return (
@@ -62,12 +86,26 @@ const RecoveryModal: React.FC<{
                 <h3 className="text-lg font-bold text-gray-800 mb-2">Recupero Lezioni</h3>
                 <p className="text-sm text-gray-500 mb-4">Programma il recupero per <strong>{enrollment.childName}</strong>.</p>
                 <div className="space-y-4">
+                    {/* Location Selector */}
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">Presso Sede (Recinto)</label>
+                        <select 
+                            value={selectedLocationId} 
+                            onChange={(e) => setSelectedLocationId(e.target.value)} 
+                            className="md-input bg-white"
+                        >
+                            {allLocations.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     <div className="md-input-group">
                         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
                         <label className="md-input-label !top-0">Data Inizio</label>
                     </div>
                     <div>
-                        <label className="block text-xs text-gray-500 mb-1">Seleziona Slot</label>
+                        <label className="block text-xs text-gray-500 mb-1">Seleziona Slot (Sede Selezionata)</label>
                         {availableSlots.length > 0 ? (
                             <div className="grid grid-cols-2 gap-2">
                                 {availableSlots.map((slot, idx) => (
@@ -76,7 +114,7 @@ const RecoveryModal: React.FC<{
                                     </button>
                                 ))}
                             </div>
-                        ) : <p className="text-xs text-red-500 italic">Nessuno slot.</p>}
+                        ) : <p className="text-xs text-red-500 italic">Nessuno slot disponibile per questo giorno in questa sede.</p>}
                     </div>
                     <div className="md-input-group">
                         <input type="number" min="1" max={maxRecoverable} value={count} onChange={e => setCount(Math.min(maxRecoverable, Math.max(1, Number(e.target.value))))} className="md-input" />

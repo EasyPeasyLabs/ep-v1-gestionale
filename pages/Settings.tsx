@@ -1,8 +1,9 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier } from '../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
+import { getClients } from '../services/parentService';
 import { requestNotificationPermission } from '../services/fcmService';
 import { auth } from '../firebase/config';
 import { applyTheme, getSavedTheme, defaultTheme } from '../utils/theme';
@@ -16,19 +17,190 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
 
-// --- Components ---
+// --- SUB-COMPONENT: Subscription Status Modal ---
+const SubscriptionStatusModal: React.FC<{
+    currentConfig?: SubscriptionStatusConfig;
+    suppliers: Supplier[];
+    onSave: (config: SubscriptionStatusConfig) => void;
+    onClose: () => void;
+}> = ({ currentConfig, suppliers, onSave, onClose }) => {
+    const [status, setStatus] = useState<SubscriptionStatusType>(currentConfig?.status || 'active');
+    const [date, setDate] = useState(currentConfig?.validDate || new Date().toISOString().split('T')[0]);
+    const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(currentConfig?.discountType || 'percent');
+    const [discountValue, setDiscountValue] = useState(currentConfig?.discountValue || 0);
+    
+    // Target Arrays
+    const [targetLocationIds, setTargetLocationIds] = useState<string[]>(currentConfig?.targetLocationIds || []);
+    const [targetClientIds, setTargetClientIds] = useState<string[]>(currentConfig?.targetClientIds || []);
 
-const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; }> = ({ sub, onSave, onCancel }) => { 
+    // Clients Loading for Promo
+    const [clients, setClients] = useState<Client[]>([]);
+    const [loadingClients, setLoadingClients] = useState(false);
+    const [clientSearch, setClientSearch] = useState('');
+
+    useEffect(() => {
+        if (status === 'promo') {
+            const loadClients = async () => {
+                setLoadingClients(true);
+                try {
+                    const data = await getClients();
+                    setClients(data);
+                } catch (e) { console.error(e); } finally { setLoadingClients(false); }
+            };
+            loadClients();
+        }
+    }, [status]);
+
+    const handleSave = () => {
+        onSave({
+            status,
+            validDate: (status !== 'active') ? date : undefined,
+            discountType: status === 'promo' ? discountType : undefined,
+            discountValue: status === 'promo' ? discountValue : undefined,
+            targetLocationIds: status === 'promo' ? targetLocationIds : [],
+            targetClientIds: status === 'promo' ? targetClientIds : []
+        });
+        onClose();
+    };
+
+    const toggleLocation = (id: string) => setTargetLocationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    const toggleClient = (id: string) => setTargetClientIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+    // Flatten Locations
+    const allLocations = useMemo(() => {
+        const locs: {id: string, name: string}[] = [];
+        suppliers.forEach(s => s.locations.forEach(l => locs.push({id: l.id, name: l.name})));
+        return locs;
+    }, [suppliers]);
+
+    const filteredClients = clients.filter(c => {
+        const name = c.clientType === ClientType.Parent 
+            ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
+            : (c as InstitutionalClient).companyName;
+        return name.toLowerCase().includes(clientSearch.toLowerCase());
+    });
+
+    return (
+        <Modal onClose={onClose} size="lg">
+            <div className="flex flex-col h-full max-h-[85vh]">
+                <div className="p-6 border-b bg-gray-50 flex-shrink-0">
+                    <h3 className="text-lg font-bold text-gray-800">Stato Abbonamento</h3>
+                    <p className="text-xs text-gray-500">Definisci disponibilità e regole promozionali.</p>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Status Selection */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => setStatus('active')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'active' ? 'bg-green-50 border-green-500 text-green-700 ring-1 ring-green-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Attivo</button>
+                        <button onClick={() => setStatus('obsolete')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'obsolete' ? 'bg-gray-100 border-gray-500 text-gray-700 ring-1 ring-gray-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Obsoleto</button>
+                        <button onClick={() => setStatus('future')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'future' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Da Attivare</button>
+                        <button onClick={() => setStatus('promo')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'promo' ? 'bg-yellow-50 border-yellow-500 text-yellow-700 ring-1 ring-yellow-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Promo</button>
+                    </div>
+
+                    {/* Dynamic Fields */}
+                    <div className="bg-white border rounded-lg p-4 space-y-4 animate-fade-in">
+                        {status === 'active' && <p className="text-sm text-green-600">L'abbonamento è visibile e selezionabile liberamente.</p>}
+                        
+                        {status === 'obsolete' && (
+                            <div className="md-input-group">
+                                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
+                                <label className="md-input-label !top-0">Non più selezionabile dal:</label>
+                                <p className="text-xs text-gray-400 mt-1">Le iscrizioni esistenti non verranno modificate.</p>
+                            </div>
+                        )}
+
+                        {status === 'future' && (
+                            <div className="md-input-group">
+                                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
+                                <label className="md-input-label !top-0">Disponibile a partire dal:</label>
+                            </div>
+                        )}
+
+                        {status === 'promo' && (
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500">Tipo Sconto</label>
+                                        <select value={discountType} onChange={e => setDiscountType(e.target.value as any)} className="md-input">
+                                            <option value="percent">Percentuale (%)</option>
+                                            <option value="fixed">Importo Fisso (€)</option>
+                                        </select>
+                                    </div>
+                                    <div className="md-input-group">
+                                        <input type="number" value={discountValue} onChange={e => setDiscountValue(Number(e.target.value))} className="md-input" placeholder=" " />
+                                        <label className="md-input-label">Valore Sconto</label>
+                                    </div>
+                                </div>
+                                <div className="md-input-group">
+                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
+                                    <label className="md-input-label !top-0">Valido dal:</label>
+                                </div>
+
+                                {/* Target Selectors */}
+                                <div className="border-t pt-4">
+                                    <label className="text-xs font-bold text-indigo-600 uppercase mb-2 block">A) Target Sedi (Recinti)</label>
+                                    <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto mb-4">
+                                        {allLocations.map(l => (
+                                            <button 
+                                                key={l.id} 
+                                                onClick={() => toggleLocation(l.id)}
+                                                className={`px-2 py-1 rounded border text-xs ${targetLocationIds.includes(l.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
+                                            >
+                                                {l.name}
+                                            </button>
+                                        ))}
+                                        {allLocations.length === 0 && <span className="text-xs text-gray-400 italic">Nessuna sede configurata.</span>}
+                                    </div>
+
+                                    <label className="text-xs font-bold text-indigo-600 uppercase mb-2 block">B) Target Clienti</label>
+                                    {loadingClients ? <Spinner /> : (
+                                        <div className="border rounded-lg p-2">
+                                            <input type="text" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="w-full text-xs border-b pb-1 mb-2 outline-none"/>
+                                            <div className="max-h-32 overflow-y-auto space-y-1">
+                                                {filteredClients.map(c => {
+                                                    const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
+                                                    return (
+                                                        <label key={c.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer">
+                                                            <input type="checkbox" checked={targetClientIds.includes(c.id)} onChange={() => toggleClient(c.id)} className="rounded text-indigo-600"/>
+                                                            <span className="truncate">{name}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                                {filteredClients.length === 0 && <p className="text-xs text-gray-400 text-center">Nessun cliente trovato.</p>}
+                                            </div>
+                                            <div className="mt-2 text-[10px] text-gray-400 text-right">
+                                                {targetClientIds.length} selezionati (Vuoto = Tutti)
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
+                    <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                    <button onClick={handleSave} className="md-btn md-btn-raised md-btn-primary">Applica Stato</button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
+const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
     const [name, setName] = useState(sub?.name || ''); 
     const [price, setPrice] = useState(sub?.price || 0); 
     const [lessons, setLessons] = useState(sub?.lessons || 0); 
     const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0);
-    const [target, setTarget] = useState<'kid' | 'adult'>(sub?.target || 'kid'); // Default Kids
+    const [target, setTarget] = useState<'kid' | 'adult'>(sub?.target || 'kid'); 
+    
+    // Status Config State
+    const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>(sub?.statusConfig || { status: 'active' });
+    const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
-        
-        // Auto-Prefix Logic
         let finalName = name;
         const prefix = target === 'kid' ? 'K - ' : 'A - ';
         if (!finalName.startsWith(prefix) && !finalName.startsWith(target === 'kid' ? 'K-' : 'A-')) {
@@ -40,19 +212,40 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             price: Number(price), 
             lessons: Number(lessons), 
             durationInDays: Number(durationInDays),
-            target
+            target,
+            statusConfig // Save config
         }; 
         if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } 
     }; 
     
+    // Helper Text for Status Badge
+    const getStatusLabel = () => {
+        switch(statusConfig.status) {
+            case 'active': return '🟢 Attivo';
+            case 'obsolete': return '⚫ Obsoleto';
+            case 'future': return '🔵 Da Attivare';
+            case 'promo': return '🟡 Promo';
+            default: return 'Attivo';
+        }
+    };
+
     return ( 
         <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> 
-            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> 
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex justify-between items-center"> 
                 <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> 
+                
+                {/* STATUS BUTTON */}
+                <button 
+                    type="button" 
+                    onClick={() => setIsStatusModalOpen(true)}
+                    className="flex items-center gap-2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-bold text-gray-700 transition-colors border border-gray-300"
+                >
+                    <span>{getStatusLabel()}</span>
+                    <PencilIcon /> {/* Reusing Pencil icon as generic edit icon for status */}
+                </button>
             </div> 
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
                 
-                {/* Target Selection */}
                 <div className="flex gap-4 mb-4">
                     <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
                         <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" />
@@ -66,7 +259,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
 
                 <div className="md-input-group">
                     <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
-                    <label htmlFor="subName" className="md-input-label">Nome Abbonamento (Prefisso {target === 'kid' ? 'K' : 'A'} auto)</label>
+                    <label htmlFor="subName" className="md-input-label">Nome Abbonamento</label>
                 </div> 
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
@@ -74,11 +267,28 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                     <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div> 
                 </div> 
                 <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> 
+                
+                {/* Info Box if Promo/Future */}
+                {(statusConfig.status === 'promo' || statusConfig.status === 'future') && (
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                        <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). 
+                        {statusConfig.discountValue ? ` Sconto attivo: ${statusConfig.discountValue}${statusConfig.discountType === 'percent' ? '%' : '€'}` : ''}
+                    </div>
+                )}
             </div> 
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> 
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> 
                 <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> 
             </div> 
+
+            {isStatusModalOpen && (
+                <SubscriptionStatusModal 
+                    currentConfig={statusConfig} 
+                    suppliers={suppliers}
+                    onSave={setStatusConfig} 
+                    onClose={() => setIsStatusModalOpen(false)} 
+                />
+            )}
         </form> 
     ); 
 };
@@ -282,6 +492,11 @@ const Settings: React.FC = () => {
                                         <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${sub.target === 'adult' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
                                             {sub.target === 'adult' ? 'Adulti' : 'Bambini'}
                                         </span>
+                                        {sub.statusConfig && sub.statusConfig.status !== 'active' && (
+                                            <span className="text-[10px] bg-gray-200 text-gray-700 px-1 rounded uppercase font-bold">
+                                                {sub.statusConfig.status}
+                                            </span>
+                                        )}
                                     </p>
                                     <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
                                 </div>
@@ -397,7 +612,7 @@ const Settings: React.FC = () => {
             </div>
         </div>
 
-        {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} /></Modal>}
+        {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
         <ConfirmModal isOpen={!!subToDelete} onClose={() => setSubToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Abbonamento" message="Sei sicuro?" isDangerous={true} />

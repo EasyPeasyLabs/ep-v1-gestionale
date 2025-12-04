@@ -151,6 +151,77 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
     });
 };
 
+// --- RESET STATO (Torna a Scheduled) ---
+export const resetAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    
+    if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
+    
+    if (appIndex === -1) throw new Error("Lezione non trovata");
+
+    const previousStatus = appointments[appIndex].status;
+    
+    // Reset status
+    appointments[appIndex].status = 'Scheduled';
+
+    let newRemaining = enrollment.lessonsRemaining;
+
+    // Se era presente, restituiamo il credito (incrementa)
+    if (previousStatus === 'Present') {
+        newRemaining = Math.min(enrollment.lessonsTotal, enrollment.lessonsRemaining + 1);
+    }
+    // Se era assente, dipende se aveva generato recupero. 
+    // Per semplicità chirurgica: resettiamo solo lo stato. Se era stato generato un recupero automatico, quello rimane come slot extra (manuale) o futuro. 
+    // L'integrità perfetta richiederebbe il link all'ID del recupero, ma qui gestiamo il reset della singola lezione.
+
+    await updateDoc(enrollmentDocRef, { 
+        appointments: appointments,
+        lessonsRemaining: newRemaining
+    });
+};
+
+// --- TOGGLE STATO (Present <-> Absent) ---
+export const toggleAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    
+    if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
+    
+    if (appIndex === -1) throw new Error("Lezione non trovata");
+
+    const currentStatus = appointments[appIndex].status;
+    let newRemaining = enrollment.lessonsRemaining;
+
+    if (currentStatus === 'Present') {
+        // Switch to Absent
+        appointments[appIndex].status = 'Absent';
+        // Restituisci il credito consumato dalla presenza
+        newRemaining = Math.min(enrollment.lessonsTotal, enrollment.lessonsRemaining + 1);
+    } else if (currentStatus === 'Absent') {
+        // Switch to Present
+        appointments[appIndex].status = 'Present';
+        // Aggiorna location per coerenza
+        appointments[appIndex].locationName = enrollment.locationName;
+        appointments[appIndex].locationColor = enrollment.locationColor;
+        // Consuma il credito
+        newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
+    }
+
+    await updateDoc(enrollmentDocRef, { 
+        appointments: appointments,
+        lessonsRemaining: newRemaining
+    });
+};
+
 
 // --- Nuova funzione per recupero manuale (Modale Recupera) ---
 export const addRecoveryLessons = async (
@@ -271,7 +342,7 @@ export const bulkUpdateLocation = async (
     fromDate: string, 
     newLocationId: string, 
     newLocationName: string, 
-    newLocationColor: string,
+    newLocationColor: string, 
     newStartTime?: string,
     newEndTime?: string
 ): Promise<void> => {

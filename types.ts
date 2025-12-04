@@ -325,6 +325,17 @@ export interface CompanyInfo {
     carFuelConsumption?: number;
 }
 
+export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';
+
+export interface SubscriptionStatusConfig {
+    status: SubscriptionStatusType;
+    validDate?: string; // Data inizio (future/promo) o fine (obsolete)
+    discountType?: 'percent' | 'fixed';
+    discountValue?: number;
+    targetClientIds?: string[]; // Empty = All
+    targetLocationIds?: string[]; // Empty = All
+}
+
 export interface SubscriptionType {
     id: string;
     name: string;
@@ -332,6 +343,7 @@ export interface SubscriptionType {
     lessons: number;
     durationInDays: number;
     target?: 'kid' | 'adult';
+    statusConfig?: SubscriptionStatusConfig;
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
