@@ -502,7 +502,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         <div className="space-y-8 animate-slide-up">
                             <div className="md-card p-6 border-t-4 border-indigo-500">
                                 <h3 className="text-lg font-bold text-gray-800 mb-4">🏢 Profittabilità Sedi</h3>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8"><div className="h-64 relative"><canvas ref={el => controllingChartRef.current = el}></canvas></div><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b"><tr><th className="px-3 py-2">Sede</th><th className="px-3 py-2 text-right">Margine</th></tr></thead><tbody>{locationAnalysis.map((loc,idx)=>(<tr key={idx} className="hover:bg-gray-50"><td className="px-3 py-2 font-bold">{loc.name}</td><td className="px-3 py-2 text-right">{loc.marginPercent.toFixed(0)}%</td></tr>))}</tbody></table></div></div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8"><div className="h-64 relative"><canvas ref={el => { controllingChartRef.current = el; }}></canvas></div><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b"><tr><th className="px-3 py-2">Sede</th><th className="px-3 py-2 text-right">Margine</th></tr></thead><tbody>{locationAnalysis.map((loc,idx)=>(<tr key={idx} className="hover:bg-gray-50"><td className="px-3 py-2 font-bold">{loc.name}</td><td className="px-3 py-2 text-right">{loc.marginPercent.toFixed(0)}%</td></tr>))}</tbody></table></div></div>
                             </div>
                             <div className="md-card p-6 border-t-4 border-amber-500 bg-amber-50/30">
                                 <h3 className="text-lg font-bold text-amber-900 mb-4">🚚 Efficienza Logistica (TCO)</h3>
@@ -517,10 +517,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {activeTab === 'analytics' && (
                         /* REINTEGRATO ANALYTICS */
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => canvasRefs.current['bar'] = el}></canvas></div></div>
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => canvasRefs.current['doughnut'] = el}></canvas></div></div>
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => canvasRefs.current['line'] = el}></canvas></div></div>
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => canvasRefs.current['radar'] = el}></canvas></div></div>
+                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['bar'] = el; }}></canvas></div></div>
+                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['doughnut'] = el; }}></canvas></div></div>
+                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['line'] = el; }}></canvas></div></div>
+                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['radar'] = el; }}></canvas></div></div>
                         </div>
                     )}
 

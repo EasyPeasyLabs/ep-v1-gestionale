@@ -1,6 +1,5 @@
-
 import { storage } from '../firebase/config';
-import { ref, uploadBytes, getDownloadURL } from '@firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export const uploadCampaignFile = async (file: File): Promise<string> => {
     // Crea un percorso univoco: campaigns/{timestamp}_{nomefile}

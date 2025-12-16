@@ -1,8 +1,8 @@
-import { initializeApp } from "@firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "@firebase/firestore";
-import { getAuth } from "@firebase/auth";
-import { getStorage } from "@firebase/storage";
-import { getMessaging } from "@firebase/messaging";
+import { initializeApp } from "firebase/app";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { getStorage } from "firebase/storage";
+import { getMessaging } from "firebase/messaging";
 
 // Configurazione Firebase
 // Tenta di leggere da variabili d'ambiente (Vite).
@@ -29,8 +29,9 @@ if (!firebaseConfig.apiKey) {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Per migliorare la robustezza, abilitiamo la persistenza offline con la nuova API.
-// experimentalForceLongPolling risolve problemi di connessione in ambienti aziendali o firewall restrittivi.
+// Abilitiamo la persistenza offline con la nuova API.
+// Reintroduciamo experimentalForceLongPolling: true perché l'ambiente attuale sembra bloccare i WebSockets,
+// causando il timeout "Backend didn't respond within 10 seconds".
 export const db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     experimentalForceLongPolling: true

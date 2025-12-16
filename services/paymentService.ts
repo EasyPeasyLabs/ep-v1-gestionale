@@ -1,6 +1,5 @@
-
 import { db } from '../firebase/config';
-import { runTransaction, doc, collection, query, where, getDocs, writeBatch } from '@firebase/firestore';
+import { runTransaction, doc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { 
     Enrollment, EnrollmentStatus, 
     PaymentMethod, TransactionType, TransactionCategory, TransactionStatus, 

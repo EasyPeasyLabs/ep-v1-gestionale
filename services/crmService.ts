@@ -1,6 +1,5 @@
-
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, doc, deleteDoc, DocumentData, QueryDocumentSnapshot, query, orderBy, updateDoc } from '@firebase/firestore';
+import { collection, getDocs, addDoc, doc, deleteDoc, DocumentData, QueryDocumentSnapshot, query, orderBy, updateDoc } from 'firebase/firestore';
 import { CommunicationLog, CommunicationLogInput, Campaign, CampaignInput } from '../types';
 
 // --- LOGS ---

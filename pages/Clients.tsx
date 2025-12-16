@@ -110,6 +110,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
                 name: newChildName, 
                 age: newChildAge,
                 rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 },
+                notes: '',
                 notesHistory: [],
                 tags: []
             }]);

@@ -1,7 +1,5 @@
-
 import React, { useState, useEffect } from 'react';
-// FIX: Corrected Firebase import path.
-import { onAuthStateChanged, User } from '@firebase/auth';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebase/config';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';

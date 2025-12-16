@@ -1,6 +1,5 @@
-
 import { db, auth } from '../firebase/config';
-import { collection, addDoc } from '@firebase/firestore';
+import { collection, addDoc } from 'firebase/firestore';
 import { AuditLog } from '../types';
 
 const auditCollectionRef = collection(db, 'audit_logs');

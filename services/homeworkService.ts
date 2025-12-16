@@ -1,6 +1,5 @@
-
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy } from '@firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy } from 'firebase/firestore';
 import { Homework, HomeworkInput } from '../types';
 
 const homeworkCollectionRef = collection(db, 'homeworks');

@@ -1,7 +1,5 @@
-
 import React from 'react';
-// FIX: Corrected Firebase import path.
-import { User } from '@firebase/auth';
+import { User } from 'firebase/auth';
 
 interface ProfileProps {
     user: User;

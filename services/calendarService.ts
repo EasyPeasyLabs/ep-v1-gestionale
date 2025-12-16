@@ -1,7 +1,5 @@
-
 import { db } from '../firebase/config';
-// FIX: Corrected Firebase import path.
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch } from '@firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch } from 'firebase/firestore';
 import { Lesson, LessonInput } from '../types';
 
 const lessonCollectionRef = collection(db, 'lessons');

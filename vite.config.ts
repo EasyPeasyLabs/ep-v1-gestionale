@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -13,7 +12,7 @@ export default defineConfig({
             manualChunks: {
                 // Separa le librerie pesanti in chunk dedicati per caching migliore
                 vendor: ['react', 'react-dom', 'chart.js', 'jspdf', 'jspdf-autotable', 'xlsx'],
-                firebase: ['@firebase/app', '@firebase/auth', '@firebase/firestore', '@firebase/storage', '@firebase/messaging']
+                firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/messaging']
             }
         }
     }

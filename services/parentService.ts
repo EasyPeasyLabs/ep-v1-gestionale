@@ -1,7 +1,5 @@
-
 import { db } from '../firebase/config';
-// FIX: Corrected Firebase import path.
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from '@firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient } from '../types';
 
 const clientCollectionRef = collection(db, 'clients');

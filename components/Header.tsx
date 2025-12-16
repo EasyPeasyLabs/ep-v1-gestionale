@@ -1,7 +1,5 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-// FIX: Corrected Firebase import path.
-import { User, signOut } from '@firebase/auth';
+import { User, signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { Page } from '../App';
 import { Notification } from '../types';

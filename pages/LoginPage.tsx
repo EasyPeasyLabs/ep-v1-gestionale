@@ -1,7 +1,5 @@
-
 import React, { useState } from 'react';
-// FIX: Corrected Firebase import path.
-import { signInWithEmailAndPassword } from '@firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import Spinner from '../components/Spinner';
 
