@@ -61,7 +61,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
     const fetchAndGenerateNotifications = useCallback(async () => {
         setLoadingNotifications(true);
         try {
-            const notifs = await getNotifications();
+            const notifs = await getNotifications(user.uid);
             setNotifications(notifs);
         } catch (error) {
             console.error("Failed to fetch notifications:", error);

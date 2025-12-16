@@ -4,7 +4,7 @@ import { Chart, ArcElement, LineElement, BarElement, PointElement, BarController
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, 
-    DocumentStatus, Enrollment, Supplier, DocumentItem, Client, ClientType, ParentClient, InstitutionalClient 
+    DocumentStatus, Enrollment, Supplier, DocumentItem, Client, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus 
 } from '../types';
 import { 
     getTransactions, addTransaction, updateTransaction, deleteTransaction, 
@@ -248,9 +248,11 @@ const SealModal: React.FC<{
 
 // --- MAIN FINANCE COMPONENT ---
 
+import { Page } from '../App';
+
 interface FinanceProps {
     initialParams?: any;
-    onNavigate?: (page: string, params?: any) => void;
+    onNavigate?: (page: Page, params?: any) => void;
 }
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
@@ -384,7 +386,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         // 3. Advanced Logistics (TCO)
         let totalKm = 0;
         enrollments.forEach(enr => {
-            if (enr.status === 'Active' || enr.status === 'Completed') {
+            if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Completed) {
                 const loc = suppliers.find(s => s.locations.some(l => l.id === enr.locationId))?.locations.find(l => l.id === enr.locationId);
                 const dist = loc?.distance || 0;
                 // Km = (Distance * 2 A/R) * LessonsTotal

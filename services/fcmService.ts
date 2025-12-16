@@ -1,10 +1,10 @@
 
 import { messaging, db } from '../firebase/config';
 import { getToken } from '@firebase/messaging';
-import { doc, setDoc } from '@firebase/firestore';
+import { doc, setDoc, serverTimestamp } from '@firebase/firestore';
 
-// Chiave VAPID reale fornita dall'utente
-const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7EJKK0RuaHwiREwG-6u997AEgXo";
+// Legge la VAPID key dalle env Vite (non inserire chiavi direttamente nel codice)
+const VAPID_KEY: string = import.meta.env.VITE_VAPID_KEY || '';
 
 // Funzione per registrare esplicitamente il SW (utile per PWA)
 const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
@@ -55,7 +55,7 @@ export const requestNotificationPermission = async (userId: string): Promise<{ s
 
   // 4. Recupero Token Firebase
   try {
-      if (!VAPID_KEY) return { success: false, error: "VAPID KEY mancante nel codice." };
+      if (!VAPID_KEY) return { success: false, error: "VAPID KEY mancante. Configurare VITE_VAPID_KEY in .env.local" };
 
       const activeRegistration = registration || await navigator.serviceWorker.ready;
       
@@ -87,7 +87,7 @@ const saveTokenToDatabase = async (token: string, userId: string) => {
         await setDoc(tokenRef, {
             token: token,
             userId: userId,
-            updatedAt: new Date().toISOString(),
+      updatedAt: serverTimestamp(),
             userAgent: navigator.userAgent,
             platform: navigator.platform
         }, { merge: true });

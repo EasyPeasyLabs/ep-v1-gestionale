@@ -111,6 +111,9 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
                     status: 'Scheduled'
                 };
                 appointments.push(newAppointment);
+            } else {
+                // Loggare il fallimento del recupero automatico per permettere revisione manuale
+                console.warn(`[ENROLLMENT] Recupero automatico fallito per iscrizione ${enrollmentId}: nessuna data disponibile trovata entro 52 settimane. Lezione ${appointmentLessonId} rimane 'Absent'.`);
             }
         }
     }
@@ -137,18 +140,27 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
 
     appointments[appIndex].status = 'Present';
     
-    // IMPORTANTE: Aggiorna location della lezione puntuale con quella attuale dell'iscrizione
-    // Questo serve per il calcolo retroattivo della profittabilità basato su dove è stata SVOLTA la lezione
-    appointments[appIndex].locationName = enrollment.locationName;
-    appointments[appIndex].locationColor = enrollment.locationColor;
+    // IMPORTANTE: registra la location effettiva della lezione senza sovrascrivere la location pianificata
+    // Questo permette di preservare la location originale della prenotazione per audit e calcoli storici.
+    appointments[appIndex].actualLocationId = enrollment.locationId;
+    appointments[appIndex].actualLocationName = enrollment.locationName;
+    appointments[appIndex].actualLocationColor = enrollment.locationColor;
 
     // Decrementa slot rimanenti
     const newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
-
-    await updateDoc(enrollmentDocRef, { 
+    
+    // BUG #7 FIX: Auto-mark enrollment as Completed quando lessonsRemaining raggiunge 0
+    let updateData: any = { 
         appointments: appointments,
         lessonsRemaining: newRemaining
-    });
+    };
+    
+    if (newRemaining === 0) {
+        updateData.status = EnrollmentStatus.Completed; // Iscrizione completata/esaurita
+        console.log(`[ENROLLMENT] Iscrizione ${enrollmentId} esaurita automaticamente (lessonsRemaining = 0)`);
+    }
+
+    await updateDoc(enrollmentDocRef, updateData);
 };
 
 // --- RESET STATO (Torna a Scheduled) ---
@@ -209,9 +221,10 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
     } else if (currentStatus === 'Absent') {
         // Switch to Present
         appointments[appIndex].status = 'Present';
-        // Aggiorna location per coerenza
-        appointments[appIndex].locationName = enrollment.locationName;
-        appointments[appIndex].locationColor = enrollment.locationColor;
+        // Aggiorna location effettiva per coerenza senza toccare la pianificazione originale
+        appointments[appIndex].actualLocationId = enrollment.locationId;
+        appointments[appIndex].actualLocationName = enrollment.locationName;
+        appointments[appIndex].actualLocationColor = enrollment.locationColor;
         // Consuma il credito
         newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
     }
@@ -330,7 +343,8 @@ export const activateEnrollmentWithLocation = async (
         locationName,
         locationColor,
         appointments: appointments,
-        startDate: appointments[0]?.date || enrollment.startDate // Aggiorna start reale
+        startDate: appointments[0]?.date || enrollment.startDate, // Aggiorna start reale
+        status: EnrollmentStatus.Active // ✅ FIXED: Attiva l'iscrizione automaticamente quando assegnate le lezioni
     });
 };
 

@@ -265,8 +265,13 @@ export interface Appointment {
     date: string; // ISO
     startTime: string;
     endTime: string;
+    // original scheduled location
     locationName: string;
     locationColor: string;
+    // actual location used at check-in (if different from scheduled)
+    actualLocationId?: string;
+    actualLocationName?: string;
+    actualLocationColor?: string;
     childName: string;
     status: AppointmentStatus;
 }

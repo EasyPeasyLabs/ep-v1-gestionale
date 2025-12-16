@@ -211,7 +211,7 @@ const Activities: React.FC = () => {
         return activities.filter(a => 
             a.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
             a.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            a.theme.toLowerCase().includes(searchTerm.toLowerCase())
+            (a.theme || '').toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [activities, searchTerm]);
 

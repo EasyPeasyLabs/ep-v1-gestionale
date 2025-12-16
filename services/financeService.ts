@@ -126,7 +126,8 @@ export const calculateRentTransactions = (
                 if (app.status === 'Present') {
                     const date = new Date(app.date);
                     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                    const locId = enr.locationId; 
+                    // ✅ FIXED: Usa la location EFFETTIVA (dove la lezione è stata svolta), non quella pianificata
+                    const locId = app.actualLocationId || enr.locationId;
                     const key = `${monthKey}|${locId}`;
                     const currentCount = aggregates.get(key) || 0;
                     aggregates.set(key, currentCount + 1);
@@ -140,9 +141,11 @@ export const calculateRentTransactions = (
         const [year, month] = monthKey.split('-');
         const locData = locationMap.get(locId);
 
-        if (locData && locData.cost > 0) {
-            const totalCost = count * locData.cost;
-            const description = `Nolo Sede: ${locData.name} - ${month}/${year}`;
+        // ✅ FIXED: Crea transazione anche se locationName non è trovato (fallback con locId)
+        if (locData || locId !== 'unassigned') {
+            const totalCost = (locData?.cost || 0) * count;
+            const locName = locData?.name || `Sede [${locId}]`; // Fallback se sede non trovata
+            const description = `Nolo Sede: ${locName} - ${month}/${year}`;
             
             // Verifica se esiste già una transazione ATTIVA (non deleted)
             const exists = existingTransactions.some(t => 
@@ -152,7 +155,7 @@ export const calculateRentTransactions = (
                 t.description === description
             );
 
-            if (!exists) {
+            if (!exists && totalCost > 0) { // ✅ FIXED: Aggiungi anche check totalCost > 0
                 const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0);
                 newTransactions.push({
                     date: lastDayOfMonth.toISOString(),
@@ -165,7 +168,7 @@ export const calculateRentTransactions = (
                     relatedDocumentId: `AUTO-RENT-${key}`,
                     allocationType: 'location',
                     allocationId: locId,
-                    allocationName: locData.name
+                    allocationName: locName
                 });
             }
         }
@@ -370,7 +373,16 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
         await permanentDeleteTransaction(t.id);
     }
 
-    // 3. REGISTRO ATTIVITÀ (Lesson Activities)
+    // 3. COSTI NOLI (AUTO-RENT Transactions)
+    // ✅ FIXED: Cancella le transazioni noli associate a questo enrollment
+    // NOTA: Dopo la cancellazione, i costi noli dovrebbero essere ricalcolati da calculateRentTransactions()
+    // in Finance.tsx per altri enrollment della stessa sede nello stesso mese.
+    if (enrollment.locationId && enrollment.locationId !== 'unassigned') {
+        await deleteAutoRentTransactions(enrollment.locationId);
+        // TODO: Implementare ricalcolo granulare dei noli (attualmente solo cancella)
+    }
+
+    // 4. REGISTRO ATTIVITÀ (Lesson Activities)
     // Elimina i collegamenti tra lezioni e attività per questo enrollment
     if (enrollment.appointments && enrollment.appointments.length > 0) {
         const lessonIds = enrollment.appointments.map(a => a.lessonId);

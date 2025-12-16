@@ -1,11 +1,12 @@
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getLessons } from '../services/calendarService'; 
 import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
+import { auth } from '../firebase/config';
 import { EnrollmentStatus, Notification, ClientType, ParentClient } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
@@ -158,8 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
   const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
 
-  useEffect(() => {
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
       try {
         setLoading(true);
         
@@ -169,7 +169,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           getAllEnrollments(),
           getLessons(),
           getTransactions(),
-          getNotifications()
+          getNotifications(auth.currentUser?.uid)
         ]);
         
         setClientsData(clients);
@@ -310,15 +310,16 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       } finally {
         setLoading(false);
       }
-    };
-    fetchData();
-    
-    const handleDataUpdate = () => {
+    }, []);
+
+    useEffect(() => {
         fetchData();
-    };
-    window.addEventListener('EP_DataUpdated', handleDataUpdate);
-    return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
-  }, []);
+        const handleDataUpdate = () => {
+                fetchData();
+        };
+        window.addEventListener('EP_DataUpdated', handleDataUpdate);
+        return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
+    }, [fetchData]);
 
   // --- Rating Calculations ---
   const ratings = useMemo(() => {

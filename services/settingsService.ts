@@ -25,10 +25,10 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
     try {
         const docSnap = await getDoc(settingsDocRef);
         if (docSnap.exists()) {
-            const data = docSnap.data() as CompanyInfo;
-            return { 
-                id: docSnap.id, 
-                ...data, 
+            const data = docSnap.data() as Omit<CompanyInfo, 'id'>;
+            return {
+                ...data,
+                id: docSnap.id,
                 logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64,
                 carFuelConsumption: data.carFuelConsumption || 16.5
             };

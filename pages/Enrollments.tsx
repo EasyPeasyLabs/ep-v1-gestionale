@@ -220,7 +220,49 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handleNewEnrollment = () => { setSelectedClient(null); setEditingEnrollment(undefined); setIsModalOpen(true); }
     const handleEditClick = (e: React.MouseEvent, client: ParentClient | undefined, enrollment: Enrollment) => { e.stopPropagation(); if (!client) return; setSelectedClient(client); setEditingEnrollment(enrollment); setIsModalOpen(true); };
-    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { setLoading(true); try { for (const enrollmentData of enrollmentsData) { if ('id' in enrollmentData) { await updateEnrollment((enrollmentData as any).id, enrollmentData); } else { await addEnrollment(enrollmentData); } } setIsModalOpen(false); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Save error:", err); setError("Errore salvataggio."); setLoading(false); } };
+    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { 
+        setLoading(true); 
+        try { 
+            for (const enrollmentData of enrollmentsData) { 
+                if ('id' in enrollmentData) { 
+                    // Update existing enrollment
+                    await updateEnrollment((enrollmentData as any).id, enrollmentData); 
+                } else { 
+                    // BUG #1, #4, #5 FIX: NEW enrollment - Check if it's a RENEWAL (same client/child)
+                    // If so, auto-mark previous active enrollment as Expired/Completed
+                    const newEnr = enrollmentData as EnrollmentInput;
+                    const existingEnrollments = enrollments || [];
+                    
+                    // Find previous active enrollment for same client+child
+                    const previousEnrollment = existingEnrollments.find(e => 
+                        e.clientId === newEnr.clientId && 
+                        e.childId === newEnr.childId && 
+                        (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending) &&
+                        e.id !== (enrollmentData as any).id // Escludi se è lo stesso
+                    );
+                    
+                    if (previousEnrollment) {
+                        // Mark previous as Completed (Expired) and set endDate to now to stop notifications
+                        console.log(`[RENEWAL] Marking previous enrollment ${previousEnrollment.id} (${previousEnrollment.childName}) as Completed`);
+                        await updateEnrollment(previousEnrollment.id, { 
+                            status: EnrollmentStatus.Completed,
+                            endDate: new Date().toISOString()
+                        });
+                    }
+                    
+                    // Now add the new enrollment
+                    await addEnrollment(newEnr);
+                } 
+            } 
+            setIsModalOpen(false); 
+            await fetchData(); 
+            window.dispatchEvent(new Event('EP_DataUpdated')); 
+        } catch (err) { 
+            console.error("Save error:", err); 
+            setError("Errore salvataggio."); 
+            setLoading(false); 
+        } 
+    };
 
     // --- Actions ---
     const executePayment = async (
@@ -235,11 +277,38 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     ) => {
         setLoading(true);
         try {
-            const fullPrice = enr.price !== undefined ? enr.price : 0;
-            const actualAmount = (isDeposit || isBalance) ? depositAmount : fullPrice;
-            const paymentIsoDate = new Date(paymentDateStr).toISOString();
+            // ✅ FIXED: Validazione data pagamento
+            const paymentDate = new Date(paymentDateStr);
+            if (isNaN(paymentDate.getTime())) {
+                throw new Error("Data pagamento non valida.");
+            }
+
+            // ✅ FIXED: Validazione cliente
             const client = clients.find(c => c.id === enr.clientId);
-            const clientName = client ? `${client.firstName} ${client.lastName}` : 'Cliente Sconosciuto';
+            if (!client) {
+                throw new Error(`Cliente non trovato: ${enr.clientId}. Sincronizzare i dati.`);
+            }
+            const clientName = `${client.firstName} ${client.lastName}`;
+
+            // ✅ FIXED: Validazione importo e logica acconto/saldo
+            const fullPrice = enr.price !== undefined ? enr.price : 0;
+            if (fullPrice <= 0) {
+                throw new Error("Importo iscrizione non valido (≤ 0).");
+            }
+
+            let actualAmount = fullPrice;
+            if (isDeposit || isBalance) {
+                // Validazione importo acconto/saldo
+                if (depositAmount <= 0) {
+                    throw new Error("Importo acconto/saldo deve essere > 0.");
+                }
+                if (depositAmount > fullPrice) {
+                    throw new Error(`Importo (€${depositAmount}) supera il totale (€${fullPrice}).`);
+                }
+                actualAmount = depositAmount;
+            }
+
+            const paymentIsoDate = new Date(paymentDateStr).toISOString();
 
             // INFO PER ALLOCAZIONE COSTI/RICAVI ALLA SEDE (Iniziale)
             const allocationData = {
@@ -259,7 +328,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     }
                 }
 
-                let itemNotes = `Sede: ${enr.locationName}`;
+                let itemNotes = `Sede: ${enr.locationName} | Iscrizione: ${enr.id}`;
 
                 const invoiceInput: InvoiceInput = {
                     clientId: enr.clientId,
@@ -271,7 +340,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     items: [{ description: desc, quantity: 1, price: actualAmount, notes: itemNotes }],
                     totalAmount: actualAmount,
                     hasStampDuty: actualAmount > 77, 
-                    notes: `Rif. Iscrizione ${enr.childName}`,
+                    notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
                     invoiceNumber: '' 
                 };
 
@@ -350,8 +419,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             window.dispatchEvent(new Event('EP_DataUpdated'));
             
         } catch(err) {
-            console.error("Payment error:", err);
-            setError("Errore pagamento.");
+            // ✅ FIXED: Logging dettagliato per debug critici
+            const errorMsg = err instanceof Error ? err.message : String(err);
+            console.error(`[PAYMENT ERROR] Enrollment: ${enr.id}, Child: ${enr.childName}, Method: ${method}`, err);
+            setError(`Errore pagamento: ${errorMsg}`);
             setLoading(false);
         }
     };
