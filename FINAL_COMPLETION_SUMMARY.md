@@ -168,7 +168,7 @@ Deployment:
 ### URL
 - **Production:** https://ep-v1-gestionale.vercel.app
 - **Repository:** https://github.com/EasyPeasyLabs/ep-v1-gestionale
-- **Deployments:** https://vercel.com/easyeasylabs/ep-v1-gestionale
+- **Deployments:** https://vercel.com/easypeasylabs/ep-v1-gestionale
 
 ### Prossimi Step
 1. ✅ Attendere completamento build Vercel (auto-detect push)
@@ -316,7 +316,7 @@ URL: https://ep-v1-gestionale.vercel.app
 ## 📞 SUPPORTO
 
 **Repository Issues:** https://github.com/EasyPeasyLabs/ep-v1-gestionale/issues  
-**Deployment Logs:** https://vercel.com/easyeasylabs/ep-v1-gestionale/deployments
+**Deployment Logs:** https://vercel.com/easypeasylabs/ep-v1-gestionale/deployments
 
 ---
 
