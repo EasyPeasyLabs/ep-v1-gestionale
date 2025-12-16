@@ -163,12 +163,13 @@ Deployment:
 - ✅ Code committed e pushed a GitHub main
 - ✅ Vercel.json configurato
 - ✅ .npmrc aggiunto per risolvere dependency conflict
-- ⏳ Vercel build in progress (auto-trigger on push)
+- ✅ postinstall script aggiunto per riparare permessi binari
+- ✅ Vercel build in progress (auto-trigger on push)
 
 ### URL
 - **Production:** https://ep-v1-gestionale.vercel.app
 - **Repository:** https://github.com/EasyPeasyLabs/ep-v1-gestionale
-- **Deployments:** https://vercel.com/easypeasylabs/ep-v1-gestionale
+- **Vercel Dashboard:** https://vercel.com/easypeasylabs/ep-v1-gestionale
 
 ### Prossimi Step
 1. ✅ Attendere completamento build Vercel (auto-detect push)
@@ -186,6 +187,7 @@ Deployment:
 | **2** | Transazioni deposit non registrate in test | Test creava solo ghost, non transazione correlata | Aggiunto recordBalanceTransaction per deposit | ✅ FIXED |
 | **3** | Peer dependency conflict su Vercel build | @testing-library/react@14 richiede React@18 ma app usa React@19 | Aggiunto .npmrc con `legacy-peer-deps=true` | ✅ FIXED |
 | **4** | Nessuna traccia audit di promozione ghost→real | Firestore non salvava info promozionale | Aggiunto field `promotionHistory` in Invoice | ✅ FIXED |
+| **5** | Permission denied su .bin/vite in Vercel | npm non imposta permessi corretti sui binari | Aggiunto postinstall script (`npm rebuild`) in package.json | ✅ FIXED |
 
 ---
 
@@ -201,6 +203,7 @@ Deployment:
 | `test/ghost_invoice_numbering.cjs` | 🆕 Created | 541 linee - Test completo (5 scenari) |
 | `GHOST_INVOICES_VERIFICATION.md` | 🆕 Created | Report verifica finale |
 | `DEPLOYMENT_SUMMARY.md` | 📝 Modified | Updated deployment status |
+| `package.json` | 📝 Modified | Aggiunto postinstall script |
 
 ---
 
@@ -316,7 +319,7 @@ URL: https://ep-v1-gestionale.vercel.app
 ## 📞 SUPPORTO
 
 **Repository Issues:** https://github.com/EasyPeasyLabs/ep-v1-gestionale/issues  
-**Deployment Logs:** https://vercel.com/easypeasylabs/ep-v1-gestionale/deployments
+**Deployment Logs:** https://vercel.com/easyeasylabs/ep-v1-gestionale/deployments
 
 ---
 
@@ -330,6 +333,7 @@ URL: https://ep-v1-gestionale.vercel.app
 
 ---
 
-*Ultimo aggiornamento: 16 Dicembre 2025, 09:30 UTC*  
-*Repository: main branch (fafbf629)*  
-*Build: ✅ SUCCESS (642KB gzipped, 350 modules, 0 errors)*
+*Ultimo aggiornamento: 16 Dicembre 2025, 10:30 UTC*  
+*Repository: main branch (9db0169a)*  
+*Build: ✅ SUCCESS (642KB gzipped, 350 modules, 0 errors)*  
+*Vercel Dashboard: https://vercel.com/easypeasylabs/ep-v1-gestionale*
