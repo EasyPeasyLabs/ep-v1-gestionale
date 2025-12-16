@@ -46,3 +46,4 @@ prompt*.txt
 READY_*.ts
 test_ghost_output.txt
 tsc_errors.txt
+.vercel
