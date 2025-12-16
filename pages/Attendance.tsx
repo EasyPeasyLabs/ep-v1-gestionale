@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Appointment, Enrollment, EnrollmentStatus } from '../types';
-import { getAllEnrollments, registerAbsence, registerPresence, resetAppointmentStatus, toggleAppointmentStatus } from '../services/enrollmentService';
+import { getAllEnrollments, registerAbsence, registerPresence, resetAppointmentStatus, toggleAppointmentStatus, deleteAppointment } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 
 // Interfaccia estesa per visualizzare le lezioni nella lista presenze
 interface AttendanceItem extends Appointment {
@@ -28,6 +29,9 @@ const Attendance: React.FC = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     
+    // UI state per menu "Gestisci" aperto
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
     // Modal State per conferma assenza
     const [confirmState, setConfirmState] = useState<{
         isOpen: boolean;
@@ -176,7 +180,14 @@ const Attendance: React.FC = () => {
     };
 
     // --- CRUD Handlers ---
-    const handleToggleStatus = async (item: AttendanceItem) => {
+    const toggleMenu = (lessonId: string) => {
+        setOpenMenuId(prev => prev === lessonId ? null : lessonId);
+    };
+
+    const handleModify = async (item: AttendanceItem) => {
+        // Toggle Logic: Present -> Absent, Absent -> Present
+        // Chiude il menu
+        setOpenMenuId(null);
         try {
             setLoading(true);
             await toggleAppointmentStatus(item.enrollmentId, item.lessonId);
@@ -188,15 +199,18 @@ const Attendance: React.FC = () => {
         }
     };
 
-    const handleResetStatus = async (item: AttendanceItem) => {
-        if(!confirm("Eliminare lo stato di presenza/assenza? L'appuntamento tornerà in attesa.")) return;
+    const handleDelete = async (item: AttendanceItem) => {
+        setOpenMenuId(null);
+        if(!confirm("ELIMINARE questa presenza? L'operazione cancellerà questa lezione specifica, restituirà il credito (slot) all'allievo e aggiornerà i conteggi di nolo/fatturazione. Confermi?")) return;
+        
         try {
             setLoading(true);
-            await resetAppointmentStatus(item.enrollmentId, item.lessonId);
+            // New Service Call
+            await deleteAppointment(item.enrollmentId, item.lessonId);
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
-            alert("Errore eliminazione stato.");
+            alert("Errore durante l'eliminazione.");
             setLoading(false);
         }
     };
@@ -206,7 +220,6 @@ const Attendance: React.FC = () => {
         if (!confirm("Segnare TUTTI gli studenti visualizzati come PRESENTI?")) return;
         setLoading(true);
         try {
-            // Filtra solo quelli non ancora segnati (Scheduled) o Assenti per correzione
             const targets = attendanceItems.filter(i => i.status !== 'Present');
             for (const item of targets) {
                 await registerPresence(item.enrollmentId, item.lessonId);
@@ -226,7 +239,6 @@ const Attendance: React.FC = () => {
         try {
             const targets = attendanceItems.filter(i => i.status !== 'Absent');
             for (const item of targets) {
-                // Apply automatic reschedule logic
                 await registerAbsence(item.enrollmentId, item.lessonId, true); 
             }
             await fetchAttendanceData();
@@ -239,7 +251,7 @@ const Attendance: React.FC = () => {
     };
 
     return (
-        <div>
+        <div onClick={() => setOpenMenuId(null)}> {/* Chiude menu al click fuori */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold mb-1">Registro Presenze</h1>
@@ -312,6 +324,10 @@ const Attendance: React.FC = () => {
                                         {datesMap[dateKey].map(item => {
                                             const isPresent = item.status === 'Present';
                                             const isAbsent = item.status === 'Absent';
+                                            
+                                            // Check se il menu è aperto per questo item
+                                            const isMenuOpen = openMenuId === item.lessonId;
+
                                             return (
                                                 <div key={item.lessonId} className={`px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-all border-l-4 ${isAbsent ? 'border-l-red-400 bg-red-50/30' : isPresent ? 'border-l-green-400 bg-green-50/30' : 'border-l-transparent'}`}>
                                                     <div className="flex-1">
@@ -326,26 +342,52 @@ const Attendance: React.FC = () => {
                                                         </div>
                                                     </div>
                                                     
-                                                    <div className="flex items-center gap-2 mt-3 md:mt-0 md:ml-4">
+                                                    <div className="flex items-center gap-2 mt-3 md:mt-0 md:ml-4 relative">
                                                         {isPresent || isAbsent ? (
                                                             <div className="flex items-center gap-2">
                                                                 <span className={`px-3 py-1 text-xs font-bold rounded-full border shadow-sm flex items-center gap-1 min-w-[90px] justify-center ${isPresent ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
                                                                     {isPresent ? '✓ PRESENTE' : '✕ ASSENTE'}
                                                                 </span>
+                                                                
+                                                                {/* CRUD Dropdown Trigger */}
                                                                 <button 
-                                                                    onClick={() => handleToggleStatus(item)} 
-                                                                    className="md-icon-btn edit p-1.5 bg-white border border-gray-200 hover:bg-blue-50"
-                                                                    title="Modifica Stato"
+                                                                    onClick={(e) => { e.stopPropagation(); toggleMenu(item.lessonId); }} 
+                                                                    className="md-btn md-btn-sm bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 flex items-center gap-1"
                                                                 >
-                                                                    <PencilIcon />
+                                                                    Gestisci <ChevronDownIcon />
                                                                 </button>
-                                                                <button 
-                                                                    onClick={() => handleResetStatus(item)} 
-                                                                    className="md-icon-btn delete p-1.5 bg-white border border-gray-200 hover:bg-red-50"
-                                                                    title="Elimina Stato"
-                                                                >
-                                                                    <TrashIcon />
-                                                                </button>
+
+                                                                {/* CRUD Dropdown Menu */}
+                                                                {isMenuOpen && (
+                                                                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-20 animate-fade-in-down" onClick={(e) => e.stopPropagation()}>
+                                                                        <div className="py-1">
+                                                                            <button 
+                                                                                onClick={() => handleModify(item)}
+                                                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                                            >
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <PencilIcon /> Modifica
+                                                                                </div>
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => setOpenMenuId(null)}
+                                                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                                                            >
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className="w-5 text-center font-bold">✕</span> Annulla
+                                                                                </div>
+                                                                            </button>
+                                                                            <button 
+                                                                                onClick={() => handleDelete(item)}
+                                                                                className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-bold border-t border-gray-100"
+                                                                            >
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <TrashIcon /> Elimina
+                                                                                </div>
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <>

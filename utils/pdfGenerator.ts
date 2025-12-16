@@ -273,7 +273,7 @@ export const generateDocumentPDF = async (
     let finalY = (docPdf as any).lastAutoTable?.finalY || tableStartY;
     
     const subtotal = doc.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-    const stampDuty = doc.hasStampDuty ? 2.00 : 0;
+    const stampDuty = (type === 'Fattura' && (doc as Invoice).hasStampDuty) ? 2.00 : 0;
     const grandTotal = subtotal + stampDuty;
 
     // Spacing before totals
@@ -284,7 +284,7 @@ export const generateDocumentPDF = async (
     docPdf.text(`Imponibile:`, 140, finalY + 5);
     docPdf.text(`${formatCurrency(subtotal)}`, rightAlignX, finalY + 5, { align: 'right' });
 
-    if (doc.hasStampDuty) {
+    if (type === 'Fattura' && (doc as Invoice).hasStampDuty) {
         docPdf.text(`Bollo Virtuale:`, 140, finalY + 10);
         docPdf.text(`${formatCurrency(stampDuty)}`, rightAlignX, finalY + 10, { align: 'right' });
         finalY += 5;

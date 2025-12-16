@@ -111,9 +111,6 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
                     status: 'Scheduled'
                 };
                 appointments.push(newAppointment);
-            } else {
-                // Loggare il fallimento del recupero automatico per permettere revisione manuale
-                console.warn(`[ENROLLMENT] Recupero automatico fallito per iscrizione ${enrollmentId}: nessuna data disponibile trovata entro 52 settimane. Lezione ${appointmentLessonId} rimane 'Absent'.`);
             }
         }
     }
@@ -140,27 +137,19 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
 
     appointments[appIndex].status = 'Present';
     
-    // IMPORTANTE: registra la location effettiva della lezione senza sovrascrivere la location pianificata
-    // Questo permette di preservare la location originale della prenotazione per audit e calcoli storici.
-    appointments[appIndex].actualLocationId = enrollment.locationId;
-    appointments[appIndex].actualLocationName = enrollment.locationName;
-    appointments[appIndex].actualLocationColor = enrollment.locationColor;
+    // IMPORTANTE: Aggiorna location ID, Name e Color per storicizzare la sede della lezione.
+    // Questo permette di calcolare i noli correttamente anche se lo studente cambia sede dopo.
+    appointments[appIndex].locationId = enrollment.locationId;
+    appointments[appIndex].locationName = enrollment.locationName;
+    appointments[appIndex].locationColor = enrollment.locationColor;
 
     // Decrementa slot rimanenti
     const newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
-    
-    // BUG #7 FIX: Auto-mark enrollment as Completed quando lessonsRemaining raggiunge 0
-    let updateData: any = { 
+
+    await updateDoc(enrollmentDocRef, { 
         appointments: appointments,
         lessonsRemaining: newRemaining
-    };
-    
-    if (newRemaining === 0) {
-        updateData.status = EnrollmentStatus.Completed; // Iscrizione completata/esaurita
-        console.log(`[ENROLLMENT] Iscrizione ${enrollmentId} esaurita automaticamente (lessonsRemaining = 0)`);
-    }
-
-    await updateDoc(enrollmentDocRef, updateData);
+    });
 };
 
 // --- RESET STATO (Torna a Scheduled) ---
@@ -197,6 +186,39 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
     });
 };
 
+// --- DELETE APPOINTMENT (Elimina e Restituisce Credito) ---
+export const deleteAppointment = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    
+    if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    let appointments = [...(enrollment.appointments || [])];
+    const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
+    
+    if (appIndex === -1) throw new Error("Lezione non trovata");
+
+    const previousStatus = appointments[appIndex].status;
+    
+    // Rimuovi l'appuntamento dall'array
+    appointments.splice(appIndex, 1);
+
+    let newRemaining = enrollment.lessonsRemaining;
+
+    // Se la lezione era stata consumata (Present), restituiamo il credito
+    if (previousStatus === 'Present') {
+        newRemaining = Math.min(enrollment.lessonsTotal, enrollment.lessonsRemaining + 1);
+    }
+    // Se era Scheduled o Absent (senza recupero consumato), il credito è salvo.
+    // L'eliminazione libera semplicemente lo slot.
+
+    await updateDoc(enrollmentDocRef, { 
+        appointments: appointments,
+        lessonsRemaining: newRemaining
+    });
+};
+
 // --- TOGGLE STATO (Present <-> Absent) ---
 export const toggleAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
@@ -221,10 +243,12 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
     } else if (currentStatus === 'Absent') {
         // Switch to Present
         appointments[appIndex].status = 'Present';
-        // Aggiorna location effettiva per coerenza senza toccare la pianificazione originale
-        appointments[appIndex].actualLocationId = enrollment.locationId;
-        appointments[appIndex].actualLocationName = enrollment.locationName;
-        appointments[appIndex].actualLocationColor = enrollment.locationColor;
+        
+        // Storicizza la location nel momento in cui diventa Presente
+        appointments[appIndex].locationId = enrollment.locationId;
+        appointments[appIndex].locationName = enrollment.locationName;
+        appointments[appIndex].locationColor = enrollment.locationColor;
+        
         // Consuma il credito
         newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
     }
@@ -343,8 +367,7 @@ export const activateEnrollmentWithLocation = async (
         locationName,
         locationColor,
         appointments: appointments,
-        startDate: appointments[0]?.date || enrollment.startDate, // Aggiorna start reale
-        status: EnrollmentStatus.Active // ✅ FIXED: Attiva l'iscrizione automaticamente quando assegnate le lezioni
+        startDate: appointments[0]?.date || enrollment.startDate // Aggiorna start reale
     });
 };
 
@@ -357,7 +380,7 @@ export const bulkUpdateLocation = async (
     newLocationId: string, 
     newLocationName: string, 
     newLocationColor: string, 
-    newStartTime?: string,
+    newStartTime?: string, 
     newEndTime?: string
 ): Promise<void> => {
     const batch = writeBatch(db);

@@ -4,13 +4,12 @@ import { getClients } from './parentService';
 import { getInvoices, getQuotes, getTransactions, checkAndSetOverdueInvoices } from './financeService';
 import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient, DocumentStatus, TransactionStatus } from '../types';
 
-export const getNotifications = async (userId?: string): Promise<Notification[]> => {
+export const getNotifications = async (): Promise<Notification[]> => {
     // 1. Aggiorna stati critici (es. fatture scadute)
     await checkAndSetOverdueInvoices();
 
-    // Recupera lista notifiche ignorate da LocalStorage (per-utente quando possibile)
-    const storageKey = userId ? `ep_ignored_notifications_${userId}` : 'ep_ignored_notifications';
-    const ignoredIds = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    // Recupera lista notifiche ignorate da LocalStorage
+    const ignoredIds = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
 
     const [enrollments, clients, invoices, quotes, transactions] = await Promise.all([
         getAllEnrollments(),

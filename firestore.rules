@@ -1,0 +1,22 @@
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Funzione helper per verificare se l'utente è autenticato
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Regola Default: Nega tutto se non specificato
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Esempi di regole più granulari (se necessario in futuro):
+    // match /clients/{client} {
+    //   allow read: if isAuthenticated();
+    //   allow write: if isAuthenticated() && request.auth.token.email == 'admin@easypeasy.it';
+    // }
+  }
+}

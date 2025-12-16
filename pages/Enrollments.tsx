@@ -4,7 +4,8 @@ import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, Transactio
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
-import { addTransaction, deleteTransactionByRelatedId, addInvoice, promoteGhostInvoiceToReal, cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices, getTransactions } from '../services/financeService';
+import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices } from '../services/financeService';
+import { processPayment } from '../services/paymentService'; // NEW
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -24,7 +25,7 @@ interface EnrollmentsProps {
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// --- Modal Recupero (Aggiornata per Selezione Sede) ---
+// --- Modal Recupero ---
 const RecoveryModal: React.FC<{
     enrollment: Enrollment;
     maxRecoverable: number;
@@ -35,7 +36,6 @@ const RecoveryModal: React.FC<{
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [count, setCount] = useState(1);
     
-    // Location Selection State
     // Default: Sede originale dell'iscrizione
     const originalLocationId = enrollment.locationId;
     const [selectedLocationId, setSelectedLocationId] = useState(originalLocationId);
@@ -43,7 +43,6 @@ const RecoveryModal: React.FC<{
     const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
     const [availableSlots, setAvailableSlots] = useState<{start: string, end: string, day: number}[]>([]);
 
-    // Calcola la location corrente in base all'ID selezionato
     const currentLocation = useMemo(() => {
         for (const s of suppliers) {
             const loc = s.locations.find(l => l.id === selectedLocationId);
@@ -52,7 +51,6 @@ const RecoveryModal: React.FC<{
         return null;
     }, [suppliers, selectedLocationId]);
 
-    // Lista piatta di tutte le location per il dropdown
     const allLocations = useMemo(() => {
         const locs: {id: string, name: string}[] = [];
         suppliers.forEach(s => {
@@ -86,7 +84,6 @@ const RecoveryModal: React.FC<{
                 <h3 className="text-lg font-bold text-gray-800 mb-2">Recupero Lezioni</h3>
                 <p className="text-sm text-gray-500 mb-4">Programma il recupero per <strong>{enrollment.childName}</strong>.</p>
                 <div className="space-y-4">
-                    {/* Location Selector */}
                     <div>
                         <label className="block text-xs text-gray-500 mb-1">Presso Sede (Recinto)</label>
                         <select 
@@ -160,11 +157,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enrollment: Enrollment | null;
         date: string;
         method: PaymentMethod;
-        createInvoice: boolean; // NEW: Toggle "Crea Fattura" vs "Non Crea"
-        isDeposit: boolean; // Acconto
-        isBalance: boolean; // Saldo
+        createInvoice: boolean;
+        isDeposit: boolean;
+        isBalance: boolean;
         depositAmount: number;
-        previousDepositInvoiceNumber?: string; // Auto-detected for balance
+        ghostInvoiceId?: string; // ID della fattura ghost da promuovere
     }>({
         isOpen: false,
         enrollment: null,
@@ -178,7 +175,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const [recoveryModalState, setRecoveryModalState] = useState<{ isOpen: boolean; enrollment: Enrollment | null; maxRecoverable: number; }>({ isOpen: false, enrollment: null, maxRecoverable: 0 });
     
-    // Delete Modal State
     const [deleteModalState, setDeleteModalState] = useState<{
         isOpen: boolean;
         enrollment: Enrollment | null;
@@ -220,52 +216,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handleNewEnrollment = () => { setSelectedClient(null); setEditingEnrollment(undefined); setIsModalOpen(true); }
     const handleEditClick = (e: React.MouseEvent, client: ParentClient | undefined, enrollment: Enrollment) => { e.stopPropagation(); if (!client) return; setSelectedClient(client); setEditingEnrollment(enrollment); setIsModalOpen(true); };
-    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { 
-        setLoading(true); 
-        try { 
-            for (const enrollmentData of enrollmentsData) { 
-                if ('id' in enrollmentData) { 
-                    // Update existing enrollment
-                    await updateEnrollment((enrollmentData as any).id, enrollmentData); 
-                } else { 
-                    // BUG #1, #4, #5 FIX: NEW enrollment - Check if it's a RENEWAL (same client/child)
-                    // If so, auto-mark previous active enrollment as Expired/Completed
-                    const newEnr = enrollmentData as EnrollmentInput;
-                    const existingEnrollments = enrollments || [];
-                    
-                    // Find previous active enrollment for same client+child
-                    const previousEnrollment = existingEnrollments.find(e => 
-                        e.clientId === newEnr.clientId && 
-                        e.childId === newEnr.childId && 
-                        (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending) &&
-                        e.id !== (enrollmentData as any).id // Escludi se è lo stesso
-                    );
-                    
-                    if (previousEnrollment) {
-                        // Mark previous as Completed (Expired) and set endDate to now to stop notifications
-                        console.log(`[RENEWAL] Marking previous enrollment ${previousEnrollment.id} (${previousEnrollment.childName}) as Completed`);
-                        await updateEnrollment(previousEnrollment.id, { 
-                            status: EnrollmentStatus.Completed,
-                            endDate: new Date().toISOString()
-                        });
-                    }
-                    
-                    // Now add the new enrollment
-                    await addEnrollment(newEnr);
-                } 
-            } 
-            setIsModalOpen(false); 
-            await fetchData(); 
-            window.dispatchEvent(new Event('EP_DataUpdated')); 
-        } catch (err) { 
-            console.error("Save error:", err); 
-            setError("Errore salvataggio."); 
-            setLoading(false); 
-        } 
-    };
+    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { setLoading(true); try { for (const enrollmentData of enrollmentsData) { if ('id' in enrollmentData) { await updateEnrollment((enrollmentData as any).id, enrollmentData); } else { await addEnrollment(enrollmentData); } } setIsModalOpen(false); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Save error:", err); setError("Errore salvataggio."); setLoading(false); } };
 
     // --- Actions ---
-    const executePayment = async (
+    const executePaymentAction = async (
         enr: Enrollment, 
         paymentDateStr: string, 
         method: PaymentMethod, 
@@ -273,373 +227,89 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         isDeposit: boolean,
         isBalance: boolean,
         depositAmount: number,
-        previousDepositInvoiceNumber?: string
+        ghostInvoiceId?: string
     ) => {
         setLoading(true);
-        try {
-            // ✅ FIXED: Validazione data pagamento
-            const paymentDate = new Date(paymentDateStr);
-            if (isNaN(paymentDate.getTime())) {
-                throw new Error("Data pagamento non valida.");
-            }
+        const fullPrice = enr.price !== undefined ? enr.price : 0;
+        const actualAmount = (isDeposit || isBalance) ? depositAmount : fullPrice;
+        
+        const client = clients.find(c => c.id === enr.clientId);
 
-            // ✅ FIXED: Validazione cliente
-            const client = clients.find(c => c.id === enr.clientId);
-            if (!client) {
-                throw new Error(`Cliente non trovato: ${enr.clientId}. Sincronizzare i dati.`);
-            }
-            const clientName = `${client.firstName} ${client.lastName}`;
+        const result = await processPayment(
+            enr, 
+            client, 
+            actualAmount, 
+            paymentDateStr, 
+            method, 
+            createInvoice,
+            isDeposit,
+            fullPrice,
+            ghostInvoiceId // Passa l'ID per la promozione se esiste
+        );
 
-            // ✅ FIXED: Validazione importo e logica acconto/saldo
-            const fullPrice = enr.price !== undefined ? enr.price : 0;
-            if (fullPrice <= 0) {
-                throw new Error("Importo iscrizione non valido (≤ 0).");
-            }
-
-            let actualAmount = fullPrice;
-            if (isDeposit || isBalance) {
-                // Validazione importo acconto/saldo
-                if (depositAmount <= 0) {
-                    throw new Error("Importo acconto/saldo deve essere > 0.");
-                }
-                if (depositAmount > fullPrice) {
-                    throw new Error(`Importo (€${depositAmount}) supera il totale (€${fullPrice}).`);
-                }
-                actualAmount = depositAmount;
-            }
-
-            const paymentIsoDate = new Date(paymentDateStr).toISOString();
-
-            // INFO PER ALLOCAZIONE COSTI/RICAVI ALLA SEDE (Iniziale)
-            const allocationData = {
-                allocationType: 'location' as const,
-                allocationId: enr.locationId,
-                allocationName: enr.locationName
-            };
-
-            // CASE 1: CREATE INVOICE (Taxable or Pro-Forma based on sealing later)
-            if (createInvoice) {
-                let desc = `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
-                let invoiceNumber: string;
-                let invoiceId: string;
-                
-                if (isBalance && previousDepositInvoiceNumber) {
-                    // BALANCE PAYMENT: Promote ghost invoice to real
-                    // 1. Find the ghost invoice number
-                    // The ghost invoice should have been created when deposit was paid
-                    // Search for ghost invoices linked to this enrollment for this balance
-                    const allInvoices = await getInvoices();
-                    const ghostInvoice = allInvoices.find(inv => 
-                        inv.clientId === enr.clientId && 
-                        inv.isGhost === true &&
-                        inv.notes && inv.notes.includes(enr.id) &&
-                        (inv.notes.includes(previousDepositInvoiceNumber) || inv.items[0]?.notes?.includes(previousDepositInvoiceNumber))
-                    );
-                    
-                    if (ghostInvoice && ghostInvoice.invoiceNumber.includes('GHOST')) {
-                        // Promote the ghost invoice to real
-                        try {
-                            invoiceNumber = await promoteGhostInvoiceToReal(ghostInvoice.invoiceNumber);
-                            invoiceId = ghostInvoice.id;
-                            desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName} (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
-                        } catch (err) {
-                            console.error(`Failed to promote ghost invoice: ${err}`);
-                            // Fallback: Create a new real invoice
-                            desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName} (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
-                            const invoiceInput: InvoiceInput = {
-                                clientId: enr.clientId,
-                                clientName: clientName,
-                                issueDate: paymentIsoDate,
-                                dueDate: paymentIsoDate,
-                                status: DocumentStatus.PendingSDI, 
-                                paymentMethod: method,
-                                items: [{ description: desc, quantity: 1, price: actualAmount, notes: `Sede: ${enr.locationName} | Iscrizione: ${enr.id}` }],
-                                totalAmount: actualAmount,
-                                hasStampDuty: actualAmount > 77, 
-                                notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
-                                invoiceNumber: ''
-                            };
-                            const result = await addInvoice(invoiceInput);
-                            invoiceNumber = result.invoiceNumber;
-                            invoiceId = result.id;
-                        }
-                    } else {
-                        // No ghost invoice found, create a regular balance invoice
-                        desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName} (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
-                        const invoiceInput: InvoiceInput = {
-                            clientId: enr.clientId,
-                            clientName: clientName,
-                            issueDate: paymentIsoDate,
-                            dueDate: paymentIsoDate,
-                            status: DocumentStatus.PendingSDI, 
-                            paymentMethod: method,
-                            items: [{ description: desc, quantity: 1, price: actualAmount, notes: `Sede: ${enr.locationName} | Iscrizione: ${enr.id}` }],
-                            totalAmount: actualAmount,
-                            hasStampDuty: actualAmount > 77, 
-                            notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
-                            invoiceNumber: ''
-                        };
-                        const result = await addInvoice(invoiceInput);
-                        invoiceNumber = result.invoiceNumber;
-                        invoiceId = result.id;
-                    }
-                } else {
-                    // DEPOSIT OR FULL PAYMENT: Create a new real invoice
-                    if (isDeposit) desc = `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
-                    
-                    let itemNotes = `Sede: ${enr.locationName} | Iscrizione: ${enr.id}`;
-
-                    const invoiceInput: InvoiceInput = {
-                        clientId: enr.clientId,
-                        clientName: clientName,
-                        issueDate: paymentIsoDate,
-                        dueDate: paymentIsoDate,
-                        status: DocumentStatus.PendingSDI, 
-                        paymentMethod: method,
-                        items: [{ description: desc, quantity: 1, price: actualAmount, notes: itemNotes }],
-                        totalAmount: actualAmount,
-                        hasStampDuty: actualAmount > 77, 
-                        notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
-                        invoiceNumber: '' 
-                    };
-
-                    const result = await addInvoice(invoiceInput);
-                    invoiceNumber = result.invoiceNumber;
-                    invoiceId = result.id;
-                }
-                
-                // Creates Transaction LINKED to Invoice (Taxable if Invoice is sealed)
-                if (actualAmount > 0) {
-                    await addTransaction({
-                        date: paymentIsoDate,
-                        description: `Incasso Fattura ${invoiceNumber} (${method}) - ${enr.childName}`,
-                        amount: actualAmount, 
-                        type: TransactionType.Income,
-                        category: TransactionCategory.Sales,
-                        paymentMethod: method,
-                        status: TransactionStatus.Completed,
-                        relatedDocumentId: invoiceId,
-                        ...allocationData // Collega alla Sede
-                    });
-                }
-
-                // Genera Fattura Fantasma per il saldo futuro se è un acconto
-                if (isDeposit) {
-                    const balance = fullPrice - depositAmount;
-                    if (balance > 0) {
-                        const ghostInvoice: InvoiceInput = {
-                            clientId: enr.clientId,
-                            clientName: clientName,
-                            issueDate: paymentIsoDate, 
-                            dueDate: enr.endDate, 
-                            status: DocumentStatus.Draft,
-                            paymentMethod: PaymentMethod.BankTransfer,
-                            items: [{ 
-                                description: `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`, 
-                                quantity: 1, 
-                                price: balance,
-                                notes: `Sede: ${enr.locationName} - A saldo della fattura di acconto n. ${invoiceNumber}`
-                            }],
-                            totalAmount: balance,
-                            hasStampDuty: balance > 77,
-                            notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
-                            invoiceNumber: '',
-                            isGhost: true 
-                        };
-                        await addInvoice(ghostInvoice);
-                    }
-                }
-                
-                alert(`Pagamento registrato con FATTURA n. ${invoiceNumber}.`);
-
-            } else {
-                // CASE 2: NO INVOICE (Internal Transaction Only)
-                // Used for cash or internal accounting. Not Taxable (excludeFromStats = true).
-                if (actualAmount > 0) {
-                    await addTransaction({
-                        date: paymentIsoDate,
-                        description: `Incasso Iscrizione (No Fattura): ${enr.childName} - ${isDeposit ? 'Acconto' : isBalance ? 'Saldo' : 'Totale'}`,
-                        amount: actualAmount,
-                        type: TransactionType.Income,
-                        category: TransactionCategory.Sales,
-                        paymentMethod: method,
-                        status: TransactionStatus.Completed,
-                        excludeFromStats: true, // NON FISCALE (Cash Flow Only)
-                        ...allocationData
-                    });
-                }
-                alert(`Pagamento registrato (Solo Transazione Interna).`);
-            }
-
-            // Se stiamo pagando un saldo, non dobbiamo rigenerare slot.
-            // L'iscrizione è già attiva. Se era Pending, diventa Active.
-            if (enr.status === EnrollmentStatus.Pending) {
-                await updateEnrollment(enr.id, { status: EnrollmentStatus.Active });
-            }
-            
+        if (result.success) {
+            alert("Pagamento registrato con successo.");
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            
-        } catch(err) {
-            // ✅ FIXED: Logging dettagliato per debug critici
-            const errorMsg = err instanceof Error ? err.message : String(err);
-            console.error(`[PAYMENT ERROR] Enrollment: ${enr.id}, Child: ${enr.childName}, Method: ${method}`, err);
-            setError(`Errore pagamento: ${errorMsg}`);
-            setLoading(false);
+        } else {
+            setError("Errore durante la registrazione del pagamento: " + result.error);
         }
+        setLoading(false);
     };
 
-    // --- Core Move Logic (Used by Drop and Click) ---
-    const executeMove = async (
-        enrollmentId: string, 
-        targetLocId: string, 
-        targetLocName: string, 
-        targetLocColor: string, 
-        targetDayIndex: number, 
-        targetStartTime: string, 
-        targetEndTime: string
-    ) => {
+    // ... (executeMove, handleDragStart, handleDragOver, handleDrop, handleCardClick, handleSlotClick logic remains same) ...
+    // Re-included briefly for completeness of file
+    const executeMove = async (enrollmentId: string, targetLocId: string, targetLocName: string, targetLocColor: string, targetDayIndex: number, targetStartTime: string, targetEndTime: string) => {
         const original = enrollments.find(en => en.id === enrollmentId);
         if (!original) return;
-
-        // SE ISCRIZIONE E' UNASSIGNED (NUOVA): Logica di Attivazione
         if (original.locationId === 'unassigned') {
-            if (window.confirm(`Assegnare ${original.childName} a ${targetLocName} (${daysOfWeekMap[targetDayIndex]} ${targetStartTime})? Verranno generate tutte le lezioni.`)) {
+            if (window.confirm(`Assegnare ${original.childName} a ${targetLocName}?`)) {
                 setLoading(true);
                 try {
-                    // Trova il Supplier ID associato a questa Location ID
-                    // Dato che groupedEnrollments è per display, usiamo i dati raw suppliers
                     let targetSupplierId = '';
                     let targetSupplierName = '';
-                    
-                    suppliers.forEach(s => {
-                        const foundLoc = s.locations.find(l => l.id === targetLocId);
-                        if (foundLoc) {
-                            targetSupplierId = s.id;
-                            targetSupplierName = s.companyName;
-                        }
-                    });
-
-                    await activateEnrollmentWithLocation(
-                        enrollmentId,
-                        targetSupplierId,
-                        targetSupplierName,
-                        targetLocId,
-                        targetLocName,
-                        targetLocColor,
-                        targetDayIndex,
-                        targetStartTime,
-                        targetEndTime
-                    );
+                    suppliers.forEach(s => { const foundLoc = s.locations.find(l => l.id === targetLocId); if (foundLoc) { targetSupplierId = s.id; targetSupplierName = s.companyName; } });
+                    await activateEnrollmentWithLocation(enrollmentId, targetSupplierId, targetSupplierName, targetLocId, targetLocName, targetLocColor, targetDayIndex, targetStartTime, targetEndTime);
                     await fetchData();
-                } catch (err) {
-                    console.error("Errore assegnazione:", err);
-                    alert("Errore durante l'assegnazione.");
-                } finally {
-                    setLoading(false);
-                    setMoveSourceId(null);
-                    setIsMoveMode(false);
-                }
+                } catch (err) { alert("Errore assegnazione."); } finally { setLoading(false); setMoveSourceId(null); setIsMoveMode(false); }
             }
             return;
         }
-
-        // SE ISCRIZIONE GIA' ESISTENTE: Logica di Spostamento (Standard)
+        // Move existing
         const today = new Date();
-        const todayDay = today.getDay(); // 0-6
+        const todayDay = today.getDay();
         let diff = targetDayIndex - todayDay;
-        if (diff < 0) diff += 7; // Se target è passato questa settimana, vai alla prossima
-        
+        if (diff < 0) diff += 7;
         const nextDate = new Date(today);
         nextDate.setDate(today.getDate() + diff);
         const nextDateStr = nextDate.toISOString().split('T')[0];
-
-        if (window.confirm(`Spostare ${original.childName} a ${daysOfWeekMap[targetDayIndex]} ${targetStartTime}? L'iscrizione sarà aggiornata con il nuovo orario per le lezioni future.`)) {
+        if (window.confirm(`Spostare ${original.childName}?`)) {
             setLoading(true);
             try {
-                await bulkUpdateLocation(
-                    [enrollmentId],
-                    nextDateStr,
-                    targetLocId,
-                    targetLocName,
-                    targetLocColor,
-                    targetStartTime,
-                    targetEndTime
-                );
+                await bulkUpdateLocation([enrollmentId], nextDateStr, targetLocId, targetLocName, targetLocColor, targetStartTime, targetEndTime);
                 await fetchData();
-            } catch (err) {
-                console.error("Errore spostamento:", err);
-                alert("Errore durante lo spostamento.");
-            } finally {
-                setLoading(false);
-                setMoveSourceId(null);
-                setIsMoveMode(false);
-            }
+            } catch (err) { alert("Errore spostamento."); } finally { setLoading(false); setMoveSourceId(null); setIsMoveMode(false); }
         }
     };
 
-    // --- Drag & Drop Handlers ---
-    const handleDragStart = (e: React.DragEvent, id: string) => {
-        setDraggedEnrollmentId(id);
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", id);
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault(); 
-        e.dataTransfer.dropEffect = "move";
-    };
-
-    const handleDrop = (
-        e: React.DragEvent, 
-        targetLocId: string, 
-        targetLocName: string, 
-        targetLocColor: string, 
-        targetDayIndex: number, 
-        targetStartTime: string, 
-        targetEndTime: string
-    ) => {
-        e.preventDefault();
-        const droppedId = draggedEnrollmentId;
-        setDraggedEnrollmentId(null);
-        if (droppedId) {
-            executeMove(droppedId, targetLocId, targetLocName, targetLocColor, targetDayIndex, targetStartTime, targetEndTime);
-        }
-    };
-
-    // --- Move Mode Handlers (Touch/Click) ---
-    const handleCardClick = (e: React.MouseEvent, id: string) => {
-        if (isMoveMode) {
-            e.stopPropagation(); // Evita di aprire il dettaglio/modifica
-            setMoveSourceId(prev => prev === id ? null : id); // Toggle selezione
-        }
-    };
-
-    const handleSlotClick = (
-        locId: string, 
-        locName: string, 
-        locColor: string, 
-        dayIdx: number, 
-        start: string, 
-        end: string
-    ) => {
-        if (isMoveMode && moveSourceId) {
-            executeMove(moveSourceId, locId, locName, locColor, dayIdx, start, end);
-        }
-    };
+    const handleDragStart = (e: React.DragEvent, id: string) => { setDraggedEnrollmentId(id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", id); };
+    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
+    const handleDrop = (e: React.DragEvent, locId: string, locName: string, locColor: string, dayIdx: number, start: string, end: string) => { e.preventDefault(); const droppedId = draggedEnrollmentId; setDraggedEnrollmentId(null); if (droppedId) executeMove(droppedId, locId, locName, locColor, dayIdx, start, end); };
+    const handleCardClick = (e: React.MouseEvent, id: string) => { if (isMoveMode) { e.stopPropagation(); setMoveSourceId(prev => prev === id ? null : id); } };
+    const handleSlotClick = (locId: string, locName: string, locColor: string, dayIdx: number, start: string, end: string) => { if (isMoveMode && moveSourceId) executeMove(moveSourceId, locId, locName, locColor, dayIdx, start, end); };
 
 
     const handlePaymentRequest = async (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
         
-        // Auto-detect Balance mode
-        // Check invoices for this client/child that are "Acconto"
         let isBalanceMode = false;
-        let prevInvoiceNum = undefined;
+        let ghostId = undefined;
         let suggestedAmount = (enr.price || 0);
 
         try {
             const invoices = await getInvoices();
+            
+            // 1. Cerca se c'è un Acconto Pagato per questo corso
             const childName = enr.childName.toLowerCase();
             const depositInvoice = invoices.find(i => 
                 i.clientId === enr.clientId && 
@@ -648,10 +318,21 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 (i.items.some(item => item.description.toLowerCase().includes('acconto') && item.description.toLowerCase().includes(childName)))
             );
 
+            // 2. Cerca se c'è una Fattura Ghost (Draft) pronta per il saldo
+            const ghostInvoice = invoices.find(i => 
+                i.clientId === enr.clientId &&
+                i.isGhost === true &&
+                i.status === DocumentStatus.Draft &&
+                !i.isDeleted &&
+                i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName))
+            );
+
             if (depositInvoice) {
                 isBalanceMode = true;
-                prevInvoiceNum = depositInvoice.invoiceNumber;
                 suggestedAmount = Math.max(0, (enr.price || 0) - depositInvoice.totalAmount);
+                if (ghostInvoice) {
+                    ghostId = ghostInvoice.id;
+                }
             }
         } catch(e) { console.error("Error checking invoices", e); }
 
@@ -660,26 +341,26 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             enrollment: enr, 
             date: new Date().toISOString().split('T')[0], 
             method: PaymentMethod.BankTransfer,
-            createInvoice: true, // Default
-            isDeposit: !isBalanceMode, // Default deposit if not balance
+            createInvoice: true, 
+            isDeposit: !isBalanceMode, 
             isBalance: isBalanceMode, 
             depositAmount: isBalanceMode ? suggestedAmount : (enr.price || 0) / 2,
-            previousDepositInvoiceNumber: prevInvoiceNum
+            ghostInvoiceId: ghostId
         });
     };
 
     const handleConfirmPayment = async () => {
         if (paymentModalState.enrollment && paymentModalState.date) {
             setPaymentModalState(prev => ({ ...prev, isOpen: false }));
-            await executePayment(
+            await executePaymentAction(
                 paymentModalState.enrollment, 
                 paymentModalState.date, 
                 paymentModalState.method,
-                paymentModalState.createInvoice, // New Toggle
+                paymentModalState.createInvoice,
                 paymentModalState.isDeposit,
                 paymentModalState.isBalance,
                 paymentModalState.depositAmount,
-                paymentModalState.previousDepositInvoiceNumber
+                paymentModalState.ghostInvoiceId
             );
         }
     };
@@ -697,42 +378,19 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         if (!deleteModalState.enrollment) return;
         const target = deleteModalState.enrollment;
         const scope = deleteModalState.scope;
-        const locationId = target.locationId;
         
         setDeleteModalState(prev => ({...prev, isOpen: false}));
         setLoading(true);
 
         try {
             if (scope === 'single') {
-                // 1. Elimina entrate, fatture e ATTIVITÀ collegate (Deep Clean)
                 await cleanupEnrollmentFinancials(target);
-                
-                // 2. Elimina iscrizione
                 await deleteEnrollment(target.id);
-
-                // 3. CHECK PER NOLO ORFANO
-                // Conta quante iscrizioni rimangono per questa location
-                if (locationId && locationId !== 'unassigned') {
-                    const remainingInLocation = enrollments.filter(e => e.locationId === locationId && e.id !== target.id);
-                    if (remainingInLocation.length === 0) {
-                        await deleteAutoRentTransactions(locationId);
-                    }
-                }
-
             } else {
-                // Elimina TUTTE (Cliente)
                 const allEnrollments = await getEnrollmentsForClient(target.clientId);
-                
                 for (const enr of allEnrollments) {
                     await cleanupEnrollmentFinancials(enr);
                     await deleteEnrollment(enr.id);
-                    
-                    if (enr.locationId && enr.locationId !== 'unassigned') {
-                        const remaining = enrollments.filter(e => e.locationId === enr.locationId && e.clientId !== target.clientId);
-                        if (remaining.length === 0) {
-                            await deleteAutoRentTransactions(enr.locationId);
-                        }
-                    }
                 }
             }
             await fetchData();
@@ -749,14 +407,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setIsDeleteAllModalOpen(false);
         setLoading(true);
         try {
-            // Fetch current fresh data
             const allEnrollments = await getAllEnrollments();
             for (const enr of allEnrollments) {
                 await cleanupEnrollmentFinancials(enr);
                 await deleteEnrollment(enr.id);
-                if (enr.locationId && enr.locationId !== 'unassigned') {
-                    await deleteAutoRentTransactions(enr.locationId);
-                }
+                // NOTA: I noli (Auto-Rent) non vengono cancellati massivamente qui, 
+                // devono essere gestiti dalla pulizia finanziaria se necessario.
             }
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
@@ -778,7 +434,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const getFirstAppointmentData = (enrollment: Enrollment) => {
         if (enrollment.appointments && enrollment.appointments.length > 0) {
-            // Find the next scheduled appointment, or fallback to the first one if all are past/consumed
             const now = new Date();
             const next = enrollment.appointments.find(a => new Date(a.date) >= now) || enrollment.appointments[0];
             const date = new Date(next.date);
@@ -819,14 +474,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         oneWeekAgo.setHours(0, 0, 0, 0);
 
         let result = enrollments.filter(enr => {
-            // --- Visibility Rule: Hide old exhausted/expired cards ---
-            // Hide if lessons are exhausted AND it happened more than a week ago
             const isExhausted = enr.lessonsRemaining <= 0 || enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired;
-            
             if (isExhausted) {
-                let lastRelevantDate = new Date(enr.endDate); // Default to endDate (expiry)
-                
-                // If we have present appointments, use the last one as the "consumption date"
+                let lastRelevantDate = new Date(enr.endDate); 
                 const presentApps = enr.appointments?.filter(a => a.status === 'Present');
                 if (presentApps && presentApps.length > 0) {
                     const lastPres = presentApps.reduce((latest, current) => 
@@ -834,14 +484,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     );
                     lastRelevantDate = new Date(lastPres.date);
                 }
-
-                // If the relevant date is older than 1 week, hide it from the fence
-                if (lastRelevantDate < oneWeekAgo) {
-                    return false;
-                }
+                if (lastRelevantDate < oneWeekAgo) return false;
             }
 
-            // Search Term
             if (searchTerm) {
                 const term = searchTerm.toLowerCase();
                 const client = clients.find(c => c.id === enr.clientId);
@@ -860,7 +505,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 if (!match) return false;
             }
 
-            // Dropdown Filters
             if (filterLocation && enr.locationName !== filterLocation) return false;
             if (filterAge && getChildAge(enr) !== filterAge) return false;
             if (filterDay && getFirstAppointmentData(enr).dayName !== filterDay) return false;
@@ -873,7 +517,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             return true;
         });
 
-        // Sorting Base (Before Grouping)
         result.sort((a, b) => {
             const nameA = a.childName.toLowerCase();
             const nameB = b.childName.toLowerCase();
@@ -885,15 +528,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
 
     // --- Grouping Logic (Recinti) ---
-    // Structure: Location -> Day -> TimeSlot -> Enrollments[]
     const groupedEnrollments = useMemo(() => {
-        const groups: Record<string, { // Location Key
+        const groups: Record<string, { 
             locationId: string;
             locationName: string;
             locationColor: string;
-            days: Record<number, { // Day Index Key
+            days: Record<number, { 
                 dayName: string;
-                slots: Record<string, { // Time Key (Start-End)
+                slots: Record<string, { 
                     timeRange: string;
                     start: string;
                     end: string;
@@ -902,10 +544,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             }>
         }> = {};
 
-        // 1. Inizializza i gruppi con le sedi dai Supplier (così anche i recinti vuoti appaiono)
         suppliers.forEach(s => {
             s.locations.forEach(l => {
-                // Initialize structure for available slots
                 const locKey = l.name;
                 groups[locKey] = { 
                     locationId: l.id, 
@@ -913,8 +553,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     locationColor: l.color || '#ccc', 
                     days: {} 
                 };
-                
-                // Pre-populate days from availability
                 if (l.availability) {
                     l.availability.forEach(slot => {
                         if (!groups[locKey].days[slot.dayOfWeek]) {
@@ -934,16 +572,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             });
         });
 
-        // 2. Distribuisci le iscrizioni
         filteredEnrollments.forEach(enr => {
             const locName = enr.locationName || 'Sede Non Definita';
             const locId = enr.locationId || 'unassigned';
             const locColor = enr.locationColor || '#e5e7eb';
             const appData = getFirstAppointmentData(enr);
             
-            // Gestione speciale per "Unassigned"
             const timeKey = locId === 'unassigned' ? 'Da Assegnare' : (appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D');
-            const dayIdx = locId === 'unassigned' ? 99 : appData.dayIndex; // 99 pushes to bottom if sorted asc, but we want it top? Sort logic below handles location order.
+            const dayIdx = locId === 'unassigned' ? 99 : appData.dayIndex; 
 
             if (!groups[locName]) {
                 groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
@@ -965,9 +601,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             groups[locName].days[dayIdx].slots[timeKey].items.push(enr);
         });
 
-        // Convert to Arrays for rendering and sort
         const sortedGroups = Object.values(groups).sort((a,b) => {
-            // Force "Sede Non Definita" to top
             if (a.locationId === 'unassigned') return -1;
             if (b.locationId === 'unassigned') return 1;
             return a.locationName.localeCompare(b.locationName);
@@ -976,7 +610,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         return sortedGroups.map(loc => ({
             ...loc,
             days: Object.entries(loc.days)
-                .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)) // Sort by Day Index (Mon=1, ...)
+                .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)) 
                 .map(([idx, day]) => ({
                     dayIndex: Number(idx),
                     ...day,
@@ -996,7 +630,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         <h1 className="text-3xl font-bold">Iscrizioni</h1>
                         <p className="mt-1 text-gray-500">Gestione dei "recinti" e dotazione slot.</p>
                     </div>
-                    {/* MOVE BUTTON TOGGLE (Mobile Only Visual Aid) */}
                     <button 
                         onClick={() => { setIsMoveMode(!isMoveMode); setMoveSourceId(null); }} 
                         className={`md-btn md-btn-sm md:hidden mt-2 ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}
@@ -1013,10 +646,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     </button>
                 </div>
 
-                {/* Search & Filters Bar */}
                 <div className="flex flex-col md:flex-row gap-2 flex-1 xl:max-w-4xl xl:justify-end">
-                    
-                    {/* Search Input */}
                     <div className="relative w-full md:w-64">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
                         <input 
@@ -1028,33 +658,24 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         />
                     </div>
 
-                    {/* Dropdown Filters Group */}
                     <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
                         <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]">
                             <option value="">Tutte le Sedi</option>
                             {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
                         </select>
-                        
                         <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]">
                             <option value="">Tutti i Giorni</option>
                             {daysOfWeekMap.map(d => <option key={d} value={d}>{d}</option>)}
                         </select>
-
                         <select value={filterTime} onChange={e => setFilterTime(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[90px]">
                             <option value="">Tutti Orari</option>
                             {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
-
                         <select value={filterAge} onChange={e => setFilterAge(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[80px]">
                             <option value="">Tutte Età</option>
                             {availableAges.map(a => <option key={a} value={a}>{a}</option>)}
                         </select>
-
-                        {/* Sort Button Toggle */}
-                        <button 
-                            onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')}
-                            className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm"
-                        >
+                        <button onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm">
                             {sortOrder === 'az' ? 'A-Z' : 'Z-A'}
                         </button>
                     </div>
@@ -1066,25 +687,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </div>
             </div>
             
-            {/* ... (Rest of content) ... */}
-            {/* Banner Istruzioni Move Mode */}
             {isMoveMode && (
                 <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">
-                    {moveSourceId ? 
-                        <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : 
-                        <span>Tocca un'iscrizione per selezionarla.</span>
-                    }
+                    {moveSourceId ? <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : <span>Tocca un'iscrizione per selezionarla.</span>}
                 </div>
             )}
 
-            {/* --- CONTENT --- */}
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <div className="space-y-8 pb-10">
                     {groupedEnrollments.length === 0 && <p className="text-center text-gray-500 italic py-10">Nessuna iscrizione trovata.</p>}
 
                     {groupedEnrollments.map((locGroup, locIdx) => (
                         <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            {/* RECINTO SEDE */}
                             <div className={`px-6 py-3 border-b border-gray-200 flex items-center gap-3 ${locGroup.locationId === 'unassigned' ? 'bg-gray-200' : 'bg-gray-50'}`}>
                                 <div className="w-4 h-4 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: locGroup.locationColor }}></div>
                                 <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locGroup.locationName}</h2>
@@ -1094,7 +708,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             <div className="p-6 space-y-6">
                                 {locGroup.days.map((dayGroup, dayIdx) => (
                                     <div key={dayIdx} className="relative pl-4 border-l-2 border-dashed border-gray-300">
-                                        {/* RECINTO GIORNO */}
                                         <h3 className="text-md font-bold text-indigo-700 mb-3 uppercase flex items-center">
                                             <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2 -ml-[21px] ring-4 ring-white"></span>
                                             {dayGroup.dayName}
@@ -1111,7 +724,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                     onDrop={(e) => handleDrop(e, locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}
                                                     onClick={() => handleSlotClick(locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}
                                                 >
-                                                    {/* RECINTO ORARIO */}
                                                     <div className="flex items-center mb-3">
                                                         <span className="bg-white text-slate-600 border border-slate-200 text-xs font-mono font-bold px-2 py-1 rounded shadow-sm">
                                                             {slotGroup.timeRange}
@@ -1119,7 +731,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                         <div className="h-px bg-slate-200 flex-1 ml-3"></div>
                                                     </div>
 
-                                                    {/* CARDS GRID */}
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                                         {slotGroup.items.map(enr => {
                                                             const childAge = getChildAge(enr);
@@ -1128,16 +739,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                             const isExhausted = enr.lessonsRemaining <= 0;
                                                             const isUnassigned = enr.locationId === 'unassigned';
                                                             
-                                                            // Colore card: dipende dallo stato
                                                             let cardBorderColor = locGroup.locationColor;
                                                             let cardBg = 'bg-white';
                                                             let opacity = 'opacity-100';
 
                                                             if (isPending) {
-                                                                cardBorderColor = '#fbbf24'; // Amber
+                                                                cardBorderColor = '#fbbf24'; 
                                                                 cardBg = 'bg-amber-50';
                                                             } else if (isExhausted) {
-                                                                cardBorderColor = '#9ca3af'; // Gray
+                                                                cardBorderColor = '#9ca3af'; 
                                                                 cardBg = 'bg-gray-100';
                                                                 opacity = 'opacity-75';
                                                             } else if (isUnassigned) {
@@ -1176,10 +786,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                         </div>
                                                                     </div>
                                                                     
-                                                                    {/* Hover Actions */}
                                                                     {!isMoveMode && (
                                                                         <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                                                                            {/* Tasto Pagamento attivo anche se non pending, per gestire i saldi successivi */}
                                                                             {!isUnassigned && (
                                                                                 <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento / Saldo">
                                                                                     <span className="font-bold text-xs">€</span>
@@ -1213,7 +821,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </div>
             )}
 
-            {/* Payment Modal */}
             {paymentModalState.isOpen && paymentModalState.enrollment && (
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
@@ -1229,17 +836,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         </div>
 
                         <div className="md-input-group mb-4">
-                            <select 
-                                value={paymentModalState.method} 
-                                onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} 
-                                className="md-input"
-                            >
+                            <select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">
                                 {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                             <label className="md-input-label !top-0">Metodo Pagamento</label>
                         </div>
                         
-                        {/* Logic Acconto / Saldo */}
                         <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
                             <div className="flex gap-4">
                                 <label className="flex items-center cursor-pointer">
@@ -1267,7 +869,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                             ...prev, 
                                             isBalance: true,
                                             isDeposit: false,
-                                            // Se saldo, suggerisci il rimanente
                                             depositAmount: prev.enrollment ? (prev.enrollment.price || 0) - (prev.isBalance ? 0 : (prev.enrollment.price || 0) / 2) : 0
                                         }))}
                                         className="h-4 w-4 text-green-600 rounded"
@@ -1288,48 +889,25 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                     {paymentModalState.isDeposit && (
                                         <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
                                             Rimanenza (Saldo): <strong>{(paymentModalState.enrollment.price || 0) - paymentModalState.depositAmount}€</strong>
-                                            <br/>Verrà generata una notifica di saldo tra 30 giorni.
-                                        </div>
-                                    )}
-                                    {paymentModalState.isBalance && paymentModalState.previousDepositInvoiceNumber && (
-                                        <div className="text-xs text-green-600 mt-2 bg-green-50 p-2 rounded">
-                                            A saldo della fattura di acconto n. {paymentModalState.previousDepositInvoiceNumber}
+                                            <br/>Verrà generata una notifica di saldo.
                                         </div>
                                     )}
                                 </div>
                             )}
                         </div>
 
-                        {/* Toggle Crea Fattura */}
                         <div className="mb-4">
                             <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Generazione Documento</label>
                             <div className="flex gap-4">
                                 <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${!paymentModalState.createInvoice ? 'bg-gray-100 border-gray-300 text-gray-600' : 'bg-white border-gray-200'}`}>
-                                    <input 
-                                        type="radio" 
-                                        name="invoiceGen" 
-                                        checked={!paymentModalState.createInvoice} 
-                                        onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: false }))}
-                                        className="hidden" 
-                                    />
+                                    <input type="radio" name="invoiceGen" checked={!paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: false }))} className="hidden" />
                                     🚫 Non crea fattura
                                 </label>
                                 <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${paymentModalState.createInvoice ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200'}`}>
-                                    <input 
-                                        type="radio" 
-                                        name="invoiceGen" 
-                                        checked={paymentModalState.createInvoice} 
-                                        onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: true }))}
-                                        className="hidden" 
-                                    />
-                                    📄 Crea fattura
+                                    <input type="radio" name="invoiceGen" checked={paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: true }))} className="hidden" />
+                                    📄 Crea fattura {paymentModalState.ghostInvoiceId ? '(Promuovi)' : ''}
                                 </label>
                             </div>
-                            <p className="text-[10px] text-gray-400 mt-2 italic">
-                                {!paymentModalState.createInvoice 
-                                    ? "L'importo verrà registrato solo come Transazione interna (non fiscale)." 
-                                    : "Verrà generata una fattura (SDI o Pro-Forma) e la relativa transazione."}
-                            </p>
                         </div>
 
                         <div className="mt-6 flex justify-end gap-2">
@@ -1340,7 +918,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </Modal>
             )}
 
-            {/* Delete Confirmation Modal with Options */}
             {deleteModalState.isOpen && deleteModalState.enrollment && (
                 <Modal onClose={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
@@ -1352,37 +929,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             Stai per eliminare l'iscrizione di <strong>{deleteModalState.enrollment.childName}</strong>. 
                             Questa azione è irreversibile.
                         </p>
-                        
                         <div className="space-y-3 mb-6">
                             <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'single' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
-                                <input 
-                                    type="radio" 
-                                    name="deleteScope"
-                                    checked={deleteModalState.scope === 'single'} 
-                                    onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'single' }))}
-                                    className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
-                                />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-bold text-gray-800">Elimina solo questa</span>
-                                    <span className="block text-xs text-gray-500">Rimuove solo questa iscrizione e i relativi movimenti finanziari.</span>
-                                </div>
+                                <input type="radio" name="deleteScope" checked={deleteModalState.scope === 'single'} onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'single' }))} className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500" />
+                                <div className="ml-3"><span className="block text-sm font-bold text-gray-800">Elimina solo questa</span><span className="block text-xs text-gray-500">Rimuove solo questa iscrizione e i relativi movimenti finanziari.</span></div>
                             </label>
-
                             <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'all' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
-                                <input 
-                                    type="radio" 
-                                    name="deleteScope"
-                                    checked={deleteModalState.scope === 'all'} 
-                                    onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'all' }))}
-                                    className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500"
-                                />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-bold text-gray-800">Elimina tutte (Cliente)</span>
-                                    <span className="block text-xs text-gray-500">Rimuove TUTTE le iscrizioni storiche e i dati finanziari di questo cliente.</span>
-                                </div>
+                                <input type="radio" name="deleteScope" checked={deleteModalState.scope === 'all'} onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'all' }))} className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500" />
+                                <div className="ml-3"><span className="block text-sm font-bold text-gray-800">Elimina tutte (Cliente)</span><span className="block text-xs text-gray-500">Rimuove TUTTE le iscrizioni storiche e i dati finanziari di questo cliente.</span></div>
                             </label>
                         </div>
-
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
                             <button onClick={handleConfirmDelete} className="md-btn md-btn-raised md-btn-red md-btn-sm">Conferma Eliminazione</button>
@@ -1401,12 +957,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 confirmText="Sì, Elimina TUTTO"
             />
 
-            {/* Other modals ... */}
-            {isModalOpen && (
-                <Modal onClose={() => setIsModalOpen(false)} size="lg">
-                    <EnrollmentForm parents={clients} initialParent={selectedClient} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} />
-                </Modal>
-            )}
+            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm parents={clients} initialParent={selectedClient} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
             {recoveryModalState.isOpen && recoveryModalState.enrollment && <RecoveryModal enrollment={recoveryModalState.enrollment} maxRecoverable={recoveryModalState.maxRecoverable} suppliers={suppliers} onClose={() => setRecoveryModalState(prev => ({ ...prev, isOpen: false }))} onConfirm={handleConfirmRecovery} />}
         </div>
     );

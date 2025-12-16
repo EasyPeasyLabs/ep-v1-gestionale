@@ -1,3 +1,4 @@
+
 // FIX: Corrected Firebase import path.
 import { collection, doc, getDocs, writeBatch } from '@firebase/firestore';
 import * as XLSX from 'xlsx';
@@ -91,6 +92,9 @@ export const importClientsFromExcel = async (file: File): Promise<ImportResult> 
                     lastName: String(row.lastName),
                     taxCode: String(row.taxCode),
                     children: [],
+                    notesHistory: [],
+                    tags: [],
+                    rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 }
                 };
             } else if (row.type === 'institutional') {
                  if (!row.companyName || !row.vatNumber) {
@@ -109,6 +113,8 @@ export const importClientsFromExcel = async (file: File): Promise<ImportResult> 
                     vatNumber: String(row.vatNumber),
                     numberOfChildren: 0,
                     ageRange: '',
+                    notesHistory: [],
+                    tags: []
                 };
             } else {
                 result.errors.push({ row: rowNum, message: 'Il valore nella colonna "type" deve essere "parent" o "institutional".' });
@@ -178,7 +184,11 @@ export const importSuppliersFromExcel = async (file: File): Promise<ImportResult
             province: String(row.province || ''),
             email: String(row.email),
             phone: String(row.phone),
-            locations: []
+            locations: [],
+            notes: '',
+            notesHistory: [],
+            tags: [],
+            rating: { responsiveness: 0, partnership: 0, negotiation: 0 }
         };
 
         const existingId = existingSuppliersMap.get(supplierName);

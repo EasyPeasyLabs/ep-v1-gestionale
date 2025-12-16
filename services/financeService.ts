@@ -1,8 +1,7 @@
 
 import { db } from '../firebase/config';
-// FIX: Corrected Firebase import path.
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch } from '@firebase/firestore';
-import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus } from '../types';
+import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment } from '../types';
 
 // --- Transactions ---
 const transactionCollectionRef = collection(db, 'transactions');
@@ -11,7 +10,6 @@ const docToTransaction = (doc: QueryDocumentSnapshot<DocumentData>): Transaction
     return { 
         id: doc.id, 
         ...data,
-        // Retrocompatibilità
         status: data.status || TransactionStatus.Completed,
         isDeleted: data.isDeleted || false
     } as Transaction;
@@ -38,19 +36,16 @@ export const updateTransaction = async (id: string, transaction: Partial<Transac
     await updateDoc(transactionDoc, transaction);
 };
 
-// Soft Delete
 export const deleteTransaction = async (id: string): Promise<void> => {
     const transactionDoc = doc(db, 'transactions', id);
     await updateDoc(transactionDoc, { isDeleted: true });
 };
 
-// Restore
 export const restoreTransaction = async (id: string): Promise<void> => {
     const transactionDoc = doc(db, 'transactions', id);
     await updateDoc(transactionDoc, { isDeleted: false });
 };
 
-// Hard Delete
 export const permanentDeleteTransaction = async (id: string): Promise<void> => {
     const transactionDoc = doc(db, 'transactions', id);
     await deleteDoc(transactionDoc);
@@ -61,40 +56,15 @@ export const deleteTransactionByRelatedId = async (relatedId: string): Promise<v
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     snapshot.docs.forEach((doc) => {
-        batch.delete(doc.ref); // Qui manteniamo l'eliminazione fisica per coerenza con l'eliminazione del padre
+        batch.delete(doc.ref); 
     });
     await batch.commit();
 };
 
-// Eliminazione Noli Automatici per una specifica Sede (Usata quando la sede si svuota)
 export const deleteAutoRentTransactions = async (locationId: string): Promise<void> => {
-    // Cerca transazioni di tipo Expense, Categoria Rent, generate automaticamente (AUTO-RENT) e collegate alla locationId
-    const q = query(
-        transactionCollectionRef, 
-        where("category", "==", TransactionCategory.Rent),
-        where("allocationId", "==", locationId)
-    );
-    
-    const snapshot = await getDocs(q);
-    const batch = writeBatch(db);
-    let count = 0;
-
-    snapshot.docs.forEach((docSnap) => {
-        const data = docSnap.data();
-        // Controllo di sicurezza extra: elimina solo quelle generate automaticamente o esplicitamente noli
-        if (data.relatedDocumentId && String(data.relatedDocumentId).startsWith('AUTO-RENT')) {
-            batch.delete(docSnap.ref);
-            count++;
-        }
-    });
-
-    if (count > 0) {
-        await batch.commit();
-        console.log(`Eliminate ${count} transazioni di nolo automatico per la sede ${locationId}`);
-    }
+    console.warn("deleteAutoRentTransactions chiamata, ma la cancellazione massiva è disabilitata per preservare lo storico.");
 };
 
-// Funzione di Batch per aggiungere multiple transazioni
 export const batchAddTransactions = async (transactions: TransactionInput[]): Promise<void> => {
     const batch = writeBatch(db);
     transactions.forEach(t => {
@@ -112,6 +82,7 @@ export const calculateRentTransactions = (
 ): TransactionInput[] => {
     const newTransactions: TransactionInput[] = [];
     const locationMap = new Map<string, {cost: number, name: string}>();
+    
     suppliers.forEach(s => {
         s.locations.forEach(l => {
             locationMap.set(l.id, { cost: l.rentalCost || 0, name: l.name });
@@ -122,12 +93,11 @@ export const calculateRentTransactions = (
 
     enrollments.forEach(enr => {
         if (enr.appointments) {
-            enr.appointments.forEach(app => {
+            enr.appointments.forEach((app: Appointment) => {
                 if (app.status === 'Present') {
                     const date = new Date(app.date);
                     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                    // ✅ FIXED: Usa la location EFFETTIVA (dove la lezione è stata svolta), non quella pianificata
-                    const locId = app.actualLocationId || enr.locationId;
+                    const locId = app.locationId || enr.locationId; 
                     const key = `${monthKey}|${locId}`;
                     const currentCount = aggregates.get(key) || 0;
                     aggregates.set(key, currentCount + 1);
@@ -141,21 +111,19 @@ export const calculateRentTransactions = (
         const [year, month] = monthKey.split('-');
         const locData = locationMap.get(locId);
 
-        // ✅ FIXED: Crea transazione anche se locationName non è trovato (fallback con locId)
-        if (locData || locId !== 'unassigned') {
-            const totalCost = (locData?.cost || 0) * count;
-            const locName = locData?.name || `Sede [${locId}]`; // Fallback se sede non trovata
-            const description = `Nolo Sede: ${locName} - ${month}/${year}`;
+        if (locData && locData.cost > 0) {
+            const totalCost = count * locData.cost;
+            const description = `Nolo Sede: ${locData.name} - ${month}/${year}`;
             
-            // Verifica se esiste già una transazione ATTIVA (non deleted)
-            const exists = existingTransactions.some(t => 
+            const existingTrans = existingTransactions.find(t => 
                 !t.isDeleted &&
                 t.type === TransactionType.Expense &&
                 t.category === TransactionCategory.Rent &&
-                t.description === description
+                t.allocationId === locId &&
+                t.description.includes(`${month}/${year}`)
             );
 
-            if (!exists && totalCost > 0) { // ✅ FIXED: Aggiungi anche check totalCost > 0
+            if (!existingTrans) {
                 const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0);
                 newTransactions.push({
                     date: lastDayOfMonth.toISOString(),
@@ -168,7 +136,7 @@ export const calculateRentTransactions = (
                     relatedDocumentId: `AUTO-RENT-${key}`,
                     allocationType: 'location',
                     allocationId: locId,
-                    allocationName: locName
+                    allocationName: locData.name
                 });
             }
         }
@@ -179,21 +147,23 @@ export const calculateRentTransactions = (
 
 
 // --- Document Number Generation ---
-
-// ✅ TRACKING: Ghost invoice numbers to avoid conflicts with real sequence
-let ghostInvoiceCounters = new Map<number, number>(); // year -> counter
-
-const getNextGhostInvoiceNumber = (year: number = new Date().getFullYear()): string => {
-    const counter = (ghostInvoiceCounters.get(year) || 0) + 1;
-    ghostInvoiceCounters.set(year, counter);
-    const paddedSeq = String(counter).padStart(3, '0');
-    return `FT-GHOST-${year}-${paddedSeq}`;
-};
-
-const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
+export const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
     const coll = collection(db, collectionName);
-    // Use limit to reduce read cost, but assume logic is handled via app or specific query
-    const q = query(coll, orderBy('issueDate', 'desc'), limit(50)); 
+    // IMPORTANTE: Escludiamo le fatture Ghost dal conteggio per non saltare numeri
+    // Se la collection è 'invoices', filtriamo isGhost == false
+    let q;
+    
+    if (collectionName === 'invoices') {
+        q = query(
+            coll, 
+            where("isGhost", "==", false), // Ignora Ghost
+            orderBy('issueDate', 'desc'), 
+            limit(50)
+        );
+    } else {
+        q = query(coll, orderBy('issueDate', 'desc'), limit(50));
+    }
+
     const snapshot = await getDocs(q);
     
     const currentYear = new Date().getFullYear().toString();
@@ -201,14 +171,11 @@ const getNextDocumentNumber = async (collectionName: string, prefix: string, pad
 
     if (!snapshot.empty) {
         snapshot.docs.forEach(d => {
-            const data = d.data();
+            const data = d.data() as any;
             
             const num = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
-            if (num && num.includes(currentYear)) {
-                // Skip ghost invoices when counting real sequence
-                if (collectionName === 'invoices' && num.includes('GHOST')) {
-                    return; // Continue to next iteration
-                }
+            // Doppio controllo per sicurezza: se il numero contiene GHOST, saltalo
+            if (num && num.includes(currentYear) && !num.includes('GHOST')) {
                 const parts = num.split('-');
                 const seqStr = parts[parts.length - 1];
                 const seq = parseInt(seqStr, 10);
@@ -221,6 +188,34 @@ const getNextDocumentNumber = async (collectionName: string, prefix: string, pad
 
     const newSeq = (lastSeq + 1).toString().padStart(padLength, '0');
     return `${prefix}-${currentYear}-${newSeq}`;
+};
+
+// Generatore dedicato per fatture Ghost
+export const getNextGhostInvoiceNumber = async (): Promise<string> => {
+    const coll = collection(db, 'invoices');
+    // Cerchiamo l'ultimo numero Ghost dell'anno corrente
+    const currentYear = new Date().getFullYear().toString();
+    
+    // Non possiamo fare where isGhost==true AND orderBy issueDate senza indice composto.
+    // Facciamo query semplice e filtriamo in memoria, dato che i ghost sono pochi.
+    const q = query(coll, where("isGhost", "==", true));
+    const snapshot = await getDocs(q);
+    
+    let lastSeq = 0;
+    snapshot.docs.forEach(d => {
+        const num = d.data().invoiceNumber;
+        if (num && num.includes(`FT-GHOST-${currentYear}`)) {
+            const parts = num.split('-');
+            const seqStr = parts[parts.length - 1]; // Assumiamo FT-GHOST-202X-NNN
+            const seq = parseInt(seqStr, 10);
+            if (!isNaN(seq) && seq > lastSeq) {
+                lastSeq = seq;
+            }
+        }
+    });
+
+    const newSeq = (lastSeq + 1).toString().padStart(3, '0');
+    return `FT-GHOST-${currentYear}-${newSeq}`;
 };
 
 
@@ -263,66 +258,19 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
 };
 
 export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, invoiceNumber: string}> => {
+    // Determina il numero corretto (Ghost vs Real)
     let invoiceNumber = invoice.invoiceNumber;
     
-    // ✅ LOGIC: Assign numbers based on invoice type
     if (!invoiceNumber) {
         if (invoice.isGhost) {
-            // Ghost invoice: Assign temporary provisory number (FT-GHOST-2025-001, etc.)
-            const year = new Date(invoice.issueDate).getFullYear();
-            invoiceNumber = getNextGhostInvoiceNumber(year);
+            invoiceNumber = await getNextGhostInvoiceNumber();
         } else {
-            // Real invoice: Assign real progressive number (FT-2025-001, etc.)
             invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3);
         }
     }
-    
+
     const docRef = await addDoc(invoiceCollectionRef, { ...invoice, invoiceNumber, isDeleted: false });
     return { id: docRef.id, invoiceNumber };
-};
-
-// ✅ NEW: Promote ghost invoice to real when balance payment is made
-// Called when: Customer pays remaining balance for a deposit-paid enrollment
-export const promoteGhostInvoiceToReal = async (ghostInvoiceNumber: string): Promise<string> => {
-    // Find the ghost invoice by its number
-    const q = query(invoiceCollectionRef, where("invoiceNumber", "==", ghostInvoiceNumber));
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
-        throw new Error(`Ghost invoice ${ghostInvoiceNumber} not found`);
-    }
-    
-    const ghostDoc = snapshot.docs[0];
-    const ghostData = ghostDoc.data() as Invoice;
-    
-    if (!ghostData.isGhost) {
-        throw new Error(`Invoice ${ghostInvoiceNumber} is not a ghost invoice`);
-    }
-    
-    // Assign real progressive number
-    const year = new Date(ghostData.issueDate).getFullYear();
-    const realNumber = await getNextDocumentNumber('invoices', 'FT', 3);
-    
-    // Update the ghost invoice: change to real status
-    const batch = writeBatch(db);
-    batch.update(ghostDoc.ref, {
-        invoiceNumber: realNumber,
-        isGhost: false,
-        status: DocumentStatus.Sent,
-        updatedAt: new Date().toISOString(),
-        promotionHistory: {
-            originalGhostNumber: ghostInvoiceNumber,
-            promotedAt: new Date().toISOString()
-        }
-    });
-    await batch.commit();
-    
-    return realNumber;
-};
-
-export const updateInvoiceStatus = async (id: string, status: DocumentStatus): Promise<void> => {
-    const invoiceDoc = doc(db, 'invoices', id);
-    await updateDoc(invoiceDoc, { status });
 };
 
 export const updateInvoice = async (id: string, invoice: Partial<InvoiceInput>): Promise<void> => {
@@ -330,24 +278,15 @@ export const updateInvoice = async (id: string, invoice: Partial<InvoiceInput>):
     await updateDoc(invoiceDoc, invoice);
 };
 
-// Soft Delete
 export const deleteInvoice = async (id: string): Promise<void> => {
     const invoiceDoc = doc(db, 'invoices', id);
     await updateDoc(invoiceDoc, { isDeleted: true });
 };
 
-// Restore
-export const restoreInvoice = async (id: string): Promise<void> => {
-    const invoiceDoc = doc(db, 'invoices', id);
-    await updateDoc(invoiceDoc, { isDeleted: false });
-};
-
-// Hard Delete
 export const permanentDeleteInvoice = async (id: string): Promise<void> => {
     const invoiceDoc = doc(db, 'invoices', id);
     await deleteDoc(invoiceDoc);
 };
-
 
 // --- Quotes ---
 const quoteCollectionRef = collection(db, 'quotes');
@@ -358,24 +297,15 @@ const docToQuote = (doc: QueryDocumentSnapshot<DocumentData>): Quote => ({
 } as Quote);
 
 export const getQuotes = async (): Promise<Quote[]> => {
-    // FIX: Rimosso orderBy lato server per prevenire errori 400 Bad Request su canali LongPolling
-    // se mancano indici o campi. L'ordinamento viene gestito lato client in Finance.tsx.
     const q = query(quoteCollectionRef);
     const snapshot = await getDocs(q);
-    const quotes = snapshot.docs.map(docToQuote);
-    // Sort client-side to ensure consistency
-    return quotes.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+    return snapshot.docs.map(docToQuote).sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
 };
 
 export const addQuote = async (quote: QuoteInput): Promise<string> => {
-    const quoteNumber = await getNextDocumentNumber('quotes', 'PR', 4); 
+    const quoteNumber = await getNextDocumentNumber('quotes', 'PR', 4);
     const docRef = await addDoc(quoteCollectionRef, { ...quote, quoteNumber, isDeleted: false });
     return docRef.id;
-};
-
-export const updateQuoteStatus = async (id: string, status: DocumentStatus): Promise<void> => {
-    const quoteDoc = doc(db, 'quotes', id);
-    await updateDoc(quoteDoc, { status });
 };
 
 export const updateQuote = async (id: string, quote: Partial<QuoteInput>): Promise<void> => {
@@ -383,32 +313,22 @@ export const updateQuote = async (id: string, quote: Partial<QuoteInput>): Promi
     await updateDoc(quoteDoc, quote);
 };
 
-// Soft Delete
 export const deleteQuote = async (id: string): Promise<void> => {
     const quoteDoc = doc(db, 'quotes', id);
     await updateDoc(quoteDoc, { isDeleted: true });
 };
 
-// Restore
-export const restoreQuote = async (id: string): Promise<void> => {
-    const quoteDoc = doc(db, 'quotes', id);
-    await updateDoc(quoteDoc, { isDeleted: false });
-};
-
-// Hard Delete
 export const permanentDeleteQuote = async (id: string): Promise<void> => {
     const quoteDoc = doc(db, 'quotes', id);
     await deleteDoc(quoteDoc);
 };
 
-// --- CLEANUP HELPER (Hard Delete Financials & Operational for Enrollment) ---
-// Now accepts the whole Enrollment object to clean up linked lessons/activities
+// --- CLEANUP HELPER ---
 export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promise<void> => {
     const clientId = enrollment.clientId;
     const childName = enrollment.childName;
 
-    // 1. FATTURE & TRANSAZIONI INCASSO
-    // Trova ed elimina Fatture collegate (identificate da note o convenzione)
+    // 1. FATTURE & TRANSAZIONI INCASSO (Entrate)
     const invoices = await getInvoices();
     const searchName = childName.toLowerCase();
     
@@ -421,9 +341,7 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
     );
 
     for (const inv of targetInvoices) {
-        // Elimina fisicamente la transazione collegata alla fattura
         await deleteTransactionByRelatedId(inv.id);
-        // Elimina fisicamente la fattura
         await permanentDeleteInvoice(inv.id);
     }
 
@@ -440,29 +358,15 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
         await permanentDeleteTransaction(t.id);
     }
 
-    // 3. COSTI NOLI (AUTO-RENT Transactions)
-    // ✅ FIXED: Cancella le transazioni noli associate a questo enrollment
-    // NOTA: Dopo la cancellazione, i costi noli dovrebbero essere ricalcolati da calculateRentTransactions()
-    // in Finance.tsx per altri enrollment della stessa sede nello stesso mese.
-    if (enrollment.locationId && enrollment.locationId !== 'unassigned') {
-        await deleteAutoRentTransactions(enrollment.locationId);
-        // TODO: Implementare ricalcolo granulare dei noli (attualmente solo cancella)
-    }
-
-    // 4. REGISTRO ATTIVITÀ (Lesson Activities)
-    // Elimina i collegamenti tra lezioni e attività per questo enrollment
+    // 3. REGISTRO ATTIVITÀ
     if (enrollment.appointments && enrollment.appointments.length > 0) {
         const lessonIds = enrollment.appointments.map(a => a.lessonId);
         await deleteLessonActivitiesForEnrollment(lessonIds);
     }
 };
 
-// Elimina i record lesson_activities collegati a un array di lessonIds
 const deleteLessonActivitiesForEnrollment = async (lessonIds: string[]): Promise<void> => {
     if (lessonIds.length === 0) return;
-    
-    // Firestore "in" query ha un limite di 30 (o 10). Facciamo tutto client-side filter per semplicità 
-    // visto che non abbiamo un indice diretto enrollmentId in lesson_activities
     const collectionRef = collection(db, 'lesson_activities');
     const snapshot = await getDocs(collectionRef);
     const batch = writeBatch(db);
@@ -478,24 +382,15 @@ const deleteLessonActivitiesForEnrollment = async (lessonIds: string[]): Promise
 
     if (count > 0) {
         await batch.commit();
-        console.log(`Eliminate ${count} attività didattiche collegate.`);
     }
 };
 
-// Nuova funzione per eliminare massivamente tutte le transazioni di un tipo (reset)
 export const resetFinancialData = async (type: TransactionType): Promise<void> => {
     const q = query(transactionCollectionRef, where("type", "==", type));
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
-    let count = 0;
-
     snapshot.docs.forEach((docSnap) => {
-        const t = docSnap.data() as Transaction;
         batch.delete(docSnap.ref);
-        count++;
     });
-
-    if (count > 0) {
-        await batch.commit();
-    }
+    await batch.commit();
 };

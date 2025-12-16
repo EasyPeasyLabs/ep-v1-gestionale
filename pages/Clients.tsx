@@ -133,11 +133,6 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // Richiedi telefono per supportare invio WhatsApp/contatti
-        if (!phone || phone.trim().length === 0) {
-            alert('Inserisci un numero di telefono valido per il cliente.');
-            return;
-        }
         const common = { email, phone, address, zipCode, city, province, clientType, notesHistory };
         
         if (clientType === ClientType.Parent) {
@@ -202,7 +197,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="md-input-group"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Email</label></div>
-                            <div className="md-input-group"><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} required className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
+                            <div className="md-input-group"><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
                         </div>
                         <div className="md-input-group"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Indirizzo</label></div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

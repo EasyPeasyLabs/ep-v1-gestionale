@@ -95,37 +95,19 @@ const CommunicationModal: React.FC<{
             
             // Apri le chat. Attenzione: i browser bloccano popup multipli.
             targetPhones.forEach(rawPhone => {
-                // 1. Validazione numero phone (BUG #3) - CRITICA per WhatsApp
-                if (!rawPhone || rawPhone.trim().length === 0) {
-                    console.error('[CRM] Numero di telefono vuoto - impossibile inviare WhatsApp');
-                    return; // Salta questo numero
-                }
-
-                // 2. Pulisce il numero: rimuove tutto tranne le cifre
+                // 1. Pulisce il numero: rimuove tutto tranne le cifre
                 let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
 
-                // 3. Validazione lunghezza (deve avere almeno 7 cifre, massimo 15)
-                if (cleanPhone.length < 7 || cleanPhone.length > 15) {
-                    console.error(`[CRM] Numero di telefono invalido (${cleanPhone.length} cifre): ${rawPhone}`);
-                    return; // Salta questo numero
-                }
-
-                // 4. Rimuove '00' iniziale se presente (standard internazionale)
+                // 2. Rimuove '00' iniziale se presente (standard internazionale)
                 if (cleanPhone.startsWith('00')) {
                     cleanPhone = cleanPhone.substring(2);
                 }
 
-                // 5. Logica Prefisso Italia (Smart Fix)
+                // 3. Logica Prefisso Italia (Smart Fix)
                 // Se il numero ha 10 cifre (es. 3331234567), assumiamo sia un mobile italiano senza prefisso.
                 // Aggiungiamo '39' automaticamente. Se ne ha 12 ed inizia con 39, è già corretto.
                 if (cleanPhone.length === 10) {
                     cleanPhone = '39' + cleanPhone;
-                }
-
-                // 6. Validazione finale - deve iniziare con prefisso paese (39 per Italia)
-                if (!cleanPhone.match(/^[1-9][0-9]{6,14}$/)) {
-                    console.error(`[CRM] Formato numero WhatsApp invalido: ${cleanPhone}`);
-                    return; // Salta questo numero
                 }
 
                 if (cleanPhone) {

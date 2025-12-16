@@ -1,139 +1,12 @@
 
-// --- Base Interfaces ---
-export interface DocumentBase {
-    id: string;
-    clientId: string;
-    clientName: string;
-    issueDate: string;
-    items: DocumentItem[];
-    totalAmount: number;
-    notes?: string;
-    paymentMethod?: PaymentMethod;
-    status: DocumentStatus;
-    hasStampDuty?: boolean;
-    installments?: Installment[];
-    isDeleted?: boolean;
-}
-
-export interface DocumentItem {
-    description: string;
-    quantity: number;
-    price: number;
-    notes?: string;
-}
-
-export interface Installment {
-    description: string;
-    dueDate: string;
-    amount: number;
-    isPaid: boolean;
-}
-
-// --- Enums ---
-export enum ClientType {
-    Parent = 'parent',
-    Institutional = 'institutional'
-}
-
-export enum EnrollmentStatus {
-    Pending = 'pending',
-    Active = 'active',
-    Completed = 'completed',
-    Expired = 'expired'
-}
-
-export enum TransactionType {
-    Income = 'income',
-    Expense = 'expense'
-}
-
-export enum TransactionCategory {
-    Sales = 'Vendite',
-    Rent = 'Nolo Sedi',
-    Taxes = 'Imposte e Tasse',
-    Fuel = 'Carburante',
-    Materials = 'Materiali',
-    ProfessionalServices = 'Servizi Professionali',
-    Software = 'Software',
-    Marketing = 'Marketing',
-    OtherExpense = 'Altre Spese',
-    OtherIncome = 'Altri Ricavi'
-}
-
-export enum PaymentMethod {
-    BankTransfer = 'Bonifico',
-    Cash = 'Contanti',
-    CreditCard = 'Carta di Credito',
-    PayPal = 'PayPal',
-    Check = 'Assegno'
-}
-
-export enum TransactionStatus {
-    Pending = 'pending',
-    Completed = 'completed',
-    Cancelled = 'cancelled'
-}
-
-export enum DocumentStatus {
-    Draft = 'draft',
-    Sent = 'sent',
-    Paid = 'paid',
-    Overdue = 'overdue',
-    PendingSDI = 'pending_sdi',
-    SealedSDI = 'sealed_sdi',
-    Void = 'void'
-}
-
-// --- Financial Models ---
-
-export interface Invoice extends DocumentBase {
-    invoiceNumber: string;
-    dueDate: string;
-    sdiCode?: string; // Codice Destinatario (Recipient Code)
-    sdiId?: string; // Numero Identificativo SDI (Transaction ID assegnato dall'AdE)
-    isProForma?: boolean;
-    relatedQuoteNumber?: string;
-    isGhost?: boolean; // Fattura "Fantasma" per il saldo futuro
-    promotionHistory?: {
-        originalGhostNumber: string; // Numero fantasma originale
-        promotedAt: string; // ISO8601 timestamp
-    };
-    updatedAt?: string; // Timestamp ultimo aggiornamento
-}
-
-export interface Quote extends DocumentBase {
-    quoteNumber: string;
-    expiryDate: string;
-}
-
-export type InvoiceInput = Omit<Invoice, 'id'>;
-export type QuoteInput = Omit<Quote, 'id'>;
-
-export interface Transaction {
-    id: string;
-    date: string;
-    description: string;
-    amount: number;
-    type: TransactionType;
-    category: TransactionCategory;
-    paymentMethod: PaymentMethod;
-    status: TransactionStatus;
-    relatedDocumentId?: string;
-    allocationType?: 'location' | 'project';
-    allocationId?: string;
-    allocationName?: string;
-    isDeleted?: boolean;
-    excludeFromStats?: boolean;
-}
-
-export type TransactionInput = Omit<Transaction, 'id'>;
-
-// --- Clients ---
-
 export interface Note {
     id: string;
     date: string;
     content: string;
+}
+
+export interface Rating {
+    [key: string]: number;
 }
 
 export interface ParentRating {
@@ -154,10 +27,15 @@ export interface Child {
     id: string;
     name: string;
     age: string;
-    rating?: ChildRating;
-    notes?: string;
-    notesHistory?: Note[];
-    tags?: string[];
+    notes: string;
+    notesHistory: Note[];
+    tags: string[];
+    rating: ChildRating;
+}
+
+export enum ClientType {
+    Parent = 'parent',
+    Institutional = 'institutional'
 }
 
 export interface BaseClient {
@@ -168,24 +46,21 @@ export interface BaseClient {
     zipCode: string;
     city: string;
     province: string;
+    notesHistory: Note[];
+    tags: string[];
     clientType: ClientType;
     isDeleted?: boolean;
-    notes?: string;
-    notesHistory?: Note[];
-    tags?: string[];
 }
 
 export interface ParentClient extends BaseClient {
-    clientType: ClientType.Parent;
     firstName: string;
     lastName: string;
     taxCode: string;
     children: Child[];
-    rating?: ParentRating;
+    rating: ParentRating;
 }
 
 export interface InstitutionalClient extends BaseClient {
-    clientType: ClientType.Institutional;
     companyName: string;
     vatNumber: string;
     numberOfChildren: number;
@@ -193,11 +68,10 @@ export interface InstitutionalClient extends BaseClient {
 }
 
 export type Client = ParentClient | InstitutionalClient;
+
 export type ClientInput = Omit<ParentClient, 'id'> | Omit<InstitutionalClient, 'id'>;
 export type ParentClientInput = Omit<ParentClient, 'id'>;
 export type InstitutionalClientInput = Omit<InstitutionalClient, 'id'>;
-
-// --- Suppliers & Locations ---
 
 export interface LocationRating {
     cost: number;
@@ -213,7 +87,7 @@ export interface LocationRating {
 
 export interface AvailabilitySlot {
     dayOfWeek: number; // 0-6
-    startTime: string; // HH:mm
+    startTime: string;
     endTime: string;
 }
 
@@ -233,7 +107,7 @@ export interface Location {
     rating?: LocationRating;
 }
 
-export type LocationInput = Omit<Location, 'id'>;
+export type LocationInput = Omit<Location, 'id'> & { id?: string };
 
 export interface SupplierRating {
     responsiveness: number;
@@ -245,40 +119,45 @@ export interface Supplier {
     id: string;
     companyName: string;
     vatNumber: string;
-    email: string;
-    phone: string;
     address: string;
+    zipCode: string;
     city: string;
     province: string;
-    zipCode: string;
+    email: string;
+    phone: string;
     locations: Location[];
-    rating?: SupplierRating;
-    notes?: string;
-    notesHistory?: Note[];
-    tags?: string[];
+    rating: SupplierRating;
+    notes: string;
+    notesHistory: Note[];
+    tags: string[];
     isDeleted?: boolean;
 }
 
 export type SupplierInput = Omit<Supplier, 'id'>;
 
-// --- Enrollment & Calendar ---
+export enum EnrollmentStatus {
+    Pending = 'pending',
+    Active = 'active',
+    Completed = 'completed',
+    Expired = 'expired'
+}
 
-export type AppointmentStatus = 'Scheduled' | 'Present' | 'Absent';
+export enum AppointmentStatus {
+    Scheduled = 'Scheduled',
+    Present = 'Present',
+    Absent = 'Absent'
+}
 
 export interface Appointment {
     lessonId: string;
-    date: string; // ISO
+    date: string;
     startTime: string;
     endTime: string;
-    // original scheduled location
+    locationId?: string; // Added for historical tracking of rent costs
     locationName: string;
     locationColor: string;
-    // actual location used at check-in (if different from scheduled)
-    actualLocationId?: string;
-    actualLocationName?: string;
-    actualLocationColor?: string;
     childName: string;
-    status: AppointmentStatus;
+    status: AppointmentStatus | string;
 }
 
 export interface Enrollment {
@@ -286,42 +165,24 @@ export interface Enrollment {
     clientId: string;
     childId: string;
     childName: string;
-    isAdult?: boolean;
+    isAdult: boolean;
     subscriptionTypeId: string;
     subscriptionName: string;
     price: number;
-    
     supplierId: string;
     supplierName: string;
     locationId: string;
     locationName: string;
     locationColor: string;
-    
-    appointments: Appointment[];
-    
     lessonsTotal: number;
     lessonsRemaining: number;
-    startDate: string; // ISO
-    endDate: string; // ISO
+    startDate: string;
+    endDate: string;
     status: EnrollmentStatus;
+    appointments: Appointment[];
 }
 
 export type EnrollmentInput = Omit<Enrollment, 'id'>;
-
-export interface Lesson {
-    id: string;
-    date: string;
-    startTime: string;
-    endTime: string;
-    locationName: string;
-    locationColor?: string;
-    // Manual lessons might not have enrollment/child
-    title?: string;
-}
-
-export type LessonInput = Omit<Lesson, 'id'>;
-
-// --- Settings ---
 
 export interface CompanyInfo {
     id: string;
@@ -339,11 +200,11 @@ export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';
 
 export interface SubscriptionStatusConfig {
     status: SubscriptionStatusType;
-    validDate?: string; // Data inizio (future/promo) o fine (obsolete)
+    validDate?: string;
     discountType?: 'percent' | 'fixed';
     discountValue?: number;
-    targetClientIds?: string[]; // Empty = All
-    targetLocationIds?: string[]; // Empty = All
+    targetLocationIds?: string[];
+    targetClientIds?: string[];
 }
 
 export interface SubscriptionType {
@@ -352,8 +213,8 @@ export interface SubscriptionType {
     price: number;
     lessons: number;
     durationInDays: number;
-    target?: 'kid' | 'adult';
-    statusConfig?: SubscriptionStatusConfig;
+    target: 'kid' | 'adult';
+    statusConfig: SubscriptionStatusConfig;
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
@@ -367,41 +228,144 @@ export interface CommunicationTemplate {
 }
 
 export enum CheckCategory {
-    Payments = 'Pagamenti',
-    Documents = 'Documenti',
-    Materials = 'Materiali',
-    Maintenance = 'Manutenzione',
-    Appointments = 'Appuntamenti',
-}
-
-export enum AppointmentType {
-    Generic = 'Generico',
-    Lesson = 'Lezione',
-    Meeting = 'Riunione',
+    Payments = 'Payments',
+    Administrative = 'Administrative',
+    Maintenance = 'Maintenance',
+    Other = 'Other'
 }
 
 export interface PeriodicCheck {
     id: string;
     category: CheckCategory;
-    subCategory?: AppointmentType | string | null;
+    subCategory: string;
     daysOfWeek: number[];
     startTime: string;
-    endTime: string;
+    endTime?: string;
     pushEnabled: boolean;
-    note?: string;
+    note: string;
 }
 
 export type PeriodicCheckInput = Omit<PeriodicCheck, 'id'>;
 
-export interface RecoveryPolicy {
-    policies: Record<string, 'allowed' | 'forbidden'>;
+export enum TransactionType {
+    Income = 'income',
+    Expense = 'expense'
 }
 
-// --- Notifications ---
+export enum TransactionCategory {
+    Sales = 'Sales',
+    Rent = 'Rent',
+    Taxes = 'Taxes',
+    Fuel = 'Fuel',
+    Materials = 'Materials',
+    ProfessionalServices = 'ProfessionalServices',
+    Software = 'Software',
+    Marketing = 'Marketing',
+    Capital = 'Capital',
+    Other = 'Other'
+}
+
+export enum PaymentMethod {
+    BankTransfer = 'Bonifico',
+    Cash = 'Contanti',
+    CreditCard = 'Carta di Credito',
+    PayPal = 'PayPal',
+    Other = 'Altro'
+}
+
+export enum TransactionStatus {
+    Pending = 'pending',
+    Completed = 'completed',
+    Cancelled = 'cancelled'
+}
+
+export interface Transaction {
+    id: string;
+    date: string;
+    description: string;
+    amount: number;
+    type: TransactionType;
+    category: TransactionCategory;
+    paymentMethod: PaymentMethod;
+    status: TransactionStatus;
+    relatedDocumentId?: string;
+    allocationType?: 'location' | 'general';
+    allocationId?: string;
+    allocationName?: string;
+    excludeFromStats?: boolean;
+    clientName?: string;
+    isDeleted?: boolean;
+}
+
+export type TransactionInput = Omit<Transaction, 'id'>;
+
+export enum DocumentStatus {
+    Draft = 'Draft',
+    Sent = 'Sent',
+    Paid = 'Paid',
+    Overdue = 'Overdue',
+    PendingSDI = 'PendingSDI',
+    SealedSDI = 'SealedSDI',
+    Void = 'Void'
+}
+
+export interface DocumentItem {
+    description: string;
+    quantity: number;
+    price: number;
+    notes?: string;
+}
+
+export interface Installment {
+    description: string;
+    dueDate: string;
+    amount: number;
+    isPaid: boolean;
+}
+
+export interface BaseDocument {
+    id: string;
+    clientId: string;
+    clientName: string;
+    issueDate: string;
+    items: DocumentItem[];
+    totalAmount: number;
+    notes?: string;
+    status: DocumentStatus;
+    isDeleted?: boolean;
+}
+
+export interface Invoice extends BaseDocument {
+    invoiceNumber: string;
+    dueDate: string;
+    paymentMethod: PaymentMethod;
+    hasStampDuty: boolean;
+    sdiCode?: string;
+    sdiId?: string;
+    isProForma?: boolean;
+    relatedQuoteNumber?: string;
+    isGhost?: boolean; // True if it's a provisional ghost invoice
+    promotionHistory?: {
+        originalGhostNumber: string;
+        promotedAt: string;
+    };
+    installments?: Installment[];
+}
+
+export type InvoiceInput = Omit<Invoice, 'id'>;
+
+export interface Quote extends BaseDocument {
+    quoteNumber: string;
+    expiryDate: string;
+    paymentMethod?: PaymentMethod;
+    installments?: Installment[];
+}
+
+export type QuoteInput = Omit<Quote, 'id'>;
 
 export interface Notification {
     id: string;
-    type: 'expiry' | 'low_lessons' | 'payment_required' | 'action_required' | 'balance_due' | 'sdi_deadline' | 'accountant_send';
+    type: 'payment_required' | 'expiry' | 'low_lessons' | 'balance_due' | 'action_required' | 'sdi_deadline' | 'accountant_send';
     message: string;
     clientId?: string;
     date: string;
@@ -409,7 +373,16 @@ export interface Notification {
     filterContext?: any;
 }
 
-// --- CRM ---
+export interface Lesson {
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    locationName: string;
+    locationColor: string;
+}
+
+export type LessonInput = Omit<Lesson, 'id'>;
 
 export interface CommunicationLog {
     id: string;
@@ -428,7 +401,7 @@ export interface CampaignRecipient {
     id: string;
     name: string;
     contact: string;
-    type: 'client' | 'supplier';
+    type: 'client' | 'supplier' | 'custom';
 }
 
 export interface Campaign {
@@ -442,25 +415,23 @@ export interface Campaign {
     startDate: string;
     time: string;
     frequency: 'once' | 'daily' | 'weekly' | 'monthly';
-    repeatCount?: number;
-    status: 'active' | 'completed' | 'paused' | 'draft';
+    repeatCount: number;
+    status: 'active' | 'completed' | 'paused';
     sentCount: number;
     nextRun: string;
 }
 
 export type CampaignInput = Omit<Campaign, 'id'>;
 
-// --- Activities & Homework ---
-
 export interface Activity {
     id: string;
     title: string;
     category: string;
-    theme?: string;
+    theme: string;
     description: string;
-    materials?: string;
-    links?: string;
-    attachments?: string[];
+    materials: string;
+    links: string;
+    attachments: string[];
     createdAt: string;
 }
 
@@ -476,13 +447,13 @@ export interface LessonActivity {
 export interface Homework {
     id: string;
     title: string;
-    description?: string;
+    description: string;
     type: 'textbook' | 'link';
     textbookName?: string;
     pageNumber?: string;
     exercises?: string;
     linkUrl?: string;
-    expectedOutcome?: string;
+    expectedOutcome: string;
     assignedDate?: string;
     assignedLocationId?: string;
     assignedLocationName?: string;
@@ -491,16 +462,14 @@ export interface Homework {
 
 export type HomeworkInput = Omit<Homework, 'id'>;
 
-// --- Initiatives & Library ---
-
 export interface Initiative {
     id: string;
     name: string;
     description: string;
     type: 'standard' | 'peek-a-book';
-    materials?: string;
-    targetLocationIds?: string[];
-    targetLocationNames?: string[];
+    materials: string;
+    targetLocationIds: string[];
+    targetLocationNames: string[];
 }
 
 export type InitiativeInput = Omit<Initiative, 'id'>;
@@ -508,8 +477,6 @@ export type InitiativeInput = Omit<Initiative, 'id'>;
 export interface Book {
     id: string;
     title: string;
-    author?: string;
-    isbn?: string;
     isAvailable: boolean;
 }
 
@@ -530,3 +497,14 @@ export interface BookLoan {
 }
 
 export type BookLoanInput = Omit<BookLoan, 'id'>;
+
+// --- AUDIT TRAIL ---
+export interface AuditLog {
+    id: string;
+    timestamp: string;
+    userEmail?: string;
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'PAYMENT';
+    entity: 'INVOICE' | 'TRANSACTION' | 'ENROLLMENT';
+    entityId: string;
+    details: string;
+}

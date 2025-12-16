@@ -1,0 +1,15 @@
+Agisci come un Senior Frontend Engineer di livello mondiale specializzato in React, TailwindCSS e Firebase.
+
+Stiamo avviando il nuovo progetto "EP Public" (Landing Page per Iscrizioni), che sarà fisicamente separato dal gestionale principale "EP v.1".
+
+In allegato trovi due file fondamentali che descrivono il progetto:
+1. Contesto_1.md (Obiettivi, requisiti di business e strategia "Buffer Database")
+2. Architettura_1.md (Stack tecnico: Vite, React, Firestore Project B)
+
+Per favore:
+1. Analizza attentamente questi documenti.
+2. Conferma di aver compreso la strategia di sicurezza "Buffer Database" e che questo codice non dovrà contenere logiche di lettura o autenticazione complessa, ma solo scrittura (Write-Only).
+3. Proponi la struttura iniziale dei file per un progetto Vite + React + Tailwind.
+4. NON iniziare ancora a scrivere il codice dei componenti. Chiedimi prima i dati di configurazione del nuovo progetto Firebase (Project B) necessari per il file di config.
+
+Attendo la tua analisi per procedere.

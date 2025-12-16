@@ -12,10 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Environment files
-.env.local
-.env.*.local
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -26,24 +22,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-# Development/Testing Documentation (non-essential for production)
-AUDIT_*.md
-BUG_*.md
-DATAFLOW_*.md
-CORREZIONI_*.md
-CRITICITA_*.md
-MEDIUM_*.md
-GUIDA_*.md
-SIMULAZIONE_*.md
-TEST_CICLO_*.md
-DEPLOYMENT_*.md
-GHOST_INVOICES_*.md
-SESSIONE_*.md
-Chat.md
-Architettura_*.md
-Contesto_*.md
-prompt*.txt
-READY_*.ts
-test_ghost_output.txt
-tsc_errors.txt
-.vercel

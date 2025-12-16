@@ -1,7 +1,6 @@
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Notification } from '../types';
-import { auth } from '../firebase/config';
 import Spinner from './Spinner';
 import ClockIcon from './icons/ClockIcon';
 import ExclamationIcon from './icons/ExclamationIcon';
@@ -13,20 +12,11 @@ interface NotificationsDropdownProps {
 }
 
 const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notifications, loading, onNotificationClick }) => {
-    const [userId, setUserId] = useState<string | undefined>(undefined);
-
-    useEffect(() => {
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-            setUserId(currentUser.uid);
-        }
-    }, []);
     
     const handleDismissAll = () => {
-        const storageKey = userId ? `ep_ignored_notifications_${userId}` : 'ep_ignored_notifications';
-        const currentIgnored = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        const currentIgnored = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
         const newIds = notifications.map(n => n.id);
-        localStorage.setItem(storageKey, JSON.stringify([...currentIgnored, ...newIds]));
+        localStorage.setItem('ep_ignored_notifications', JSON.stringify([...currentIgnored, ...newIds]));
         // Triggera evento per aggiornare (trucchetto per refreshare Header)
         window.dispatchEvent(new Event('EP_DataUpdated'));
     };
