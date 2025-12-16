@@ -4,7 +4,7 @@ import Chart from 'chart.js/auto';
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, 
-    DocumentStatus, CompanyInfo, Client, Supplier, Enrollment, EnrollmentStatus 
+    DocumentStatus, CompanyInfo, Client, Supplier, Enrollment, EnrollmentStatus, Page 
 } from '../types';
 import { 
     getTransactions, addTransaction, updateTransaction, deleteTransaction, 
@@ -36,7 +36,7 @@ const LIMIT_FORFETTARIO = 85000;
 
 interface FinanceProps {
     initialParams?: any;
-    onNavigate?: (page: string, params: any) => void;
+    onNavigate?: (page: Page, params: any) => void;
 }
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {

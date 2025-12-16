@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './firebase/config';
@@ -23,8 +24,7 @@ import Initiatives from './pages/Initiatives';
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
-
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives';
+import { Page } from './types';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');

@@ -508,3 +508,6 @@ export interface AuditLog {
     entityId: string;
     details: string;
 }
+
+// --- NAVIGATION ---
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Calendar' | 'CRM' | 'Finance' | 'Settings' | 'Profile' | 'Enrollments' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives';

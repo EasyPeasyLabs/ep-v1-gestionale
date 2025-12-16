@@ -6,12 +6,11 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getLessons } from '../services/calendarService'; 
 import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
-import { EnrollmentStatus, Notification, ClientType, ParentClient } from '../types';
+import { EnrollmentStatus, Notification, ClientType, ParentClient, Page } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
 import ChecklistIcon from '../components/icons/ChecklistIcon';
-import { Page } from '../App';
 import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
 

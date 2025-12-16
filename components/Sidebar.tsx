@@ -1,5 +1,6 @@
+
 import React, { useEffect, useState } from 'react';
-import { Page } from '../App';
+import { Page } from '../types';
 import { User } from 'firebase/auth';
 import DashboardIcon from './icons/DashboardIcon';
 import ClientsIcon from './icons/ClientsIcon';
