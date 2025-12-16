@@ -7,8 +7,7 @@
     "dev": "vite",
     "test": "vitest",
     "build": "vite build",
-    "preview": "vite preview",
-    "postinstall": "npm rebuild"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@firebase/app": "^0.14.6",
