@@ -179,6 +179,17 @@ export const calculateRentTransactions = (
 
 
 // --- Document Number Generation ---
+
+// ✅ TRACKING: Ghost invoice numbers to avoid conflicts with real sequence
+let ghostInvoiceCounters = new Map<number, number>(); // year -> counter
+
+const getNextGhostInvoiceNumber = (year: number = new Date().getFullYear()): string => {
+    const counter = (ghostInvoiceCounters.get(year) || 0) + 1;
+    ghostInvoiceCounters.set(year, counter);
+    const paddedSeq = String(counter).padStart(3, '0');
+    return `FT-GHOST-${year}-${paddedSeq}`;
+};
+
 const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
     const coll = collection(db, collectionName);
     // Use limit to reduce read cost, but assume logic is handled via app or specific query
@@ -194,6 +205,10 @@ const getNextDocumentNumber = async (collectionName: string, prefix: string, pad
             
             const num = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
             if (num && num.includes(currentYear)) {
+                // Skip ghost invoices when counting real sequence
+                if (collectionName === 'invoices' && num.includes('GHOST')) {
+                    return; // Continue to next iteration
+                }
                 const parts = num.split('-');
                 const seqStr = parts[parts.length - 1];
                 const seq = parseInt(seqStr, 10);
@@ -248,9 +263,61 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
 };
 
 export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, invoiceNumber: string}> => {
-    const invoiceNumber = invoice.invoiceNumber || await getNextDocumentNumber('invoices', 'FT', 3);
+    let invoiceNumber = invoice.invoiceNumber;
+    
+    // ✅ LOGIC: Assign numbers based on invoice type
+    if (!invoiceNumber) {
+        if (invoice.isGhost) {
+            // Ghost invoice: Assign temporary provisory number (FT-GHOST-2025-001, etc.)
+            const year = new Date(invoice.issueDate).getFullYear();
+            invoiceNumber = getNextGhostInvoiceNumber(year);
+        } else {
+            // Real invoice: Assign real progressive number (FT-2025-001, etc.)
+            invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3);
+        }
+    }
+    
     const docRef = await addDoc(invoiceCollectionRef, { ...invoice, invoiceNumber, isDeleted: false });
     return { id: docRef.id, invoiceNumber };
+};
+
+// ✅ NEW: Promote ghost invoice to real when balance payment is made
+// Called when: Customer pays remaining balance for a deposit-paid enrollment
+export const promoteGhostInvoiceToReal = async (ghostInvoiceNumber: string): Promise<string> => {
+    // Find the ghost invoice by its number
+    const q = query(invoiceCollectionRef, where("invoiceNumber", "==", ghostInvoiceNumber));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+        throw new Error(`Ghost invoice ${ghostInvoiceNumber} not found`);
+    }
+    
+    const ghostDoc = snapshot.docs[0];
+    const ghostData = ghostDoc.data() as Invoice;
+    
+    if (!ghostData.isGhost) {
+        throw new Error(`Invoice ${ghostInvoiceNumber} is not a ghost invoice`);
+    }
+    
+    // Assign real progressive number
+    const year = new Date(ghostData.issueDate).getFullYear();
+    const realNumber = await getNextDocumentNumber('invoices', 'FT', 3);
+    
+    // Update the ghost invoice: change to real status
+    const batch = writeBatch(db);
+    batch.update(ghostDoc.ref, {
+        invoiceNumber: realNumber,
+        isGhost: false,
+        status: DocumentStatus.Sent,
+        updatedAt: new Date().toISOString(),
+        promotionHistory: {
+            originalGhostNumber: ghostInvoiceNumber,
+            promotedAt: new Date().toISOString()
+        }
+    });
+    await batch.commit();
+    
+    return realNumber;
 };
 
 export const updateInvoiceStatus = async (id: string, status: DocumentStatus): Promise<void> => {

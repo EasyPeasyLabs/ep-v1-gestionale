@@ -94,6 +94,11 @@ export interface Invoice extends DocumentBase {
     isProForma?: boolean;
     relatedQuoteNumber?: string;
     isGhost?: boolean; // Fattura "Fantasma" per il saldo futuro
+    promotionHistory?: {
+        originalGhostNumber: string; // Numero fantasma originale
+        promotedAt: string; // ISO8601 timestamp
+    };
+    updatedAt?: string; // Timestamp ultimo aggiornamento
 }
 
 export interface Quote extends DocumentBase {

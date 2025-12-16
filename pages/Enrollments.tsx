@@ -4,7 +4,7 @@ import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, Transactio
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
-import { addTransaction, deleteTransactionByRelatedId, addInvoice, cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices, getTransactions } from '../services/financeService';
+import { addTransaction, deleteTransactionByRelatedId, addInvoice, promoteGhostInvoiceToReal, cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices, getTransactions } from '../services/financeService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -320,31 +320,93 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             // CASE 1: CREATE INVOICE (Taxable or Pro-Forma based on sealing later)
             if (createInvoice) {
                 let desc = `Iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
-                if (isDeposit) desc = `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
-                if (isBalance) {
-                    desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
-                    if (previousDepositInvoiceNumber) {
-                        desc += ` (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
+                let invoiceNumber: string;
+                let invoiceId: string;
+                
+                if (isBalance && previousDepositInvoiceNumber) {
+                    // BALANCE PAYMENT: Promote ghost invoice to real
+                    // 1. Find the ghost invoice number
+                    // The ghost invoice should have been created when deposit was paid
+                    // Search for ghost invoices linked to this enrollment for this balance
+                    const allInvoices = await getInvoices();
+                    const ghostInvoice = allInvoices.find(inv => 
+                        inv.clientId === enr.clientId && 
+                        inv.isGhost === true &&
+                        inv.notes && inv.notes.includes(enr.id) &&
+                        (inv.notes.includes(previousDepositInvoiceNumber) || inv.items[0]?.notes?.includes(previousDepositInvoiceNumber))
+                    );
+                    
+                    if (ghostInvoice && ghostInvoice.invoiceNumber.includes('GHOST')) {
+                        // Promote the ghost invoice to real
+                        try {
+                            invoiceNumber = await promoteGhostInvoiceToReal(ghostInvoice.invoiceNumber);
+                            invoiceId = ghostInvoice.id;
+                            desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName} (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
+                        } catch (err) {
+                            console.error(`Failed to promote ghost invoice: ${err}`);
+                            // Fallback: Create a new real invoice
+                            desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName} (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
+                            const invoiceInput: InvoiceInput = {
+                                clientId: enr.clientId,
+                                clientName: clientName,
+                                issueDate: paymentIsoDate,
+                                dueDate: paymentIsoDate,
+                                status: DocumentStatus.PendingSDI, 
+                                paymentMethod: method,
+                                items: [{ description: desc, quantity: 1, price: actualAmount, notes: `Sede: ${enr.locationName} | Iscrizione: ${enr.id}` }],
+                                totalAmount: actualAmount,
+                                hasStampDuty: actualAmount > 77, 
+                                notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
+                                invoiceNumber: ''
+                            };
+                            const result = await addInvoice(invoiceInput);
+                            invoiceNumber = result.invoiceNumber;
+                            invoiceId = result.id;
+                        }
+                    } else {
+                        // No ghost invoice found, create a regular balance invoice
+                        desc = `Saldo iscrizione corso: ${enr.childName} - ${enr.subscriptionName} (a saldo della fattura di acconto n. ${previousDepositInvoiceNumber})`;
+                        const invoiceInput: InvoiceInput = {
+                            clientId: enr.clientId,
+                            clientName: clientName,
+                            issueDate: paymentIsoDate,
+                            dueDate: paymentIsoDate,
+                            status: DocumentStatus.PendingSDI, 
+                            paymentMethod: method,
+                            items: [{ description: desc, quantity: 1, price: actualAmount, notes: `Sede: ${enr.locationName} | Iscrizione: ${enr.id}` }],
+                            totalAmount: actualAmount,
+                            hasStampDuty: actualAmount > 77, 
+                            notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
+                            invoiceNumber: ''
+                        };
+                        const result = await addInvoice(invoiceInput);
+                        invoiceNumber = result.invoiceNumber;
+                        invoiceId = result.id;
                     }
+                } else {
+                    // DEPOSIT OR FULL PAYMENT: Create a new real invoice
+                    if (isDeposit) desc = `Acconto iscrizione corso: ${enr.childName} - ${enr.subscriptionName}`;
+                    
+                    let itemNotes = `Sede: ${enr.locationName} | Iscrizione: ${enr.id}`;
+
+                    const invoiceInput: InvoiceInput = {
+                        clientId: enr.clientId,
+                        clientName: clientName,
+                        issueDate: paymentIsoDate,
+                        dueDate: paymentIsoDate,
+                        status: DocumentStatus.PendingSDI, 
+                        paymentMethod: method,
+                        items: [{ description: desc, quantity: 1, price: actualAmount, notes: itemNotes }],
+                        totalAmount: actualAmount,
+                        hasStampDuty: actualAmount > 77, 
+                        notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
+                        invoiceNumber: '' 
+                    };
+
+                    const result = await addInvoice(invoiceInput);
+                    invoiceNumber = result.invoiceNumber;
+                    invoiceId = result.id;
                 }
-
-                let itemNotes = `Sede: ${enr.locationName} | Iscrizione: ${enr.id}`;
-
-                const invoiceInput: InvoiceInput = {
-                    clientId: enr.clientId,
-                    clientName: clientName,
-                    issueDate: paymentIsoDate,
-                    dueDate: paymentIsoDate,
-                    status: DocumentStatus.PendingSDI, 
-                    paymentMethod: method,
-                    items: [{ description: desc, quantity: 1, price: actualAmount, notes: itemNotes }],
-                    totalAmount: actualAmount,
-                    hasStampDuty: actualAmount > 77, 
-                    notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
-                    invoiceNumber: '' 
-                };
-
-                const { id: invoiceId, invoiceNumber } = await addInvoice(invoiceInput);
                 
                 // Creates Transaction LINKED to Invoice (Taxable if Invoice is sealed)
                 if (actualAmount > 0) {
@@ -380,7 +442,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             }],
                             totalAmount: balance,
                             hasStampDuty: balance > 77,
-                            notes: 'Fattura generata automaticamente come saldo.',
+                            notes: `Rif. Iscrizione ${enr.childName} [${enr.id}]`,
                             invoiceNumber: '',
                             isGhost: true 
                         };
