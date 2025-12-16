@@ -75,6 +75,8 @@ git push origin main
 ```
 
 Vercel triggerizzerà automaticamente il build e il deploy.
+test git: prova push
+
 
 ---
 
