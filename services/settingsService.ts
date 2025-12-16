@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput } from '../types';
@@ -29,8 +30,8 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
         if (docSnap.exists()) {
             const data = docSnap.data() as CompanyInfo;
             return { 
-                id: docSnap.id, 
                 ...data, 
+                id: docSnap.id,
                 logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64,
                 carFuelConsumption: data.carFuelConsumption || 16.5
             };
