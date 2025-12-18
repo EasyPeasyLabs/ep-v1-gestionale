@@ -5,6 +5,24 @@
       "collectionGroup": "invoices",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "isGhost", "order": "ASCENDING" },
+        { "fieldPath": "issueDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isGhost", "order": "ASCENDING" },
+        { "fieldPath": "isDeleted", "order": "ASCENDING" },
+        { "fieldPath": "issueDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "invoices",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "clientId", "order": "ASCENDING" },
         { "fieldPath": "isGhost", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
@@ -17,6 +35,15 @@
       "fields": [
         { "fieldPath": "relatedDocumentId", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "allocationId", "order": "ASCENDING" },
+        { "fieldPath": "category", "order": "ASCENDING" },
+        { "fieldPath": "relatedDocumentId", "order": "ASCENDING" }
       ]
     },
     {

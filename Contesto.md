@@ -14,7 +14,7 @@ Ho già creato:
 
 ## Stato di Avanzamento (Roadmap)
 
-Di seguito lo stato corrente delle funzionalità implementate al **15 Giugno 2024**:
+Di seguito lo stato corrente delle funzionalità implementate al **18 Dicembre 2025**:
 
 ### Core Features (Completate)
 - [x] **Autenticazione**: Login Admin via Firebase Auth.

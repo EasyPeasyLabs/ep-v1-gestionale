@@ -61,7 +61,15 @@ export const deleteTransactionByRelatedId = async (relatedId: string): Promise<v
 };
 
 export const deleteAutoRentTransactions = async (locationId: string): Promise<void> => {
-    console.warn("deleteAutoRentTransactions chiamata, ma la cancellazione massiva è disabilitata per preservare lo storico.");
+    const q = query(transactionCollectionRef, 
+        where("allocationId", "==", locationId),
+        where("category", "==", TransactionCategory.Rent),
+        where("relatedDocumentId", ">=", "AUTO-RENT")
+    );
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
 };
 
 export const batchAddTransactions = async (transactions: TransactionInput[]): Promise<void> => {
@@ -148,33 +156,32 @@ export const calculateRentTransactions = (
 // --- Document Number Generation ---
 export const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
     const coll = collection(db, collectionName);
-    // IMPORTANTE: Escludiamo le fatture Ghost dal conteggio per non saltare numeri
-    // Se la collection è 'invoices', filtriamo isGhost == false
-    let q;
+    const currentYear = new Date().getFullYear().toString();
     
+    // Filtriamo per escludere Ghost e documenti di anni precedenti
+    let q;
     if (collectionName === 'invoices') {
         q = query(
             coll, 
-            where("isGhost", "==", false), // Ignora Ghost
+            where("isGhost", "==", false),
+            where("isDeleted", "==", false),
             orderBy('issueDate', 'desc'), 
-            limit(50)
+            limit(100)
         );
     } else {
-        q = query(coll, orderBy('issueDate', 'desc'), limit(50));
+        q = query(coll, where("isDeleted", "==", false), orderBy('issueDate', 'desc'), limit(100));
     }
 
     const snapshot = await getDocs(q);
-    
-    const currentYear = new Date().getFullYear().toString();
     let lastSeq = 0;
 
     if (!snapshot.empty) {
         snapshot.docs.forEach(d => {
             const data = d.data() as any;
-            
             const num = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
-            // Doppio controllo per sicurezza: se il numero contiene GHOST, saltalo
-            if (num && num.includes(currentYear) && !num.includes('GHOST')) {
+            
+            // Verifichiamo che il numero appartenga all'anno corrente e segua il pattern PREFIX-YYYY-SEQ
+            if (num && num.startsWith(`${prefix}-${currentYear}`)) {
                 const parts = num.split('-');
                 const seqStr = parts[parts.length - 1];
                 const seq = parseInt(seqStr, 10);
@@ -189,23 +196,20 @@ export const getNextDocumentNumber = async (collectionName: string, prefix: stri
     return `${prefix}-${currentYear}-${newSeq}`;
 };
 
-// Generatore dedicato per fatture Ghost
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {
     const coll = collection(db, 'invoices');
-    // Cerchiamo l'ultimo numero Ghost dell'anno corrente
     const currentYear = new Date().getFullYear().toString();
+    const prefix = `FT-GHOST-${currentYear}`;
     
-    // Non possiamo fare where isGhost==true AND orderBy issueDate senza indice composto.
-    // Facciamo query semplice e filtriamo in memoria, dato che i ghost sono pochi.
-    const q = query(coll, where("isGhost", "==", true));
+    const q = query(coll, where("isGhost", "==", true), where("isDeleted", "==", false));
     const snapshot = await getDocs(q);
     
     let lastSeq = 0;
     snapshot.docs.forEach(d => {
         const num = d.data().invoiceNumber;
-        if (num && num.includes(`FT-GHOST-${currentYear}`)) {
+        if (num && num.startsWith(prefix)) {
             const parts = num.split('-');
-            const seqStr = parts[parts.length - 1]; // Assumiamo FT-GHOST-202X-NNN
+            const seqStr = parts[parts.length - 1];
             const seq = parseInt(seqStr, 10);
             if (!isNaN(seq) && seq > lastSeq) {
                 lastSeq = seq;
@@ -214,7 +218,7 @@ export const getNextGhostInvoiceNumber = async (): Promise<string> => {
     });
 
     const newSeq = (lastSeq + 1).toString().padStart(3, '0');
-    return `FT-GHOST-${currentYear}-${newSeq}`;
+    return `${prefix}-${newSeq}`;
 };
 
 
@@ -257,7 +261,6 @@ export const checkAndSetOverdueInvoices = async (): Promise<void> => {
 };
 
 export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, invoiceNumber: string}> => {
-    // Determina il numero corretto (Ghost vs Real)
     let invoiceNumber = invoice.invoiceNumber;
     
     if (!invoiceNumber) {
@@ -333,6 +336,7 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
     
     const targetInvoices = invoices.filter(i => 
         i.clientId === clientId && 
+        !i.isDeleted &&
         (
             (i.notes && i.notes.toLowerCase().includes(searchName)) || 
             i.items.some(item => item.description.toLowerCase().includes(searchName))
@@ -348,7 +352,7 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
     const transactions = await getTransactions();
     const targetIncomeTrans = transactions.filter(t => {
         const desc = t.description.toLowerCase();
-        return (t.type === TransactionType.Income) && 
+        return !t.isDeleted && (t.type === TransactionType.Income) && 
                (desc.includes(`incasso iscrizione (contanti): ${searchName}`) ||
                 desc.includes(`incasso iscrizione (contanti) - ${searchName}`));
     });

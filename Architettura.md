@@ -18,6 +18,7 @@ Il progetto è una Single Page Application (SPA) moderna, basata su un'architett
 ### Backend (Firebase Ecosystem)
 -   **Database**: Google Cloud Firestore (NoSQL Document Store).
     -   Modalità Offline: `persistentLocalCache` abilitata per resilienza di rete.
+    -   **Indici**: Utilizzo di `firestore.indexes.json` per definire indici composti necessari per query complesse (es. ordinamento per data + filtro per stato cancellazione).
 -   **Auth**: Firebase Authentication (Gestione Admin).
 -   **Storage**: Firebase Cloud Storage (Media, allegati campagne e attività).
 -   **Serverless Functions**: Firebase Cloud Functions Gen 2 (Node.js 20).

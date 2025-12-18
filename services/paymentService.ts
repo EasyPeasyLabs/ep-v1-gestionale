@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { runTransaction, doc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { 
@@ -7,7 +8,7 @@ import {
     Client, ClientType, ParentClient, InstitutionalClient
 } from '../types';
 import { logFinancialAction } from './auditService';
-import { getNextDocumentNumber } from './financeService';
+import { getNextDocumentNumber, getNextGhostInvoiceNumber } from './financeService';
 
 interface PaymentResult {
     success: boolean;
@@ -15,13 +16,6 @@ interface PaymentResult {
     error?: string;
 }
 
-/**
- * Gestisce il flusso di pagamento in modo ATOMICO.
- * 1. Crea Fattura Reale (Opzionale) o PROMUOVE Fattura Ghost
- * 2. Crea Transazione
- * 3. Aggiorna Iscrizione (Status)
- * 4. Gestisce Fatture Fantasma future (Saldo Logic)
- */
 export const processPayment = async (
     enrollment: Enrollment,
     client: Client | undefined,
@@ -29,218 +23,154 @@ export const processPayment = async (
     date: string,
     method: PaymentMethod,
     createInvoice: boolean,
-    isDeposit: boolean, // È un acconto?
+    isDeposit: boolean,
     fullPrice: number,
-    ghostInvoiceIdToPromote?: string // NEW: Se presente, promuoviamo questa fattura
+    ghostInvoiceIdToPromote?: string
 ): Promise<PaymentResult> => {
     
     try {
         let clientName = 'Cliente Sconosciuto';
         if (client) {
-            if (client.clientType === ClientType.Parent) {
-                const p = client as ParentClient;
-                clientName = `${p.firstName} ${p.lastName}`;
-            } else {
-                const i = client as InstitutionalClient;
-                clientName = i.companyName;
-            }
+            clientName = client.clientType === ClientType.Parent 
+                ? `${(client as ParentClient).firstName} ${(client as ParentClient).lastName}` 
+                : (client as InstitutionalClient).companyName;
         }
 
-        // Calcoliamo il prossimo numero reale FUORI dalla transazione ma in modo sicuro?
-        // Firestore transactions require reads before writes. 
-        // getNextDocumentNumber fa una query. Non possiamo farla dentro la transaction facilmente senza index.
-        // Accettiamo una "optimistic generation" o la facciamo dentro?
-        // Per semplicità e coerenza con financeService, generiamo il numero qui (piccolo rischio race condition ma accettabile per questo volume)
+        // Generazione numero reale (FT-YYYY-XXX)
         let nextRealInvoiceNumber = '';
         if (createInvoice || ghostInvoiceIdToPromote) {
             nextRealInvoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3);
         }
 
-        await runTransaction(db, async (t) => {
+        let enrollmentActivated = false;
+
+        await runTransaction(db, async (transaction) => {
+            const enrRef = doc(db, 'enrollments', enrollment.id);
+            const enrSnap = await transaction.get(enrRef);
             
-            // 1. Manage Invoice (Create or Promote)
-            let invoiceRef;
-            let invoiceNumber = '';
+            if (!enrSnap.exists()) throw new Error("Iscrizione non trovata nel database.");
 
+            let invoiceId = '';
+            let finalInvoiceNumber = '';
+
+            // 1. Gestione Fattura (Promozione o Nuova)
             if (ghostInvoiceIdToPromote) {
-                // --- PROMOTION LOGIC ---
-                invoiceRef = doc(db, 'invoices', ghostInvoiceIdToPromote);
-                const ghostSnap = await t.get(invoiceRef);
+                const ghostRef = doc(db, 'invoices', ghostInvoiceIdToPromote);
+                const ghostSnap = await transaction.get(ghostRef);
                 
-                if (!ghostSnap.exists()) throw new Error("Fattura Ghost non trovata per la promozione.");
-                
-                const ghostData = ghostSnap.data() as Invoice;
-                const originalNumber = ghostData.invoiceNumber;
-
-                // Update to Real Invoice
-                t.update(invoiceRef, {
-                    isGhost: false,
-                    invoiceNumber: nextRealInvoiceNumber,
-                    status: DocumentStatus.PendingSDI, // O Paid, ma PendingSDI avvia il flusso corretto
-                    paymentMethod: method,
-                    promotionHistory: {
-                        originalGhostNumber: originalNumber,
-                        promotedAt: new Date().toISOString()
-                    },
-                    // Aggiorna l'importo se differisce (es. saldo parziale su saldo previsto)
-                    totalAmount: amount,
-                    items: ghostData.items.map(item => ({...item, price: amount, description: item.description.replace('Saldo residuo', 'Saldo')}))
-                });
-                
-                invoiceNumber = nextRealInvoiceNumber;
-
+                if (ghostSnap.exists()) {
+                    finalInvoiceNumber = nextRealInvoiceNumber;
+                    transaction.update(ghostRef, {
+                        isGhost: false,
+                        invoiceNumber: finalInvoiceNumber,
+                        status: DocumentStatus.PendingSDI,
+                        paymentMethod: method,
+                        issueDate: new Date(date).toISOString(),
+                        totalAmount: amount,
+                        promotionHistory: {
+                            originalGhostNumber: ghostSnap.data().invoiceNumber,
+                            promotedAt: new Date().toISOString()
+                        }
+                    });
+                    invoiceId = ghostInvoiceIdToPromote;
+                }
             } else if (createInvoice) {
-                // --- CREATION LOGIC ---
-                invoiceRef = doc(collection(db, 'invoices'));
-                invoiceNumber = nextRealInvoiceNumber;
-
-                let desc = `Iscrizione: ${enrollment.childName} - ${enrollment.subscriptionName}`;
-                if (isDeposit) desc = `Acconto: ${desc}`;
-                else if (amount < fullPrice) desc = `Saldo/Parziale: ${desc}`;
+                const newInvRef = doc(collection(db, 'invoices'));
+                finalInvoiceNumber = nextRealInvoiceNumber;
+                
+                const desc = isDeposit 
+                    ? `Acconto Iscrizione: ${enrollment.childName} - ${enrollment.subscriptionName}`
+                    : `Saldo/Pagamento Iscrizione: ${enrollment.childName} - ${enrollment.subscriptionName}`;
 
                 const newInvoice: InvoiceInput = {
-                    invoiceNumber,
+                    invoiceNumber: finalInvoiceNumber,
                     clientId: enrollment.clientId,
                     clientName,
                     issueDate: new Date(date).toISOString(),
                     dueDate: new Date(date).toISOString(),
                     status: DocumentStatus.PendingSDI,
                     paymentMethod: method,
-                    items: [{ 
-                        description: desc, 
-                        quantity: 1, 
-                        price: amount, 
-                        notes: `Sede: ${enrollment.locationName}` 
-                    }],
+                    items: [{ description: desc, quantity: 1, price: amount, notes: `Sede: ${enrollment.locationName}` }],
                     totalAmount: amount,
                     hasStampDuty: amount > 77,
-                    notes: `Rif. Iscrizione ${enrollment.childName}`,
                     isGhost: false
                 };
 
-                t.set(invoiceRef, { ...newInvoice, isDeleted: false });
+                transaction.set(newInvRef, { ...newInvoice, isDeleted: false });
+                invoiceId = newInvRef.id;
             }
 
-            // 2. Create Transaction
+            // 2. Registrazione Transazione Finanziaria
             if (amount > 0) {
                 const transRef = doc(collection(db, 'transactions'));
-                t.set(transRef, {
+                transaction.set(transRef, {
                     date: new Date(date).toISOString(),
-                    description: `${(createInvoice || ghostInvoiceIdToPromote) ? `Incasso FT ${invoiceNumber}` : 'Incasso'} - ${enrollment.childName}`,
+                    description: `Incasso ${finalInvoiceNumber || 'Iscrizione'} - ${enrollment.childName}`,
                     amount: amount,
                     type: TransactionType.Income,
                     category: TransactionCategory.Sales,
                     paymentMethod: method,
                     status: TransactionStatus.Completed,
-                    relatedDocumentId: invoiceRef ? invoiceRef.id : undefined,
+                    relatedDocumentId: invoiceId || undefined,
                     allocationType: 'location',
                     allocationId: enrollment.locationId,
                     allocationName: enrollment.locationName,
-                    excludeFromStats: !(createInvoice || ghostInvoiceIdToPromote), 
                     isDeleted: false
                 });
             }
 
-            // 3. Update Enrollment Status
-            const enrRef = doc(db, 'enrollments', enrollment.id);
-            if (enrollment.status === EnrollmentStatus.Pending) {
-                t.update(enrRef, { status: EnrollmentStatus.Active });
+            // 3. CAMBIO STATO ISCRIZIONE (Cruciale: Da Dormiente ad Attivo)
+            // Se lo stato attuale è Pending, il pagamento conferma l'iscrizione.
+            const currentData = enrSnap.data();
+            if (currentData.status === EnrollmentStatus.Pending) {
+                transaction.update(enrRef, { status: EnrollmentStatus.Active });
+                enrollmentActivated = true;
             }
         });
 
-        // --- POST TRANSACTION LOGIC (GHOST INVOICES FUTURE) ---
-        // Se abbiamo appena promosso una ghost, non ne creiamo un'altra a meno che non ci sia ANCORA un residuo.
-        // Ma handleGhostInvoices voida le vecchie.
-        // Se ghostInvoiceIdToPromote era presente, è già stata aggiornata (non è più ghost/draft), quindi handleGhostInvoices non la toccherà.
+        // 4. Gestione Pro-forma Residua (Post-Transazione)
+        if (isDeposit) {
+            await createRemainingGhostInvoice(enrollment, clientName, fullPrice - amount, date);
+        }
+
+        const logDetails = `Pagamento di ${amount}€ registrato.${enrollmentActivated ? ' Iscrizione ATTIVATA (era Dormiente).' : ''}`;
+        await logFinancialAction('PAYMENT', 'ENROLLMENT', enrollment.id, logDetails);
         
-        await handleGhostInvoices(enrollment, clientName, amount, fullPrice, date);
-
-        // Audit
-        await logFinancialAction('PAYMENT', 'ENROLLMENT', enrollment.id, `Pagamento registrato: ${amount}€ ${ghostInvoiceIdToPromote ? '(Promozione Ghost)' : ''}`);
-
-        return { success: true };
+        return { success: true, invoiceNumber: nextRealInvoiceNumber };
 
     } catch (e: any) {
-        console.error("Payment Transaction Failed:", e);
+        console.error("Payment registration failed:", e);
         return { success: false, error: e.message };
     }
 };
 
-// Funzione separata per gestire i saldi multipli
-const handleGhostInvoices = async (
-    enrollment: Enrollment, 
-    clientName: string,
-    paidAmount: number, 
-    totalPrice: number,
-    paymentDate: string
-) => {
+const createRemainingGhostInvoice = async (enrollment: Enrollment, clientName: string, remainingAmount: number, date: string) => {
+    if (remainingAmount <= 0) return;
+
+    const ghostNumber = await getNextGhostInvoiceNumber();
+    const ghostRef = doc(collection(db, 'invoices'));
+    
+    const ghostInvoice: InvoiceInput = {
+        clientId: enrollment.clientId,
+        clientName,
+        issueDate: new Date(date).toISOString(),
+        dueDate: enrollment.endDate,
+        status: DocumentStatus.Draft,
+        paymentMethod: PaymentMethod.BankTransfer,
+        items: [{ 
+            description: `Saldo residuo: ${enrollment.childName}`, 
+            quantity: 1, 
+            price: remainingAmount, 
+            notes: `Riferimento corso ${enrollment.subscriptionName}` 
+        }],
+        totalAmount: remainingAmount,
+        hasStampDuty: remainingAmount > 77,
+        isGhost: true,
+        invoiceNumber: ghostNumber,
+        notes: "Documento pro-forma per il saldo finale."
+    };
+
     const batch = writeBatch(db);
-    
-    // 1. Trova tutte le Ghost Invoices attive RIMASTE (Draft & isGhost=true)
-    const q = query(
-        collection(db, 'invoices'), 
-        where("clientId", "==", enrollment.clientId),
-        where("isGhost", "==", true),
-        where("status", "==", DocumentStatus.Draft),
-        where("isDeleted", "==", false)
-    );
-    
-    const snapshot = await getDocs(q);
-    
-    // Annulla (Void) tutte le vecchie ghost per rigenerare il calcolo corretto
-    snapshot.docs.forEach(d => {
-        const data = d.data() as Invoice;
-        // Solo se relative a questo bambino/corso
-        if (data.items.some(i => i.description.includes(enrollment.childName))) {
-            batch.update(d.ref, { status: DocumentStatus.Void, notes: `Annullata per ricalcolo saldo il ${new Date().toLocaleDateString()}` });
-        }
-    });
-
-    // 2. Calcola residuo totale BASANDOSI SULLE FATTURE REALI
-    // Ora che l'eventuale promozione è avvenuta, la fattura appena pagata è "Reale" (isGhost=false), quindi verrà contata qui.
-    const realInvoicesQuery = query(
-        collection(db, 'invoices'),
-        where("clientId", "==", enrollment.clientId),
-        where("isGhost", "==", false),
-        where("isDeleted", "==", false)
-    );
-    const realSnaps = await getDocs(realInvoicesQuery);
-    let totalPaid = 0;
-    realSnaps.docs.forEach(d => {
-        const inv = d.data() as Invoice;
-        if (inv.items.some(i => i.description.includes(enrollment.childName))) {
-            totalPaid += inv.totalAmount;
-        }
-    });
-    
-    const remaining = totalPrice - totalPaid;
-
-    if (remaining > 1) { // Tolleranza 1€
-        // Importante: Generiamo un numero "FT-GHOST-..." per la nuova previsione
-        const ghostNumber = await import('./financeService').then(m => m.getNextGhostInvoiceNumber());
-        
-        const ghostRef = doc(collection(db, 'invoices'));
-        const ghostInvoice: InvoiceInput = {
-            clientId: enrollment.clientId,
-            clientName: clientName,
-            issueDate: new Date(paymentDate).toISOString(),
-            dueDate: enrollment.endDate,
-            status: DocumentStatus.Draft,
-            paymentMethod: PaymentMethod.BankTransfer,
-            items: [{
-                description: `Saldo residuo: ${enrollment.childName}`,
-                quantity: 1,
-                price: remaining,
-                notes: `Generata automaticamente. Totale corso: ${totalPrice}€`
-            }],
-            totalAmount: remaining,
-            hasStampDuty: remaining > 77,
-            notes: 'Fattura pro-forma per saldo futuro.',
-            invoiceNumber: ghostNumber, // Use dedicated Ghost Number
-            isGhost: true
-        };
-        batch.set(ghostRef, { ...ghostInvoice, isDeleted: false });
-    }
-
+    batch.set(ghostRef, { ...ghostInvoice, isDeleted: false });
     await batch.commit();
 };

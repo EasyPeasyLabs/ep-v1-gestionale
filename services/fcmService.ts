@@ -1,3 +1,4 @@
+
 import { messaging, db } from '../firebase/config';
 import { getToken } from 'firebase/messaging';
 import { doc, setDoc } from 'firebase/firestore';
@@ -9,24 +10,26 @@ const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7
 const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if ('serviceWorker' in navigator) {
     try {
-      // FIX: Usiamo un percorso relativo assoluto.
-      // Non usiamo window.location.origin perché in ambienti di preview può differire dall'origine reale di esecuzione,
-      // causando errori di sicurezza (Origin Mismatch).
-      // Rimuoviamo anche 'scope: "/"' per lasciare che il browser usi il default (la root), evitando risoluzioni errate.
-      const swUrl = '/firebase-messaging-sw.js';
+      // FIX: Attendere che la pagina sia completamente caricata per evitare "The document is in an invalid state"
+      // Usiamo una Promise che si risolve immediatamente se 'complete', altrimenti attende 'load'.
+      if (document.readyState !== 'complete') {
+          await new Promise<void>((resolve) => {
+              const handler = () => {
+                  window.removeEventListener('load', handler);
+                  resolve();
+              };
+              window.addEventListener('load', handler);
+          });
+      }
+
+      // FIX: Costruiamo l'URL completo usando window.location.origin per evitare mismatch di origine
+      const swUrl = new URL('/firebase-messaging-sw.js', window.location.origin).href;
       
       const registration = await navigator.serviceWorker.register(swUrl);
       return registration;
     } catch (err: any) {
       console.error('[FCM Service] Errore CRITICO registrazione SW:', err);
-      // Tentativo di fallback con percorso relativo corrente
-      try {
-          const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-          return registration;
-      } catch (fallbackErr) {
-          console.error('[FCM Service] Fallback fallito:', fallbackErr);
-          return null;
-      }
+      return null;
     }
   }
   return null;

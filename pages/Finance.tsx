@@ -4,19 +4,18 @@ import Chart from 'chart.js/auto';
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, 
-    DocumentStatus, CompanyInfo, Client, Supplier, Enrollment, EnrollmentStatus, Page 
+    DocumentStatus, CompanyInfo, Client, Supplier, Enrollment, Page 
 } from '../types';
 import { 
     getTransactions, addTransaction, updateTransaction, deleteTransaction, 
     permanentDeleteTransaction, getInvoices, addInvoice, updateInvoice, 
     deleteInvoice, permanentDeleteInvoice, getQuotes, addQuote, updateQuote, 
-    deleteQuote, permanentDeleteQuote, calculateRentTransactions, batchAddTransactions,
-    resetFinancialData, checkAndSetOverdueInvoices
+    deleteQuote, permanentDeleteQuote, calculateRentTransactions, batchAddTransactions
 } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
-import { getCompanyInfo, updateCompanyInfo } from '../services/settingsService';
+import { getCompanyInfo } from '../services/settingsService';
 import { generateDocumentPDF } from '../utils/pdfGenerator';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -28,19 +27,161 @@ import PrinterIcon from '../components/icons/PrinterIcon';
 import DocumentCheckIcon from '../components/icons/DocumentCheckIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 import CalculatorIcon from '../components/icons/CalculatorIcon';
+import SearchIcon from '../components/icons/SearchIcon';
 
+// --- CONFIG FISCALE FORFETTARIO ---
 const INPS_RATE = 0.2623;
 const TAX_RATE_STARTUP = 0.05;
 const COEFF_REDDITIVITA = 0.78;
 const LIMIT_FORFETTARIO = 85000;
 
+// --- Icona WhatsApp ---
+const WhatsAppIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+    </svg>
+);
+
+const RefreshIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>);
+
+// --- Mappatura Categorie Italiano & Suggerimenti ---
+const categoryDetails: Record<TransactionCategory, { label: string; help: string }> = {
+    [TransactionCategory.Sales]: { label: 'Vendite / Incassi', help: 'Entrate da iscrizioni, vendita libri o servizi extra.' },
+    [TransactionCategory.Rent]: { label: 'Affitto / Locazione', help: 'Canone mensile per la sede o affitto sale a ore.' },
+    [TransactionCategory.Taxes]: { label: 'Tasse & Bolli', help: 'Pagamenti F24, INPS, marche da bollo o imposte statali.' },
+    [TransactionCategory.Fuel]: { label: 'Carburante & Trasporti', help: 'Benzina, pedaggi, biglietti treno/aereo o rimborsi chilometrici.' },
+    [TransactionCategory.Materials]: { label: 'Materiali & Cancelleria', help: 'Acquisto libri, penne, carta, giochi o attrezzature per lezioni.' },
+    [TransactionCategory.ProfessionalServices]: { label: 'Servizi & Consulenze', help: 'Commercialista, avvocato, pulizie, manutenzioni o collaboratori esterni.' },
+    [TransactionCategory.Software]: { label: 'Software & Internet', help: 'Abbonamenti (Zoom, Canva, Gestionale), sito web o telefonia.' },
+    [TransactionCategory.Marketing]: { label: 'Marketing & Pubblicità', help: 'Sponsorizzate social, stampa volantini, gadget o eventi.' },
+    [TransactionCategory.Capital]: { label: 'Capitale / Versamenti Propri', help: 'Soldi versati dal tuo conto personale a quello aziendale. NON è tassato.' },
+    [TransactionCategory.Other]: { label: 'Altro / Spese Bancarie', help: 'Commissioni bancarie, interessi o voci non presenti sopra.' },
+};
+
+// --- Componente Form Transazione Manuale ---
+const TransactionForm: React.FC<{
+    transaction?: Transaction | null;
+    suppliers: Supplier[];
+    onSave: (t: TransactionInput | Transaction) => void;
+    onCancel: () => void;
+}> = ({ transaction, suppliers, onSave, onCancel }) => {
+    const [date, setDate] = useState(transaction?.date ? transaction.date.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [description, setDescription] = useState(transaction?.description || '');
+    const [amount, setAmount] = useState(transaction?.amount || 0);
+    const [type, setType] = useState<TransactionType>(transaction?.type || TransactionType.Expense);
+    const [category, setCategory] = useState<TransactionCategory>(transaction?.category || TransactionCategory.Materials);
+    const [allocationId, setAllocationId] = useState(transaction?.allocationId || '');
+
+    // Locations per dropdown
+    const allLocations = useMemo(() => {
+        const locs: {id: string, name: string}[] = [];
+        suppliers.forEach(s => s.locations.forEach(l => locs.push({id: l.id, name: l.name})));
+        return locs.sort((a,b) => a.name.localeCompare(b.name));
+    }, [suppliers]);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const locName = allLocations.find(l => l.id === allocationId)?.name;
+        
+        const data: TransactionInput = {
+            date: new Date(date).toISOString(),
+            description,
+            amount: Number(amount),
+            type,
+            category,
+            paymentMethod: PaymentMethod.Other,
+            status: TransactionStatus.Completed,
+            allocationType: allocationId ? 'location' : 'general',
+            allocationId: allocationId || undefined,
+            allocationName: locName || undefined
+        };
+
+        if (transaction?.id) onSave({ ...data, id: transaction.id });
+        else onSave(data);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+            <div className="p-6 border-b flex-shrink-0">
+                <h3 className="text-xl font-bold">{transaction ? 'Modifica Voce' : 'Nuova Voce'}</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <div className="flex gap-4 mb-4">
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center font-bold ${type === 'TransactionType.Income' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white text-gray-500'}`}>
+                        <input type="radio" checked={type === TransactionType.Income} onChange={() => setType(TransactionType.Income)} className="hidden" />
+                        Entrata
+                    </label>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center font-bold ${type === 'TransactionType.Expense' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white text-gray-500'}`}>
+                        <input type="radio" checked={type === TransactionType.Expense} onChange={() => setType(TransactionType.Expense)} className="hidden" />
+                        Uscita
+                    </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="md-input-group">
+                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" required />
+                        <label className="md-input-label !top-0">Data</label>
+                    </div>
+                    <div className="md-input-group">
+                        <input type="number" step="0.01" value={amount} onChange={e => setAmount(Number(e.target.value))} className="md-input" required />
+                        <label className="md-input-label">Importo (€)</label>
+                    </div>
+                </div>
+
+                <div className="md-input-group">
+                    <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="md-input" required placeholder=" " />
+                    <label className="md-input-label">Descrizione</label>
+                </div>
+
+                <div>
+                    <div className="md-input-group">
+                        <select value={category} onChange={e => setCategory(e.target.value as TransactionCategory)} className="md-input">
+                            {Object.values(TransactionCategory).map(c => (
+                                <option key={c} value={c}>
+                                    {categoryDetails[c]?.label || c}
+                                </option>
+                            ))}
+                        </select>
+                        <label className="md-input-label !top-0">Categoria</label>
+                    </div>
+                    {/* Help Text Box */}
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg flex gap-3 items-start animate-fade-in">
+                        <span className="text-xl">💡</span>
+                        <div>
+                            <p className="text-xs font-bold text-blue-800 uppercase mb-0.5">Guida alla Categoria</p>
+                            <p className="text-xs text-blue-700 leading-snug">
+                                {categoryDetails[category]?.help || "Seleziona una categoria per vedere i dettagli."}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 mb-1">Allocazione (Opzionale - Per ROI Sede)</label>
+                    <select value={allocationId} onChange={e => setAllocationId(e.target.value)} className="md-input bg-gray-50">
+                        <option value="">Generale / Nessuna Sede</option>
+                        {allLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                </div>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-2 bg-gray-50">
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-primary">Salva</button>
+            </div>
+        </form>
+    );
+};
+
 interface FinanceProps {
-    initialParams?: any;
-    onNavigate?: (page: Page, params: any) => void;
+    initialParams?: {
+        tab?: 'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes';
+        searchTerm?: string;
+    };
+    onNavigate?: (page: Page, params?: any) => void;
 }
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'analytics' | 'transactions' | 'invoices' | 'archive' | 'quotes'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes'>('overview');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -50,523 +191,600 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const [simParams, setSimParams] = useState({
-        targetNetMonthly: 3000,
-        avgLessonPrice: 25,
-        accountantCost: 1200,
-        fuelCost: 1.85
-    });
+    // AI Reverse Engineering State
+    const [targetMonthlyNet, setTargetMonthlyNet] = useState(3000);
+    const [lessonPrice, setLessonPrice] = useState(25);
 
-    const [listFilters, setListFilters] = useState({
-        search: '',
-        dateFrom: '',
-        dateTo: '',
-        minAmount: '',
-        maxAmount: '',
-        invoiceStatus: '',
-        transactionStatus: '',
-        sortColumn: 'date',
-        sortDirection: 'desc'
-    });
-
-    const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
-
-    // Modals & UI States
-    const [isTransModalOpen, setIsTransModalOpen] = useState(false);
-    const [isDocModalOpen, setIsDocModalOpen] = useState(false);
+    // Modals
     const [isSealModalOpen, setIsSealModalOpen] = useState(false);
-    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
-    const [isResetTransModalOpen, setIsResetTransModalOpen] = useState<{isOpen: boolean, type: TransactionType | null}>({isOpen: false, type: null});
-    const [isRentHelpOpen, setIsRentHelpOpen] = useState(false);
-    
-    const [editingItem, setEditingItem] = useState<any>(null);
-    const [docType, setDocType] = useState<'invoice' | 'quote'>('invoice');
     const [invoiceToSeal, setInvoiceToSeal] = useState<Invoice | null>(null);
-    const [archiveSelection, setArchiveSelection] = useState<string[]>([]);
-    
-    const [confirmState, setConfirmState] = useState<{
-        isOpen: boolean;
-        title: string;
-        message: string;
-        onConfirm: () => void;
-        isDangerous: boolean;
-    }>({ isOpen: false, title: '', message: '', onConfirm: () => {}, isDangerous: false });
+    const [sdiId, setSdiId] = useState('');
+    const [selectedItems, setSelectedItems] = useState<string[]>([]);
+    const [filters, setFilters] = useState({ search: '' });
 
-    // Chart Refs
-    const overviewChartRef = useRef<HTMLCanvasElement | null>(null);
-    const controllingChartRef = useRef<HTMLCanvasElement | null>(null);
-    const overviewChartInstance = useRef<Chart | null>(null);
-    const controllingChartInstance = useRef<Chart | null>(null);
-    const canvasRefs = useRef<Record<string, HTMLCanvasElement | null>>({});
-    const chartsRef = useRef<Record<string, Chart | null>>({});
+    // Transaction CRUD State
+    const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
+    const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
+
+    const chartRef = useRef<HTMLCanvasElement | null>(null);
+    const chartInstance = useRef<Chart | null>(null);
 
     const fetchData = React.useCallback(async () => {
         setLoading(true);
         try {
-            const [tData, iData, qData, eData, sData, cData, infoData] = await Promise.all([
-                getTransactions(),
-                getInvoices(),
-                getQuotes(),
-                getAllEnrollments(),
-                getSuppliers(),
-                getClients(),
-                getCompanyInfo()
+            const [t, i, q, e, s, c, info] = await Promise.all([
+                getTransactions(), getInvoices(), getQuotes(), getAllEnrollments(), getSuppliers(), getClients(), getCompanyInfo()
             ]);
-            setTransactions(tData);
-            setInvoices(iData);
-            setQuotes(qData);
-            setEnrollments(eData);
-            setSuppliers(sData);
-            setClients(cData);
-            setCompanyInfo(infoData);
-        } catch (error) {
-            console.error("Error fetching finance data:", error);
-        } finally {
-            setLoading(false);
-        }
+            setTransactions(t); setInvoices(i); setQuotes(q); setEnrollments(e); setSuppliers(s); setClients(c); setCompanyInfo(info);
+        } finally { setLoading(false); }
     }, []);
 
     useEffect(() => {
         fetchData();
         if (initialParams?.tab) setActiveTab(initialParams.tab);
-        if (initialParams?.searchTerm) setListFilters(prev => ({...prev, search: initialParams.searchTerm}));
+        if (initialParams?.searchTerm) setFilters(f => ({ ...f, search: initialParams.searchTerm || '' }));
+
+        // LISTENER REAL-TIME (Global Event Bus)
+        const handleRealTimeUpdate = () => {
+            fetchData(); 
+        };
+        window.addEventListener('EP_DataUpdated', handleRealTimeUpdate);
+        return () => window.removeEventListener('EP_DataUpdated', handleRealTimeUpdate);
+
     }, [fetchData, initialParams]);
 
-    // --- ENGINE LOGIC: THE CORE ---
-    const engineData = useMemo(() => {
-        // 1. Core Financials
-        const activeTransactions = transactions.filter(t => !t.isDeleted);
-        const revenue = activeTransactions.filter(t => t.type === TransactionType.Income && !t.excludeFromStats).reduce((acc, t) => acc + t.amount, 0);
-        const expenses = activeTransactions.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => acc + t.amount, 0);
-        const netProfit = revenue - expenses;
-        const margin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+    // --- ENGINE ANALITICO ---
+    const stats = useMemo(() => {
+        const activeT = transactions.filter(t => !t.isDeleted);
+        const revenue = activeT.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capital).reduce((acc, t) => acc + t.amount, 0);
+        const expenses = activeT.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => acc + t.amount, 0);
+        const profit = revenue - expenses;
+        const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
 
-        // 2. Fiscal Engine (Forfettario 2025)
-        const taxableIncome = revenue * COEFF_REDDITIVITA;
+        // Fiscale
+        const taxable = revenue * COEFF_REDDITIVITA;
+        const inps = taxable * INPS_RATE;
+        const tax = taxable * TAX_RATE_STARTUP;
         
-        // Tasse Anno Corrente
-        const inpsCurrentYear = taxableIncome * INPS_RATE;
-        const taxCurrentYear = taxableIncome * TAX_RATE_STARTUP;
-        const totalTaxCurrentYear = inpsCurrentYear + taxCurrentYear;
+        // Calcolo Bolli: 2€ per ogni fattura > 77€
+        const stampDutyCount = invoices.filter(inv => !inv.isDeleted && !inv.isGhost && inv.totalAmount > 77.47).length;
+        const stampDutyTotal = stampDutyCount * 2;
 
-        // Proiezione Acconti per Anno Successivo
-        const saldo2025 = totalTaxCurrentYear;
-        const acconto1_2026 = totalTaxCurrentYear * 0.50; // 50%
-        const acconto2_2026 = totalTaxCurrentYear * 0.50; // 50%
+        const totalTaxes = inps + tax + stampDutyTotal;
+        const savingsSuggestion = totalTaxes * 1.1; // +10% sicurezza
 
-        // Totale Giugno (Saldo + I Acconto) - Ripartibile in 6 rate
-        const totalDueJune = saldo2025 + acconto1_2026;
-        const installmentAmount = totalDueJune / 6;
-
-        // Bolli
-        const invoicesWithBollo = invoices.filter(i => !i.isDeleted && i.hasStampDuty);
-        const totalBolloCost = invoicesWithBollo.length * 2.00;
-
-        // Total Fiscal Burden (Snapshot)
-        const totalFiscalBurden = totalTaxCurrentYear + totalBolloCost;
-
-        // 3. Logistics
-        let totalKm = 0;
-        enrollments.forEach(enr => {
-            if (enr.status === EnrollmentStatus.Active) {
-                const loc = suppliers.find(s => s.locations.some(l => l.id === enr.locationId))?.locations.find(l => l.id === enr.locationId);
-                const dist = loc?.distance || 0;
-                totalKm += (enr.lessonsTotal * dist * 2);
-            }
+        // Proiezioni Mensili
+        const monthlyData = Array(12).fill(0).map((_, i) => {
+            const monthRev = activeT.filter(t => {
+                const d = new Date(t.date);
+                return d.getMonth() === i && t.type === TransactionType.Income && t.category !== TransactionCategory.Capital;
+            }).reduce((acc, t) => acc + t.amount, 0);
+            const mTaxable = monthRev * COEFF_REDDITIVITA;
+            return { month: i, revenue: monthRev, inps: mTaxable * INPS_RATE, tax: mTaxable * TAX_RATE_STARTUP };
         });
 
-        const fuelCons = companyInfo?.carFuelConsumption || 16.5;
-        const estimatedFuelCost = (totalKm / fuelCons) * simParams.fuelCost;
-        const insuranceCost = 600; 
-        const carTax = 180; 
-        const wearCost = totalKm * 0.045; 
-        const totalLogisticsCost = estimatedFuelCost + wearCost + insuranceCost + carTax;
+        return { revenue, expenses, profit, margin, taxable, inps, tax, stampDutyTotal, totalTaxes, savingsSuggestion, monthlyData, progress: (revenue / LIMIT_FORFETTARIO) * 100 };
+    }, [transactions, invoices]);
 
-        // 4. AI CFO - Reverse Engineering (Dettagliato)
-        const totalTaxRate = (COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP)); // 24.35%
-        // Net Profit = Revenue - Expenses - Taxes
-        // Taxes = Revenue * TotalTaxRate
-        // Net = Revenue - Exp - (Rev * Rate) => Net + Exp = Rev * (1 - Rate)
-        // Rev = (Net + Exp) / (1 - Rate)
+    // --- REVERSE ENGINEERING AI CALC ---
+    const reverseEngineering = useMemo(() => {
+        // Formula Inversa Forfettario Start-up
+        // Netto = Lordo - (Lordo * 0.78 * 0.2623) - (Lordo * 0.78 * 0.05)
+        // Netto = Lordo * (1 - 0.78 * (0.2623 + 0.05))
+        // Lordo = Netto / (1 - 0.78 * 0.3123)
+        // Lordo = Netto / (1 - 0.243594)
+        // Lordo = Netto / 0.756406
         
-        const taxFactor = 1 - totalTaxRate; // ~0.7565
-        const annualFixedCosts = simParams.accountantCost + totalLogisticsCost + expenses; // Fixed + OpEx
-        const targetAnnualNet = simParams.targetNetMonthly * 12; // Su 12 mesi per stipendio
+        const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP);
+        const netRatio = 1 - compositeTaxRate;
         
-        const requiredAnnualRevenue = (targetAnnualNet + annualFixedCosts) / taxFactor;
-        const requiredMonthlyRevenue = requiredAnnualRevenue / 12;
+        const annualNetTarget = targetMonthlyNet * 12;
+        const grossNeeded = annualNetTarget / netRatio;
         
-        const lessonsNeeded = requiredMonthlyRevenue / simParams.avgLessonPrice;
-        const studentsNeeded = lessonsNeeded / 4; // Avg 4 lessons/month per student
-
-        // Gap Analysis
-        const revenueGap = requiredAnnualRevenue - revenue;
-        const actionUrgency = revenueGap > 0 ? (revenueGap / requiredAnnualRevenue) > 0.3 ? 'High' : 'Medium' : 'Low';
+        const currentGross = stats.revenue;
+        const gap = Math.max(0, grossNeeded - currentGross);
+        
+        // Stima gap lezioni
+        const revenuePerLesson = lessonPrice; // Prezzo unitario medio
+        const extraLessonsNeeded = revenuePerLesson > 0 ? Math.ceil(gap / revenuePerLesson) : 0;
+        
+        // Studenti necessari (assumendo media 30 lezioni a studente/anno)
+        const studentsNeeded = Math.ceil(extraLessonsNeeded / 30);
 
         return {
-            revenue, expenses, netProfit, margin,
-            fiscal: {
-                limitProgress: (revenue / LIMIT_FORFETTARIO) * 100,
-                remainingCeiling: LIMIT_FORFETTARIO - revenue,
-                taxableIncome,
-                inpsTotal: inpsCurrentYear,
-                taxTotal: taxCurrentYear,
-                totalFiscalBurden,
-                totalBolloCost,
-                invoicesCount: invoicesWithBollo.length,
-                // Breakdown Rate
-                installmentsProjection: {
-                    saldo2025,
-                    acconto1_2026,
-                    acconto2_2026,
-                    totalDueJune,
-                    installmentAmount,
-                    months: ['Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov']
-                }
-            },
-            logistics: {
-                totalKm, estimatedFuelCost, wearCost, totalLogisticsCost,
-                impactPerKm: totalKm > 0 ? totalLogisticsCost / totalKm : 0
-            },
-            ai: {
-                requiredAnnualRevenue,
-                requiredMonthlyRevenue,
-                lessonsNeeded,
-                studentsNeeded,
-                revenueGap,
-                actionUrgency
-            }
+            annualNetTarget,
+            grossNeeded,
+            gap,
+            extraLessonsNeeded,
+            studentsNeeded
         };
-    }, [transactions, invoices, enrollments, suppliers, companyInfo, simParams]);
+    }, [targetMonthlyNet, lessonPrice, stats.revenue]);
 
-    // --- PROFITABILITY BY LOCATION ---
-    const locationAnalysis = useMemo(() => {
-        const stats: Record<string, {
-            name: string, 
-            revenue: number, 
-            rentCost: number,
-            otherAllocatedCosts: number, 
-            margin: number,
-            marginPercent: number
-        }> = {};
+    // --- SIMULATORE RATE ---
+    const simulatorData = useMemo(() => {
+        // Stima Saldo 2025 (Tasse totali maturate ad oggi)
+        const saldo2025 = stats.totalTaxes;
+        
+        // Stima I Acconto 2026 (50% del saldo anno precedente - semplificato)
+        const acconto2026 = saldo2025 * 0.5;
+        
+        const totalDue = saldo2025 + acconto2026;
+        
+        // Rateazione Giugno-Novembre (6 mesi)
+        const monthlyInstallment = totalDue / 6;
+        
+        return {
+            saldo2025,
+            acconto2026,
+            totalDue,
+            monthlyInstallment
+        };
+    }, [stats.totalTaxes]);
 
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                stats[l.id] = { name: l.name, revenue: 0, rentCost: 0, otherAllocatedCosts: 0, margin: 0, marginPercent: 0 };
-            });
+    const roiSedi = useMemo(() => {
+        const data: Record<string, { name: string, color: string, revenue: number, costs: number }> = {};
+        suppliers.flatMap(s => s.locations).forEach(l => {
+            data[l.id] = { name: l.name, color: l.color, revenue: 0, costs: 0 };
         });
 
-        transactions.forEach(t => {
-            if (!t.isDeleted && t.allocationType === 'location' && t.allocationId) {
-                const locId = t.allocationId;
-                if (!stats[locId]) stats[locId] = { name: t.allocationName || 'Sede Sconosciuta', revenue: 0, rentCost: 0, otherAllocatedCosts: 0, margin: 0, marginPercent: 0 };
-                
-                if (t.type === TransactionType.Income) {
-                    stats[locId].revenue += t.amount;
-                } else if (t.type === TransactionType.Expense) {
-                    if (t.category === TransactionCategory.Rent) stats[locId].rentCost += t.amount;
-                    else stats[locId].otherAllocatedCosts += t.amount;
-                }
+        transactions.filter(t => !t.isDeleted && t.allocationId).forEach(t => {
+            if (data[t.allocationId!]) {
+                if (t.type === TransactionType.Income) data[t.allocationId!].revenue += t.amount;
+                else data[t.allocationId!].costs += t.amount;
             }
         });
-
-        return Object.values(stats).map(item => {
-            const totalCosts = item.rentCost + item.otherAllocatedCosts;
-            const margin = item.revenue - totalCosts;
-            const marginPercent = item.revenue > 0 ? (margin / item.revenue) * 100 : 0;
-            return { ...item, totalCosts, margin, marginPercent };
-        }).sort((a,b) => b.revenue - a.revenue);
+        return Object.values(data).sort((a,b) => b.revenue - a.revenue);
     }, [suppliers, transactions]);
 
-    // --- CHART RENDERERS ---
+    // --- GRAFICI ---
     useEffect(() => {
-        if (activeTab === 'analytics') {
-            const createChart = (id: string, type: any, data: any, options: any) => {
-                const canvas = canvasRefs.current[id];
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    if (chartsRef.current[id]) chartsRef.current[id]?.destroy();
-                    chartsRef.current[id] = new Chart(ctx, { type, data, options: { responsive: true, maintainAspectRatio: false, ...options } });
-                }
-            };
-
-            const monthlyRev = new Array(12).fill(0);
-            const monthlyExp = new Array(12).fill(0);
-            transactions.forEach(t => {
-                if(!t.isDeleted) {
-                    const m = new Date(t.date).getMonth();
-                    if(t.type === TransactionType.Income) monthlyRev[m] += t.amount; else monthlyExp[m] += t.amount;
-                }
-            });
-
-            createChart('bar', 'bar', {
-                labels: ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'],
-                datasets: [
-                    { label: 'Entrate', data: monthlyRev, backgroundColor: '#4ade80', borderRadius: 4 },
-                    { label: 'Uscite', data: monthlyExp, backgroundColor: '#f87171', borderRadius: 4 }
-                ]
-            }, { plugins: { title: { display: true, text: 'Andamento Mensile' } } });
-
-            createChart('doughnut', 'doughnut', {
-                labels: ['Logistica (TCO)', 'Tasse (Stima)', 'Commercialista', 'Noli Sedi', 'Altro Operativo'],
-                datasets: [{
-                    data: [
-                        engineData.logistics.totalLogisticsCost, 
-                        engineData.fiscal.totalFiscalBurden, 
-                        simParams.accountantCost, 
-                        transactions.filter(t => t.category === TransactionCategory.Rent).reduce((a,b)=>a+b.amount,0), 
-                        Math.max(0, engineData.expenses - engineData.logistics.totalLogisticsCost - engineData.fiscal.totalFiscalBurden) 
-                    ],
-                    backgroundColor: ['#f87171', '#fbbf24', '#60a5fa', '#a78bfa', '#9ca3af']
-                }]
-            }, { cutout: '60%' });
-
-            let cash = 0;
-            const flow = monthlyRev.map((inc, i) => { cash += (inc - monthlyExp[i]); return cash; });
-            createChart('line', 'line', {
-                labels: ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'],
-                datasets: [{ label: 'Saldo Progressivo', data: flow, borderColor: '#6366f1', fill: true, backgroundColor: 'rgba(99, 102, 241, 0.1)', tension: 0.4 }]
-            }, {});
-
-            createChart('radar', 'radar', {
-                labels: ['Liquidità', 'Redditività', 'Efficienza Fiscale', 'Sostenibilità Logistica', 'Crescita'],
-                datasets: [{
-                    label: 'Score Aziendale',
-                    data: [85, engineData.margin, 70, 60, 75], // Mock logic
-                    backgroundColor: 'rgba(52, 211, 153, 0.2)',
-                    borderColor: '#34d399',
-                    pointBackgroundColor: '#34d399'
-                }]
-            }, { scales: { r: { suggestedMin: 0, suggestedMax: 100 } } });
+        if (activeTab === 'overview' && chartRef.current && !loading) {
+            if (chartInstance.current) chartInstance.current.destroy();
+            const ctx = chartRef.current.getContext('2d');
+            if (ctx) {
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(79, 70, 229, 0.4)');
+                gradient.addColorStop(1, 'rgba(79, 70, 229, 0)');
+                chartInstance.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
+                        datasets: [{
+                            label: 'Ricavi Mensili',
+                            data: stats.monthlyData.map(d => d.revenue),
+                            borderColor: '#4f46e5',
+                            backgroundColor: gradient,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 5,
+                            pointBackgroundColor: '#fff'
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+            }
         }
-    }, [activeTab, engineData, transactions]);
+    }, [activeTab, loading, stats]);
 
-    // Actions
-    const handleDeleteAll = async () => { setIsDeleteAllModalOpen(false); setLoading(true); try { if (activeTab === 'transactions') { for (const t of await getTransactions()) await permanentDeleteTransaction(t.id); } else if (activeTab === 'invoices') { for (const i of await getInvoices()) await permanentDeleteInvoice(i.id); } else if (activeTab === 'quotes') { for (const q of await getQuotes()) await permanentDeleteQuote(q.id); } await fetchData(); alert("Eliminazione completata."); } catch(e) { alert("Errore"); } finally { setLoading(false); } };
-    const handleSaveTransaction = async (t: TransactionInput | Transaction) => { try { if ('id' in t) await updateTransaction(t.id, t); else await addTransaction(t as TransactionInput); setIsTransModalOpen(false); fetchData(); } catch (err) { alert("Errore"); } };
-    const handleDeleteTransaction = (id: string) => { setConfirmState({ isOpen: true, title: "Elimina", message: "Sicuro?", isDangerous: true, onConfirm: async () => { await deleteTransaction(id); setConfirmState(p => ({...p, isOpen: false})); fetchData(); }}); };
-    const handleSaveDocument = async (docData: any) => { setLoading(true); try { if (docData.id) { if (docType === 'invoice') await updateInvoice(docData.id, docData); else await updateQuote(docData.id, docData); } else { if (docType === 'invoice') await addInvoice(docData); else await addQuote(docData); } setIsDocModalOpen(false); fetchData(); } catch (err) { console.error(err); alert("Errore salvataggio"); } finally { setLoading(false); } };
-    const handleDeleteDocument = (id: string) => { setConfirmState({ isOpen: true, title: "Elimina", message: "Sicuro?", isDangerous: true, onConfirm: async () => { if (docType === 'invoice') await deleteInvoice(id); else await deleteQuote(id); setConfirmState(p => ({...p, isOpen: false})); fetchData(); }}); };
-    const handlePrintDocument = async (doc: Invoice | Quote) => { const companyInfo = await getCompanyInfo(); const client = clients.find(c => c.id === doc.clientId); await generateDocumentPDF(doc, docType === 'invoice' ? 'Fattura' : 'Preventivo', companyInfo, client); };
-    const handleGenerateRentTransactions = async () => { const newTrans = calculateRentTransactions(enrollments, suppliers, transactions); if (newTrans.length > 0) { await batchAddTransactions(newTrans); fetchData(); alert(`Generate ${newTrans.length} transazioni.`); } else { alert("Nessun nolo da generare."); } };
-    const handleSealClick = (inv: Invoice) => { setInvoiceToSeal(inv); setIsSealModalOpen(true); };
-    const handleConfirmSeal = async (sdiId: string) => { if(!invoiceToSeal) return; setIsSealModalOpen(false); setLoading(true); try { await updateInvoice(invoiceToSeal.id, { status: DocumentStatus.SealedSDI, sdiId: sdiId }); await fetchData(); alert("Fattura sigillata correttamente!"); } catch(e) { console.error(e); alert("Errore"); } finally { setLoading(false); setInvoiceToSeal(null); } };
-    const toggleArchiveSelection = (id: string) => { setArchiveSelection(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]); };
-    const handleSendToAccountant = () => { if(archiveSelection.length === 0) return alert("Seleziona almeno una fattura."); const selectedInvoices = invoices.filter(i => archiveSelection.includes(i.id)); let body = `*Oggetto: trasmissione lista fatture*\n\nTotale: ${selectedInvoices.length}\n\n`; selectedInvoices.forEach((inv, i) => body += `${i+1}. ${inv.invoiceNumber} - ${new Date(inv.issueDate).toLocaleDateString()} - ${inv.sdiId || 'SDI N/D'}\n`); window.open(`https://wa.me/?text=${encodeURIComponent(body)}`, '_blank'); };
+    // --- AZIONI ---
+    const handlePrint = async (doc: Invoice | Quote) => {
+        const client = clients.find(c => c.id === doc.clientId);
+        await generateDocumentPDF(doc, 'invoiceNumber' in doc ? 'Fattura' : 'Preventivo', companyInfo, client);
+    };
 
-    // Common List Filtering
+    const handleWhatsApp = (item: Invoice | Transaction) => {
+        let phone = '';
+        let msg = '';
+        if ('clientId' in item) {
+            const c = clients.find(cl => cl.id === item.clientId);
+            phone = c?.phone || '';
+            msg = `Gentile cliente, le inviamo riferimento per il pagamento di ${(item as Invoice).totalAmount}€.`;
+        }
+        if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
+        else alert("Numero non trovato.");
+    };
+
+    const handleSeal = async () => {
+        if (!invoiceToSeal || !sdiId) return;
+        await updateInvoice(invoiceToSeal.id, { status: DocumentStatus.SealedSDI, sdiId });
+        setIsSealModalOpen(false);
+        await fetchData();
+    };
+
+    // --- Gestione CRUD Transazioni ---
+    const handleSaveTransaction = async (t: TransactionInput | Transaction) => {
+        setLoading(true);
+        try {
+            if ('id' in t) await updateTransaction(t.id, t);
+            else await addTransaction(t);
+            setIsTransactionModalOpen(false);
+            setEditingTransaction(null);
+            await fetchData();
+        } catch(e) {
+            console.error(e);
+            alert("Errore salvataggio transazione.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleEditTransaction = (item: any) => {
+        if ('amount' in item && 'category' in item && !('invoiceNumber' in item)) {
+            setEditingTransaction(item);
+            setIsTransactionModalOpen(true);
+        }
+    };
+
+    const handleDeleteTransaction = async () => {
+        if (transactionToDelete) {
+            setLoading(true);
+            try {
+                await deleteTransaction(transactionToDelete);
+                await fetchData();
+            } catch(e) { console.error(e); }
+            finally { setLoading(false); setTransactionToDelete(null); }
+        }
+    };
+
     const filteredList = useMemo(() => {
         let list: any[] = [];
         if (activeTab === 'transactions') list = transactions.filter(t => !t.isDeleted);
-        if (activeTab === 'invoices') list = invoices.filter(i => !i.isDeleted);
-        if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
-        if (activeTab === 'archive') list = invoices.filter(i => !i.isDeleted && i.status === DocumentStatus.SealedSDI);
-
-        list = list.filter(item => {
-            const searchMatch = (item.description || item.clientName || item.invoiceNumber || item.quoteNumber || '').toLowerCase().includes(listFilters.search.toLowerCase());
-            return searchMatch;
-        });
-        return list;
-    }, [activeTab, transactions, invoices, quotes, listFilters]);
-
-    const paginatedList = useMemo(() => {
-        const start = (currentPage - 1) * itemsPerPage;
-        return filteredList.slice(start, start + itemsPerPage);
-    }, [filteredList, currentPage]);
+        else if (activeTab === 'invoices') list = invoices.filter(i => !i.isDeleted && !i.isGhost);
+        else if (activeTab === 'archive') list = invoices.filter(i => !i.isDeleted && (i.status === DocumentStatus.SealedSDI || i.status === DocumentStatus.PendingSDI));
+        else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
+        return list.filter(item => (item.clientName || item.description || item.invoiceNumber || '').toLowerCase().includes(filters.search.toLowerCase()));
+    }, [activeTab, transactions, invoices, quotes, filters]);
 
     return (
-        <div>
-            {/* Header */}
-            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
-                <div><h1 className="text-3xl font-bold">Finanza Enterprise</h1><p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Controllo di gestione, fiscalità, logistica e flussi.</p></div>
-                {activeTab === 'controlling' ? (
-                    <div className="flex flex-col items-end gap-1">
-                        <button onClick={handleGenerateRentTransactions} className="md-btn md-btn-raised bg-purple-600 text-white flex items-center"><SparklesIcon /> <span className="ml-2">Calcola Noli</span></button>
-                    </div>
-                ) : (
-                    <div className="flex gap-2">
-                        {activeTab === 'transactions' && <button onClick={() => setIsResetTransModalOpen({isOpen: true, type: TransactionType.Income})} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200"><TrashIcon /> ENTRATE: Elimina tutte</button>}
-                        {['invoices','quotes'].includes(activeTab) && <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-gray-50 text-gray-700 border border-gray-200"><TrashIcon /> Elimina Tutto</button>}
-                        {activeTab === 'transactions' && <button onClick={() => { setEditingItem(null); setIsTransModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova</button>}
-                        {(activeTab === 'invoices' || activeTab === 'quotes') && <button onClick={() => { setEditingItem(null); setDocType(activeTab === 'invoices' ? 'invoice' : 'quote'); setIsDocModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary"><PlusIcon /> Nuovo</button>}
-                    </div>
-                )}
+        <div className="animate-fade-in pb-20">
+            {/* HEADER */}
+            <div className="flex flex-wrap justify-between items-center mb-8 gap-6">
+                <div>
+                    <h1 className="text-4xl font-black text-slate-900 tracking-tighter">Finanza Enterprise</h1>
+                    <p className="text-slate-500 font-medium">Controllo di gestione, fiscalità, logistica e flussi.</p>
+                </div>
+                <div className="flex gap-3">
+                    <button onClick={() => fetchData()} className="md-btn md-btn-flat bg-white border shadow-sm"><RefreshIcon /> Sync</button>
+                    <button onClick={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova Voce</button>
+                </div>
             </div>
 
-            <div className="border-b border-gray-200 mb-6">
-                <nav className="-mb-px flex space-x-6 overflow-x-auto">
-                    {[{id:'overview',label:'Panoramica'},{id:'cfo',label:'CFO (Strategia)'},{id:'controlling',label:'Controllo di Gestione'},{id:'analytics',label:'Analisi Grafica'},{id:'transactions',label:'Transazioni'},{id:'invoices',label:'Fatture'},{id:'archive',label:'ARCHIVIO'},{id:'quotes',label:'Preventivi'}].map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${activeTab === tab.id ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>{tab.label}</button>
-                    ))}
-                </nav>
-            </div>
+            {/* TABS */}
+            <nav className="flex space-x-6 border-b border-gray-200 mb-8 overflow-x-auto">
+                {[
+                    { id: 'overview', label: 'Panoramica' },
+                    { id: 'cfo', label: 'CFO (Strategia)' },
+                    { id: 'controlling', label: 'Controllo di Gestione' },
+                    { id: 'transactions', label: 'Transazioni' }, 
+                    { id: 'invoices', label: 'Fatture' },
+                    { id: 'archive', label: 'Archivio' },
+                    { id: 'quotes', label: 'Preventivi' }
+                ].map(t => (
+                    <button 
+                        key={t.id} 
+                        onClick={() => setActiveTab(t.id as any)} 
+                        className={`pb-3 text-sm font-medium transition-colors whitespace-nowrap ${activeTab === t.id ? 'border-b-2 border-gray-800 text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </nav>
 
-            {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
-                <>
+            {loading ? <div className="flex justify-center py-20"><Spinner /></div> : (
+                <div className="space-y-8">
                     {activeTab === 'overview' && (
-                        <div className="animate-fade-in space-y-6">
+                        <>
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                                <div className="md-card p-6 bg-green-50 border-l-4 border-green-500"><h3 className="text-xs font-bold text-green-800 uppercase tracking-wider">Ricavi Totali</h3><p className="text-2xl font-bold text-green-900 mt-2">{engineData.revenue.toFixed(2)}€</p></div>
-                                <div className="md-card p-6 bg-red-50 border-l-4 border-red-500"><h3 className="text-xs font-bold text-red-800 uppercase tracking-wider">Costi Totali</h3><p className="text-2xl font-bold text-red-900 mt-2">{engineData.expenses.toFixed(2)}€</p></div>
-                                <div className="md-card p-6 bg-indigo-50 border-l-4 border-indigo-500"><h3 className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Utile Netto</h3><p className="text-2xl font-bold text-indigo-900 mt-2">{engineData.netProfit.toFixed(2)}€</p></div>
-                                <div className="md-card p-6 bg-blue-50 border-l-4 border-blue-500"><h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider">Margine</h3><p className="text-2xl font-bold text-blue-900 mt-2">{engineData.margin.toFixed(1)}%</p></div>
+                                <KpiCard title="Fatturato Lordo" value={`${stats.revenue.toFixed(2)}€`} color="emerald" progress={stats.progress} label="Soglia 85k" />
+                                <KpiCard title="Costi Operativi" value={`${stats.expenses.toFixed(2)}€`} color="red" />
+                                <KpiCard title="Margine Operativo" value={`${stats.margin.toFixed(1)}%` } color="indigo" />
+                                <KpiCard title="Accantonamento" value={`${stats.savingsSuggestion.toFixed(2)}€`} color="amber" sub="Suggerito per Tasse" />
                             </div>
-                        </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                <div className="lg:col-span-2 md-card p-8 bg-white h-[450px] relative overflow-hidden">
+                                    <h3 className="text-xl font-black mb-6 flex items-center gap-2"><CalculatorIcon /> Analisi Flussi Temporali</h3>
+                                    <div className="h-[320px]"><canvas ref={chartRef}></canvas></div>
+                                </div>
+                                <div className="space-y-6">
+                                    <StrategyCard title="Soglia Forfettario" desc={stats.revenue > 60000 ? "ATTENZIONE: Sei vicino alla soglia. Monitora le prossime fatture." : "Stato Sicuro: Ampiamente sotto la soglia degli 85k."} status={stats.revenue > 70000 ? 'danger' : 'success'} />
+                                    <StrategyCard title="Efficiency Insight" desc={stats.margin < 30 ? "Margine basso rilevato. Controlla i costi di nolo delle sedi periferiche." : "Ottima efficienza operativa rilevata questo mese."} status={stats.margin < 30 ? 'warning' : 'success'} />
+                                    <div className="md-card p-6 bg-indigo-900 text-white shadow-indigo-200">
+                                        <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato</h4>
+                                        <p className="text-3xl font-black">{(stats.profit - stats.totalTaxes).toFixed(2)}€</p>
+                                        <p className="text-[10px] mt-4 text-indigo-400 italic">Calcolato dopo INPS (26%) e Imposta (5%)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
                     )}
-                    
+
+                    {/* --- CFO / STRATEGIA TAB (NEW IMPLEMENTATION) --- */}
                     {activeTab === 'cfo' && (
-                        <div className="space-y-8 animate-slide-up">
-                            {/* Proiezione Fiscale Dettagliata */}
-                            <div className="md-card p-6 border-l-4 border-indigo-600">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><CalculatorIcon /> Proiezione Fiscale (Forfettario)</h3>
+                        <div className="space-y-6 animate-slide-up">
+                            
+                            {/* 1. PIANIFICATORE FISCALE VISUALE */}
+                            <div className="md-card p-6 bg-white border border-gray-200 shadow-sm rounded-2xl">
+                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    <CalculatorIcon /> Proiezione Fiscale (Forfettario)
+                                </h3>
                                 
                                 <div className="mb-6">
-                                    <div className="flex justify-between text-xs mb-1 font-bold text-gray-600"><span>Plafond 85.000€</span><span>{engineData.fiscal.limitProgress.toFixed(1)}% Utilizzato</span></div>
-                                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden"><div className={`h-3 rounded-full transition-all duration-1000 ${engineData.fiscal.limitProgress > 80 ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ width: `${Math.min(engineData.fiscal.limitProgress, 100)}%` }}></div></div>
+                                    <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
+                                        <span>Plafond 85.000€</span>
+                                        <span>{stats.progress.toFixed(1)}% Utilizzato</span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                        <div 
+                                            className={`h-full rounded-full transition-all duration-1000 ${stats.progress > 80 ? 'bg-red-500' : 'bg-gray-600'}`} 
+                                            style={{ width: `${Math.min(stats.progress, 100)}%` }}
+                                        ></div>
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-sm">
-                                    <div className="bg-gray-50 p-3 rounded border border-gray-200"><p className="text-gray-500 text-xs uppercase font-bold">Imponibile (78%)</p><p className="text-xl font-mono font-bold text-gray-800 mt-1">{engineData.fiscal.taxableIncome.toFixed(2)}€</p></div>
-                                    <div className="bg-gray-50 p-3 rounded border border-gray-200"><p className="text-gray-500 text-xs uppercase font-bold">INPS (26.23%)</p><p className="text-xl font-mono font-bold text-orange-600 mt-1">{engineData.fiscal.inpsTotal.toFixed(2)}€</p></div>
-                                    <div className="bg-gray-50 p-3 rounded border border-gray-200"><p className="text-gray-500 text-xs uppercase font-bold">Imposta Sost. (5%)</p><p className="text-xl font-mono font-bold text-red-600 mt-1">{engineData.fiscal.taxTotal.toFixed(2)}€</p></div>
-                                    <div className="bg-gray-50 p-3 rounded border border-gray-200"><p className="text-gray-500 text-xs uppercase font-bold">Bolli ({engineData.fiscal.invoicesCount})</p><p className="text-xl font-mono font-bold text-gray-600 mt-1">{engineData.fiscal.totalBolloCost.toFixed(2)}€</p></div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase">IMPONIBILE (78%)</p>
+                                        <p className="text-xl font-black text-gray-800 mt-1">{stats.taxable.toFixed(2)}€</p>
+                                    </div>
+                                    <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                                        <p className="text-[10px] font-bold text-orange-400 uppercase">INPS (26.23%)</p>
+                                        <p className="text-xl font-black text-orange-600 mt-1">{stats.inps.toFixed(2)}€</p>
+                                    </div>
+                                    <div className="bg-red-50 p-4 rounded-xl border border-red-100">
+                                        <p className="text-[10px] font-bold text-red-400 uppercase">IMPOSTA SOST. (5%)</p>
+                                        <p className="text-xl font-black text-red-600 mt-1">{stats.tax.toFixed(2)}€</p>
+                                    </div>
+                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase">BOLLI ({stats.stampDutyTotal/2})</p>
+                                        <p className="text-xl font-black text-gray-600 mt-1">{stats.stampDutyTotal.toFixed(2)}€</p>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Simulatore Rateale 6 Mesi */}
-                            <div className="md-card p-6 border-l-4 border-teal-500">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4">🔮 Simulatore Rate (Giu-Nov)</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                                    <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between border-b pb-1"><span>Saldo 2025:</span> <span className="font-bold">{engineData.fiscal.installmentsProjection.saldo2025.toFixed(2)}€</span></div>
-                                        <div className="flex justify-between border-b pb-1"><span>I Acconto 2026:</span> <span className="font-bold">{engineData.fiscal.installmentsProjection.acconto1_2026.toFixed(2)}€</span></div>
-                                        <div className="flex justify-between bg-teal-50 p-2 rounded font-bold text-teal-800"><span>TOTALE DA RATEIZZARE:</span> <span>{engineData.fiscal.installmentsProjection.totalDueJune.toFixed(2)}€</span></div>
+                            {/* 2. SIMULATORE RATE (TEAL) */}
+                            <div className="md-card p-6 bg-white border-2 border-teal-50 shadow-sm rounded-2xl">
+                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                                    🔮 Simulatore Rate (Giu-Nov)
+                                </h3>
+                                
+                                <div className="flex flex-col md:flex-row gap-8">
+                                    <div className="md:w-1/3 space-y-4">
+                                        <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                                            <span className="text-sm font-medium text-gray-600">Saldo 2025:</span>
+                                            <span className="font-bold text-gray-900">{simulatorData.saldo2025.toFixed(2)}€</span>
+                                        </div>
+                                        <div className="flex justify-between items-center border-b border-gray-100 pb-2">
+                                            <span className="text-sm font-medium text-gray-600">I Acconto 2026:</span>
+                                            <span className="font-bold text-gray-900">{simulatorData.acconto2026.toFixed(2)}€</span>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-teal-50 p-3 rounded-lg">
+                                            <span className="text-sm font-bold text-teal-800">TOTALE DA RATEIZZARE:</span>
+                                            <span className="font-black text-teal-900">{simulatorData.totalDue.toFixed(2)}€</span>
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {engineData.fiscal.installmentsProjection.months.map((m, i) => (
-                                            <div key={i} className="bg-white border rounded p-2 text-center shadow-sm">
-                                                <div className="text-[10px] uppercase text-gray-400 font-bold">{m}</div>
-                                                <div className="text-sm font-bold text-teal-600">{engineData.fiscal.installmentsProjection.installmentAmount.toFixed(0)}€</div>
+
+                                    <div className="md:w-2/3 grid grid-cols-3 gap-3">
+                                        {['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'].map((month, idx) => (
+                                            <div key={idx} className="bg-white border border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase">{month}</span>
+                                                <span className="text-sm font-bold text-teal-600">{simulatorData.monthlyInstallment.toFixed(0)}€</span>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             </div>
 
-                            {/* AI Reverse Engineering & Strategy */}
-                            <div className="md-card p-6 border-t-4 border-purple-500">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><SparklesIcon /> AI Reverse Engineering</h3>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                    <div className="bg-gray-50 p-3 rounded">
-                                        <label className="text-xs font-bold text-gray-500 block mb-1">Target Netto Mensile</label>
-                                        <input type="number" value={simParams.targetNetMonthly} onChange={e=>setSimParams({...simParams, targetNetMonthly: Number(e.target.value)})} className="w-full font-bold text-lg bg-transparent border-b border-gray-300 focus:border-purple-500 outline-none" />
+                            {/* 3. AI REVERSE ENGINEERING (PURPLE) */}
+                            <div className="md-card p-6 bg-white border-2 border-purple-50 shadow-md rounded-2xl ring-1 ring-purple-100">
+                                <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                                    <SparklesIcon /> AI Reverse Engineering
+                                </h3>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">Target Netto Mensile</label>
+                                        <input 
+                                            type="number" 
+                                            value={targetMonthlyNet} 
+                                            onChange={e => setTargetMonthlyNet(Number(e.target.value))}
+                                            className="w-full text-2xl font-bold p-2 bg-gray-50 rounded-lg border-none focus:ring-2 ring-purple-200"
+                                        />
                                     </div>
-                                    <div className="bg-gray-50 p-3 rounded">
-                                        <label className="text-xs font-bold text-gray-500 block mb-1">Prezzo Lezione</label>
-                                        <input type="number" value={simParams.avgLessonPrice} onChange={e=>setSimParams({...simParams, avgLessonPrice: Number(e.target.value)})} className="w-full font-bold text-lg bg-transparent border-b border-gray-300 focus:border-purple-500 outline-none" />
-                                    </div>
-                                    <div className="bg-purple-50 p-3 rounded border border-purple-100 col-span-2 flex flex-col justify-center">
-                                        <span className="text-xs text-purple-800 font-bold uppercase">Fatturato Annuo Necessario (Lordo)</span>
-                                        <span className="text-2xl font-bold text-purple-700">{engineData.ai.requiredAnnualRevenue.toFixed(2)}€</span>
+                                    <div>
+                                        <label className="block text-xs font-bold text-gray-500 mb-1">Prezzo Lezione</label>
+                                        <input 
+                                            type="number" 
+                                            value={lessonPrice} 
+                                            onChange={e => setLessonPrice(Number(e.target.value))}
+                                            className="w-full text-2xl font-bold p-2 bg-gray-50 rounded-lg border-none focus:ring-2 ring-purple-200"
+                                        />
                                     </div>
                                 </div>
 
-                                {/* Action Cards */}
+                                <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 mb-6">
+                                    <p className="text-xs font-bold text-purple-800 uppercase mb-1">FATTURATO ANNUO NECESSARIO (LORDO)</p>
+                                    <p className="text-3xl font-black text-purple-700">{reverseEngineering.grossNeeded.toFixed(2)}€</p>
+                                </div>
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className={`p-4 rounded-xl border-l-4 shadow-sm cursor-pointer hover:shadow-md transition-all ${engineData.ai.actionUrgency === 'High' ? 'bg-red-50 border-red-500' : 'bg-gray-50 border-gray-400'}`}>
-                                        <h4 className="font-bold text-sm uppercase mb-2">Azioni Tattiche (Breve Termine)</h4>
-                                        <p className="text-xs text-gray-600 mb-2">Per coprire il gap di {engineData.ai.revenueGap.toFixed(0)}€:</p>
-                                        <ul className="text-xs space-y-1 font-medium">
-                                            <li>• Trovare <strong>{Math.ceil(engineData.ai.studentsNeeded)}</strong> nuovi studenti.</li>
-                                            <li>• Vendere <strong>{Math.ceil(engineData.ai.lessonsNeeded)}</strong> lezioni extra.</li>
+                                    <div className="p-4 bg-red-50 rounded-xl border-l-4 border-red-400">
+                                        <h4 className="text-xs font-black uppercase text-red-800 mb-2">AZIONI TATTICHE (BREVE TERMINE)</h4>
+                                        <p className="text-xs text-red-700 mb-2">Per coprire il gap di {reverseEngineering.gap.toFixed(0)}€:</p>
+                                        <ul className="text-xs text-gray-700 list-disc list-inside space-y-1">
+                                            <li>Trovare <strong>{reverseEngineering.studentsNeeded}</strong> nuovi studenti.</li>
+                                            <li>Vendere <strong>{reverseEngineering.extraLessonsNeeded}</strong> lezioni extra.</li>
                                         </ul>
                                     </div>
-                                    <div className="p-4 rounded-xl border-l-4 border-blue-500 bg-blue-50 shadow-sm cursor-pointer hover:shadow-md transition-all">
-                                        <h4 className="font-bold text-sm uppercase mb-2">Strategia (Medio/Lungo Termine)</h4>
-                                        <p className="text-xs text-gray-600 mb-2">Per stabilizzare il target:</p>
-                                        <ul className="text-xs space-y-1 font-medium">
-                                            <li>• Alzare il prezzo medio a <strong>{(simParams.avgLessonPrice * 1.1).toFixed(2)}€</strong>.</li>
-                                            <li>• Ottimizzare i costi di nolo nelle sedi a basso margine.</li>
+                                    <div className="p-4 bg-blue-50 rounded-xl border-l-4 border-blue-400">
+                                        <h4 className="text-xs font-black uppercase text-blue-800 mb-2">STRATEGIA (MEDIO/LUNGO TERMINE)</h4>
+                                        <p className="text-xs text-blue-700 mb-2">Per stabilizzare il target:</p>
+                                        <ul className="text-xs text-gray-700 list-disc list-inside space-y-1">
+                                            <li>Alzare il prezzo medio a <strong>{(lessonPrice * 1.1).toFixed(2)}€</strong>.</li>
+                                            <li>Ottimizzare i costi di nolo nelle sedi a basso margine.</li>
                                         </ul>
                                     </div>
                                 </div>
                             </div>
+
                         </div>
                     )}
 
                     {activeTab === 'controlling' && (
-                        /* REINTEGRATO CONTROLLO GESTIONE (Logistica, Profittabilità) */
-                        <div className="space-y-8 animate-slide-up">
-                            <div className="md-card p-6 border-t-4 border-indigo-500">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4">🏢 Profittabilità Sedi</h3>
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8"><div className="h-64 relative"><canvas ref={el => { controllingChartRef.current = el; }}></canvas></div><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="text-xs text-gray-500 uppercase bg-gray-50 border-b"><tr><th className="px-3 py-2">Sede</th><th className="px-3 py-2 text-right">Margine</th></tr></thead><tbody>{locationAnalysis.map((loc,idx)=>(<tr key={idx} className="hover:bg-gray-50"><td className="px-3 py-2 font-bold">{loc.name}</td><td className="px-3 py-2 text-right">{loc.marginPercent.toFixed(0)}%</td></tr>))}</tbody></table></div></div>
-                            </div>
-                            <div className="md-card p-6 border-t-4 border-amber-500 bg-amber-50/30">
-                                <h3 className="text-lg font-bold text-amber-900 mb-4">🚚 Efficienza Logistica (TCO)</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div><span className="text-sm font-bold">Carburante (€/L):</span><input type="number" step="0.01" value={simParams.fuelCost} onChange={e=>setSimParams({...simParams,fuelCost:Number(e.target.value)})} className="w-20 p-1 border rounded ml-2"/></div>
-                                    <div className="flex flex-col justify-center items-center bg-white rounded-xl shadow-sm p-4"><p className="text-xs font-bold text-amber-800 uppercase">Costo Totale</p><p className="text-3xl font-bold text-amber-600">{engineData.logistics.totalLogisticsCost.toFixed(2)}€</p></div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
+                            {roiSedi.map((sede, idx) => (
+                                <div key={idx} className="md-card p-6 bg-white border-t-4" style={{ borderColor: sede.color }}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h4 className="font-black text-slate-800 uppercase tracking-tighter">{sede.name}</h4>
+                                        <span className={`px-2 py-1 rounded text-[10px] font-black ${sede.revenue > sede.costs ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                            ROI {sede.revenue > 0 ? (((sede.revenue - sede.costs) / sede.revenue) * 100).toFixed(0) : 0}%
+                                        </span>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between text-xs"><span>Ricavi Studenti</span><span className="font-bold text-green-600">+{sede.revenue.toFixed(2)}€</span></div>
+                                        <div className="flex justify-between text-xs"><span>Costo Noli Real</span><span className="font-bold text-red-600">-{sede.costs.toFixed(2)}€</span></div>
+                                        <div className="pt-2 border-t flex justify-between text-sm font-black"><span>Utile Sede</span><span className="text-indigo-600">{(sede.revenue - sede.costs).toFixed(2)}€</span></div>
+                                    </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
                     )}
 
-                    {activeTab === 'analytics' && (
-                        /* REINTEGRATO ANALYTICS */
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['bar'] = el; }}></canvas></div></div>
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['doughnut'] = el; }}></canvas></div></div>
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['line'] = el; }}></canvas></div></div>
-                            <div className="md-card p-4"><div className="h-64"><canvas ref={el => { canvasRefs.current['radar'] = el; }}></canvas></div></div>
-                        </div>
-                    )}
-
-                    {(['transactions', 'invoices', 'quotes', 'archive'].includes(activeTab)) && (
-                        /* Standard List View */
-                        <div className="space-y-4 animate-slide-up">
-                            <div className="md-card p-4">
-                                <div className="mb-4 flex gap-2">
-                                    <input type="text" placeholder="Cerca..." value={listFilters.search} onChange={e=>setListFilters({...listFilters, search: e.target.value})} className="md-input"/>
+                    {['transactions', 'invoices', 'archive', 'quotes'].includes(activeTab) && (
+                        <div className="md-card overflow-hidden bg-white shadow-2xl border-0">
+                            <div className="p-6 bg-slate-50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
+                                <div className="relative flex-1 max-w-md">
+                                    <SearchIcon className="absolute left-3 top-3 text-slate-400" />
+                                    <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500" />
                                 </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left">
-                                        <thead className="text-xs text-gray-700 uppercase bg-gray-50"><tr><th>Data</th><th>Descrizione/Cliente</th><th>Importo</th><th>Stato</th><th>Azioni</th></tr></thead>
-                                        <tbody>
-                                            {paginatedList.map((item: any) => (
-                                                <tr key={item.id} className="bg-white border-b hover:bg-gray-50">
-                                                    <td className="px-4 py-3">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
-                                                    <td className="px-4 py-3 font-medium text-gray-900">{item.description || item.clientName}</td>
-                                                    <td className="px-4 py-3">{(item.amount || item.totalAmount).toFixed(2)}€</td>
-                                                    <td className="px-4 py-3">{item.status}</td>
-                                                    <td className="px-4 py-3 flex gap-2">
-                                                        {activeTab === 'archive' && <input type="checkbox" checked={archiveSelection.includes(item.id)} onChange={() => toggleArchiveSelection(item.id)} />}
-                                                        {activeTab === 'invoices' && item.status === 'PendingSDI' && <button onClick={() => handleSealClick(item)} className="text-blue-600"><DocumentCheckIcon/></button>}
-                                                        {(activeTab === 'invoices' || activeTab === 'quotes' || activeTab === 'archive') && <button onClick={() => handlePrintDocument(item)} className="text-gray-600"><PrinterIcon/></button>}
-                                                        {activeTab !== 'archive' && <button onClick={() => { setEditingItem(item); if(activeTab==='transactions') setIsTransModalOpen(true); else setIsDocModalOpen(true); }} className="text-blue-600"><PencilIcon/></button>}
-                                                        <button onClick={() => activeTab === 'transactions' ? handleDeleteTransaction(item.id) : handleDeleteDocument(item.id)} className="text-red-600"><TrashIcon/></button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                {selectedItems.length > 0 && (
+                                    <div className="flex gap-2 animate-fade-in">
+                                        <button className="md-btn md-btn-sm bg-indigo-600 text-white font-bold"><PrinterIcon /> Stampa ({selectedItems.length})</button>
+                                        <button className="md-btn md-btn-sm bg-slate-800 text-white font-bold"><TrashIcon /> Elimina</button>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="text-[10px] text-slate-400 uppercase bg-slate-50/50 border-b font-black tracking-widest">
+                                        <tr>
+                                            <th className="px-6 py-4 w-10">
+                                                <input type="checkbox" onChange={e => setSelectedItems(e.target.checked ? filteredList.map(i => i.id) : [])} checked={selectedItems.length === filteredList.length && filteredList.length > 0} />
+                                            </th>
+                                            <th className="px-6 py-4">Data</th>
+                                            <th className="px-6 py-4">Rif / ID</th>
+                                            <th className="px-6 py-4">Soggetto / Causale</th>
+                                            <th className="px-6 py-4 text-right">Importo</th>
+                                            <th className="px-6 py-4">Stato</th>
+                                            <th className="px-6 py-4 text-right">Azioni</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {filteredList.map(item => (
+                                            <tr key={item.id} className={`hover:bg-indigo-50/30 transition-colors group ${selectedItems.includes(item.id) ? 'bg-indigo-50' : ''}`}>
+                                                <td className="px-6 py-4">
+                                                    <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id])} />
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
+                                                <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">{item.invoiceNumber || item.quoteNumber || 'TRX-'+item.id.substring(0,5).toUpperCase()}</td>
+                                                <td className="px-6 py-4 font-bold text-slate-900 truncate max-w-[250px]">{item.clientName || item.description}</td>
+                                                <td className="px-6 py-4 text-right font-black text-slate-900">{(item.amount || item.totalAmount).toFixed(2)}€</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${
+                                                        item.status === 'Paid' || item.status === 'Completed' || item.status === 'SealedSDI' 
+                                                        ? 'bg-green-100 text-green-700 border-green-200' 
+                                                        : 'bg-amber-100 text-amber-700 border-amber-200'
+                                                    }`}>
+                                                        {item.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-right">
+                                                    <div className="flex justify-end gap-1">
+                                                        {item.status === 'PendingSDI' && <button onClick={() => { setInvoiceToSeal(item); setIsSealModalOpen(true); }} className="md-icon-btn text-indigo-600" title="Sigilla SDI"><DocumentCheckIcon /></button>}
+                                                        <button onClick={() => handleWhatsApp(item)} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
+                                                        {(activeTab === 'invoices' || activeTab === 'quotes' || activeTab === 'archive') && (
+                                                            <button onClick={() => handlePrint(item)} className="md-icon-btn text-slate-600" title="PDF"><PrinterIcon /></button>
+                                                        )}
+                                                        <button onClick={() => handleEditTransaction(item)} className="md-icon-btn edit"><PencilIcon /></button>
+                                                        <button onClick={() => setTransactionToDelete(item.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                {filteredList.length === 0 && <div className="py-20 text-center text-slate-400 italic">Nessun record trovato.</div>}
                             </div>
                         </div>
                     )}
-                </>
+                </div>
             )}
 
-            <ConfirmModal isOpen={confirmState.isOpen} onClose={() => setConfirmState(p => ({...p, isOpen: false}))} onConfirm={confirmState.onConfirm} title={confirmState.title} message={confirmState.message} isDangerous={confirmState.isDangerous} />
-            
-            {/* Minimal Modals Placeholders */}
-            {isTransModalOpen && <Modal onClose={()=>setIsTransModalOpen(false)}><div className="p-4"><h3>Transazione</h3><button onClick={()=>handleSaveTransaction(editingItem || {date: new Date().toISOString(), amount:0, type: TransactionType.Expense, category: TransactionCategory.Other, paymentMethod: PaymentMethod.Cash, description: '', status: TransactionStatus.Completed})}>Salva</button></div></Modal>}
-            {isDocModalOpen && <Modal onClose={()=>setIsDocModalOpen(false)}><div className="p-4"><h3>Documento</h3><button onClick={()=>handleSaveDocument(editingItem || {clientName: '', issueDate: new Date().toISOString(), items: [], totalAmount: 0, status: DocumentStatus.Draft})}>Salva</button></div></Modal>}
-            {isSealModalOpen && <Modal onClose={()=>setIsSealModalOpen(false)}><div className="p-4"><h3>Sigilla SDI</h3><button onClick={()=>handleConfirmSeal('SDI-123')}>Conferma</button></div></Modal>}
+            {/* MODALE SIGILLO SDI */}
+            {isSealModalOpen && (
+                <Modal onClose={() => setIsSealModalOpen(false)}>
+                    <div className="p-8">
+                        <h3 className="text-xl font-black mb-4">SIGILLO FISCALE SDI</h3>
+                        <p className="text-sm text-slate-500 mb-6">Inserisci l'ID di ricezione del Sistema di Interscambio per finalizzare la fattura <strong>{invoiceToSeal?.invoiceNumber}</strong>.</p>
+                        <div className="md-input-group mb-8">
+                            <input type="text" value={sdiId} onChange={e => setSdiId(e.target.value)} required className="md-input" placeholder=" " />
+                            <label className="md-input-label">ID Sistema Interscambio (SDI)</label>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button onClick={() => setIsSealModalOpen(false)} className="md-btn md-btn-flat">Esci</button>
+                            <button onClick={handleSeal} disabled={!sdiId} className="md-btn md-btn-raised md-btn-primary">Finalizza Documento</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* MODALE TRANSAZIONE MANUALE */}
+            {isTransactionModalOpen && (
+                <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg">
+                    <TransactionForm 
+                        transaction={editingTransaction}
+                        suppliers={suppliers}
+                        onSave={handleSaveTransaction}
+                        onCancel={() => setIsTransactionModalOpen(false)}
+                    />
+                </Modal>
+            )}
+
+            <ConfirmModal 
+                isOpen={!!transactionToDelete}
+                onClose={() => setTransactionToDelete(null)}
+                onConfirm={handleDeleteTransaction}
+                title="Elimina Voce"
+                message="Sei sicuro di voler eliminare questa transazione?"
+                isDangerous={true}
+            />
         </div>
     );
 };
+
+// --- WIDGETS ---
+const KpiCard = ({ title, value, color, progress, label, sub }: any) => (
+    <div className="md-card p-6 bg-white shadow-xl border-l-4 border-l-indigo-500">
+        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h3>
+        <p className={`text-2xl font-black text-slate-900`}>{value}</p>
+        {sub && <p className="text-[10px] text-slate-400 mt-1 font-bold">{sub}</p>}
+        {progress !== undefined && (
+            <div className="mt-4">
+                <div className="flex justify-between text-[9px] font-black uppercase text-slate-400 mb-1"><span>{label}</span><span>{progress.toFixed(0)}%</span></div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className={`h-full transition-all duration-1000 ${progress > 80 ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${Math.min(progress, 100)}%` }}></div>
+                </div>
+            </div>
+        )}
+    </div>
+);
+
+const StrategyCard = ({ title, desc, status }: any) => (
+    <div className={`md-card p-5 border-l-4 ${status === 'danger' ? 'border-red-500 bg-red-50' : status === 'warning' ? 'border-amber-500 bg-amber-50' : 'border-emerald-500 bg-emerald-50'}`}>
+        <h4 className="text-xs font-black uppercase text-slate-800 mb-1">{title}</h4>
+        <p className="text-xs text-slate-600 leading-relaxed font-medium">{desc}</p>
+    </div>
+);
 
 export default Finance;

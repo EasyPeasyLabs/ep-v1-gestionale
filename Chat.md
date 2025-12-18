@@ -428,3 +428,51 @@ Ripristino completo e olistico del modulo Finanza (CFO & Controlling) e affiname
     -   **Badge Bozza Interattivo**: Possibilità di cliccare sul badge "Draft" per accedere direttamente al sigillo SDI.
     -   **Logic Controlling (Real)**: Aggiornato il calcolo della profittabilità per sede per usare le transazioni reali invece delle stime, garantendo precisione contabile.
     -   **Bulk Delete Transazioni**: Aggiunti comandi per eliminare massivamente tutte le transazioni di Entrata o Uscita, utile per reset contabili.
+
+---
+
+## Sessione 27 (18 Dicembre 2025)
+
+### Obiettivo della Sessione
+Perfezionamento logica attivazione iscrizioni e Audit tecnico del modulo ISCRIZIONI.
+
+### Riepilogo delle Attività
+1.  **Fix Transizione Stato Iscrizione**:
+    -   Rafforzata la logica in `paymentService.ts`. Il pagamento di un'iscrizione in stato `Pending` ora forza atomicamente lo stato ad `Active` all'interno della transazione Firestore.
+    -   Aggiunto logging specifico nell'Audit Trail per tracciare questa attivazione automatica.
+
+2.  **Audit Modulo Iscrizioni**:
+    -   Eseguita validazione completa del ciclo: Creazione -> Assegnazione -> Pagamento -> Attivazione.
+    -   Verificata la consistenza UI/DB: l'interfaccia si aggiorna istantaneamente riflettendo il cambio di stato.
+    -   Verificata la robustezza del "Deep Cleaning" in caso di eliminazione.
+
+3.  **Risoluzione Bug Critici**:
+    -   **FCM Service Worker**: Risolto errore `The document is in an invalid state` implementando un check su `document.readyState` prima della registrazione del SW in `fcmService.ts`.
+    -   **Firestore Indexes**: Aggiornato `firestore.indexes.json` con le definizioni composte mancanti per le query di Fatture e Transazioni (filtri su `isGhost`, `isDeleted` e ordinamento temporale).
+
+---
+
+## Sessione 28 (18 Dicembre 2025)
+
+### Obiettivo della Sessione
+Riprogettazione completa della Tab "Strategia (CFO)" nel modulo Finanza secondo il nuovo layout "Enterprise".
+
+### Riepilogo delle Attività
+1.  **Nuova Dashboard CFO**:
+    -   Rimossa la vecchia tabella transazioni dalla tab Strategia.
+    -   Implementate 3 Card interattive per una visione olistica.
+
+2.  **Componenti Implementati**:
+    -   **AI Reverse Engineering**: Calcolatore inverso che partendo dal netto mensile desiderato definisce il fatturato lordo necessario e il gap operativo, suggerendo azioni tattiche (nuovi studenti) e strategiche (aumento prezzi).
+    -   **Pianificatore Fiscale Visuale**: Progress bar per il plafond forfettario (85k) e card dettagliate per Imponibile, INPS, Imposta e Bolli.
+    -   **Simulatore Rate**: Griglia mensile (Giu-Nov) che proietta le rate basandosi sul saldo corrente + acconto anno successivo.
+
+---
+
+## Sessione 29 (18 Dicembre 2025)
+
+### Obiettivo della Sessione
+Piccola rettifica di UI nel modulo Finanza.
+
+### Riepilogo delle Attività
+1.  **Rinominata Tab**: La tab precedentemente chiamata "Analisi Grafica" è stata rinominata in "Transazioni" per riflettere meglio il contenuto (lista tabellare dei movimenti).
