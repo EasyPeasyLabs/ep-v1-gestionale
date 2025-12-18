@@ -701,13 +701,32 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
                                                     <div className="flex justify-end gap-1">
-                                                        {item.status === 'PendingSDI' && <button onClick={() => { setInvoiceToSeal(item); setIsSealModalOpen(true); }} className="md-icon-btn text-indigo-600" title="Sigilla SDI"><DocumentCheckIcon /></button>}
-                                                        <button onClick={() => handleWhatsApp(item)} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
+                                                        {item.status === 'PendingSDI' && <button onClick={() => { 
+                                                            console.log('[DEBUG] Click Seal SDI', item);
+                                                            setInvoiceToSeal(item); setIsSealModalOpen(true); 
+                                                        }} className="md-icon-btn text-indigo-600" title="Sigilla SDI"><DocumentCheckIcon /></button>}
+                                                        
+                                                        <button onClick={() => {
+                                                            console.log('[DEBUG] Click WhatsApp', item);
+                                                            handleWhatsApp(item);
+                                                        }} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
+                                                        
                                                         {(activeTab === 'invoices' || activeTab === 'quotes' || activeTab === 'archive') && (
-                                                            <button onClick={() => handlePrint(item)} className="md-icon-btn text-slate-600" title="PDF"><PrinterIcon /></button>
+                                                            <button onClick={() => {
+                                                                console.log('[DEBUG] Click Print PDF', item);
+                                                                handlePrint(item);
+                                                            }} className="md-icon-btn text-slate-600" title="PDF"><PrinterIcon /></button>
                                                         )}
-                                                        <button onClick={() => handleEditTransaction(item)} className="md-icon-btn edit"><PencilIcon /></button>
-                                                        <button onClick={() => setTransactionToDelete(item.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                                                        
+                                                        <button onClick={() => {
+                                                            console.log('[DEBUG] Click Edit', item);
+                                                            handleEditTransaction(item);
+                                                        }} className="md-icon-btn edit"><PencilIcon /></button>
+                                                        
+                                                        <button onClick={() => {
+                                                            console.log('[DEBUG] Click Delete', item);
+                                                            setTransactionToDelete(item.id);
+                                                        }} className="md-icon-btn delete"><TrashIcon /></button>
                                                     </div>
                                                 </td>
                                             </tr>
