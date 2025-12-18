@@ -487,3 +487,26 @@ Risoluzione errori TypeScript critici per il deploy su Vercel.
 ### Riepilogo delle Attività
 1.  **Fix Enum Comparison**: Corretto l'errore TS2367 in `Finance.tsx` dove l'enum `TransactionType` veniva confrontato con stringhe letterali quotate (`'TransactionType.Income'`).
 2.  **UI Cleanup (SearchIcon)**: Risolto errore TS2322 rimuovendo la prop `className` passata direttamente al componente `SearchIcon` (che non la accettava) e gestendo il posizionamento tramite il div contenitore.
+
+---
+
+## Sessione 31 (18 Dicembre 2025)
+
+### Obiettivo della Sessione
+Analisi approfondita e tentativo di risoluzione bug attivazione iscrizioni.
+
+### Riepilogo delle Attività
+1.  **Tentativo Fix (Payment Service)**: Ripulito `paymentService.ts` da possibili valori `undefined` e riordinato le operazioni della transazione.
+2.  **Esito**: Il problema persisteva ("dormiente"). Questo ha portato a una revisione più profonda.
+
+---
+
+## Sessione 32 (18 Dicembre 2025)
+
+### Obiettivo della Sessione
+Risoluzione definitiva bug attivazione iscrizione e riorganizzazione flusso transazione.
+
+### Riepilogo delle Attività
+1.  **Identificazione Bug Critico (Update)**: Riscritto integralmente `paymentService.ts` per evitare l'uso di oggetti non serializzabili e garantire che nessun campo `undefined` raggiunga mai Firestore (causa di crash silenziosi delle transazioni).
+2.  **Sanificazione Dati**: Implementati valori di fallback rigorosi per ogni campo opzionale (location, client name, note).
+3.  **UI Logic**: Aggiornato `Enrollments.tsx` per caricare TUTTI i clienti (inclusi Enti), risolvendo il problema dei nomi cliente "Sconosciuti" per le iscrizioni aziendali.

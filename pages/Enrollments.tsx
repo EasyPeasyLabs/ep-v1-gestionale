@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice } from '../types';
+import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
@@ -130,7 +130,9 @@ const RecoveryModal: React.FC<{
 
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Data States
-    const [clients, setClients] = useState<ParentClient[]>([]);
+    const [allClients, setAllClients] = useState<Client[]>([]); // Store ALL clients
+    const [parentClients, setParentClients] = useState<ParentClient[]>([]); // For Dropdown
+    
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
@@ -201,7 +203,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 getAllEnrollments(),
                 getSuppliers()
             ]);
-            setClients(clientsData.filter(c => c.clientType === ClientType.Parent) as ParentClient[]);
+            
+            console.log('[DEBUG Enrollments] Clients Loaded:', clientsData.length);
+            
+            setAllClients(clientsData); // Store ALL
+            setParentClients(clientsData.filter(c => c.clientType === ClientType.Parent) as ParentClient[]); // Filter for UI
+            
             setEnrollments(enrollmentsData);
             setSuppliers(suppliersData);
             setError(null);
@@ -229,11 +236,21 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         depositAmount: number,
         ghostInvoiceId?: string
     ) => {
+        
+        console.log('[DEBUG Enrollments] Executing Payment Action:', {
+            enrollmentId: enr.id,
+            childName: enr.childName,
+            amount: depositAmount,
+            isDeposit,
+            isBalance
+        });
+
         setLoading(true);
         const fullPrice = enr.price !== undefined ? enr.price : 0;
         const actualAmount = Number(depositAmount); // Assicurati sia numero
         
-        const client = clients.find(c => c.id === enr.clientId);
+        // Use allClients to ensure we find Institutional clients too
+        const client = allClients.find(c => c.id === enr.clientId);
 
         const result = await processPayment(
             enr, 
@@ -248,10 +265,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         );
 
         if (result.success) {
+            console.log('[DEBUG Enrollments] Payment Success!', result);
             alert("Pagamento registrato con successo.");
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } else {
+            console.error("[DEBUG Enrollments] Payment failed", result.error);
+            alert("ERRORE: " + result.error); // ALERT ESPLICITO
             setError("Errore durante la registrazione del pagamento: " + result.error);
         }
         setLoading(false);
@@ -299,6 +319,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handlePaymentRequest = async (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
+        console.log('[DEBUG Enrollments] Payment Requested for:', enr);
         
         let isBalanceMode = false;
         let ghostId = undefined;
@@ -325,6 +346,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName))
             );
 
+            console.log('[DEBUG Enrollments] Invoice Check:', {
+                foundDepositInvoice: !!depositInvoice,
+                foundGhostInvoice: !!ghostInvoice
+            });
+
             if (depositInvoice) {
                 isBalanceMode = true;
                 suggestedAmount = Math.max(0, (enr.price || 0) - depositInvoice.totalAmount);
@@ -337,7 +363,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             }
         } catch(e) { console.error("Error checking invoices", e); }
 
-        setPaymentModalState({ 
+        const newState = { 
             isOpen: true, 
             enrollment: enr, 
             date: new Date().toISOString().split('T')[0], 
@@ -347,10 +373,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             isBalance: isBalanceMode, 
             depositAmount: suggestedAmount,
             ghostInvoiceId: ghostId
-        });
+        };
+        console.log('[DEBUG Enrollments] Setting Payment Modal State:', newState);
+        setPaymentModalState(newState);
     };
 
     const handleConfirmPayment = async () => {
+        console.log('[DEBUG Enrollments] Confirm Payment Clicked');
         if (paymentModalState.enrollment && paymentModalState.date) {
             setPaymentModalState(prev => ({ ...prev, isOpen: false }));
             await executePaymentAction(
@@ -363,6 +392,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 paymentModalState.depositAmount,
                 paymentModalState.ghostInvoiceId
             );
+        } else {
+            console.error('[DEBUG Enrollments] Missing data for payment confirmation');
         }
     };
 
@@ -426,9 +457,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     // --- Helper per estrarre dati derivati ---
     const getChildAge = (enrollment: Enrollment): string => {
-        const client = clients.find(c => c.id === enrollment.clientId);
-        const child = client?.children.find(c => c.id === enrollment.childId);
-        return child?.age || '';
+        const client = allClients.find(c => c.id === enrollment.clientId);
+        if (client && client.clientType === ClientType.Parent) {
+            const child = (client as ParentClient).children.find(c => c.id === enrollment.childId);
+            return child?.age || '';
+        }
+        return '';
     };
 
     const getFirstAppointmentData = (enrollment: Enrollment) => {
@@ -455,7 +489,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             if(age) ages.add(age);
         });
         return Array.from(ages).sort();
-    }, [enrollments, clients]);
+    }, [enrollments, allClients]);
     const availableTimes = useMemo(() => {
         const times = new Set<string>();
         enrollments.forEach(e => {
@@ -488,8 +522,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
             if (searchTerm) {
                 const term = searchTerm.toLowerCase();
-                const client = clients.find(c => c.id === enr.clientId);
-                const parentName = client ? `${client.firstName} ${client.lastName}` : '';
+                const client = allClients.find(c => c.id === enr.clientId);
+                let parentName = '';
+                if(client) {
+                    parentName = client.clientType === ClientType.Parent 
+                        ? `${(client as ParentClient).firstName} ${(client as ParentClient).lastName}`
+                        : (client as import('../types').InstitutionalClient).companyName;
+                }
+                
                 const childAge = getChildAge(enr);
                 const appData = getFirstAppointmentData(enr);
                 
@@ -523,7 +563,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         });
 
         return result;
-    }, [enrollments, clients, searchTerm, filterLocation, filterAge, filterDay, filterTime, sortOrder]);
+    }, [enrollments, allClients, searchTerm, filterLocation, filterAge, filterDay, filterTime, sortOrder]);
 
 
     // --- Grouping Logic (Recinti) ---
@@ -792,7 +832,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                                     <span className="font-bold text-xs">€</span>
                                                                                 </button>
                                                                             )}
-                                                                            <button onClick={(e) => handleEditClick(e, clients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica">
+                                                                            <button onClick={(e) => handleEditClick(e, parentClients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica">
                                                                                 <PencilIcon />
                                                                             </button>
                                                                             <button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina">
@@ -956,7 +996,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 confirmText="Sì, Elimina TUTTO"
             />
 
-            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm parents={clients} initialParent={selectedClient} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
+            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm parents={parentClients} initialParent={selectedClient} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
             {recoveryModalState.isOpen && recoveryModalState.enrollment && <RecoveryModal enrollment={recoveryModalState.enrollment} maxRecoverable={recoveryModalState.maxRecoverable} suppliers={suppliers} onClose={() => setRecoveryModalState(prev => ({ ...prev, isOpen: false }))} onConfirm={handleConfirmRecovery} />}
         </div>
     );
