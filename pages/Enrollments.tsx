@@ -5,7 +5,7 @@ import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices } from '../services/financeService';
-import { processPayment } from '../services/paymentService'; // NEW
+import { processPayment } from '../services/paymentService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -161,7 +161,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         isDeposit: boolean;
         isBalance: boolean;
         depositAmount: number;
-        ghostInvoiceId?: string; // ID della fattura ghost da promuovere
+        ghostInvoiceId?: string;
     }>({
         isOpen: false,
         enrollment: null,
@@ -231,7 +231,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     ) => {
         setLoading(true);
         const fullPrice = enr.price !== undefined ? enr.price : 0;
-        const actualAmount = (isDeposit || isBalance) ? depositAmount : fullPrice;
+        const actualAmount = Number(depositAmount); // Assicurati sia numero
         
         const client = clients.find(c => c.id === enr.clientId);
 
@@ -244,7 +244,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             createInvoice,
             isDeposit,
             fullPrice,
-            ghostInvoiceId // Passa l'ID per la promozione se esiste
+            ghostInvoiceId
         );
 
         if (result.success) {
@@ -257,8 +257,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setLoading(false);
     };
 
-    // ... (executeMove, handleDragStart, handleDragOver, handleDrop, handleCardClick, handleSlotClick logic remains same) ...
-    // Re-included briefly for completeness of file
     const executeMove = async (enrollmentId: string, targetLocId: string, targetLocName: string, targetLocColor: string, targetDayIndex: number, targetStartTime: string, targetEndTime: string) => {
         const original = enrollments.find(en => en.id === enrollmentId);
         if (!original) return;
@@ -333,6 +331,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 if (ghostInvoice) {
                     ghostId = ghostInvoice.id;
                 }
+            } else {
+                // Default: Suggerisci metà se non c'è acconto registrato
+                suggestedAmount = suggestedAmount / 2;
             }
         } catch(e) { console.error("Error checking invoices", e); }
 
@@ -344,7 +345,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             createInvoice: true, 
             isDeposit: !isBalanceMode, 
             isBalance: isBalanceMode, 
-            depositAmount: isBalanceMode ? suggestedAmount : (enr.price || 0) / 2,
+            depositAmount: suggestedAmount,
             ghostInvoiceId: ghostId
         });
     };
@@ -387,8 +388,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 await cleanupEnrollmentFinancials(target);
                 await deleteEnrollment(target.id);
             } else {
-                const allEnrollments = await getEnrollmentsForClient(target.clientId);
-                for (const enr of allEnrollments) {
+                const clientEnrollments = await getEnrollmentsForClient(target.clientId);
+                for (const enr of clientEnrollments) {
                     await cleanupEnrollmentFinancials(enr);
                     await deleteEnrollment(enr.id);
                 }
@@ -411,8 +412,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             for (const enr of allEnrollments) {
                 await cleanupEnrollmentFinancials(enr);
                 await deleteEnrollment(enr.id);
-                // NOTA: I noli (Auto-Rent) non vengono cancellati massivamente qui, 
-                // devono essere gestiti dalla pulizia finanziaria se necessario.
             }
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));

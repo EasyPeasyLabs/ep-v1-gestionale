@@ -1,10 +1,10 @@
 
 import { db } from '../firebase/config';
-import { runTransaction, doc, collection, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { runTransaction, doc, collection, writeBatch } from 'firebase/firestore';
 import { 
     Enrollment, EnrollmentStatus, 
     PaymentMethod, TransactionType, TransactionCategory, TransactionStatus, 
-    Invoice, InvoiceInput, DocumentStatus,
+    InvoiceInput, DocumentStatus,
     Client, ClientType, ParentClient, InstitutionalClient
 } from '../types';
 import { logFinancialAction } from './auditService';
@@ -103,7 +103,9 @@ export const processPayment = async (
             // 2. Registrazione Transazione Finanziaria
             if (amount > 0) {
                 const transRef = doc(collection(db, 'transactions'));
-                transaction.set(transRef, {
+                
+                // FIX CRITICO: Firestore NON accetta 'undefined'. Usiamo null o escludiamo la chiave.
+                const transactionData: any = {
                     date: new Date(date).toISOString(),
                     description: `Incasso ${finalInvoiceNumber || 'Iscrizione'} - ${enrollment.childName}`,
                     amount: amount,
@@ -111,17 +113,22 @@ export const processPayment = async (
                     category: TransactionCategory.Sales,
                     paymentMethod: method,
                     status: TransactionStatus.Completed,
-                    relatedDocumentId: invoiceId || undefined,
                     allocationType: 'location',
                     allocationId: enrollment.locationId,
                     allocationName: enrollment.locationName,
                     isDeleted: false
-                });
+                };
+
+                if (invoiceId) {
+                    transactionData.relatedDocumentId = invoiceId;
+                }
+
+                transaction.set(transRef, transactionData);
             }
 
             // 3. CAMBIO STATO ISCRIZIONE (Cruciale: Da Dormiente ad Attivo)
-            // Se lo stato attuale è Pending, il pagamento conferma l'iscrizione.
             const currentData = enrSnap.data();
+            // Forza l'attivazione se lo stato è Pending o se stiamo registrando il primo pagamento
             if (currentData.status === EnrollmentStatus.Pending) {
                 transaction.update(enrRef, { status: EnrollmentStatus.Active });
                 enrollmentActivated = true;
