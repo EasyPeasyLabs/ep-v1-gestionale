@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch } from 'firebase/firestore';
 import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment } from '../types';
@@ -154,22 +155,43 @@ export const calculateRentTransactions = (
 
 
 // --- Document Number Generation ---
-export const getNextDocumentNumber = async (collectionName: string, prefix: string, padLength: number = 3): Promise<string> => {
+export const getNextDocumentNumber = async (
+    collectionName: string, 
+    prefix: string, 
+    padLength: number = 3,
+    referenceDate: string | Date = new Date()
+): Promise<string> => {
     const coll = collection(db, collectionName);
-    const currentYear = new Date().getFullYear().toString();
     
-    // Filtriamo per escludere Ghost e documenti di anni precedenti
+    // Determina l'anno di riferimento dalla data del documento, non dalla data di sistema
+    const dateObj = new Date(referenceDate);
+    const targetYear = dateObj.getFullYear().toString();
+    
+    // Definisci il range dell'anno per la query
+    const startOfYear = new Date(dateObj.getFullYear(), 0, 1).toISOString();
+    const endOfYear = new Date(dateObj.getFullYear(), 11, 31, 23, 59, 59).toISOString();
+    
+    // Filtriamo per escludere Ghost e documenti di anni precedenti (usando il range)
     let q;
     if (collectionName === 'invoices') {
         q = query(
             coll, 
             where("isGhost", "==", false),
             where("isDeleted", "==", false),
+            where("issueDate", ">=", startOfYear),
+            where("issueDate", "<=", endOfYear),
+            orderBy('issueDate', 'desc'), 
+            limit(100) // Prende le ultime 100 dell'anno target
+        );
+    } else {
+        q = query(
+            coll, 
+            where("isDeleted", "==", false),
+            where("issueDate", ">=", startOfYear),
+            where("issueDate", "<=", endOfYear),
             orderBy('issueDate', 'desc'), 
             limit(100)
         );
-    } else {
-        q = query(coll, where("isDeleted", "==", false), orderBy('issueDate', 'desc'), limit(100));
     }
 
     const snapshot = await getDocs(q);
@@ -180,8 +202,8 @@ export const getNextDocumentNumber = async (collectionName: string, prefix: stri
             const data = d.data() as any;
             const num = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
             
-            // Verifichiamo che il numero appartenga all'anno corrente e segua il pattern PREFIX-YYYY-SEQ
-            if (num && num.startsWith(`${prefix}-${currentYear}`)) {
+            // Verifichiamo che il numero appartenga all'anno target e segua il pattern PREFIX-YYYY-SEQ
+            if (num && num.startsWith(`${prefix}-${targetYear}`)) {
                 const parts = num.split('-');
                 const seqStr = parts[parts.length - 1];
                 const seq = parseInt(seqStr, 10);
@@ -193,7 +215,7 @@ export const getNextDocumentNumber = async (collectionName: string, prefix: stri
     }
 
     const newSeq = (lastSeq + 1).toString().padStart(padLength, '0');
-    return `${prefix}-${currentYear}-${newSeq}`;
+    return `${prefix}-${targetYear}-${newSeq}`;
 };
 
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {
@@ -267,7 +289,8 @@ export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, in
         if (invoice.isGhost) {
             invoiceNumber = await getNextGhostInvoiceNumber();
         } else {
-            invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3);
+            // Passiamo la data della fattura per generare il numero nell'anno corretto
+            invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, invoice.issueDate);
         }
     }
 
@@ -305,7 +328,8 @@ export const getQuotes = async (): Promise<Quote[]> => {
 };
 
 export const addQuote = async (quote: QuoteInput): Promise<string> => {
-    const quoteNumber = await getNextDocumentNumber('quotes', 'PR', 4);
+    // Passiamo la data del preventivo per l'anno corretto
+    const quoteNumber = await getNextDocumentNumber('quotes', 'PR', 4, quote.issueDate);
     const docRef = await addDoc(quoteCollectionRef, { ...quote, quoteNumber, isDeleted: false });
     return docRef.id;
 };

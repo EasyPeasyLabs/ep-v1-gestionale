@@ -189,7 +189,42 @@ const SubscriptionStatusModal: React.FC<{
 };
 
 const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
-    const [name, setName] = useState(sub?.name || ''); 
+    // Logic for parsing existing name if editing
+    // Expected format: Prefix - Name . Year . Annotation
+    const initialName = sub?.name || '';
+    let parsedName = initialName;
+    let parsedYear = new Date().getFullYear().toString();
+    let parsedAnnotation = 'standard';
+
+    // Se stiamo modificando e il nome segue il pattern, proviamo a estrarre i campi per comodità
+    // Altrimenti lasciamo i default
+    if (sub && initialName.includes('.')) {
+        const parts = initialName.split('.').map(p => p.trim());
+        if (parts.length >= 2) {
+            // Tentativo euristico di parsing inverso
+            // Parte 0: "K - Trimestrale" -> Rimuoviamo prefisso
+            const namePart = parts[0];
+            const prefixSeparator = namePart.indexOf('-');
+            if (prefixSeparator > -1) {
+                parsedName = namePart.substring(prefixSeparator + 1).trim();
+            } else {
+                parsedName = namePart;
+            }
+            
+            parsedYear = parts[1] || parsedYear;
+            if (parts.length > 2) parsedAnnotation = parts[2];
+        }
+    } else if (sub) {
+        // Fallback per nomi vecchi (rimuovi solo prefisso se c'è)
+        const prefixSeparator = initialName.indexOf('-');
+        if (prefixSeparator > -1) {
+            parsedName = initialName.substring(prefixSeparator + 1).trim();
+        }
+    }
+
+    const [name, setName] = useState(parsedName); 
+    const [year, setYear] = useState(parsedYear);
+    const [annotation, setAnnotation] = useState(parsedAnnotation);
     const [price, setPrice] = useState(sub?.price || 0); 
     const [lessons, setLessons] = useState(sub?.lessons || 0); 
     const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0);
@@ -201,11 +236,10 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
 
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
-        let finalName = name;
-        const prefix = target === 'kid' ? 'K - ' : 'A - ';
-        if (!finalName.startsWith(prefix) && !finalName.startsWith(target === 'kid' ? 'K-' : 'A-')) {
-            finalName = prefix + finalName;
-        }
+        
+        // Costruzione Codice Univoco
+        const prefix = target === 'kid' ? 'K' : 'A';
+        const finalName = `${prefix} - ${name} . ${year} . ${annotation}`;
 
         const subData = { 
             name: finalName, 
@@ -257,10 +291,23 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                     </label>
                 </div>
 
-                <div className="md-input-group">
-                    <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
-                    <label htmlFor="subName" className="md-input-label">Nome Abbonamento</label>
-                </div> 
+                {/* Composite Name Fields */}
+                <div className="flex gap-2 items-end">
+                    <div className="flex-1 md-input-group">
+                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
+                        <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label>
+                    </div>
+                    <span className="text-gray-400 pb-2">.</span>
+                    <div className="w-20 md-input-group">
+                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} required className="md-input text-center" placeholder=" " />
+                        <label htmlFor="subYear" className="md-input-label">Anno</label>
+                    </div>
+                    <span className="text-gray-400 pb-2">.</span>
+                    <div className="w-24 md-input-group">
+                        <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " />
+                        <label htmlFor="subNote" className="md-input-label">Note</label>
+                    </div>
+                </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                     <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div> 
@@ -268,6 +315,11 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                 </div> 
                 <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> 
                 
+                {/* Generated Preview */}
+                <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500">
+                    Codice generato: <strong>{target === 'kid' ? 'K' : 'A'} - {name} . {year} . {annotation}</strong>
+                </div>
+
                 {/* Info Box if Promo/Future */}
                 {(statusConfig.status === 'promo' || statusConfig.status === 'future') && (
                     <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">

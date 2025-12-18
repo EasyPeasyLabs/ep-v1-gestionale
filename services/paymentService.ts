@@ -44,9 +44,10 @@ export const processPayment = async (
         }
 
         // 2. Generazione Numerazione (Fuori Transazione)
+        // FIX: Passiamo la data del pagamento come riferimento per l'anno della fattura
         let nextRealInvoiceNumber = '';
         if (createInvoice || ghostInvoiceIdToPromote) {
-            nextRealInvoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3);
+            nextRealInvoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, date);
         }
 
         const cleanAmount = Number(amount) || 0;
@@ -58,6 +59,9 @@ export const processPayment = async (
         const safeClientId = enrollment.clientId || 'unknown_client';
         const safeChildName = enrollment.childName || 'Allievo';
         const safeSubName = enrollment.subscriptionName || 'Corso';
+        
+        // Formattazione Data Iscrizione per Descrizione
+        const formattedEnrDate = new Date(enrollment.startDate).toLocaleDateString('it-IT');
 
         await runTransaction(db, async (transaction) => {
             // --- FASE 1: LETTURE ---
@@ -99,9 +103,9 @@ export const processPayment = async (
             } else if (createInvoice) {
                 // Create New Invoice
                 const newInvRef = doc(collection(db, 'invoices'));
-                const desc = isDeposit 
-                    ? `Acconto Iscrizione: ${safeChildName} - ${safeSubName}`
-                    : `Saldo/Pagamento Iscrizione: ${safeChildName} - ${safeSubName}`;
+                // NEW: Descrizione formattata secondo richiesta
+                const descPrefix = isDeposit ? "Acconto Iscrizione di:" : "Saldo/Pagamento Iscrizione di:";
+                const desc = `${descPrefix} ${safeChildName} del ${formattedEnrDate} per ${safeSubName} Sede: ${safeLocationName}`;
 
                 const newInvoiceData = {
                     invoiceNumber: nextRealInvoiceNumber,
@@ -115,7 +119,7 @@ export const processPayment = async (
                         description: desc, 
                         quantity: 1, 
                         price: cleanAmount, 
-                        notes: `Sede: ${safeLocationName}` 
+                        notes: "" 
                     }],
                     totalAmount: cleanAmount,
                     hasStampDuty: cleanAmount > 77,
@@ -164,7 +168,7 @@ export const processPayment = async (
         if (isDeposit) {
             const remaining = Number(fullPrice) - cleanAmount;
             if (remaining > 0) {
-                await createRemainingGhostInvoice(enrollment, clientName, remaining, date);
+                await createRemainingGhostInvoice(enrollment, clientName, remaining, date, formattedEnrDate);
             }
         }
 
@@ -178,13 +182,16 @@ export const processPayment = async (
     }
 };
 
-const createRemainingGhostInvoice = async (enrollment: Enrollment, clientName: string, remainingAmount: number, date: string) => {
+const createRemainingGhostInvoice = async (enrollment: Enrollment, clientName: string, remainingAmount: number, date: string, formattedEnrDate: string) => {
     try {
         const ghostNumber = await getNextGhostInvoiceNumber();
         const ghostRef = doc(collection(db, 'invoices'));
         
         const safeChildName = enrollment.childName || '';
         const safeSubName = enrollment.subscriptionName || '';
+        const safeLocationName = enrollment.locationName || 'Sede Non Definita';
+
+        const desc = `Saldo residuo Iscrizione di: ${safeChildName} del ${formattedEnrDate} per ${safeSubName} Sede: ${safeLocationName}`;
 
         const ghostInvoice: InvoiceInput = {
             clientId: enrollment.clientId || '',
@@ -194,16 +201,16 @@ const createRemainingGhostInvoice = async (enrollment: Enrollment, clientName: s
             status: DocumentStatus.Draft,
             paymentMethod: PaymentMethod.BankTransfer,
             items: [{ 
-                description: `Saldo residuo: ${safeChildName}`, 
+                description: desc, 
                 quantity: 1, 
                 price: remainingAmount, 
-                notes: `Riferimento corso ${safeSubName}` 
+                notes: "Documento pro-forma generato automaticamente." 
             }],
             totalAmount: remainingAmount,
             hasStampDuty: remainingAmount > 77,
             isGhost: true,
             invoiceNumber: ghostNumber,
-            notes: "Documento pro-forma generato automaticamente."
+            notes: ""
         };
 
         const batch = writeBatch(db);
