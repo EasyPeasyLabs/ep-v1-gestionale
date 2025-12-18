@@ -448,7 +448,7 @@ Perfezionamento logica attivazione iscrizioni e Audit tecnico del modulo ISCRIZI
 
 3.  **Risoluzione Bug Critici**:
     -   **FCM Service Worker**: Risolto errore `The document is in an invalid state` implementando un check su `document.readyState` prima della registrazione del SW in `fcmService.ts`.
-    -   **Firestore Indexes**: Aggiornato `firestore.indexes.json` con le definizioni composte mancanti per le query di Fatture e Transazioni (filtri su `isGhost`, `isDeleted` e ordinamento temporale).
+    -   **Firestore Indexes**: Aggiornato `firestore.indexes.json` with le definizioni composte mancanti per le query di Fatture e Transazioni (filtri su `isGhost`, `isDeleted` e ordinamento temporale).
 
 ---
 
@@ -476,3 +476,14 @@ Piccola rettifica di UI nel modulo Finanza.
 
 ### Riepilogo delle Attività
 1.  **Rinominata Tab**: La tab precedentemente chiamata "Analisi Grafica" è stata rinominata in "Transazioni" per riflettere meglio il contenuto (lista tabellare dei movimenti).
+
+---
+
+## Sessione 30 (18 Dicembre 2025)
+
+### Obiettivo della Sessione
+Risoluzione errori TypeScript critici per il deploy su Vercel.
+
+### Riepilogo delle Attività
+1.  **Fix Enum Comparison**: Corretto l'errore TS2367 in `Finance.tsx` dove l'enum `TransactionType` veniva confrontato con stringhe letterali quotate (`'TransactionType.Income'`).
+2.  **UI Cleanup (SearchIcon)**: Risolto errore TS2322 rimuovendo la prop `className` passata direttamente al componente `SearchIcon` (che non la accettava) e gestendo il posizionamento tramite il div contenitore.

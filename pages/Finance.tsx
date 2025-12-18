@@ -107,11 +107,11 @@ const TransactionForm: React.FC<{
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 <div className="flex gap-4 mb-4">
-                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center font-bold ${type === 'TransactionType.Income' ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white text-gray-500'}`}>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center font-bold ${type === TransactionType.Income ? 'bg-green-50 border-green-500 text-green-700' : 'bg-white text-gray-500'}`}>
                         <input type="radio" checked={type === TransactionType.Income} onChange={() => setType(TransactionType.Income)} className="hidden" />
                         Entrata
                     </label>
-                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center font-bold ${type === 'TransactionType.Expense' ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white text-gray-500'}`}>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center font-bold ${type === TransactionType.Expense ? 'bg-red-50 border-red-500 text-red-700' : 'bg-white text-gray-500'}`}>
                         <input type="radio" checked={type === TransactionType.Expense} onChange={() => setType(TransactionType.Expense)} className="hidden" />
                         Uscita
                     </label>
@@ -655,7 +655,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         <div className="md-card overflow-hidden bg-white shadow-2xl border-0">
                             <div className="p-6 bg-slate-50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
                                 <div className="relative flex-1 max-w-md">
-                                    <SearchIcon className="absolute left-3 top-3 text-slate-400" />
+                                    <div className="absolute left-3 top-3"><SearchIcon /></div>
                                     <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500" />
                                 </div>
                                 {selectedItems.length > 0 && (
