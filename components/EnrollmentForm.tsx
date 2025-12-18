@@ -37,15 +37,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // DEBUG: Mount
-    useEffect(() => {
-        console.log('[DEBUG EnrollmentForm] Mounted with:', { 
-            parentsCount: parents.length, 
-            initialParentId: initialParent?.id, 
-            existingEnrollmentId: existingEnrollment?.id 
-        });
-    }, []);
-
     // Derivato: Genitore corrente
     const currentParent = parents.find(p => p.id === selectedParentId);
 
@@ -125,8 +116,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         
-        console.log('[DEBUG EnrollmentForm] HandleSubmit triggered');
-
         if (!selectedParentId) {
             alert("Seleziona un genitore/cliente.");
             return;
@@ -139,10 +128,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
         }
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
-        if (!selectedSub) {
-            console.error('[DEBUG EnrollmentForm] Subscription Type not found:', subscriptionTypeId);
-            return;
-        }
+        if (!selectedSub) return;
         
         const enrollmentsToSave: EnrollmentInput[] = [];
 
@@ -202,7 +188,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             enrollmentsToSave.push(newEnrollment);
         });
 
-        console.log('[DEBUG EnrollmentForm] Saving payloads:', enrollmentsToSave);
         onSave(enrollmentsToSave);
     };
 

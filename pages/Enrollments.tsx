@@ -204,8 +204,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 getSuppliers()
             ]);
             
-            console.log('[DEBUG Enrollments] Clients Loaded:', clientsData.length);
-            
             setAllClients(clientsData); // Store ALL
             setParentClients(clientsData.filter(c => c.clientType === ClientType.Parent) as ParentClient[]); // Filter for UI
             
@@ -236,15 +234,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         depositAmount: number,
         ghostInvoiceId?: string
     ) => {
-        
-        console.log('[DEBUG Enrollments] Executing Payment Action:', {
-            enrollmentId: enr.id,
-            childName: enr.childName,
-            amount: depositAmount,
-            isDeposit,
-            isBalance
-        });
-
         setLoading(true);
         const fullPrice = enr.price !== undefined ? enr.price : 0;
         const actualAmount = Number(depositAmount); // Assicurati sia numero
@@ -265,13 +254,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         );
 
         if (result.success) {
-            console.log('[DEBUG Enrollments] Payment Success!', result);
             alert("Pagamento registrato con successo.");
             await fetchData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } else {
-            console.error("[DEBUG Enrollments] Payment failed", result.error);
-            alert("ERRORE: " + result.error); // ALERT ESPLICITO
+            alert("ERRORE: " + result.error); 
             setError("Errore durante la registrazione del pagamento: " + result.error);
         }
         setLoading(false);
@@ -319,7 +306,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const handlePaymentRequest = async (e: React.MouseEvent, enr: Enrollment) => {
         e.stopPropagation();
-        console.log('[DEBUG Enrollments] Payment Requested for:', enr);
         
         let isBalanceMode = false;
         let ghostId = undefined;
@@ -346,11 +332,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName))
             );
 
-            console.log('[DEBUG Enrollments] Invoice Check:', {
-                foundDepositInvoice: !!depositInvoice,
-                foundGhostInvoice: !!ghostInvoice
-            });
-
             if (depositInvoice) {
                 isBalanceMode = true;
                 suggestedAmount = Math.max(0, (enr.price || 0) - depositInvoice.totalAmount);
@@ -363,7 +344,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             }
         } catch(e) { console.error("Error checking invoices", e); }
 
-        const newState = { 
+        setPaymentModalState({ 
             isOpen: true, 
             enrollment: enr, 
             date: new Date().toISOString().split('T')[0], 
@@ -373,13 +354,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             isBalance: isBalanceMode, 
             depositAmount: suggestedAmount,
             ghostInvoiceId: ghostId
-        };
-        console.log('[DEBUG Enrollments] Setting Payment Modal State:', newState);
-        setPaymentModalState(newState);
+        });
     };
 
     const handleConfirmPayment = async () => {
-        console.log('[DEBUG Enrollments] Confirm Payment Clicked');
         if (paymentModalState.enrollment && paymentModalState.date) {
             setPaymentModalState(prev => ({ ...prev, isOpen: false }));
             await executePaymentAction(
@@ -392,8 +370,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 paymentModalState.depositAmount,
                 paymentModalState.ghostInvoiceId
             );
-        } else {
-            console.error('[DEBUG Enrollments] Missing data for payment confirmation');
         }
     };
 

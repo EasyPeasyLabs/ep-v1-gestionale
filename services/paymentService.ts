@@ -29,8 +29,6 @@ export const processPayment = async (
 ): Promise<PaymentResult> => {
     
     try {
-        console.log(`[PaymentService] Avvio pagamento per ${enrollment.childName}. Importo: ${amount}€`);
-
         // 1. Risoluzione Nome Cliente (Safe)
         let clientName = 'Cliente Sconosciuto';
         if (client) {
@@ -159,7 +157,6 @@ export const processPayment = async (
             // Se lo stato corrente è Pending, forziamo Active.
             if (currentEnrData.status === EnrollmentStatus.Pending) {
                 transaction.update(enrRef, { status: EnrollmentStatus.Active });
-                console.log(`[PaymentService] Iscrizione ${enrollment.id} attivata.`);
             }
         });
 
@@ -176,7 +173,7 @@ export const processPayment = async (
         return { success: true, invoiceNumber: nextRealInvoiceNumber };
 
     } catch (e: any) {
-        console.error("[PaymentService] ERRORE CRITICO:", e);
+        console.error("[PaymentService] Errore pagamento:", e);
         return { success: false, error: e.message || "Errore sconosciuto durante il salvataggio." };
     }
 };
