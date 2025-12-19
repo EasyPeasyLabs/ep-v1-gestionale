@@ -6,6 +6,7 @@ import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
+import { importEnrollmentsFromExcel } from '../services/importService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -16,6 +17,8 @@ import SearchIcon from '../components/icons/SearchIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import RefreshIcon from '../components/icons/RestoreIcon';
 import UserPlusIcon from '../components/icons/UserPlusIcon';
+import UploadIcon from '../components/icons/UploadIcon';
+import ImportModal from '../components/ImportModal';
 
 interface EnrollmentsProps {
     initialParams?: {
@@ -280,6 +283,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     
     // Payment Modal State
     const [paymentModalState, setPaymentModalState] = useState<{
@@ -366,10 +370,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enr: Enrollment, 
         paymentDateStr: string, 
         method: PaymentMethod, 
-        createInvoice: boolean,
-        isDeposit: boolean,
-        isBalance: boolean,
-        depositAmount: number,
+        createInvoice: boolean, 
+        isDeposit: boolean, 
+        isBalance: boolean, 
+        depositAmount: number, 
         ghostInvoiceId?: string
     ) => {
         setLoading(true);
@@ -534,6 +538,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const handleConfirmDelete = async () => { if (!deleteModalState.enrollment) return; const target = deleteModalState.enrollment; const scope = deleteModalState.scope; setDeleteModalState(prev => ({...prev, isOpen: false})); setLoading(true); try { if (scope === 'single') { await cleanupEnrollmentFinancials(target); await deleteEnrollment(target.id); } else { const clientEnrollments = await getEnrollmentsForClient(target.clientId); for (const enr of clientEnrollments) { await cleanupEnrollmentFinancials(enr); await deleteEnrollment(enr.id); } } await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Delete error:", err); alert("Errore durante l'eliminazione."); } finally { setLoading(false); } };
     const handleConfirmDeleteAll = async () => { setIsDeleteAllModalOpen(false); setLoading(true); try { const allEnrollments = await getAllEnrollments(); for (const enr of allEnrollments) { await cleanupEnrollmentFinancials(enr); await deleteEnrollment(enr.id); } await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Tutte le iscrizioni e i dati correlati sono stati eliminati."); } catch (err) { console.error("Error deleting all:", err); alert("Errore durante l'eliminazione totale."); } finally { setLoading(false); } };
 
+    // --- IMPORT HANDLER ---
+    const handleImportEnrollments = async (file: File) => {
+        const result = await importEnrollmentsFromExcel(file);
+        fetchData();
+        return result;
+    };
+
     // --- Helper per estrarre dati derivati ---
     const getChildAge = (enrollment: Enrollment): string => {
         const client = allClients.find(c => c.id === enrollment.clientId);
@@ -631,7 +642,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     return (
         <div>
             {/* --- HEADER --- */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
                     <div><h1 className="text-3xl font-bold">Iscrizioni</h1><p className="mt-1 text-gray-500">Gestione dei "recinti" e dotazione slot.</p></div>
                     <button onClick={() => { setIsMoveMode(!isMoveMode); setMoveSourceId(null); }} className={`md-btn md-btn-sm md:hidden mt-2 ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}>{isMoveMode ? (<span className="flex items-center font-bold"><span className="animate-pulse mr-2">👆</span> Scegli...</span>) : (<span className="flex items-center">✋ Sposta</span>)}</button>
@@ -645,9 +656,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         <select value={filterAge} onChange={e => setFilterAge(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[80px]"><option value="">Tutte Età</option>{availableAges.map(a => <option key={a} value={a}>{a}</option>)}</select>
                         <button onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm">{sortOrder === 'az' ? 'A-Z' : 'Z-A'}</button>
                     </div>
-                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
-                    <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center"><PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span></button>
                 </div>
+            </div>
+
+            {/* ACTION BAR (New Position) */}
+            <div className="flex justify-end gap-3 mb-6 border-b border-gray-100 pb-4">
+                <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold"><TrashIcon /> Elimina Tutto</button>
+                <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-sm bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 flex items-center text-xs font-bold"><UploadIcon /> Importa</button>
+                <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center"><PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span></button>
             </div>
             
             {isMoveMode && <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">{moveSourceId ? <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : <span>Tocca un'iscrizione per selezionarla.</span>}</div>}
@@ -855,6 +871,24 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     unassignedEnrollments={unassignedEnrollments}
                     onClose={() => setBulkAssignState(null)}
                     onConfirm={handleBulkAssignConfirm}
+                />
+            )}
+
+            {isImportModalOpen && (
+                <ImportModal 
+                    entityName="Iscrizioni"
+                    templateHeaders={['ParentName', 'ParentSurname', 'ParentEmail', 'ParentPhone', 'ParentFiscalCode', 'ParentAddress', 'ParentZip', 'ParentCity', 'ParentProvince', 'ChildName', 'ChildAge', 'SubscriptionName', 'StartDate', 'LocationName', 'DayOfWeek', 'StartTime', 'EndTime', 'AmountPaid', 'PaymentDate', 'PaymentType', 'PaymentMethod', 'CreateInvoice', 'SDI']}
+                    instructions={[
+                        '1. GENITORE: Compila Nome, Cognome, CF/PIVA, indirizzo, CAP, città, provincia, Telefono, Email (obbligatoria)',
+                        '2. ALLIEVO: Inserisci Nome ed Età del bambino.',
+                        '3. PACCHETTO: "SubscriptionName" è l\'Abbonamento e il testo scritto deve essere IDENTICO al nome che trovi in Impostazioni.',
+                        '4. SEDE (Opzionale): Scrivi il nome esatto della sede. Se cambia durante la validità di un abbonamento, usa righe successive con Nome e Pacchetto identici per SPOSTARE un\'iscrizione esistente. [la nuova riga deve chiedere il nome della NUOVA sede e dello stesso Pacchetto].',
+                        '5. ORARI (Opzionale): "DayOfWeek" accetta numeri (0-6) o testo (LUN, MAR...).',
+                        '6. PAGAMENTO: "PaymentType" = Acconto/Saldo. "PaymentMethod" = Contanti/Bonifico/Carta.',
+                        '7. FATTURA: "CreateInvoice" = No/False per non creare fattura (di default è impostato su Si/True e crea la fattura).'
+                    ]}
+                    onClose={() => setIsImportModalOpen(false)}
+                    onImport={handleImportEnrollments}
                 />
             )}
         </div>

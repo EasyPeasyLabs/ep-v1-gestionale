@@ -65,7 +65,11 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateHeaders, 
 
     return (
         <Modal onClose={onClose}>
-             <div className="flex flex-col h-full">
+             {/* 
+                FIX UI: Use fixed height h-[80vh] to force the modal container to take specific space 
+                and let the inner flex-1 scrollable area work correctly, keeping the footer visible.
+             */}
+             <div className="flex flex-col h-[80vh]">
                 <div className="text-center flex-shrink-0 p-6 pb-2 border-b border-gray-100">
                     <h2 className="text-xl font-bold" id="modal-title">Importa {entityName} da Excel</h2>
                 </div>
@@ -121,7 +125,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ entityName, templateHeaders, 
                 )}
                 </div>
 
-                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+                <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0 z-10 relative" style={{borderColor: 'var(--md-divider)'}}>
                     <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Chiudi</button>
                     {!result && (
                         <button 

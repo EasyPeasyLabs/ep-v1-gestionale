@@ -23,11 +23,13 @@ Di seguito lo stato corrente delle funzionalità implementate al **18 Dicembre 2
 - [x] **Iscrizioni**: Workflow iscrizione guidato, generazione automatica lezioni, gestione pagamenti (Acconto/Saldo).
 - [x] **Iscrizioni Adulti**: Supporto per corsi destinati ai genitori/adulti con listini dedicati (Prefissi K/A).
 - [x] **Calendario**: Vista mensile, drag & drop (desktop), gestione lezioni extra.
-- [x] **Finanza**: 
-    - Dashboard CFO (Strategia) con proiezioni fiscali Forfettario/Start-up.
-    - Simulatore rate e acconti anno successivo.
-    - Gestione completa Transazioni, Fatture (con Sigillo SDI) e Preventivi.
-    - **Modifica Avanzata**: Editor completo per fatture esistenti (gestione righe articoli, ricalcolo automatico totali, modifica dati testata e sigilli).
+- [x] **Finanza (SIGILLATO)**: 
+    - **Dashboard CFO**: Strategia con proiezioni fiscali Regime Forfettario.
+    - **Scenario Start-up**: Logica fiscale specifica per nuove attività (I Tranche al 150% del saldo corrente, II Tranche al 50%).
+    - **Simulatore Rate**: Calcolo automatico accantonamenti mensili e scadenze Bolli Virtuali (con logica cumulo).
+    - **Smart Insight (Educational)**: Card interattive per l'analisi della profittabilità delle sedi spiegate in linguaggio naturale ("Torta Ricavi", "Cosa ti rimane in tasca").
+    - **Documentale**: Gestione completa Transazioni, Fatture (con Sigillo SDI, Bollo Virtuale auto-calcolato) e Preventivi.
+    - **Modifica Avanzata**: Editor completo post-emissione per fatture.
 - [x] **Export PDF**: Generazione client-side di documenti fiscali professionali.
 
 ### Advanced Features (Completate)
