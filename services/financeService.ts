@@ -2,6 +2,8 @@
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch } from 'firebase/firestore';
 import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment } from '../types';
+import { getAllEnrollments } from './enrollmentService';
+import { getSuppliers } from './supplierService';
 
 // --- Transactions ---
 const transactionCollectionRef = collection(db, 'transactions');
@@ -82,38 +84,115 @@ export const batchAddTransactions = async (transactions: TransactionInput[]): Pr
     await batch.commit();
 };
 
-// --- Rent Expenses Automation ---
+// --- Rent Expenses Automation (NEW LOGIC) ---
+
+// Helper per festività
+const isItalianHoliday = (date: Date): boolean => {
+    const d = date.getDate();
+    const m = date.getMonth() + 1; // 1-12
+    const y = date.getFullYear();
+
+    // Date fisse
+    if (d === 1 && m === 1) return true; // Capodanno
+    if (d === 6 && m === 1) return true; // Epifania
+    if (d === 25 && m === 4) return true; // Liberazione
+    if (d === 1 && m === 5) return true; // Lavoro
+    if (d === 2 && m === 6) return true; // Repubblica
+    if (d === 15 && m === 8) return true; // Ferragosto
+    if (d === 1 && m === 11) return true; // Ognissanti
+    if (d === 8 && m === 12) return true; // Immacolata
+    if (d === 25 && m === 12) return true; // Natale
+    if (d === 26 && m === 12) return true; // S.Stefano
+
+    // Pasquetta (Lunedì dell'Angelo) - Hardcoded 2024-2030 per semplicità
+    const easterMondays: Record<number, string> = {
+        2024: '4-1',  // 1 Aprile
+        2025: '4-21', // 21 Aprile
+        2026: '4-6',  // 6 Aprile
+        2027: '3-29', // 29 Marzo
+        2028: '4-17', // 17 Aprile
+        2029: '4-2',  // 2 Aprile
+        2030: '4-22'  // 22 Aprile
+    };
+
+    const key = `${m}-${d}`;
+    if (easterMondays[y] === key) return true;
+
+    return false;
+};
+
 export const calculateRentTransactions = (
     enrollments: Enrollment[], 
     suppliers: Supplier[], 
     existingTransactions: Transaction[]
 ): TransactionInput[] => {
-    const newTransactions: TransactionInput[] = [];
-    const locationMap = new Map<string, {cost: number, name: string}>();
+    // Deprecated for direct usage, kept for reference if needed, 
+    // but the UI now calls syncRentExpenses directly.
+    return [];
+};
+
+export const syncRentExpenses = async (): Promise<void> => {
+    console.log("[Finance] Avvio sincronizzazione Noli...");
     
+    const [enrollments, suppliers, transactions] = await Promise.all([
+        getAllEnrollments(),
+        getSuppliers(),
+        getTransactions()
+    ]);
+
+    // 1. Mappa Costi Sedi
+    const locationMap = new Map<string, {cost: number, name: string}>();
     suppliers.forEach(s => {
         s.locations.forEach(l => {
             locationMap.set(l.id, { cost: l.rentalCost || 0, name: l.name });
         });
     });
 
+    // 2. Aggregazione Costi (Slot Occupati - Festività)
+    // Key: YYYY-MM|LOCATION_ID
     const aggregates = new Map<string, number>();
 
     enrollments.forEach(enr => {
         if (enr.appointments) {
             enr.appointments.forEach((app: Appointment) => {
-                if (app.status === 'Present') {
-                    const date = new Date(app.date);
-                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                    const locId = app.locationId || enr.locationId; 
-                    const key = `${monthKey}|${locId}`;
-                    const currentCount = aggregates.get(key) || 0;
-                    aggregates.set(key, currentCount + 1);
-                }
+                const date = new Date(app.date);
+                
+                // Filtro Festività
+                if (isItalianHoliday(date)) return;
+
+                // Identificazione Sede (Storicizzata o Attuale)
+                // Se l'appuntamento ha locationId (nuova logica), usa quello. Altrimenti usa quello dell'iscrizione.
+                const locId = app.locationId || enr.locationId; 
+                
+                // Se la sede non è definita o è "unassigned", salta
+                if (!locId || locId === 'unassigned') return;
+
+                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                const key = `${monthKey}|${locId}`;
+                
+                const currentCount = aggregates.get(key) || 0;
+                aggregates.set(key, currentCount + 1);
             });
         }
     });
 
+    // 3. Preparazione Batch Write
+    const batch = writeBatch(db);
+    const processedKeys = new Set<string>();
+
+    // Transazioni esistenti di tipo AUTO-RENT
+    const autoRentTransactions = transactions.filter(t => 
+        !t.isDeleted && 
+        t.relatedDocumentId?.startsWith('AUTO-RENT-')
+    );
+
+    // Mappa per accesso rapido alle transazioni esistenti
+    const existingMap = new Map<string, Transaction>();
+    autoRentTransactions.forEach(t => {
+        if (t.relatedDocumentId) existingMap.set(t.relatedDocumentId, t);
+    });
+
+    // Processa Aggregati (Upsert)
     aggregates.forEach((count, key) => {
         const [monthKey, locId] = key.split('|');
         const [year, month] = monthKey.split('-');
@@ -121,19 +200,27 @@ export const calculateRentTransactions = (
 
         if (locData && locData.cost > 0) {
             const totalCost = count * locData.cost;
-            const description = `Nolo Sede: ${locData.name} - ${month}/${year}`;
+            const docId = `AUTO-RENT-${key}`;
+            const description = `Nolo Sede: ${locData.name} - ${month}/${year} (${count} slot)`;
             
-            const existingTrans = existingTransactions.find(t => 
-                !t.isDeleted &&
-                t.type === TransactionType.Expense &&
-                t.category === TransactionCategory.Rent &&
-                t.allocationId === locId &&
-                t.description.includes(`${month}/${year}`)
-            );
+            processedKeys.add(docId);
 
-            if (!existingTrans) {
+            if (existingMap.has(docId)) {
+                // UPDATE
+                const existing = existingMap.get(docId)!;
+                // Aggiorna solo se l'importo è cambiato (evita scritture inutili)
+                if (Math.abs(existing.amount - totalCost) > 0.01) {
+                    const ref = doc(db, 'transactions', existing.id);
+                    batch.update(ref, { 
+                        amount: totalCost,
+                        description: description // Aggiorna anche descrizione col nuovo count
+                    });
+                }
+            } else {
+                // CREATE
                 const lastDayOfMonth = new Date(parseInt(year), parseInt(month), 0);
-                newTransactions.push({
+                const newRef = doc(collection(db, 'transactions'));
+                batch.set(newRef, {
                     date: lastDayOfMonth.toISOString(),
                     description: description,
                     amount: totalCost,
@@ -141,16 +228,27 @@ export const calculateRentTransactions = (
                     category: TransactionCategory.Rent,
                     paymentMethod: PaymentMethod.BankTransfer, 
                     status: TransactionStatus.Pending,
-                    relatedDocumentId: `AUTO-RENT-${key}`,
+                    relatedDocumentId: docId,
                     allocationType: 'location',
                     allocationId: locId,
-                    allocationName: locData.name
+                    allocationName: locData.name,
+                    isDeleted: false
                 });
             }
         }
     });
 
-    return newTransactions;
+    // 4. Pulizia Obsoleti (Delete)
+    // Se una transazione esiste ma non è più negli aggregati (es. spostamento totale alunni), azzerala o eliminala.
+    autoRentTransactions.forEach(t => {
+        if (t.relatedDocumentId && !processedKeys.has(t.relatedDocumentId)) {
+            const ref = doc(db, 'transactions', t.id);
+            batch.delete(ref); 
+        }
+    });
+
+    await batch.commit();
+    console.log("[Finance] Sync completato.");
 };
 
 

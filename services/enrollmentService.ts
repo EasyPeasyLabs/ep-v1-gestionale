@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus } from '../types';
@@ -38,6 +39,7 @@ export const deleteEnrollment = async (id: string): Promise<void> => {
 // --- Gestione Assenze e Recuperi ---
 
 // Helper per verificare se una data è una festività italiana standard
+// UPDATED: Include Pasquetta (2024-2030)
 const isItalianHoliday = (date: Date): boolean => {
     const d = date.getDate();
     const m = date.getMonth() + 1; // 1-12
@@ -54,6 +56,20 @@ const isItalianHoliday = (date: Date): boolean => {
     if (d === 8 && m === 12) return true; // Immacolata
     if (d === 25 && m === 12) return true; // Natale
     if (d === 26 && m === 12) return true; // S.Stefano
+
+    // Pasquetta (Lunedì dell'Angelo) - Hardcoded 2024-2030 per semplicità
+    const easterMondays: Record<number, string> = {
+        2024: '4-1',  // 1 Aprile
+        2025: '4-21', // 21 Aprile
+        2026: '4-6',  // 6 Aprile
+        2027: '3-29', // 29 Marzo
+        2028: '4-17', // 17 Aprile
+        2029: '4-2',  // 2 Aprile
+        2030: '4-22'  // 22 Aprile
+    };
+
+    const key = `${m}-${d}`;
+    if (easterMondays[y] === key) return true;
 
     return false;
 };
@@ -90,6 +106,7 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
             let foundDate = false;
             let safetyCounter = 0;
 
+            // Cerca la prima data utile che NON sia festiva
             while (!foundDate && safetyCounter < 52) {
                 nextDate.setDate(nextDate.getDate() + 1);
                 if (nextDate.getDay() === originalDayOfWeek && !isItalianHoliday(nextDate)) {
@@ -104,6 +121,7 @@ export const registerAbsence = async (enrollmentId: string, appointmentLessonId:
                     date: nextDate.toISOString(),
                     startTime: lastApp.startTime,
                     endTime: lastApp.endTime,
+                    locationId: lastApp.locationId, // Preserva locationId
                     locationName: lastApp.locationName,
                     locationColor: lastApp.locationColor,
                     childName: lastApp.childName,
@@ -279,22 +297,27 @@ export const addRecoveryLessons = async (
     const childName = enrollment.childName;
 
     let currentDate = new Date(startDate);
+    let generatedCount = 0;
     
-    for (let i = 0; i < numberOfLessons; i++) {
-        // Crea appuntamento
-        const newAppointment: Appointment = {
-            lessonId: `REC-${Date.now()}-${i}`, // ID univoco per recupero
-            date: currentDate.toISOString(),
-            startTime: startTime,
-            endTime: endTime,
-            locationName: locationName, // Può essere diversa dall'originale
-            locationColor: locationColor,
-            childName: childName,
-            status: 'Scheduled'
-        };
-        appointments.push(newAppointment);
-
-        // Avanza di una settimana per il prossimo recupero (se multiplo)
+    // UPDATED: Check festività
+    while (generatedCount < numberOfLessons) {
+        if (!isItalianHoliday(currentDate)) {
+            // Crea appuntamento
+            const newAppointment: Appointment = {
+                lessonId: `REC-${Date.now()}-${generatedCount}`, // ID univoco per recupero
+                date: currentDate.toISOString(),
+                startTime: startTime,
+                endTime: endTime,
+                locationId: enrollment.locationId, 
+                locationName: locationName, 
+                locationColor: locationColor,
+                childName: childName,
+                status: 'Scheduled'
+            };
+            appointments.push(newAppointment);
+            generatedCount++;
+        }
+        // Avanza di una settimana
         currentDate.setDate(currentDate.getDate() + 7);
     }
 
@@ -330,31 +353,34 @@ export const activateEnrollmentWithLocation = async (
     
     // Calcola la data del primo appuntamento (startDate originale adjusted to dayOfWeek)
     let currentDate = new Date(enrollment.startDate);
-    // Se la startDate è nel passato rispetto a oggi, usiamo oggi come base?
-    // Policy: Se è da assegnare, probabilmente si vuole iniziare dalla prima data utile.
-    // Tuttavia, rispettiamo la startDate dell'enrollment se possibile, allineandola al giorno corretto.
     
     // Align to target day of week
     while (currentDate.getDay() !== dayOfWeek) {
         currentDate.setDate(currentDate.getDate() + 1);
     }
-    // If the aligned date is before the original startDate (due to week wrapping), add a week
-    // (Wait, logic above always moves forward).
     
     const appointments: Appointment[] = [];
     const lessonsTotal = enrollment.lessonsTotal;
+    let generatedCount = 0;
 
-    for (let i = 0; i < lessonsTotal; i++) {
-        appointments.push({
-            lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-            date: currentDate.toISOString(),
-            startTime: startTime,
-            endTime: endTime,
-            locationName: locationName,
-            locationColor: locationColor,
-            childName: enrollment.childName,
-            status: 'Scheduled'
-        });
+    // UPDATED: Ciclo con controllo festività
+    // Continua finché non abbiamo generato N lezioni valide
+    while (generatedCount < lessonsTotal) {
+        if (!isItalianHoliday(currentDate)) {
+            appointments.push({
+                lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                date: currentDate.toISOString(),
+                startTime: startTime,
+                endTime: endTime,
+                locationId: locationId, // CRITICAL: Save LocationID
+                locationName: locationName,
+                locationColor: locationColor,
+                childName: enrollment.childName,
+                status: 'Scheduled'
+            });
+            generatedCount++;
+        }
+        // Passa sempre alla settimana successiva, che sia festiva o meno
         currentDate.setDate(currentDate.getDate() + 7);
     }
 
@@ -366,7 +392,9 @@ export const activateEnrollmentWithLocation = async (
         locationName,
         locationColor,
         appointments: appointments,
-        startDate: appointments[0]?.date || enrollment.startDate // Aggiorna start reale
+        // Aggiorna startDate con la prima data reale generata, e endDate con l'ultima
+        startDate: appointments[0]?.date || enrollment.startDate, 
+        endDate: appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate
     });
 };
 
@@ -402,15 +430,11 @@ export const bulkUpdateLocation = async (
                     // Aggiorna location e orario se forniti
                     return {
                         ...app,
+                        locationId: newLocationId, // CRITICAL: Update LocationID
                         locationName: newLocationName,
                         locationColor: newLocationColor,
                         startTime: newStartTime || app.startTime,
                         endTime: newEndTime || app.endTime,
-                        // Nota: La data rimane la stessa (stesso giorno della settimana previsto)
-                        // A meno che non si voglia ricalcolare completamente il calendario, ma per ora
-                        // la richiesta è "spostare nel recinto", che implica cambio location.
-                        // Se l'orario cambia, si assume che il giorno della settimana rimanga compatibile
-                        // o che l'utente stia spostando su un giorno compatibile.
                     };
                 }
                 return app;

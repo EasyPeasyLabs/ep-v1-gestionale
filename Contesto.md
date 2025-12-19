@@ -27,6 +27,7 @@ Di seguito lo stato corrente delle funzionalità implementate al **18 Dicembre 2
     - Dashboard CFO (Strategia) con proiezioni fiscali Forfettario/Start-up.
     - Simulatore rate e acconti anno successivo.
     - Gestione completa Transazioni, Fatture (con Sigillo SDI) e Preventivi.
+    - **Modifica Avanzata**: Editor completo per fatture esistenti (gestione righe articoli, ricalcolo automatico totali, modifica dati testata e sigilli).
 - [x] **Export PDF**: Generazione client-side di documenti fiscali professionali.
 
 ### Advanced Features (Completate)

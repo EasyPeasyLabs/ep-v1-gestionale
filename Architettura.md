@@ -53,6 +53,7 @@ L'intelligenza dell'applicazione risiede in diversi "Motori Logici" eseguiti pri
 2.  **Finance & CFO Engine (`finance.tsx`)**:
     -   Calcola in tempo reale le proiezioni fiscali (Regime Forfettario/Start-up).
     -   Aggrega transazioni per generare il conto economico (P&L) e lo stato patrimoniale.
+    -   **Document Editor**: Motore per la modifica post-emissione di Fatture e Preventivi. Include logica di ricalcolo automatico dei totali basata sulle righe (Quantità * Prezzo) e gestione flag fiscali (Bollo Virtuale).
     -   **Controlling**: Incrocia i dati delle Iscrizioni con le Transazioni per calcolare la profittabilità per Sede (Centro di Costo).
 
 3.  **Notification Engine (`notificationService.ts`)**:

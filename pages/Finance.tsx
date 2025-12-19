@@ -10,7 +10,7 @@ import {
     getTransactions, addTransaction, updateTransaction, deleteTransaction, 
     permanentDeleteTransaction, getInvoices, addInvoice, updateInvoice, 
     deleteInvoice, permanentDeleteInvoice, getQuotes, addQuote, updateQuote, 
-    deleteQuote, permanentDeleteQuote, calculateRentTransactions, batchAddTransactions
+    deleteQuote, permanentDeleteQuote, syncRentExpenses, batchAddTransactions
 } from '../services/financeService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
@@ -56,6 +56,167 @@ const categoryDetails: Record<TransactionCategory, { label: string; help: string
     [TransactionCategory.Marketing]: { label: 'Marketing & Pubblicità', help: 'Sponsorizzate social, stampa volantini, gadget o eventi.' },
     [TransactionCategory.Capital]: { label: 'Capitale / Versamenti Propri', help: 'Soldi versati dal tuo conto personale a quello aziendale. NON è tassato.' },
     [TransactionCategory.Other]: { label: 'Altro / Spese Bancarie', help: 'Commissioni bancarie, interessi o voci non presenti sopra.' },
+};
+
+// --- Componente Modale Dettaglio ROI "Educational" ---
+const LocationDetailModal: React.FC<{
+    data: { name: string, color: string, revenue: number, costs: number };
+    onClose: () => void;
+}> = ({ data, onClose }) => {
+    const profit = data.revenue - data.costs;
+    const isProfitable = profit >= 0;
+    const chartRef = useRef<HTMLCanvasElement | null>(null);
+    
+    useEffect(() => {
+        if (chartRef.current) {
+            const ctx = chartRef.current.getContext('2d');
+            if (ctx) {
+                // Se in perdita, mostriamo una ciambella diversa (solo costi) o full red
+                const chartData = isProfitable 
+                    ? [data.costs, profit] 
+                    : [data.revenue, data.costs - data.revenue]; // Trick: Show revenue vs deficit
+                
+                const colors = isProfitable 
+                    ? ['#ef4444', '#22c55e'] // Rosso (Costi), Verde (Utile)
+                    : ['#22c55e', '#ef4444']; // Verde (Ricavi), Rosso (Deficit)
+
+                const chart = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: isProfitable ? ['Spese (Affitto)', 'Guadagno (Tuo)'] : ['Coperto da Incassi', 'Perdita (Di tasca tua)'],
+                        datasets: [{
+                            data: chartData,
+                            backgroundColor: colors,
+                            borderWidth: 0,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (context) => ` ${context.label}: ${Number(context.raw).toFixed(2)}€`
+                                }
+                            }
+                        },
+                        cutout: '70%',
+                    }
+                });
+                return () => chart.destroy();
+            }
+        }
+    }, [data, isProfitable]);
+
+    // Calcolo semplificato "Ogni 10€"
+    const efficiency = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
+
+    return (
+        <Modal onClose={onClose} size="lg">
+            <div className="flex flex-col h-full overflow-hidden">
+                {/* Header Colorato */}
+                <div className={`p-6 text-white flex justify-between items-start ${isProfitable ? 'bg-indigo-600' : 'bg-red-500'}`}>
+                    <div>
+                        <h3 className="text-2xl font-black uppercase tracking-tight">{data.name}</h3>
+                        <p className="text-sm opacity-90 font-medium mt-1">Scheda di Analisi Semplificata</p>
+                    </div>
+                    <div className="text-4xl">
+                        {isProfitable ? '👍' : '⚠️'}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                    
+                    {/* 1. Il Verdetto */}
+                    <div className="text-center">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">IL VERDETTO</p>
+                        {isProfitable ? (
+                            <h4 className="text-xl font-bold text-green-600">
+                                Questa sede lavora bene! <br/>
+                                <span className="text-gray-600 text-base font-normal">Gli studenti pagano l'affitto e ti resta un guadagno.</span>
+                            </h4>
+                        ) : (
+                            <h4 className="text-xl font-bold text-red-600">
+                                Attenzione: Costi troppo alti. <br/>
+                                <span className="text-gray-600 text-base font-normal">Gli incassi non bastano a coprire l'affitto.</span>
+                            </h4>
+                        )}
+                    </div>
+
+                    {/* 2. Visualizzazione Grafica */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                        <div className="h-48 relative">
+                            <canvas ref={chartRef}></canvas>
+                            {/* Centro Ciambella */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-xs text-gray-400 font-bold uppercase">Saldo</span>
+                                <span className={`text-xl font-black ${isProfitable ? 'text-green-600' : 'text-red-600'}`}>
+                                    {profit > 0 ? '+' : ''}{profit.toFixed(0)}€
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
+                                <div className="p-2 bg-green-100 rounded-full text-xl">💰</div>
+                                <div>
+                                    <p className="text-xs text-gray-500 font-bold uppercase">Entrate (Studenti)</p>
+                                    <p className="text-lg font-bold text-gray-800">{data.revenue.toFixed(2)}€</p>
+                                    <p className="text-[10px] text-gray-500 leading-tight">Soldi raccolti dalle iscrizioni in questa sede.</p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
+                                <div className="p-2 bg-red-100 rounded-full text-xl">🏠</div>
+                                <div>
+                                    <p className="text-xs text-gray-500 font-bold uppercase">Uscite (Affitto)</p>
+                                    <p className="text-lg font-bold text-gray-800">{data.costs.toFixed(2)}€</p>
+                                    <p className="text-[10px] text-gray-500 leading-tight">Costo per l'uso della sala (in base alle ore occupate).</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 3. Spiegazione "Explain Like I'm 5" */}
+                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                        <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
+                            <span className="text-xl">💡</span> In parole povere:
+                        </h5>
+                        <ul className="space-y-3 text-sm text-slate-600">
+                            <li className="flex gap-2">
+                                <span className="font-bold text-indigo-600">•</span>
+                                <span>
+                                    Su ogni <strong>10€</strong> che un genitore ti paga per questa sede, 
+                                    tu ne spendi <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> per l'affitto.
+                                </span>
+                            </li>
+                            <li className="flex gap-2">
+                                <span className="font-bold text-indigo-600">•</span>
+                                <span>
+                                    Ti restano in tasca puliti <strong>{efficiency > 0 ? efficiency.toFixed(1) : 0}€</strong> (su 10€).
+                                </span>
+                            </li>
+                            {!isProfitable && (
+                                <li className="flex gap-2 text-red-600 font-medium bg-red-50 p-2 rounded">
+                                    <span className="font-bold">•</span>
+                                    <span>
+                                        Consiglio: Hai bisogno di più iscritti in questa sede per coprire i costi fissi, oppure devi rinegoziare l'affitto.
+                                    </span>
+                                </li>
+                            )}
+                        </ul>
+                    </div>
+
+                </div>
+                
+                <div className="p-4 border-t bg-gray-50 flex justify-end">
+                    <button onClick={onClose} className="md-btn md-btn-raised md-btn-primary">Ho capito</button>
+                </div>
+            </div>
+        </Modal>
+    );
 };
 
 // --- Componente Form Transazione Manuale ---
@@ -375,6 +536,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [filters, setFilters] = useState({ search: '' });
 
+    // Interactive ROI Modal
+    const [selectedLocationROI, setSelectedLocationROI] = useState<{name: string, color: string, revenue: number, costs: number} | null>(null);
+
     // Transaction CRUD State
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -410,6 +574,23 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         return () => window.removeEventListener('EP_DataUpdated', handleRealTimeUpdate);
 
     }, [fetchData, initialParams]);
+
+    // --- ACTIONS ---
+    const handleSyncRents = async () => {
+        if(confirm("Vuoi ricalcolare i costi di affitto per tutte le sedi in base all'occupazione reale del calendario? Questa operazione potrebbe richiedere alcuni secondi.")) {
+            setLoading(true);
+            try {
+                await syncRentExpenses();
+                await fetchData();
+                alert("Sincronizzazione Noli completata!");
+            } catch (e) {
+                console.error(e);
+                alert("Errore durante la sincronizzazione.");
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
 
     // --- ENGINE ANALITICO ---
     const stats = useMemo(() => {
@@ -646,6 +827,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     <p className="text-slate-500 font-medium">Controllo di gestione, fiscalità, logistica e flussi.</p>
                 </div>
                 <div className="flex gap-3">
+                    <button onClick={handleSyncRents} className="md-btn md-btn-flat bg-white border border-indigo-200 text-indigo-700 shadow-sm font-bold flex items-center gap-1 hover:bg-indigo-50"><RefreshIcon /> Sync Noli</button>
                     <button onClick={() => fetchData()} className="md-btn md-btn-flat bg-white border shadow-sm"><RefreshIcon /> Sync</button>
                     <button onClick={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova Voce</button>
                 </div>
@@ -835,9 +1017,14 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {activeTab === 'controlling' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
                             {roiSedi.map((sede, idx) => (
-                                <div key={idx} className="md-card p-6 bg-white border-t-4" style={{ borderColor: sede.color }}>
+                                <div 
+                                    key={idx} 
+                                    className="md-card p-6 bg-white border-t-4 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group" 
+                                    style={{ borderColor: sede.color }}
+                                    onClick={() => setSelectedLocationROI(sede)}
+                                >
                                     <div className="flex justify-between items-start mb-4">
-                                        <h4 className="font-black text-slate-800 uppercase tracking-tighter">{sede.name}</h4>
+                                        <h4 className="font-black text-slate-800 uppercase tracking-tighter group-hover:text-indigo-600 transition-colors">{sede.name}</h4>
                                         <span className={`px-2 py-1 rounded text-[10px] font-black ${sede.revenue > sede.costs ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                             ROI {sede.revenue > 0 ? (((sede.revenue - sede.costs) / sede.revenue) * 100).toFixed(0) : 0}%
                                         </span>
@@ -847,6 +1034,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                         <div className="flex justify-between text-xs"><span>Costo Noli Real</span><span className="font-bold text-red-600">-{sede.costs.toFixed(2)}€</span></div>
                                         <div className="pt-2 border-t flex justify-between text-sm font-black"><span>Utile Sede</span><span className="text-indigo-600">{(sede.revenue - sede.costs).toFixed(2)}€</span></div>
                                     </div>
+                                    <div className="mt-3 text-center text-[10px] text-gray-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">Clicca per analisi semplificata</div>
                                 </div>
                             ))}
                         </div>
@@ -943,6 +1131,14 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* MODALE EDUCATIONAL ROI */}
+            {selectedLocationROI && (
+                <LocationDetailModal 
+                    data={selectedLocationROI} 
+                    onClose={() => setSelectedLocationROI(null)} 
+                />
             )}
 
             {/* MODALE SIGILLO SDI */}

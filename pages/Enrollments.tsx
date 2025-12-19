@@ -15,6 +15,7 @@ import PencilIcon from '../components/icons/PencilIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import RefreshIcon from '../components/icons/RestoreIcon';
+import UserPlusIcon from '../components/icons/UserPlusIcon';
 
 interface EnrollmentsProps {
     initialParams?: {
@@ -127,6 +128,132 @@ const RecoveryModal: React.FC<{
     );
 };
 
+// --- Modal Assegnazione Massiva ---
+const BulkAssignModal: React.FC<{
+    targetLocationName: string;
+    targetLocationId: string;
+    targetLocationColor: string;
+    suppliers: Supplier[]; // Necessario per trovare gli slot della location
+    unassignedEnrollments: Enrollment[];
+    onClose: () => void;
+    onConfirm: (selectedIds: string[], slotInfo: {day: number, start: string, end: string}) => void;
+}> = ({ targetLocationName, targetLocationId, targetLocationColor, suppliers, unassignedEnrollments, onClose, onConfirm }) => {
+    
+    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
+    const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<string[]>([]);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Trova la location e i suoi slot
+    const locationData = useMemo(() => {
+        for (const s of suppliers) {
+            const loc = s.locations.find(l => l.id === targetLocationId);
+            if (loc) return loc;
+        }
+        return null;
+    }, [suppliers, targetLocationId]);
+
+    const slots = locationData?.availability || [];
+
+    const filteredUnassigned = unassignedEnrollments.filter(e => 
+        e.childName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.subscriptionName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const toggleSelection = (id: string) => {
+        setSelectedEnrollmentIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const handleConfirm = () => {
+        if (selectedSlotIndex === null) return alert("Seleziona uno slot orario.");
+        if (selectedEnrollmentIds.length === 0) return alert("Seleziona almeno un allievo.");
+        
+        const slot = slots[selectedSlotIndex];
+        onConfirm(selectedEnrollmentIds, { day: slot.dayOfWeek, start: slot.startTime, end: slot.endTime });
+    };
+
+    return (
+        <Modal onClose={onClose} size="lg">
+            <div className="flex flex-col h-full max-h-[85vh]">
+                <div className="p-6 border-b bg-indigo-50 flex-shrink-0">
+                    <h3 className="text-xl font-bold text-indigo-900">Assegna a {targetLocationName}</h3>
+                    <p className="text-sm text-indigo-700">Seleziona uno slot orario e gli allievi da inserire.</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* 1. Selezione Slot */}
+                    <div>
+                        <h4 className="text-sm font-bold text-gray-700 mb-3 uppercase">1. Scegli Slot Orario</h4>
+                        {slots.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {slots.map((slot, idx) => (
+                                    <button 
+                                        key={idx} 
+                                        onClick={() => setSelectedSlotIndex(idx)}
+                                        className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all ${selectedSlotIndex === idx ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        {daysOfWeekMap[slot.dayOfWeek].substring(0, 3)} {slot.startTime} - {slot.endTime}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-red-500 text-sm italic">Questa sede non ha orari configurati. Aggiungili in "Fornitori".</p>
+                        )}
+                    </div>
+
+                    {/* 2. Selezione Allievi */}
+                    <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex justify-between items-end mb-2">
+                            <h4 className="text-sm font-bold text-gray-700 uppercase">2. Seleziona Allievi ({selectedEnrollmentIds.length})</h4>
+                            <div className="relative w-48">
+                                <SearchIcon />
+                                <input 
+                                    type="text" 
+                                    placeholder="Cerca..." 
+                                    value={searchTerm} 
+                                    onChange={e => setSearchTerm(e.target.value)}
+                                    className="w-full pl-8 pr-2 py-1 text-xs border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+                        </div>
+                        
+                        <div className="border rounded-lg overflow-y-auto h-64 bg-gray-50 p-2 space-y-1">
+                            {filteredUnassigned.length === 0 ? (
+                                <p className="text-center text-gray-400 text-sm py-10">Nessun allievo da assegnare trovato.</p>
+                            ) : (
+                                filteredUnassigned.map(enr => (
+                                    <label key={enr.id} className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-lg hover:shadow-sm cursor-pointer transition-all">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedEnrollmentIds.includes(enr.id)} 
+                                            onChange={() => toggleSelection(enr.id)} 
+                                            className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
+                                        />
+                                        <div className="flex-1">
+                                            <p className="font-bold text-sm text-gray-800">{enr.childName}</p>
+                                            <p className="text-xs text-gray-500">{enr.subscriptionName}</p>
+                                        </div>
+                                        <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                            {enr.lessonsRemaining} lezioni
+                                        </span>
+                                    </label>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+                    <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                    {/* FIX: Check for null explicitly as index 0 is falsy */}
+                    <button onClick={handleConfirm} disabled={selectedSlotIndex === null || selectedEnrollmentIds.length === 0} className="md-btn md-btn-raised md-btn-primary">
+                        Conferma Assegnazione
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Data States
@@ -154,6 +281,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
     
+    // Payment Modal State
     const [paymentModalState, setPaymentModalState] = useState<{
         isOpen: boolean;
         enrollment: Enrollment | null;
@@ -164,6 +292,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         isBalance: boolean;
         depositAmount: number;
         ghostInvoiceId?: string;
+        totalPaid: number; 
     }>({
         isOpen: false,
         enrollment: null,
@@ -172,7 +301,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         createInvoice: true,
         isDeposit: false,
         isBalance: false,
-        depositAmount: 0
+        depositAmount: 0,
+        totalPaid: 0
     });
 
     const [recoveryModalState, setRecoveryModalState] = useState<{ isOpen: boolean; enrollment: Enrollment | null; maxRecoverable: number; }>({ isOpen: false, enrollment: null, maxRecoverable: 0 });
@@ -186,6 +316,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         enrollment: null,
         scope: 'single'
     });
+
+    // Bulk Assignment State
+    const [bulkAssignState, setBulkAssignState] = useState<{
+        isOpen: boolean;
+        locationId: string;
+        locationName: string;
+        locationColor: string;
+    } | null>(null);
 
     // Drag and Drop State
     const [draggedEnrollmentId, setDraggedEnrollmentId] = useState<string | null>(null);
@@ -236,9 +374,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     ) => {
         setLoading(true);
         const fullPrice = enr.price !== undefined ? enr.price : 0;
-        const actualAmount = Number(depositAmount); // Assicurati sia numero
-        
-        // Use allClients to ensure we find Institutional clients too
+        const actualAmount = Number(depositAmount); 
         const client = allClients.find(c => c.id === enr.clientId);
 
         const result = await processPayment(
@@ -262,6 +398,49 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             setError("Errore durante la registrazione del pagamento: " + result.error);
         }
         setLoading(false);
+    };
+
+    const handleBulkAssignConfirm = async (selectedIds: string[], slotInfo: {day: number, start: string, end: string}) => {
+        if (!bulkAssignState) return;
+        setBulkAssignState(null); // Close modal immediately
+        setLoading(true);
+
+        try {
+            // Find Supplier Info
+            let supplierId = '';
+            let supplierName = '';
+            for(const s of suppliers) {
+                if (s.locations.some(l => l.id === bulkAssignState.locationId)) {
+                    supplierId = s.id;
+                    supplierName = s.companyName;
+                    break;
+                }
+            }
+
+            // Loop assignments
+            for (const enrId of selectedIds) {
+                await activateEnrollmentWithLocation(
+                    enrId,
+                    supplierId,
+                    supplierName,
+                    bulkAssignState.locationId,
+                    bulkAssignState.locationName,
+                    bulkAssignState.locationColor,
+                    slotInfo.day,
+                    slotInfo.start,
+                    slotInfo.end
+                );
+            }
+
+            await fetchData();
+            alert(`${selectedIds.length} allievi assegnati con successo a ${bulkAssignState.locationName}!`);
+
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante l'assegnazione massiva.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const executeMove = async (enrollmentId: string, targetLocId: string, targetLocName: string, targetLocColor: string, targetDayIndex: number, targetStartTime: string, targetEndTime: string) => {
@@ -309,127 +488,51 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         
         let isBalanceMode = false;
         let ghostId = undefined;
-        let suggestedAmount = (enr.price || 0);
+        let totalPaid = 0;
+        let suggestedAmount = enr.price || 0;
 
         try {
             const invoices = await getInvoices();
-            
-            // 1. Cerca se c'è un Acconto Pagato per questo corso
             const childName = enr.childName.toLowerCase();
-            const depositInvoice = invoices.find(i => 
-                i.clientId === enr.clientId && 
-                !i.isDeleted && 
-                !i.isGhost && 
-                (i.items.some(item => item.description.toLowerCase().includes('acconto') && item.description.toLowerCase().includes(childName)))
-            );
+            const relatedInvoices = invoices.filter(i => i.clientId === enr.clientId && !i.isDeleted && !i.isGhost && (i.items.some(item => item.description.toLowerCase().includes(childName))));
+            totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+            const ghostInvoice = invoices.find(i => i.clientId === enr.clientId && i.isGhost === true && i.status === DocumentStatus.Draft && !i.isDeleted && i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName)));
 
-            // 2. Cerca se c'è una Fattura Ghost (Draft) pronta per il saldo
-            const ghostInvoice = invoices.find(i => 
-                i.clientId === enr.clientId &&
-                i.isGhost === true &&
-                i.status === DocumentStatus.Draft &&
-                !i.isDeleted &&
-                i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName))
-            );
-
-            if (depositInvoice) {
+            if (totalPaid > 0) {
                 isBalanceMode = true;
-                suggestedAmount = Math.max(0, (enr.price || 0) - depositInvoice.totalAmount);
-                if (ghostInvoice) {
-                    ghostId = ghostInvoice.id;
-                }
+                suggestedAmount = Math.max(0, (enr.price || 0) - totalPaid);
+                if (ghostInvoice) ghostId = ghostInvoice.id;
             } else {
-                // Default: Suggerisci metà se non c'è acconto registrato
-                suggestedAmount = suggestedAmount / 2;
+                isBalanceMode = true;
+                suggestedAmount = enr.price || 0;
             }
         } catch(e) { console.error("Error checking invoices", e); }
 
-        setPaymentModalState({ 
-            isOpen: true, 
-            enrollment: enr, 
-            date: new Date().toISOString().split('T')[0], 
-            method: PaymentMethod.BankTransfer,
-            createInvoice: true, 
-            isDeposit: !isBalanceMode, 
-            isBalance: isBalanceMode, 
-            depositAmount: suggestedAmount,
-            ghostInvoiceId: ghostId
-        });
+        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, createInvoice: true, isDeposit: !isBalanceMode, isBalance: isBalanceMode, depositAmount: suggestedAmount, ghostInvoiceId: ghostId, totalPaid: totalPaid });
     };
 
-    const handleConfirmPayment = async () => {
-        if (paymentModalState.enrollment && paymentModalState.date) {
-            setPaymentModalState(prev => ({ ...prev, isOpen: false }));
-            await executePaymentAction(
-                paymentModalState.enrollment, 
-                paymentModalState.date, 
-                paymentModalState.method,
-                paymentModalState.createInvoice,
-                paymentModalState.isDeposit,
-                paymentModalState.isBalance,
-                paymentModalState.depositAmount,
-                paymentModalState.ghostInvoiceId
-            );
-        }
+    const handleConfirmPayment = () => {
+        if (!paymentModalState.enrollment) return;
+        setPaymentModalState(prev => ({ ...prev, isOpen: false }));
+        executePaymentAction(
+            paymentModalState.enrollment,
+            paymentModalState.date,
+            paymentModalState.method,
+            paymentModalState.createInvoice,
+            paymentModalState.isDeposit,
+            paymentModalState.isBalance,
+            paymentModalState.depositAmount,
+            paymentModalState.ghostInvoiceId
+        );
     };
 
     const handleRecoveryRequest = (e: React.MouseEvent, enr: Enrollment, absentCount: number) => { e.stopPropagation(); setRecoveryModalState({ isOpen: true, enrollment: enr, maxRecoverable: absentCount }); };
     const handleConfirmRecovery = async (date: string, startTime: string, endTime: string, count: number, locName: string, locColor: string) => { if (!recoveryModalState.enrollment) return; setRecoveryModalState(prev => ({ ...prev, isOpen: false })); setLoading(true); try { await addRecoveryLessons(recoveryModalState.enrollment.id, date, startTime, endTime, count, locName, locColor); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Recupero programmato con successo!"); } catch (err) { alert("Errore recupero."); } finally { setLoading(false); } };
     
     // --- DELETE HANDLERS ---
-    const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => { 
-        e.stopPropagation(); 
-        setDeleteModalState({ isOpen: true, enrollment: enr, scope: 'single' });
-    };
-
-    const handleConfirmDelete = async () => {
-        if (!deleteModalState.enrollment) return;
-        const target = deleteModalState.enrollment;
-        const scope = deleteModalState.scope;
-        
-        setDeleteModalState(prev => ({...prev, isOpen: false}));
-        setLoading(true);
-
-        try {
-            if (scope === 'single') {
-                await cleanupEnrollmentFinancials(target);
-                await deleteEnrollment(target.id);
-            } else {
-                const clientEnrollments = await getEnrollmentsForClient(target.clientId);
-                for (const enr of clientEnrollments) {
-                    await cleanupEnrollmentFinancials(enr);
-                    await deleteEnrollment(enr.id);
-                }
-            }
-            await fetchData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        } catch (err) {
-            console.error("Delete error:", err);
-            alert("Errore durante l'eliminazione.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleConfirmDeleteAll = async () => {
-        setIsDeleteAllModalOpen(false);
-        setLoading(true);
-        try {
-            const allEnrollments = await getAllEnrollments();
-            for (const enr of allEnrollments) {
-                await cleanupEnrollmentFinancials(enr);
-                await deleteEnrollment(enr.id);
-            }
-            await fetchData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-            alert("Tutte le iscrizioni e i dati correlati sono stati eliminati.");
-        } catch (err) {
-            console.error("Error deleting all:", err);
-            alert("Errore durante l'eliminazione totale.");
-        } finally {
-            setLoading(false);
-        }
-    };
+    const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => { e.stopPropagation(); setDeleteModalState({ isOpen: true, enrollment: enr, scope: 'single' }); };
+    const handleConfirmDelete = async () => { if (!deleteModalState.enrollment) return; const target = deleteModalState.enrollment; const scope = deleteModalState.scope; setDeleteModalState(prev => ({...prev, isOpen: false})); setLoading(true); try { if (scope === 'single') { await cleanupEnrollmentFinancials(target); await deleteEnrollment(target.id); } else { const clientEnrollments = await getEnrollmentsForClient(target.clientId); for (const enr of clientEnrollments) { await cleanupEnrollmentFinancials(enr); await deleteEnrollment(enr.id); } } await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Delete error:", err); alert("Errore durante l'eliminazione."); } finally { setLoading(false); } };
+    const handleConfirmDeleteAll = async () => { setIsDeleteAllModalOpen(false); setLoading(true); try { const allEnrollments = await getAllEnrollments(); for (const enr of allEnrollments) { await cleanupEnrollmentFinancials(enr); await deleteEnrollment(enr.id); } await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Tutte le iscrizioni e i dati correlati sono stati eliminati."); } catch (err) { console.error("Error deleting all:", err); alert("Errore durante l'eliminazione totale."); } finally { setLoading(false); } };
 
     // --- Helper per estrarre dati derivati ---
     const getChildAge = (enrollment: Enrollment): string => {
@@ -446,267 +549,108 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             const now = new Date();
             const next = enrollment.appointments.find(a => new Date(a.date) >= now) || enrollment.appointments[0];
             const date = new Date(next.date);
-            return {
-                dayIndex: date.getDay(),
-                dayName: daysOfWeekMap[date.getDay()],
-                startTime: next.startTime,
-                endTime: next.endTime
-            };
+            return { dayIndex: date.getDay(), dayName: daysOfWeekMap[date.getDay()], startTime: next.startTime, endTime: next.endTime };
         }
         return { dayIndex: 9, dayName: 'Da Definire', startTime: '', endTime: '' };
     };
 
     // --- Dynamic Options for Selects ---
     const availableLocations = useMemo(() => Array.from(new Set(enrollments.map(e => e.locationName))).filter(l => l && l !== 'Sede Non Definita').sort(), [enrollments]);
-    const availableAges = useMemo(() => {
-        const ages = new Set<string>();
-        enrollments.forEach(e => {
-            const age = getChildAge(e);
-            if(age) ages.add(age);
-        });
-        return Array.from(ages).sort();
-    }, [enrollments, allClients]);
-    const availableTimes = useMemo(() => {
-        const times = new Set<string>();
-        enrollments.forEach(e => {
-            const d = getFirstAppointmentData(e);
-            if(d.startTime) times.add(`${d.startTime} - ${d.endTime}`);
-        });
-        return Array.from(times).sort();
-    }, [enrollments]);
-
+    const availableAges = useMemo(() => { const ages = new Set<string>(); enrollments.forEach(e => { const age = getChildAge(e); if(age) ages.add(age); }); return Array.from(ages).sort(); }, [enrollments, allClients]);
+    const availableTimes = useMemo(() => { const times = new Set<string>(); enrollments.forEach(e => { const d = getFirstAppointmentData(e); if(d.startTime) times.add(`${d.startTime} - ${d.endTime}`); }); return Array.from(times).sort(); }, [enrollments]);
 
     // --- Filtering Logic ---
     const filteredEnrollments = useMemo(() => {
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        oneWeekAgo.setHours(0, 0, 0, 0);
-
+        const oneWeekAgo = new Date(); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7); oneWeekAgo.setHours(0, 0, 0, 0);
         let result = enrollments.filter(enr => {
             const isExhausted = enr.lessonsRemaining <= 0 || enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired;
             if (isExhausted) {
                 let lastRelevantDate = new Date(enr.endDate); 
                 const presentApps = enr.appointments?.filter(a => a.status === 'Present');
                 if (presentApps && presentApps.length > 0) {
-                    const lastPres = presentApps.reduce((latest, current) => 
-                        new Date(current.date) > new Date(latest.date) ? current : latest
-                    );
+                    const lastPres = presentApps.reduce((latest, current) => new Date(current.date) > new Date(latest.date) ? current : latest);
                     lastRelevantDate = new Date(lastPres.date);
                 }
                 if (lastRelevantDate < oneWeekAgo) return false;
             }
-
             if (searchTerm) {
                 const term = searchTerm.toLowerCase();
                 const client = allClients.find(c => c.id === enr.clientId);
                 let parentName = '';
-                if(client) {
-                    parentName = client.clientType === ClientType.Parent 
-                        ? `${(client as ParentClient).firstName} ${(client as ParentClient).lastName}`
-                        : (client as import('../types').InstitutionalClient).companyName;
-                }
-                
+                if(client) parentName = client.clientType === ClientType.Parent ? `${(client as ParentClient).firstName} ${(client as ParentClient).lastName}` : (client as import('../types').InstitutionalClient).companyName;
                 const childAge = getChildAge(enr);
                 const appData = getFirstAppointmentData(enr);
-                
-                const match = 
-                    enr.childName.toLowerCase().includes(term) || 
-                    parentName.toLowerCase().includes(term) || 
-                    enr.locationName.toLowerCase().includes(term) || 
-                    childAge.toLowerCase().includes(term) ||
-                    appData.dayName.toLowerCase().includes(term) ||
-                    appData.startTime.includes(term);
-                
+                const match = enr.childName.toLowerCase().includes(term) || parentName.toLowerCase().includes(term) || enr.locationName.toLowerCase().includes(term) || childAge.toLowerCase().includes(term) || appData.dayName.toLowerCase().includes(term) || appData.startTime.includes(term);
                 if (!match) return false;
             }
-
             if (filterLocation && enr.locationName !== filterLocation) return false;
             if (filterAge && getChildAge(enr) !== filterAge) return false;
             if (filterDay && getFirstAppointmentData(enr).dayName !== filterDay) return false;
-            if (filterTime) {
-                const d = getFirstAppointmentData(enr);
-                const timeStr = `${d.startTime} - ${d.endTime}`;
-                if (timeStr !== filterTime) return false;
-            }
-
+            if (filterTime) { const d = getFirstAppointmentData(enr); const timeStr = `${d.startTime} - ${d.endTime}`; if (timeStr !== filterTime) return false; }
             return true;
         });
-
-        result.sort((a, b) => {
-            const nameA = a.childName.toLowerCase();
-            const nameB = b.childName.toLowerCase();
-            return sortOrder === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
-        });
-
+        result.sort((a, b) => { const nameA = a.childName.toLowerCase(); const nameB = b.childName.toLowerCase(); return sortOrder === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA); });
         return result;
     }, [enrollments, allClients, searchTerm, filterLocation, filterAge, filterDay, filterTime, sortOrder]);
 
-
     // --- Grouping Logic (Recinti) ---
     const groupedEnrollments = useMemo(() => {
-        const groups: Record<string, { 
-            locationId: string;
-            locationName: string;
-            locationColor: string;
-            days: Record<number, { 
-                dayName: string;
-                slots: Record<string, { 
-                    timeRange: string;
-                    start: string;
-                    end: string;
-                    items: Enrollment[];
-                }>
-            }>
-        }> = {};
-
+        const groups: Record<string, { locationId: string; locationName: string; locationColor: string; days: Record<number, { dayName: string; slots: Record<string, { timeRange: string; start: string; end: string; items: Enrollment[]; }> }> }> = {};
         suppliers.forEach(s => {
             s.locations.forEach(l => {
                 const locKey = l.name;
-                groups[locKey] = { 
-                    locationId: l.id, 
-                    locationName: l.name, 
-                    locationColor: l.color || '#ccc', 
-                    days: {} 
-                };
+                groups[locKey] = { locationId: l.id, locationName: l.name, locationColor: l.color || '#ccc', days: {} };
                 if (l.availability) {
                     l.availability.forEach(slot => {
-                        if (!groups[locKey].days[slot.dayOfWeek]) {
-                            groups[locKey].days[slot.dayOfWeek] = { dayName: daysOfWeekMap[slot.dayOfWeek], slots: {} };
-                        }
+                        if (!groups[locKey].days[slot.dayOfWeek]) groups[locKey].days[slot.dayOfWeek] = { dayName: daysOfWeekMap[slot.dayOfWeek], slots: {} };
                         const timeKey = `${slot.startTime} - ${slot.endTime}`;
-                        if (!groups[locKey].days[slot.dayOfWeek].slots[timeKey]) {
-                            groups[locKey].days[slot.dayOfWeek].slots[timeKey] = {
-                                timeRange: timeKey,
-                                start: slot.startTime,
-                                end: slot.endTime,
-                                items: []
-                            };
-                        }
+                        if (!groups[locKey].days[slot.dayOfWeek].slots[timeKey]) groups[locKey].days[slot.dayOfWeek].slots[timeKey] = { timeRange: timeKey, start: slot.startTime, end: slot.endTime, items: [] };
                     });
                 }
             });
         });
-
         filteredEnrollments.forEach(enr => {
             const locName = enr.locationName || 'Sede Non Definita';
             const locId = enr.locationId || 'unassigned';
             const locColor = enr.locationColor || '#e5e7eb';
             const appData = getFirstAppointmentData(enr);
-            
             const timeKey = locId === 'unassigned' ? 'Da Assegnare' : (appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D');
             const dayIdx = locId === 'unassigned' ? 99 : appData.dayIndex; 
-
-            if (!groups[locName]) {
-                groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
-            }
-            
-            if (!groups[locName].days[dayIdx]) {
-                groups[locName].days[dayIdx] = { dayName: locId === 'unassigned' ? 'In Attesa' : appData.dayName, slots: {} };
-            }
-
-            if (!groups[locName].days[dayIdx].slots[timeKey]) {
-                groups[locName].days[dayIdx].slots[timeKey] = { 
-                    timeRange: timeKey, 
-                    start: appData.startTime, 
-                    end: appData.endTime, 
-                    items: [] 
-                };
-            }
-
+            if (!groups[locName]) groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
+            if (!groups[locName].days[dayIdx]) groups[locName].days[dayIdx] = { dayName: locId === 'unassigned' ? 'In Attesa' : appData.dayName, slots: {} };
+            if (!groups[locName].days[dayIdx].slots[timeKey]) groups[locName].days[dayIdx].slots[timeKey] = { timeRange: timeKey, start: appData.startTime, end: appData.endTime, items: [] };
             groups[locName].days[dayIdx].slots[timeKey].items.push(enr);
         });
-
-        const sortedGroups = Object.values(groups).sort((a,b) => {
-            if (a.locationId === 'unassigned') return -1;
-            if (b.locationId === 'unassigned') return 1;
-            return a.locationName.localeCompare(b.locationName);
-        });
-
-        return sortedGroups.map(loc => ({
-            ...loc,
-            days: Object.entries(loc.days)
-                .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)) 
-                .map(([idx, day]) => ({
-                    dayIndex: Number(idx),
-                    ...day,
-                    slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange))
-                }))
-        }));
-
+        const sortedGroups = Object.values(groups).sort((a,b) => { if (a.locationId === 'unassigned') return -1; if (b.locationId === 'unassigned') return 1; return a.locationName.localeCompare(b.locationName); });
+        return sortedGroups.map(loc => ({ ...loc, days: Object.entries(loc.days).sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)).map(([idx, day]) => ({ dayIndex: Number(idx), ...day, slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange)) })) }));
     }, [filteredEnrollments, suppliers]);
 
+    // Unassigned enrollments for bulk selection
+    const unassignedEnrollments = useMemo(() => enrollments.filter(e => e.locationId === 'unassigned' && (e.status === EnrollmentStatus.Pending || e.status === EnrollmentStatus.Active)), [enrollments]);
 
     return (
         <div>
             {/* --- HEADER --- */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
                 <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-                    <div>
-                        <h1 className="text-3xl font-bold">Iscrizioni</h1>
-                        <p className="mt-1 text-gray-500">Gestione dei "recinti" e dotazione slot.</p>
-                    </div>
-                    <button 
-                        onClick={() => { setIsMoveMode(!isMoveMode); setMoveSourceId(null); }} 
-                        className={`md-btn md-btn-sm md:hidden mt-2 ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}
-                    >
-                        {isMoveMode ? (
-                            <span className="flex items-center font-bold">
-                                <span className="animate-pulse mr-2">👆</span> Scegli...
-                            </span>
-                        ) : (
-                            <span className="flex items-center">
-                                ✋ Sposta
-                            </span>
-                        )}
-                    </button>
+                    <div><h1 className="text-3xl font-bold">Iscrizioni</h1><p className="mt-1 text-gray-500">Gestione dei "recinti" e dotazione slot.</p></div>
+                    <button onClick={() => { setIsMoveMode(!isMoveMode); setMoveSourceId(null); }} className={`md-btn md-btn-sm md:hidden mt-2 ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}>{isMoveMode ? (<span className="flex items-center font-bold"><span className="animate-pulse mr-2">👆</span> Scegli...</span>) : (<span className="flex items-center">✋ Sposta</span>)}</button>
                 </div>
-
                 <div className="flex flex-col md:flex-row gap-2 flex-1 xl:max-w-4xl xl:justify-end">
-                    <div className="relative w-full md:w-64">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-                        <input 
-                            type="text" 
-                            className="block w-full bg-white border border-gray-300 rounded-lg py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
-                            placeholder="Cerca nome, sede, orario..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                        />
-                    </div>
-
+                    <div className="relative w-full md:w-64"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="block w-full bg-white border border-gray-300 rounded-lg py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 focus:border-indigo-500 shadow-sm" placeholder="Cerca nome, sede, orario..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
                     <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
-                        <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]">
-                            <option value="">Tutte le Sedi</option>
-                            {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
-                        </select>
-                        <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]">
-                            <option value="">Tutti i Giorni</option>
-                            {daysOfWeekMap.map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                        <select value={filterTime} onChange={e => setFilterTime(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[90px]">
-                            <option value="">Tutti Orari</option>
-                            {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                        <select value={filterAge} onChange={e => setFilterAge(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[80px]">
-                            <option value="">Tutte Età</option>
-                            {availableAges.map(a => <option key={a} value={a}>{a}</option>)}
-                        </select>
-                        <button onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm">
-                            {sortOrder === 'az' ? 'A-Z' : 'Z-A'}
-                        </button>
+                        <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]"><option value="">Tutte le Sedi</option>{availableLocations.map(l => <option key={l} value={l}>{l}</option>)}</select>
+                        <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]"><option value="">Tutti i Giorni</option>{daysOfWeekMap.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                        <select value={filterTime} onChange={e => setFilterTime(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[90px]"><option value="">Tutti Orari</option>{availableTimes.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                        <select value={filterAge} onChange={e => setFilterAge(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[80px]"><option value="">Tutte Età</option>{availableAges.map(a => <option key={a} value={a}>{a}</option>)}</select>
+                        <button onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm">{sortOrder === 'az' ? 'A-Z' : 'Z-A'}</button>
                     </div>
-
                     <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
-                    <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center">
-                        <PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span>
-                    </button>
+                    <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center"><PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span></button>
                 </div>
             </div>
             
-            {isMoveMode && (
-                <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">
-                    {moveSourceId ? <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : <span>Tocca un'iscrizione per selezionarla.</span>}
-                </div>
-            )}
+            {isMoveMode && <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">{moveSourceId ? <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : <span>Tocca un'iscrizione per selezionarla.</span>}</div>}
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <div className="space-y-8 pb-10">
@@ -714,38 +658,37 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
                     {groupedEnrollments.map((locGroup, locIdx) => (
                         <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className={`px-6 py-3 border-b border-gray-200 flex items-center gap-3 ${locGroup.locationId === 'unassigned' ? 'bg-gray-200' : 'bg-gray-50'}`}>
-                                <div className="w-4 h-4 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: locGroup.locationColor }}></div>
-                                <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locGroup.locationName}</h2>
-                                {locGroup.locationId === 'unassigned' && <span className="text-xs bg-gray-600 text-white px-2 py-0.5 rounded">Trascina nei recinti</span>}
+                            <div className={`px-6 py-3 border-b border-gray-200 flex items-center justify-between gap-3 ${locGroup.locationId === 'unassigned' ? 'bg-gray-200' : 'bg-gray-50'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className="w-4 h-4 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: locGroup.locationColor }}></div>
+                                    <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locGroup.locationName}</h2>
+                                    {locGroup.locationId === 'unassigned' && <span className="text-xs bg-gray-600 text-white px-2 py-0.5 rounded">Trascina nei recinti</span>}
+                                </div>
+                                
+                                {/* Bulk Assignment Trigger */}
+                                {locGroup.locationId !== 'unassigned' && (
+                                    <button 
+                                        onClick={() => setBulkAssignState({
+                                            isOpen: true,
+                                            locationId: locGroup.locationId,
+                                            locationName: locGroup.locationName,
+                                            locationColor: locGroup.locationColor
+                                        })}
+                                        className="text-xs bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
+                                    >
+                                        <UserPlusIcon /> Assegna Allievi
+                                    </button>
+                                )}
                             </div>
 
                             <div className="p-6 space-y-6">
                                 {locGroup.days.map((dayGroup, dayIdx) => (
                                     <div key={dayIdx} className="relative pl-4 border-l-2 border-dashed border-gray-300">
-                                        <h3 className="text-md font-bold text-indigo-700 mb-3 uppercase flex items-center">
-                                            <span className="w-2 h-2 bg-indigo-500 rounded-full mr-2 -ml-[21px] ring-4 ring-white"></span>
-                                            {dayGroup.dayName}
-                                        </h3>
-
+                                        <h3 className="text-md font-bold text-indigo-700 mb-3 uppercase flex items-center"><span className="w-2 h-2 bg-indigo-500 rounded-full mr-2 -ml-[21px] ring-4 ring-white"></span>{dayGroup.dayName}</h3>
                                         <div className="space-y-4">
                                             {dayGroup.slots.map((slotGroup, slotIdx) => (
-                                                <div 
-                                                    key={slotIdx} 
-                                                    className={`rounded-lg p-3 border transition-all ${
-                                                        isMoveMode && moveSourceId ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 ring-2 ring-indigo-200 ring-offset-1' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'
-                                                    }`}
-                                                    onDragOver={handleDragOver}
-                                                    onDrop={(e) => handleDrop(e, locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}
-                                                    onClick={() => handleSlotClick(locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}
-                                                >
-                                                    <div className="flex items-center mb-3">
-                                                        <span className="bg-white text-slate-600 border border-slate-200 text-xs font-mono font-bold px-2 py-1 rounded shadow-sm">
-                                                            {slotGroup.timeRange}
-                                                        </span>
-                                                        <div className="h-px bg-slate-200 flex-1 ml-3"></div>
-                                                    </div>
-
+                                                <div key={slotIdx} className={`rounded-lg p-3 border transition-all ${isMoveMode && moveSourceId ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 ring-2 ring-indigo-200 ring-offset-1' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)} onClick={() => handleSlotClick(locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}>
+                                                    <div className="flex items-center mb-3"><span className="bg-white text-slate-600 border border-slate-200 text-xs font-mono font-bold px-2 py-1 rounded shadow-sm">{slotGroup.timeRange}</span><div className="h-px bg-slate-200 flex-1 ml-3"></div></div>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                                                         {slotGroup.items.map(enr => {
                                                             const childAge = getChildAge(enr);
@@ -753,74 +696,19 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                             const isPending = enr.status === EnrollmentStatus.Pending;
                                                             const isExhausted = enr.lessonsRemaining <= 0;
                                                             const isUnassigned = enr.locationId === 'unassigned';
-                                                            
                                                             let cardBorderColor = locGroup.locationColor;
                                                             let cardBg = 'bg-white';
                                                             let opacity = 'opacity-100';
-
-                                                            if (isPending) {
-                                                                cardBorderColor = '#fbbf24'; 
-                                                                cardBg = 'bg-amber-50';
-                                                            } else if (isExhausted) {
-                                                                cardBorderColor = '#9ca3af'; 
-                                                                cardBg = 'bg-gray-100';
-                                                                opacity = 'opacity-75';
-                                                            } else if (isUnassigned) {
-                                                                cardBorderColor = '#6b7280';
-                                                                cardBg = 'bg-gray-50';
-                                                            }
-
+                                                            if (isPending) { cardBorderColor = '#fbbf24'; cardBg = 'bg-amber-50'; } else if (isExhausted) { cardBorderColor = '#9ca3af'; cardBg = 'bg-gray-100'; opacity = 'opacity-75'; } else if (isUnassigned) { cardBorderColor = '#6b7280'; cardBg = 'bg-gray-50'; }
                                                             return (
-                                                                <div 
-                                                                    key={enr.id}
-                                                                    draggable={!isExhausted}
-                                                                    onDragStart={(e) => !isExhausted && handleDragStart(e, enr.id)}
-                                                                    onClick={(e) => handleCardClick(e, enr.id)}
-                                                                    className={`p-3 rounded-lg border shadow-sm transition-all relative group 
-                                                                        ${cardBg} ${opacity} border-gray-200 hover:shadow-md cursor-grab active:cursor-grabbing
-                                                                        ${draggedEnrollmentId === enr.id ? 'opacity-50 ring-2 ring-indigo-300' : ''}
-                                                                        ${isSelectedForMove ? 'ring-4 ring-indigo-500 transform scale-95 border-indigo-300 z-10' : ''}
-                                                                    `}
-                                                                    style={{ borderLeftWidth: '5px', borderLeftColor: cardBorderColor }}
-                                                                >
+                                                                <div key={enr.id} draggable={!isExhausted} onDragStart={(e) => !isExhausted && handleDragStart(e, enr.id)} onClick={(e) => handleCardClick(e, enr.id)} className={`p-3 rounded-lg border shadow-sm transition-all relative group ${cardBg} ${opacity} border-gray-200 hover:shadow-md cursor-grab active:cursor-grabbing ${draggedEnrollmentId === enr.id ? 'opacity-50 ring-2 ring-indigo-300' : ''} ${isSelectedForMove ? 'ring-4 ring-indigo-500 transform scale-95 border-indigo-300 z-10' : ''}`} style={{ borderLeftWidth: '5px', borderLeftColor: cardBorderColor }}>
                                                                     <div className="flex justify-between items-start">
-                                                                        <div>
-                                                                            <h4 className={`font-bold text-sm text-gray-800`}>{enr.childName}</h4>
-                                                                            <p className="text-[10px] text-gray-500">{childAge}</p>
-                                                                        </div>
+                                                                        <div><h4 className={`font-bold text-sm text-gray-800`}>{enr.childName}</h4><p className="text-[10px] text-gray-500">{childAge}</p></div>
                                                                         {isPending && <span className="text-[9px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-bold uppercase">Dormiente</span>}
                                                                         {isExhausted && <span className="text-[9px] bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded font-bold uppercase">Esaurito</span>}
                                                                     </div>
-                                                                    
-                                                                    <div className="mt-2 flex items-center justify-between">
-                                                                        <p className="text-xs text-gray-600 truncate flex-1 pr-2" title={enr.subscriptionName}>{enr.subscriptionName}</p>
-                                                                        <div className="text-xs font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap" title="Slot Consumati / Totali">
-                                                                            <span className="font-bold text-indigo-600">{enr.lessonsTotal - enr.lessonsRemaining}</span>
-                                                                            <span className="text-gray-400">/</span>
-                                                                            <span className="font-bold text-gray-600">{enr.lessonsTotal}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                    
-                                                                    {!isMoveMode && (
-                                                                        <div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                                                                            {!isUnassigned && (
-                                                                                <button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento / Saldo">
-                                                                                    <span className="font-bold text-xs">€</span>
-                                                                                </button>
-                                                                            )}
-                                                                            <button onClick={(e) => handleEditClick(e, parentClients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica">
-                                                                                <PencilIcon />
-                                                                            </button>
-                                                                            <button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina">
-                                                                                <TrashIcon />
-                                                                            </button>
-                                                                            {!isExhausted && !isPending && !isUnassigned && (
-                                                                                <button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero">
-                                                                                    <RefreshIcon />
-                                                                                </button>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
+                                                                    <div className="mt-2 flex items-center justify-between"><p className="text-xs text-gray-600 truncate flex-1 pr-2" title={enr.subscriptionName}>{enr.subscriptionName}</p><div className="text-xs font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap" title="Slot Consumati / Totali"><span className="font-bold text-indigo-600">{enr.lessonsTotal - enr.lessonsRemaining}</span><span className="text-gray-400">/</span><span className="font-bold text-gray-600">{enr.lessonsTotal}</span></div></div>
+                                                                    {!isMoveMode && (<div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">{!isUnassigned && (<button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento / Saldo"><span className="font-bold text-xs">€</span></button>)}<button onClick={(e) => handleEditClick(e, parentClients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica"><PencilIcon /></button><button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina"><TrashIcon /></button>{!isExhausted && !isPending && !isUnassigned && (<button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero"><RefreshIcon /></button>)}</div>)}
                                                                 </div>
                                                             );
                                                         })}
@@ -836,75 +724,51 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </div>
             )}
 
+            {/* Modals */}
             {paymentModalState.isOpen && paymentModalState.enrollment && (
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
-                        <p className="text-sm text-gray-500 mb-4">
-                            Pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.<br/>
-                            Totale Iscrizione: <span className="font-bold text-indigo-600">{paymentModalState.enrollment.price}€</span>
-                        </p>
+                        <p className="text-sm text-gray-500 mb-2">Pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.</p>
                         
+                        <div className="bg-indigo-50 p-3 rounded mb-4 text-xs">
+                            <p>Prezzo Totale: <strong>{paymentModalState.enrollment.price}€</strong></p>
+                            <p>Già Versato: <strong>{paymentModalState.totalPaid.toFixed(2)}€</strong></p>
+                            <p className="text-indigo-700 font-bold">Rimanenza: {( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid ).toFixed(2)}€</p>
+                        </div>
+
                         <div className="md-input-group mb-4">
                             <input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" />
                             <label className="md-input-label !top-0">Data Pagamento</label>
                         </div>
-
+                        
                         <div className="md-input-group mb-4">
                             <select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">
                                 {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                             <label className="md-input-label !top-0">Metodo Pagamento</label>
                         </div>
-                        
+
                         <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
                             <div className="flex gap-4">
                                 <label className="flex items-center cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="paymentType"
-                                        checked={paymentModalState.isDeposit}
-                                        onChange={() => setPaymentModalState(prev => ({ 
-                                            ...prev, 
-                                            isDeposit: true,
-                                            isBalance: false, 
-                                            depositAmount: (prev.enrollment?.price || 0) / 2 
-                                        }))}
-                                        className="h-4 w-4 text-indigo-600 rounded"
-                                    />
+                                    <input type="radio" name="paymentType" checked={paymentModalState.isDeposit} onChange={() => setPaymentModalState(prev => ({ ...prev, isDeposit: true, isBalance: false, depositAmount: 0 }))} className="h-4 w-4 text-indigo-600 rounded" />
                                     <span className="ml-2 text-sm font-bold text-gray-700">In Acconto</span>
                                 </label>
-
                                 <label className="flex items-center cursor-pointer">
-                                    <input 
-                                        type="radio" 
-                                        name="paymentType"
-                                        checked={paymentModalState.isBalance}
-                                        onChange={() => setPaymentModalState(prev => ({ 
-                                            ...prev, 
-                                            isBalance: true,
-                                            isDeposit: false,
-                                            depositAmount: prev.enrollment ? (prev.enrollment.price || 0) - (prev.isBalance ? 0 : (prev.enrollment.price || 0) / 2) : 0
-                                        }))}
-                                        className="h-4 w-4 text-green-600 rounded"
-                                    />
-                                    <span className="ml-2 text-sm font-bold text-green-700">A Saldo</span>
+                                    <input type="radio" name="paymentType" checked={paymentModalState.isBalance} onChange={() => setPaymentModalState(prev => ({ ...prev, isBalance: true, isDeposit: false, depositAmount: prev.enrollment ? Math.max(0, (prev.enrollment.price || 0) - prev.totalPaid) : 0 }))} className="h-4 w-4 text-green-600 rounded" />
+                                    <span className="ml-2 text-sm font-bold text-green-700">A Saldo / Tutto Subito</span>
                                 </label>
                             </div>
                             
                             {(paymentModalState.isDeposit || paymentModalState.isBalance) && (
                                 <div className="animate-fade-in pl-2 pt-2">
                                     <label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label>
-                                    <input 
-                                        type="number" 
-                                        value={paymentModalState.depositAmount}
-                                        onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))}
-                                        className="w-full p-2 border rounded text-sm font-bold text-right"
-                                    />
+                                    <input type="number" value={paymentModalState.depositAmount} onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))} className="w-full p-2 border rounded text-sm font-bold text-right" placeholder={paymentModalState.isDeposit ? "Inserisci quota concordata..." : ""} />
                                     {paymentModalState.isDeposit && (
                                         <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
-                                            Rimanenza (Saldo): <strong>{(paymentModalState.enrollment.price || 0) - paymentModalState.depositAmount}€</strong>
-                                            <br/>Verrà generata una notifica di saldo.
+                                            Rimanenza (Saldo): <strong>{( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - paymentModalState.depositAmount ).toFixed(2)}€</strong><br/>
+                                            Verrà generata una notifica di saldo.
                                         </div>
                                     )}
                                 </div>
@@ -940,20 +804,25 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             <TrashIcon />
                             <h3 className="text-lg font-bold">Elimina Iscrizione</h3>
                         </div>
-                        <p className="text-sm text-gray-600 mb-6">
-                            Stai per eliminare l'iscrizione di <strong>{deleteModalState.enrollment.childName}</strong>. 
-                            Questa azione è irreversibile.
-                        </p>
+                        <p className="text-sm text-gray-600 mb-6">Stai per eliminare l'iscrizione di <strong>{deleteModalState.enrollment.childName}</strong>. Questa azione è irreversibile.</p>
+                        
                         <div className="space-y-3 mb-6">
                             <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'single' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
                                 <input type="radio" name="deleteScope" checked={deleteModalState.scope === 'single'} onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'single' }))} className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500" />
-                                <div className="ml-3"><span className="block text-sm font-bold text-gray-800">Elimina solo questa</span><span className="block text-xs text-gray-500">Rimuove solo questa iscrizione e i relativi movimenti finanziari.</span></div>
+                                <div className="ml-3">
+                                    <span className="block text-sm font-bold text-gray-800">Elimina solo questa</span>
+                                    <span className="block text-xs text-gray-500">Rimuove solo questa iscrizione e i relativi movimenti finanziari.</span>
+                                </div>
                             </label>
                             <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'all' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
                                 <input type="radio" name="deleteScope" checked={deleteModalState.scope === 'all'} onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'all' }))} className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500" />
-                                <div className="ml-3"><span className="block text-sm font-bold text-gray-800">Elimina tutte (Cliente)</span><span className="block text-xs text-gray-500">Rimuove TUTTE le iscrizioni storiche e i dati finanziari di questo cliente.</span></div>
+                                <div className="ml-3">
+                                    <span className="block text-sm font-bold text-gray-800">Elimina tutte (Cliente)</span>
+                                    <span className="block text-xs text-gray-500">Rimuove TUTTE le iscrizioni storiche e i dati finanziari di questo cliente.</span>
+                                </div>
                             </label>
                         </div>
+
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
                             <button onClick={handleConfirmDelete} className="md-btn md-btn-raised md-btn-red md-btn-sm">Conferma Eliminazione</button>
@@ -963,17 +832,31 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             )}
 
             <ConfirmModal 
-                isOpen={isDeleteAllModalOpen}
-                onClose={() => setIsDeleteAllModalOpen(false)}
-                onConfirm={handleConfirmDeleteAll}
-                title="ELIMINA TUTTE LE ISCRIZIONI"
-                message="⚠️ ATTENZIONE: Stai per eliminare TUTTE le iscrizioni attive e storiche. Questa azione cancellerà a cascata anche tutte le Lezioni, Presenze, Transazioni e Fatture collegate. Questa operazione è irreversibile. Confermi?"
-                isDangerous={true}
-                confirmText="Sì, Elimina TUTTO"
+                isOpen={isDeleteAllModalOpen} 
+                onClose={() => setIsDeleteAllModalOpen(false)} 
+                onConfirm={handleConfirmDeleteAll} 
+                title="ELIMINA TUTTE LE ISCRIZIONI" 
+                message="⚠️ ATTENZIONE: Stai per eliminare TUTTE le iscrizioni attive e storiche. Questa azione cancellerà a cascata anche tutte le Lezioni, Presenze, Transazioni e Fatture collegate. Questa operazione è irreversibile. Confermi?" 
+                isDangerous={true} 
+                confirmText="Sì, Elimina TUTTO" 
             />
 
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm parents={parentClients} initialParent={selectedClient} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
+            
             {recoveryModalState.isOpen && recoveryModalState.enrollment && <RecoveryModal enrollment={recoveryModalState.enrollment} maxRecoverable={recoveryModalState.maxRecoverable} suppliers={suppliers} onClose={() => setRecoveryModalState(prev => ({ ...prev, isOpen: false }))} onConfirm={handleConfirmRecovery} />}
+            
+            {/* BULK ASSIGNMENT MODAL */}
+            {bulkAssignState && (
+                <BulkAssignModal 
+                    targetLocationId={bulkAssignState.locationId}
+                    targetLocationName={bulkAssignState.locationName}
+                    targetLocationColor={bulkAssignState.locationColor}
+                    suppliers={suppliers}
+                    unassignedEnrollments={unassignedEnrollments}
+                    onClose={() => setBulkAssignState(null)}
+                    onConfirm={handleBulkAssignConfirm}
+                />
+            )}
         </div>
     );
 };
