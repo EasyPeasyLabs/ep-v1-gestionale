@@ -67,42 +67,48 @@ const LocationDetailModal: React.FC<{
     const isProfitable = profit >= 0;
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     
+    // Efficiency: Quanto rimane in tasca su 10 euro
+    const pocketMoneyPer10 = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
+    
     useEffect(() => {
         if (chartRef.current) {
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
-                // Se in perdita, mostriamo una ciambella diversa (solo costi) o full red
                 const chartData = isProfitable 
                     ? [data.costs, profit] 
-                    : [data.revenue, data.costs - data.revenue]; // Trick: Show revenue vs deficit
+                    : [data.revenue, data.costs - data.revenue]; 
                 
                 const colors = isProfitable 
-                    ? ['#ef4444', '#22c55e'] // Rosso (Costi), Verde (Utile)
-                    : ['#22c55e', '#ef4444']; // Verde (Ricavi), Rosso (Deficit)
+                    ? ['#ef4444', '#22c55e'] // Rosso (Costi), Verde (Profitto)
+                    : ['#22c55e', '#ef4444']; // Verde (Coperto), Rosso (Scoperto)
+
+                const labels = isProfitable
+                    ? ['Affitto (Costi)', 'Tasca Tua (Profitto)']
+                    : ['Coperto da Incassi', 'Perdita (Di tasca tua)'];
 
                 const chart = new Chart(ctx, {
                     type: 'doughnut',
                     data: {
-                        labels: isProfitable ? ['Spese (Affitto)', 'Guadagno (Tuo)'] : ['Coperto da Incassi', 'Perdita (Di tasca tua)'],
+                        labels: labels,
                         datasets: [{
                             data: chartData,
                             backgroundColor: colors,
                             borderWidth: 0,
-                            hoverOffset: 4
+                            hoverOffset: 10
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                            legend: { display: false },
+                            legend: { position: 'bottom', labels: { font: { size: 10, family: 'Inter' } } },
                             tooltip: {
                                 callbacks: {
                                     label: (context) => ` ${context.label}: ${Number(context.raw).toFixed(2)}€`
                                 }
                             }
                         },
-                        cutout: '70%',
+                        cutout: '65%',
                     }
                 });
                 return () => chart.destroy();
@@ -110,49 +116,46 @@ const LocationDetailModal: React.FC<{
         }
     }, [data, isProfitable]);
 
-    // Calcolo semplificato "Ogni 10€"
-    const efficiency = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
-
     return (
         <Modal onClose={onClose} size="lg">
             <div className="flex flex-col h-full overflow-hidden">
-                {/* Header Colorato */}
+                {/* HEADER: IL VERDETTO */}
                 <div className={`p-6 text-white flex justify-between items-start ${isProfitable ? 'bg-indigo-600' : 'bg-red-500'}`}>
                     <div>
                         <h3 className="text-2xl font-black uppercase tracking-tight">{data.name}</h3>
-                        <p className="text-sm opacity-90 font-medium mt-1">Scheda di Analisi Semplificata</p>
+                        <p className="text-sm opacity-90 font-medium mt-1">Smart Insight - Controllo di Gestione</p>
                     </div>
-                    <div className="text-4xl">
+                    <div className="text-5xl">
                         {isProfitable ? '👍' : '⚠️'}
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-8">
                     
-                    {/* 1. Il Verdetto */}
+                    {/* 1. NARRATIVA DEL VERDETTO */}
                     <div className="text-center">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">IL VERDETTO</p>
                         {isProfitable ? (
                             <h4 className="text-xl font-bold text-green-600">
-                                Questa sede lavora bene! <br/>
-                                <span className="text-gray-600 text-base font-normal">Gli studenti pagano l'affitto e ti resta un guadagno.</span>
+                                Ottimo Lavoro! <br/>
+                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. Gli studenti coprono abbondantemente l'affitto.</span>
                             </h4>
                         ) : (
                             <h4 className="text-xl font-bold text-red-600">
-                                Attenzione: Costi troppo alti. <br/>
-                                <span className="text-gray-600 text-base font-normal">Gli incassi non bastano a coprire l'affitto.</span>
+                                Attenzione: Costi Alti <br/>
+                                <span className="text-gray-600 text-base font-normal">Gli incassi attuali non bastano a coprire l'affitto. Stai usando soldi di altre sedi per mantenere questa.</span>
                             </h4>
                         )}
                     </div>
 
-                    {/* 2. Visualizzazione Grafica */}
+                    {/* 2. VISUALIZZAZIONE (LA TORTA) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                        <div className="h-48 relative">
+                        <div className="h-56 relative">
                             <canvas ref={chartRef}></canvas>
-                            {/* Centro Ciambella */}
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-xs text-gray-400 font-bold uppercase">Saldo</span>
-                                <span className={`text-xl font-black ${isProfitable ? 'text-green-600' : 'text-red-600'}`}>
+                            {/* Centro della ciambella */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-6">
+                                <span className="text-[10px] text-gray-400 font-bold uppercase">COSA TI RIMANE</span>
+                                <span className={`text-2xl font-black ${isProfitable ? 'text-green-600' : 'text-red-600'}`}>
                                     {profit > 0 ? '+' : ''}{profit.toFixed(0)}€
                                 </span>
                             </div>
@@ -162,47 +165,44 @@ const LocationDetailModal: React.FC<{
                             <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
                                 <div className="p-2 bg-green-100 rounded-full text-xl">💰</div>
                                 <div>
-                                    <p className="text-xs text-gray-500 font-bold uppercase">Entrate (Studenti)</p>
+                                    <p className="text-xs text-gray-500 font-bold uppercase">Totale raccolto dagli studenti</p>
                                     <p className="text-lg font-bold text-gray-800">{data.revenue.toFixed(2)}€</p>
-                                    <p className="text-[10px] text-gray-500 leading-tight">Soldi raccolti dalle iscrizioni in questa sede.</p>
                                 </div>
                             </div>
 
                             <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
                                 <div className="p-2 bg-red-100 rounded-full text-xl">🏠</div>
                                 <div>
-                                    <p className="text-xs text-gray-500 font-bold uppercase">Uscite (Affitto)</p>
+                                    <p className="text-xs text-gray-500 font-bold uppercase">Affitto pagato al proprietario</p>
                                     <p className="text-lg font-bold text-gray-800">{data.costs.toFixed(2)}€</p>
-                                    <p className="text-[10px] text-gray-500 leading-tight">Costo per l'uso della sala (in base alle ore occupate).</p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* 3. Spiegazione "Explain Like I'm 5" */}
+                    {/* 3. SPIEGAZIONE NARRATIVA (EFFICIENZA) */}
                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
                         <h5 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
-                            <span className="text-xl">💡</span> In parole povere:
+                            <span className="text-xl">💡</span> Efficienza:
                         </h5>
                         <ul className="space-y-3 text-sm text-slate-600">
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Su ogni <strong>10€</strong> che un genitore ti paga per questa sede, 
-                                    tu ne spendi <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> per l'affitto.
+                                    Per ogni <strong>10€</strong> che incassi in questa sede, ne spendi <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> per l'affitto.
                                 </span>
                             </li>
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Ti restano in tasca puliti <strong>{efficiency > 0 ? efficiency.toFixed(1) : 0}€</strong> (su 10€).
+                                    Ti restano in tasca puliti <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€).
                                 </span>
                             </li>
                             {!isProfitable && (
-                                <li className="flex gap-2 text-red-600 font-medium bg-red-50 p-2 rounded">
-                                    <span className="font-bold">•</span>
+                                <li className="flex gap-2 text-red-600 font-medium bg-red-50 p-2 rounded mt-2">
+                                    <span className="font-bold">!</span>
                                     <span>
-                                        Consiglio: Hai bisogno di più iscritti in questa sede per coprire i costi fissi, oppure devi rinegoziare l'affitto.
+                                        Consiglio: Devi trovare nuovi iscritti per questa sede o rinegoziare l'affitto.
                                     </span>
                                 </li>
                             )}
@@ -233,7 +233,6 @@ const TransactionForm: React.FC<{
     const [category, setCategory] = useState<TransactionCategory>(transaction?.category || TransactionCategory.Materials);
     const [allocationId, setAllocationId] = useState(transaction?.allocationId || '');
 
-    // Locations per dropdown
     const allLocations = useMemo(() => {
         const locs: {id: string, name: string}[] = [];
         suppliers.forEach(s => s.locations.forEach(l => locs.push({id: l.id, name: l.name})));
@@ -305,7 +304,6 @@ const TransactionForm: React.FC<{
                         </select>
                         <label className="md-input-label !top-0">Categoria</label>
                     </div>
-                    {/* Help Text Box */}
                     <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg flex gap-3 items-start animate-fade-in">
                         <span className="text-xl">💡</span>
                         <div>
@@ -346,14 +344,11 @@ const InvoiceEditForm: React.FC<{
     const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoiceNumber);
     const [sdiId, setSdiId] = useState(invoice.sdiId || '');
     
-    // Items State
     const [items, setItems] = useState<DocumentItem[]>(invoice.items || []);
     const [totalAmount, setTotalAmount] = useState(invoice.totalAmount);
 
-    // Auto-recalc total when items change
     useEffect(() => {
         const sum = items.reduce((acc, item) => acc + (item.quantity * item.price), 0);
-        // Aggiungi bollo se presente nel flag originale (non modificabile qui per semplicità, ma visualizzato)
         const stampDuty = invoice.hasStampDuty ? 2 : 0;
         setTotalAmount(sum + stampDuty);
     }, [items, invoice.hasStampDuty]);
@@ -389,16 +384,13 @@ const InvoiceEditForm: React.FC<{
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden">
-            {/* Header Sticky */}
             <div className="p-6 border-b flex-shrink-0 bg-white z-10">
                 <h3 className="text-xl font-bold text-gray-800">Modifica Fattura</h3>
                 <p className="text-sm text-gray-500">{invoice.clientName}</p>
             </div>
 
-            {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 
-                {/* 1. Dati Testata */}
                 <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
                     <div className="md-input-group col-span-2">
                         <input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} className="md-input font-mono font-bold" required />
@@ -420,7 +412,6 @@ const InvoiceEditForm: React.FC<{
                     </div>
                 </div>
 
-                {/* 2. Righe Articoli */}
                 <div>
                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Righe Documento</h4>
                     <div className="space-y-3">
@@ -471,7 +462,6 @@ const InvoiceEditForm: React.FC<{
                     </button>
                 </div>
 
-                {/* 3. Totali & Extra */}
                 <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-sm text-indigo-800">Bollo Virtuale</span>
@@ -497,7 +487,6 @@ const InvoiceEditForm: React.FC<{
                 </div>
             </div>
 
-            {/* Footer Sticky Buttons */}
             <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 flex-shrink-0 z-10">
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
                 <button type="submit" className="md-btn md-btn-raised md-btn-primary">Salva Modifiche</button>
@@ -525,26 +514,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     const [loading, setLoading] = useState(true);
 
-    // AI Reverse Engineering State
     const [targetMonthlyNet, setTargetMonthlyNet] = useState(3000);
     const [lessonPrice, setLessonPrice] = useState(25);
 
-    // Modals
     const [isSealModalOpen, setIsSealModalOpen] = useState(false);
     const [invoiceToSeal, setInvoiceToSeal] = useState<Invoice | null>(null);
     const [sdiId, setSdiId] = useState('');
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [filters, setFilters] = useState({ search: '' });
 
-    // Interactive ROI Modal
     const [selectedLocationROI, setSelectedLocationROI] = useState<{name: string, color: string, revenue: number, costs: number} | null>(null);
 
-    // Transaction CRUD State
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
 
-    // Invoice CRUD State
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
@@ -566,7 +550,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         if (initialParams?.tab) setActiveTab(initialParams.tab);
         if (initialParams?.searchTerm) setFilters(f => ({ ...f, search: initialParams.searchTerm || '' }));
 
-        // LISTENER REAL-TIME (Global Event Bus)
         const handleRealTimeUpdate = () => {
             fetchData(); 
         };
@@ -575,7 +558,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     }, [fetchData, initialParams]);
 
-    // --- ACTIONS ---
     const handleSyncRents = async () => {
         if(confirm("Vuoi ricalcolare i costi di affitto per tutte le sedi in base all'occupazione reale del calendario? Questa operazione potrebbe richiedere alcuni secondi.")) {
             setLoading(true);
@@ -606,11 +588,27 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const tax = taxable * TAX_RATE_STARTUP;
         
         // Calcolo Bolli: 2€ per ogni fattura > 77€
-        const stampDutyCount = invoices.filter(inv => !inv.isDeleted && !inv.isGhost && inv.totalAmount > 77.47).length;
-        const stampDutyTotal = stampDutyCount * 2;
+        // Conteggiamo i bolli raggruppati per trimestre per la nuova logica
+        let stampDutyTotal = 0;
+        const stampDutyQuarters = { q1: 0, q2: 0, q3: 0, q4: 0 };
+        
+        invoices.forEach(inv => {
+            if (!inv.isDeleted && !inv.isGhost && inv.totalAmount > 77.47) {
+                stampDutyTotal += 2;
+                
+                const d = new Date(inv.issueDate);
+                const m = d.getMonth(); // 0-11
+                if (m < 3) stampDutyQuarters.q1 += 2;
+                else if (m < 6) stampDutyQuarters.q2 += 2;
+                else if (m < 9) stampDutyQuarters.q3 += 2;
+                else stampDutyQuarters.q4 += 2;
+            }
+        });
 
-        const totalTaxes = inps + tax + stampDutyTotal;
-        const savingsSuggestion = totalTaxes * 1.1; // +10% sicurezza
+        // Totali Combinati
+        const totalInpsTax = inps + tax;
+        const totalAll = totalInpsTax + stampDutyTotal;
+        const savingsSuggestion = totalAll * 1.1; 
 
         // Proiezioni Mensili
         const monthlyData = Array(12).fill(0).map((_, i) => {
@@ -622,18 +620,16 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             return { month: i, revenue: monthRev, inps: mTaxable * INPS_RATE, tax: mTaxable * TAX_RATE_STARTUP };
         });
 
-        return { revenue, expenses, profit, margin, taxable, inps, tax, stampDutyTotal, totalTaxes, savingsSuggestion, monthlyData, progress: (revenue / LIMIT_FORFETTARIO) * 100 };
+        return { 
+            revenue, expenses, profit, margin, 
+            taxable, inps, tax, stampDutyTotal, stampDutyQuarters,
+            totalInpsTax, totalAll, 
+            savingsSuggestion, monthlyData, progress: (revenue / LIMIT_FORFETTARIO) * 100 
+        };
     }, [transactions, invoices]);
 
     // --- REVERSE ENGINEERING AI CALC ---
     const reverseEngineering = useMemo(() => {
-        // Formula Inversa Forfettario Start-up
-        // Netto = Lordo - (Lordo * 0.78 * 0.2623) - (Lordo * 0.78 * 0.05)
-        // Netto = Lordo * (1 - 0.78 * (0.2623 + 0.05))
-        // Lordo = Netto / (1 - 0.78 * 0.3123)
-        // Lordo = Netto / (1 - 0.243594)
-        // Lordo = Netto / 0.756406
-        
         const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP);
         const netRatio = 1 - compositeTaxRate;
         
@@ -643,11 +639,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const currentGross = stats.revenue;
         const gap = Math.max(0, grossNeeded - currentGross);
         
-        // Stima gap lezioni
-        const revenuePerLesson = lessonPrice; // Prezzo unitario medio
+        const revenuePerLesson = lessonPrice; 
         const extraLessonsNeeded = revenuePerLesson > 0 ? Math.ceil(gap / revenuePerLesson) : 0;
         
-        // Studenti necessari (assumendo media 30 lezioni a studente/anno)
         const studentsNeeded = Math.ceil(extraLessonsNeeded / 30);
 
         return {
@@ -659,26 +653,66 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         };
     }, [targetMonthlyNet, lessonPrice, stats.revenue]);
 
-    // --- SIMULATORE RATE ---
+    // --- SIMULATORE RATE (New Logic) ---
     const simulatorData = useMemo(() => {
-        // Stima Saldo 2025 (Tasse totali maturate ad oggi)
-        const saldo2025 = stats.totalTaxes;
+        // MODIFICA RICHIESTA 10 (STARTUP SCENARIO):
+        // Poiché l'azienda è nata nel 2025, nella prima dichiarazione (2026) si paga:
+        // GIUGNO: Saldo 2025 (100%) + I Acconto 2026 (50% del 2025)
+        // NOVEMBRE: II Acconto 2026 (50% del 2025)
         
-        // Stima I Acconto 2026 (50% del saldo anno precedente - semplificato)
-        const acconto2026 = saldo2025 * 0.5;
+        const saldoCorrente = stats.totalInpsTax; // 100% Tasse calcolate sull'anno corrente
         
-        const totalDue = saldo2025 + acconto2026;
+        // I Tranche rateizzabile (Giugno-Nov): Saldo + I Acconto (150% del totale)
+        const tranche1 = saldoCorrente + (saldoCorrente * 0.5); 
         
-        // Rateazione Giugno-Novembre (6 mesi)
-        const monthlyInstallment = totalDue / 6;
+        // II Acconto (Nov): 50% del totale
+        const tranche2 = saldoCorrente * 0.5;
         
+        const monthlyInstallment = tranche1 / 6; // Rateazione Giugno-Novembre
+
+        // Scadenze Bolli (Logica Cumulo < 5000€)
+        // Ipotizzando che i bolli siano sempre < 5000€ per il forfettario medio,
+        // applichiamo il differimento standard:
+        // I Trim -> paga entro 30 Settembre (con II Trim)
+        // II Trim -> paga entro 30 Settembre
+        // III Trim -> paga entro 30 Novembre
+        // IV Trim -> paga entro 28 Febbraio (Anno X+1)
+        
+        const stampDeadlines = [
+            { label: '30 Set (I+II Trim)', amount: stats.stampDutyQuarters.q1 + stats.stampDutyQuarters.q2, monthIndex: 8 }, // Sept
+            { label: '30 Nov (III Trim)', amount: stats.stampDutyQuarters.q3, monthIndex: 10 }, // Nov
+            { label: '28 Feb (IV Trim)', amount: stats.stampDutyQuarters.q4, monthIndex: 1 }, // Feb (next year) - Not in current simulation grid usually
+        ];
+
+        // Piano di Accantonamento Consigliato (Giugno - Novembre)
+        // Per ogni mese calcoliamo: Rata Tasse + Bolli in scadenza quel mese
+        // E aggiungiamo un target per il Saldo Finale di Novembre
+        const savingsPlan = [];
+        const months = ['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'];
+        
+        for (let i = 0; i < 6; i++) {
+            const monthIdx = i + 5; // 5=June, 6=July... 10=Nov
+            let amount = monthlyInstallment; // Base tax installment
+            
+            // Add Stamps if deadline matches month
+            const stampsDue = stampDeadlines.filter(s => s.monthIndex === monthIdx).reduce((sum, s) => sum + s.amount, 0);
+            amount += stampsDue;
+
+            savingsPlan.push({ month: months[i], amount });
+        }
+
+        // Aggiunta voce "Saldo Finale" separata per chiarezza
+        const saldoFinaleTarget = tranche2;
+
         return {
-            saldo2025,
-            acconto2026,
-            totalDue,
-            monthlyInstallment
+            tranche1,
+            tranche2,
+            monthlyInstallment,
+            stampDeadlines,
+            savingsPlan,
+            saldoFinaleTarget
         };
-    }, [stats.totalTaxes]);
+    }, [stats]);
 
     const roiSedi = useMemo(() => {
         const data: Record<string, { name: string, color: string, revenue: number, costs: number }> = {};
@@ -695,7 +729,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         return Object.values(data).sort((a,b) => b.revenue - a.revenue);
     }, [suppliers, transactions]);
 
-    // --- GRAFICI ---
     useEffect(() => {
         if (activeTab === 'overview' && chartRef.current && !loading) {
             if (chartInstance.current) chartInstance.current.destroy();
@@ -725,7 +758,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     }, [activeTab, loading, stats]);
 
-    // --- AZIONI ---
     const handlePrint = async (doc: Invoice | Quote) => {
         const client = clients.find(c => c.id === doc.clientId);
         await generateDocumentPDF(doc, 'invoiceNumber' in doc ? 'Fattura' : 'Preventivo', companyInfo, client);
@@ -750,7 +782,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         await fetchData();
     };
 
-    // --- Gestione CRUD Transazioni ---
     const handleSaveTransaction = async (t: TransactionInput | Transaction) => {
         setLoading(true);
         try {
@@ -768,15 +799,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     };
 
     const handleEditTransaction = (item: any) => {
-        // Logica rigorosa: se ha invoiceNumber, è una fattura e non deve essere editata qui.
-        // Questa funzione serve solo per le voci manuali.
         if ('amount' in item && 'category' in item && !('invoiceNumber' in item)) {
             setEditingTransaction(item);
             setIsTransactionModalOpen(true);
         }
     };
 
-    // --- Gestione CRUD Fatture ---
     const handleEditInvoice = (item: Invoice) => {
         setEditingInvoice(item);
         setIsInvoiceModalOpen(true);
@@ -875,23 +903,29 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     <StrategyCard title="Efficiency Insight" desc={stats.margin < 30 ? "Margine basso rilevato. Controlla i costi di nolo delle sedi periferiche." : "Ottima efficienza operativa rilevata questo mese."} status={stats.margin < 30 ? 'warning' : 'success'} />
                                     <div className="md-card p-6 bg-indigo-900 text-white shadow-indigo-200">
                                         <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato</h4>
-                                        <p className="text-3xl font-black">{(stats.profit - stats.totalTaxes).toFixed(2)}€</p>
-                                        <p className="text-[10px] mt-4 text-indigo-400 italic">Calcolato dopo INPS (26%) e Imposta (5%)</p>
+                                        <p className="text-3xl font-black">{(stats.profit - stats.totalAll).toFixed(2)}€</p>
+                                        <p className="text-[10px] mt-4 text-indigo-400 italic">Calcolato dopo INPS, Imposta e Bolli</p>
                                     </div>
                                 </div>
                             </div>
                         </>
                     )}
 
-                    {/* --- CFO / STRATEGIA TAB (NEW IMPLEMENTATION) --- */}
+                    {/* --- CFO / STRATEGIA TAB --- */}
                     {activeTab === 'cfo' && (
                         <div className="space-y-6 animate-slide-up">
                             
                             {/* 1. PIANIFICATORE FISCALE VISUALE */}
                             <div className="md-card p-6 bg-white border border-gray-200 shadow-sm rounded-2xl">
-                                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                    <CalculatorIcon /> Proiezione Fiscale (Forfettario)
-                                </h3>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                        <CalculatorIcon /> Proiezione Fiscale (Forfettario)
+                                    </h3>
+                                    <div className="text-right">
+                                        <span className="text-[10px] font-black uppercase text-gray-400 block">TOTAL TAX</span>
+                                        <span className="text-2xl font-black text-red-600">{stats.totalAll.toFixed(2)}€</span>
+                                    </div>
+                                </div>
                                 
                                 <div className="mb-6">
                                     <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
@@ -906,7 +940,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                                         <p className="text-[10px] font-bold text-gray-400 uppercase">IMPONIBILE (78%)</p>
                                         <p className="text-xl font-black text-gray-800 mt-1">{stats.taxable.toFixed(2)}€</p>
@@ -919,6 +953,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                         <p className="text-[10px] font-bold text-red-400 uppercase">IMPOSTA SOST. (5%)</p>
                                         <p className="text-xl font-black text-red-600 mt-1">{stats.tax.toFixed(2)}€</p>
                                     </div>
+                                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                                        <p className="text-[10px] font-bold text-blue-400 uppercase">TOT INPS+IMP.</p>
+                                        <p className="text-xl font-black text-blue-700 mt-1">{stats.totalInpsTax.toFixed(2)}€</p>
+                                    </div>
                                     <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
                                         <p className="text-[10px] font-bold text-gray-400 uppercase">BOLLI ({stats.stampDutyTotal/2})</p>
                                         <p className="text-xl font-black text-gray-600 mt-1">{stats.stampDutyTotal.toFixed(2)}€</p>
@@ -929,32 +967,74 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                             {/* 2. SIMULATORE RATE (TEAL) */}
                             <div className="md-card p-6 bg-white border-2 border-teal-50 shadow-sm rounded-2xl">
                                 <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                    🔮 Simulatore Rate (Giu-Nov)
+                                    🔮 Simulatore Rate & Scadenze
                                 </h3>
                                 
-                                <div className="flex flex-col md:flex-row gap-8">
-                                    <div className="md:w-1/3 space-y-4">
-                                        <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                                            <span className="text-sm font-medium text-gray-600">Saldo 2025:</span>
-                                            <span className="font-bold text-gray-900">{simulatorData.saldo2025.toFixed(2)}€</span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {/* Colonna 1: Totali Tranches */}
+                                    <div className="space-y-4 border-r border-gray-100 pr-4">
+                                        <h4 className="text-xs font-black uppercase text-teal-800 border-b pb-2">Ripartizione Tasse</h4>
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-600 block">I Tranche (Rateizzabile)</span>
+                                                <span className="text-[10px] text-gray-400">Saldo + I Acconto</span>
+                                            </div>
+                                            <span className="font-bold text-gray-900">{simulatorData.tranche1.toFixed(2)}€</span>
                                         </div>
-                                        <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                                            <span className="text-sm font-medium text-gray-600">I Acconto 2026:</span>
-                                            <span className="font-bold text-gray-900">{simulatorData.acconto2026.toFixed(2)}€</span>
+                                        
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <span className="text-xs font-bold text-gray-600 block">Saldo Finale (II Acconto)</span>
+                                                <span className="text-[10px] text-gray-400">Novembre (Unica Sol.)</span>
+                                            </div>
+                                            <span className="font-bold text-gray-900">{simulatorData.tranche2.toFixed(2)}€</span>
                                         </div>
-                                        <div className="flex justify-between items-center bg-teal-50 p-3 rounded-lg">
-                                            <span className="text-sm font-bold text-teal-800">TOTALE DA RATEIZZARE:</span>
-                                            <span className="font-black text-teal-900">{simulatorData.totalDue.toFixed(2)}€</span>
+
+                                        <div className="bg-teal-50 p-3 rounded-lg mt-4">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-xs font-bold text-teal-800">SCAD. BOLLI</span>
+                                                <span className="font-black text-teal-900">{stats.stampDutyTotal.toFixed(2)}€</span>
+                                            </div>
+                                            <div className="space-y-1 mt-2">
+                                                {simulatorData.stampDeadlines.map((sd, i) => (
+                                                    <div key={i} className="flex justify-between text-[10px]">
+                                                        <span className="text-teal-600 font-medium">{sd.label}</span>
+                                                        <span className="font-bold text-teal-800">{sd.amount.toFixed(2)}€</span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div className="md:w-2/3 grid grid-cols-3 gap-3">
-                                        {['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'].map((month, idx) => (
-                                            <div key={idx} className="bg-white border border-gray-200 rounded-lg p-3 flex flex-col items-center justify-center">
-                                                <span className="text-[10px] font-bold text-gray-400 uppercase">{month}</span>
-                                                <span className="text-sm font-bold text-teal-600">{simulatorData.monthlyInstallment.toFixed(0)}€</span>
-                                            </div>
-                                        ))}
+                                    {/* Colonna 2: Rateazione */}
+                                    <div className="space-y-4 border-r border-gray-100 pr-4">
+                                        <h4 className="text-xs font-black uppercase text-teal-800 border-b pb-2">Rateazione (I Tranche)</h4>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'].map((month, idx) => (
+                                                <div key={idx} className="bg-white border border-gray-200 rounded p-2 flex flex-col items-center">
+                                                    <span className="text-[9px] font-bold text-gray-400 uppercase">{month}</span>
+                                                    <span className="text-xs font-bold text-teal-600">{simulatorData.monthlyInstallment.toFixed(0)}€</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="text-[9px] text-gray-400 italic text-center mt-2">Rata calcolata su 6 mesi per il 150% del totale INPS+Imp (Scenario Start-up).</p>
+                                    </div>
+
+                                    {/* Colonna 3: Accantonamento Consigliato */}
+                                    <div className="space-y-4">
+                                        <h4 className="text-xs font-black uppercase text-amber-600 border-b pb-2">Accantonamento Consigliato</h4>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {simulatorData.savingsPlan.map((plan, idx) => (
+                                                <div key={idx} className="bg-amber-50 border border-amber-100 rounded p-2 flex flex-col items-center">
+                                                    <span className="text-[9px] font-bold text-amber-400 uppercase">{plan.month}</span>
+                                                    <span className="text-xs font-bold text-amber-700">{plan.amount.toFixed(0)}€</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="bg-amber-100 p-2 rounded border border-amber-200 mt-2 flex flex-col items-center">
+                                            <span className="text-[9px] font-bold text-amber-600 uppercase">SALDO FINALE (NOV)</span>
+                                            <span className="text-sm font-black text-amber-800">{simulatorData.saldoFinaleTarget.toFixed(2)}€</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1133,7 +1213,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 </div>
             )}
 
-            {/* MODALE EDUCATIONAL ROI */}
             {selectedLocationROI && (
                 <LocationDetailModal 
                     data={selectedLocationROI} 
@@ -1141,7 +1220,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 />
             )}
 
-            {/* MODALE SIGILLO SDI */}
             {isSealModalOpen && (
                 <Modal onClose={() => setIsSealModalOpen(false)}>
                     <div className="p-8">
@@ -1159,7 +1237,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 </Modal>
             )}
 
-            {/* MODALE TRANSAZIONE MANUALE */}
             {isTransactionModalOpen && (
                 <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg">
                     <TransactionForm 
@@ -1171,7 +1248,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 </Modal>
             )}
 
-            {/* MODALE MODIFICA FATTURA */}
             {isInvoiceModalOpen && editingInvoice && (
                 <Modal onClose={() => setIsInvoiceModalOpen(false)} size="md">
                     <InvoiceEditForm 
@@ -1194,7 +1270,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     );
 };
 
-// --- WIDGETS ---
 const KpiCard = ({ title, value, color, progress, label, sub }: any) => (
     <div className="md-card p-6 bg-white shadow-xl border-l-4 border-l-indigo-500">
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h3>
