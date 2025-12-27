@@ -252,8 +252,10 @@ const TransactionForm: React.FC<{
             paymentMethod: PaymentMethod.Other,
             status: TransactionStatus.Completed,
             allocationType: allocationId ? 'location' : 'general',
-            allocationId: allocationId || undefined,
-            allocationName: locName || undefined
+            // FIX: Use 'null' instead of 'undefined' to prevent Firestore crash.
+            // Casting to 'any' allows null without breaking strict TS interfaces if they require string | undefined.
+            allocationId: (allocationId || null) as any,
+            allocationName: (locName || null) as any
         };
 
         if (transaction?.id) onSave({ ...data, id: transaction.id });
