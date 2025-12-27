@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import Chart from 'chart.js/auto';
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
@@ -839,6 +840,48 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
+    // --- EXPORT FUNCTION TRANSACTIONS ---
+    const handleExportTransactions = () => {
+        const dataToExport = filteredList.map(t => ({
+            ID: t.id,
+            Data: new Date(t.date).toLocaleDateString('it-IT'),
+            Tipo: t.type === 'income' ? 'Entrata' : 'Uscita',
+            Categoria: t.category,
+            Descrizione: t.description,
+            Importo: t.amount,
+            Metodo: t.paymentMethod,
+            Stato: t.status,
+            'Cliente/Soggetto': t.clientName || '',
+            'N. Fattura': t.invoiceNumber || '',
+            'Sede': t.allocationName || ''
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Transazioni");
+        XLSX.writeFile(wb, `Transazioni_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
+    // --- EXPORT FUNCTION INVOICES ---
+    const handleExportInvoices = () => {
+        const dataToExport = filteredList.map((i: any) => ({
+            'Numero': i.invoiceNumber,
+            'Data': new Date(i.issueDate).toLocaleDateString('it-IT'),
+            'Cliente': i.clientName,
+            'Importo': i.totalAmount,
+            'Stato': i.status,
+            'Metodo': i.paymentMethod,
+            'Scadenza': new Date(i.dueDate).toLocaleDateString('it-IT'),
+            'SDI': i.sdiId || i.sdiCode || '',
+            'Note': i.notes
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataToExport);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Fatture");
+        XLSX.writeFile(wb, `Fatture_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     const filteredList = useMemo(() => {
         let list: any[] = [];
         if (activeTab === 'transactions') list = transactions.filter(t => !t.isDeleted);
@@ -1129,12 +1172,30 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     <div className="absolute left-3 top-3"><SearchIcon /></div>
                                     <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500" />
                                 </div>
-                                {selectedItems.length > 0 && (
-                                    <div className="flex gap-2 animate-fade-in">
-                                        <button className="md-btn md-btn-sm bg-indigo-600 text-white font-bold"><PrinterIcon /> Stampa ({selectedItems.length})</button>
-                                        <button className="md-btn md-btn-sm bg-slate-800 text-white font-bold"><TrashIcon /> Elimina</button>
-                                    </div>
-                                )}
+                                <div className="flex gap-2 items-center">
+                                    {activeTab === 'transactions' && (
+                                        <button onClick={handleExportTransactions} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center gap-1 font-bold">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                            Export Excel
+                                        </button>
+                                    )}
+                                    {activeTab === 'invoices' && (
+                                        <button onClick={handleExportInvoices} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center gap-1 font-bold">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                            Export Excel
+                                        </button>
+                                    )}
+                                    {selectedItems.length > 0 && (
+                                        <div className="flex gap-2 animate-fade-in">
+                                            <button className="md-btn md-btn-sm bg-indigo-600 text-white font-bold"><PrinterIcon /> Stampa ({selectedItems.length})</button>
+                                            <button className="md-btn md-btn-sm bg-slate-800 text-white font-bold"><TrashIcon /> Elimina</button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div className="overflow-x-auto">
                                 <table className="w-full text-sm text-left">
