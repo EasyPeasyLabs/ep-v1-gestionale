@@ -1,36 +1,26 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import * as XLSX from 'xlsx';
-import { 
-    Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
-    TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, 
-    DocumentStatus, CompanyInfo, Client, Supplier, Enrollment, Page 
-} from '../types';
-import { 
-    getTransactions, addTransaction, updateTransaction, deleteTransaction, 
-    getInvoices, addInvoice, updateInvoice, 
-    deleteInvoice, getQuotes, addQuote, updateQuote, 
-    deleteQuote, syncRentExpenses
-} from '../services/financeService';
-import { getAllEnrollments } from '../services/enrollmentService';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client } from '../types';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
-import { getClients } from '../services/parentService';
 import { getCompanyInfo } from '../services/settingsService';
+import { getClients } from '../services/parentService';
 import { generateDocumentPDF } from '../utils/pdfGenerator';
+import { exportTransactionsToExcel, exportInvoicesToExcel } from '../utils/financeExport';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import RefreshIcon from '../components/icons/RestoreIcon';
-
-// New Components
+import TransactionForm from '../components/finance/TransactionForm';
+import InvoiceEditForm from '../components/finance/InvoiceEditForm';
 import FinanceOverview from '../components/finance/FinanceOverview';
 import FinanceCFO from '../components/finance/FinanceCFO';
 import FinanceControlling from '../components/finance/FinanceControlling';
 import FinanceListView from '../components/finance/FinanceListView';
-import TransactionForm from '../components/finance/TransactionForm';
-import InvoiceEditForm from '../components/finance/InvoiceEditForm';
 import LocationDetailModal from '../components/finance/LocationDetailModal';
+import { getAllEnrollments } from '../services/enrollmentService';
+import { Enrollment } from '../types';
 
 // --- CONFIG FISCALE FORFETTARIO ---
 const INPS_RATE = 0.2623;
@@ -74,7 +64,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
-    const fetchData = React.useCallback(async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             const [t, i, q, e, s, c, info] = await Promise.all([
@@ -135,17 +125,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 stampDutyTotal += 2;
                 const d = new Date(inv.issueDate);
                 const m = d.getMonth(); 
-                if (m < 3) stampDutyQuarters.q1 += 2;
-                else if (m < 6) stampDutyQuarters.q2 += 2;
-                else if (m < 9) stampDutyQuarters.q3 += 2;
-                else stampDutyQuarters.q4 += 2;
+                if (m < 3) stampDutyQuarters.q1 += 2; // Gen-Mar -> Scade Maggio
+                else if (m < 6) stampDutyQuarters.q2 += 2; // Apr-Giu -> Scade Settembre
+                else if (m < 9) stampDutyQuarters.q3 += 2; // Lug-Set -> Scade Novembre
+                else stampDutyQuarters.q4 += 2; // Ott-Dic -> Scade Febbraio
             }
         });
 
         // Totali Combinati
         const totalInpsTax = inps + tax;
         const totalAll = totalInpsTax + stampDutyTotal;
-        const savingsSuggestion = totalAll * 1.1; 
+        
+        // Scenario Start-up: Bisogna coprire Saldo (100%) + Acconto anno succ (100%)
+        // Quindi il carico fiscale reale percepito è il doppio della tassa calcolata sull'anno corrente + bolli.
+        const totalLoadStartup = (totalInpsTax * 2) + stampDutyTotal;
+        const savingsSuggestion = totalLoadStartup;
 
         // Proiezioni Mensili
         const monthlyData = Array(12).fill(0).map((_, i) => {
@@ -180,30 +174,42 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         return { annualNetTarget, grossNeeded, gap, extraLessonsNeeded, studentsNeeded };
     }, [targetMonthlyNet, lessonPrice, stats.revenue]);
 
-    // --- SIMULATORE RATE ---
+    // --- SIMULATORE RATE (START-UP SCENARIO) ---
     const simulatorData = useMemo(() => {
-        const saldoCorrente = stats.totalInpsTax; 
-        const tranche1 = saldoCorrente + (saldoCorrente * 0.5); 
-        const tranche2 = saldoCorrente * 0.5;
-        const monthlyInstallment = tranche1 / 6; 
+        const tax2025 = stats.totalInpsTax; // Tassa calcolata sull'anno corrente
+        
+        // Scenario Start-up:
+        // 1° Versamento (Giu): Saldo (100%) + 1° Acconto (50%) = 1.5 * tax2025
+        // 2° Versamento (Nov): 2° Acconto (50%) = 0.5 * tax2025
+        
+        const tranche1 = tax2025 * 1.5; 
+        const tranche2 = tax2025 * 0.5;
+        const monthlyInstallment = tranche1 / 6; // Rateizzabile Giu-Nov
 
+        // Scadenze Bolli (Trimestrali)
         const stampDeadlines = [
-            { label: '30 Set (I+II Trim)', amount: stats.stampDutyQuarters.q1 + stats.stampDutyQuarters.q2, monthIndex: 8 }, 
-            { label: '30 Nov (III Trim)', amount: stats.stampDutyQuarters.q3, monthIndex: 10 }, 
-            { label: '28 Feb (IV Trim)', amount: stats.stampDutyQuarters.q4, monthIndex: 1 }, 
+            { label: '31 Mag (I Trim)', amount: stats.stampDutyQuarters.q1, month: 'MAG' }, // Tecnicamente fuori dalla rateazione giu-nov, ma rilevante
+            { label: '30 Set (II Trim)', amount: stats.stampDutyQuarters.q2, month: 'SET' },
+            { label: '30 Nov (III Trim)', amount: stats.stampDutyQuarters.q3, month: 'NOV' },
+            { label: '28 Feb (IV Trim)', amount: stats.stampDutyQuarters.q4, month: 'FEB' },
         ];
 
-        const savingsPlan = [];
+        // Piano Mensile (Giugno - Novembre) per la visualizzazione rate
         const months = ['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'];
-        
-        for (let i = 0; i < 6; i++) {
-            const monthIdx = i + 5; 
-            let amount = monthlyInstallment; 
-            const stampsDue = stampDeadlines.filter(s => s.monthIndex === monthIdx).reduce((sum, s) => sum + s.amount, 0);
-            amount += stampsDue;
-            savingsPlan.push({ month: months[i], amount });
-        }
-        const saldoFinaleTarget = tranche2;
+        const savingsPlan = months.map(m => {
+            let amount = monthlyInstallment;
+            
+            // Aggiungi Bolli se scadono nel mese (Settembre, Novembre)
+            const stamp = stampDeadlines.find(s => s.month === m);
+            if (stamp) amount += stamp.amount;
+
+            // Aggiungi Tranche 2 a Novembre
+            if (m === 'NOV') amount += tranche2;
+
+            return { month: m, amount };
+        });
+
+        const saldoFinaleTarget = tranche2; 
 
         return { tranche1, tranche2, monthlyInstallment, stampDeadlines, savingsPlan, saldoFinaleTarget };
     }, [stats]);
@@ -297,9 +303,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         if (transactionToDelete) {
             setLoading(true);
             try {
-                // Determine if it's transaction or invoice based on active tab or find in arrays
-                // Simplified: Try delete transaction, if fails/not found, try invoice?
-                // Better: Check ID existence
                 if (activeTab === 'transactions') await deleteTransaction(transactionToDelete);
                 else if (activeTab === 'invoices' || activeTab === 'archive') await deleteInvoice(transactionToDelete);
                 else if (activeTab === 'quotes') await deleteQuote(transactionToDelete);
@@ -310,43 +313,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
-    // --- EXPORT FUNCTIONS ---
+    // --- EXPORT FUNCTIONS (Delegated to Utility) ---
     const handleExportTransactions = () => {
-        const dataToExport = transactions.filter(t => !t.isDeleted).map(t => ({
-            ID: t.id,
-            Data: new Date(t.date).toLocaleDateString('it-IT'),
-            Tipo: t.type === 'income' ? 'Entrata' : 'Uscita',
-            Categoria: t.category,
-            Descrizione: t.description,
-            Importo: t.amount,
-            Metodo: t.paymentMethod,
-            Stato: t.status,
-            'Cliente/Soggetto': t.clientName || '',
-            'N. Fattura': t.invoiceNumber || '',
-            'Sede': t.allocationName || ''
-        }));
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Transazioni");
-        XLSX.writeFile(wb, `Transazioni_${new Date().toISOString().split('T')[0]}.xlsx`);
+        exportTransactionsToExcel(transactions, invoices);
     };
 
     const handleExportInvoices = () => {
-        const dataToExport = invoices.filter(i => !i.isDeleted && !i.isGhost).map((i: any) => ({
-            'Numero': i.invoiceNumber,
-            'Data': new Date(i.issueDate).toLocaleDateString('it-IT'),
-            'Cliente': i.clientName,
-            'Importo': i.totalAmount,
-            'Stato': i.status,
-            'Metodo': i.paymentMethod,
-            'Scadenza': new Date(i.dueDate).toLocaleDateString('it-IT'),
-            'SDI': i.sdiId || i.sdiCode || '',
-            'Note': i.notes
-        }));
-        const ws = XLSX.utils.json_to_sheet(dataToExport);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Fatture");
-        XLSX.writeFile(wb, `Fatture_${new Date().toISOString().split('T')[0]}.xlsx`);
+        exportInvoicesToExcel(invoices);
     };
 
     return (
@@ -387,7 +360,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
             {loading ? <div className="flex justify-center py-20"><Spinner /></div> : (
                 <div className="space-y-8">
-                    {activeTab === 'overview' && <FinanceOverview stats={stats} />}
+                    {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} />}
                     
                     {activeTab === 'cfo' && (
                         <FinanceCFO 

@@ -71,9 +71,12 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
 
             {/* 2. SIMULATORE RATE (TEAL) */}
             <div className="md-card p-6 bg-white border-2 border-teal-50 shadow-sm rounded-2xl">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    🔮 Simulatore Rate & Scadenze
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        🔮 Simulatore Rate & Scadenze (Start-up)
+                    </h3>
+                    <span className="text-[9px] font-bold text-teal-600 bg-teal-50 px-2 py-1 rounded">Carico 200% (Saldo + Acconto)</span>
+                </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {/* Colonna 1: Totali Tranches */}
@@ -81,16 +84,16 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                         <h4 className="text-xs font-black uppercase text-teal-800 border-b pb-2">Ripartizione Tasse</h4>
                         <div className="flex justify-between items-center">
                             <div>
-                                <span className="text-xs font-bold text-gray-600 block">I Tranche (Rateizzabile)</span>
-                                <span className="text-[10px] text-gray-400">Saldo + I Acconto</span>
+                                <span className="text-xs font-bold text-gray-600 block">I Versamento (Rateizzabile)</span>
+                                <span className="text-[10px] text-gray-400">Saldo 100% + I Acconto 50%</span>
                             </div>
                             <span className="font-bold text-gray-900">{simulatorData.tranche1.toFixed(2)}€</span>
                         </div>
                         
                         <div className="flex justify-between items-center">
                             <div>
-                                <span className="text-xs font-bold text-gray-600 block">Saldo Finale (II Acconto)</span>
-                                <span className="text-[10px] text-gray-400">Novembre (Unica Sol.)</span>
+                                <span className="text-xs font-bold text-gray-600 block">II Versamento (Nov)</span>
+                                <span className="text-[10px] text-gray-400">II Acconto 50% (Saldo Unico)</span>
                             </div>
                             <span className="font-bold text-gray-900">{simulatorData.tranche2.toFixed(2)}€</span>
                         </div>
@@ -113,7 +116,7 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
 
                     {/* Colonna 2: Rateazione */}
                     <div className="space-y-4 border-r border-gray-100 pr-4">
-                        <h4 className="text-xs font-black uppercase text-teal-800 border-b pb-2">Rateazione (I Tranche)</h4>
+                        <h4 className="text-xs font-black uppercase text-teal-800 border-b pb-2">Piano Rateale I Tranche</h4>
                         <div className="grid grid-cols-2 gap-2">
                             {['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'].map((month, idx) => (
                                 <div key={idx} className="bg-white border border-gray-200 rounded p-2 flex flex-col items-center">
@@ -122,24 +125,21 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                                 </div>
                             ))}
                         </div>
-                        <p className="text-[9px] text-gray-400 italic text-center mt-2">Rata calcolata su 6 mesi per il 150% del totale INPS+Imp (Scenario Start-up).</p>
+                        <p className="text-[9px] text-gray-400 italic text-center mt-2">La rata mensile copre solo la I Tranche (Saldo + I Acc).</p>
                     </div>
 
                     {/* Colonna 3: Accantonamento Consigliato */}
                     <div className="space-y-4">
-                        <h4 className="text-xs font-black uppercase text-amber-600 border-b pb-2">Accantonamento Consigliato</h4>
+                        <h4 className="text-xs font-black uppercase text-amber-600 border-b pb-2">Piano Uscite di Cassa</h4>
                         <div className="grid grid-cols-2 gap-2">
                             {simulatorData.savingsPlan.map((plan: any, idx: number) => (
-                                <div key={idx} className="bg-amber-50 border border-amber-100 rounded p-2 flex flex-col items-center">
+                                <div key={idx} className={`bg-amber-50 border border-amber-100 rounded p-2 flex flex-col items-center ${plan.month === 'NOV' ? 'ring-2 ring-amber-300' : ''}`}>
                                     <span className="text-[9px] font-bold text-amber-400 uppercase">{plan.month}</span>
                                     <span className="text-xs font-bold text-amber-700">{plan.amount.toFixed(0)}€</span>
                                 </div>
                             ))}
                         </div>
-                        <div className="bg-amber-100 p-2 rounded border border-amber-200 mt-2 flex flex-col items-center">
-                            <span className="text-[9px] font-bold text-amber-600 uppercase">SALDO FINALE (NOV)</span>
-                            <span className="text-sm font-black text-amber-800">{simulatorData.saldoFinaleTarget.toFixed(2)}€</span>
-                        </div>
+                        <p className="text-[9px] text-gray-400 italic text-center mt-2">Include Rate + Bolli + II Acconto (Novembre).</p>
                     </div>
                 </div>
             </div>

@@ -210,7 +210,8 @@ const createRemainingGhostInvoice = async (enrollment: Enrollment, clientName: s
             hasStampDuty: remainingAmount > 77,
             isGhost: true,
             invoiceNumber: ghostNumber,
-            notes: ""
+            notes: "",
+            isDeleted: false
         };
 
         const batch = writeBatch(db);

@@ -49,7 +49,8 @@ const TransactionForm: React.FC<{
             status: TransactionStatus.Completed,
             allocationType: allocationId ? 'location' : 'general',
             allocationId: (allocationId || null) as any,
-            allocationName: (locName || null) as any
+            allocationName: (locName || null) as any,
+            isDeleted: false
         };
 
         if (transaction?.id) onSave({ ...data, id: transaction.id });

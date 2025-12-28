@@ -231,7 +231,8 @@ export const importSuppliersFromExcel = async (file: File): Promise<ImportResult
             notes: '',
             notesHistory: [],
             tags: [],
-            rating: { responsiveness: 0, partnership: 0, negotiation: 0 }
+            rating: { responsiveness: 0, partnership: 0, negotiation: 0 },
+            isDeleted: false
         };
 
         const existingId = existingSuppliersMap.get(supplierName);

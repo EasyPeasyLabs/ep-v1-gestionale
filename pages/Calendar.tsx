@@ -1,17 +1,19 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Lesson, LessonInput, Supplier, Enrollment, Appointment, EnrollmentStatus } from '../types';
+import { Lesson, LessonInput, Supplier, Enrollment, Appointment, EnrollmentStatus, Client } from '../types';
 import { getLessons, addLesson, updateLesson, deleteLesson } from '../services/calendarService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
+import { getClients } from '../services/parentService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
+import LessonForm from '../components/calendar/LessonForm';
 
 // --- Types for Calendar Logic ---
 interface CalendarCluster {
-    id: string; // Unique key for React list
+    id: string; // Unique key for React list (Lesson ID for manual, Composite for standard)
     date: string;
     startTime: string;
     endTime: string;
@@ -20,6 +22,8 @@ interface CalendarCluster {
     count: number; // Numero totale cartellini
     isManual?: boolean; // Per distinguere lezioni extra manuali
     title?: string; // Per lezioni manuali
+    description?: string; // Extra
+    childNames?: string; // Extra (Stringa composta per visualizzazione)
 }
 
 const Calendar: React.FC = () => {
@@ -28,57 +32,57 @@ const Calendar: React.FC = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [error, setError] = useState<string | null>(null);
 
+    // Data for Forms
+    const [manualLessons, setManualLessons] = useState<Lesson[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
+
+    // Modal States
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+
     // --- Data Fetching & Aggregation Logic ---
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const [enrollments, manualLessons, suppliers] = await Promise.all([
+            const [enrollments, mLessons, supps, clis] = await Promise.all([
                 getAllEnrollments(), 
                 getLessons(),
-                getSuppliers()
+                getSuppliers(),
+                getClients()
             ]);
+
+            setManualLessons(mLessons);
+            setSuppliers(supps);
+            setClients(clis);
 
             const clusterMap = new Map<string, CalendarCluster>();
 
-            // 0. Costruiamo una Mappa di Disponibilità per Sede (Nome Sede -> Set di Giorni Index)
-            // Questo serve per filtrare appuntamenti "fantasma" che rimangono in giorni dove la sede non lavora
-            // (es. dopo uno spostamento da Martedì a Venerdì, i vecchi martedì non devono apparire se la nuova sede lavora solo Venerdì)
+            // 0. Costruiamo una Mappa di Disponibilità per Sede
             const locationAvailabilityMap = new Map<string, Set<number>>();
-            suppliers.forEach(s => {
+            supps.forEach(s => {
                 s.locations.forEach(l => {
                     const days = new Set(l.availability?.map(a => a.dayOfWeek) || []);
-                    // Normalizziamo il nome per sicurezza
                     if (l.name) locationAvailabilityMap.set(l.name.trim(), days);
                 });
             });
 
             // 1. Process Enrollments (Cartellini)
             enrollments.forEach(enr => {
-                // Consideriamo solo iscrizioni attive, in attesa o completate (storico)
                 if (enr.appointments && enr.appointments.length > 0) {
                     enr.appointments.forEach(app => {
                         const appDateObj = new Date(app.date);
-                        const dayOfWeek = appDateObj.getDay(); // 0-6
-                        
-                        // Normalizziamo la data a stringa YYYY-MM-DD
+                        const dayOfWeek = appDateObj.getDay(); 
                         const dateKey = app.date.split('T')[0];
-                        
-                        // Determina la location corrente
-                        // Se l'appuntamento ha una location specifica salvata (es. lezione passata confermata), usa quella.
-                        // Altrimenti usa quella dell'iscrizione (es. lezione futura o spostata).
                         const locName = (app.locationName || enr.locationName || 'N/D').trim();
                         const locColor = app.locationColor || enr.locationColor || '#ccc';
                         
-                        // --- FILTRO DI COERENZA (Availability Check) ---
-                        // Se la sede identificata NON ha disponibilità per questo giorno della settimana,
-                        // nascondiamo l'appuntamento. Questo risolve il problema visivo degli spostamenti.
+                        // Check availability
                         const allowedDays = locationAvailabilityMap.get(locName);
-                        // Se la mappa ha la sede, controlliamo il giorno. Se la sede non è in mappa (es. cancellata), mostriamo per sicurezza (o nascondiamo, policy permissiva qui).
                         if (allowedDays && !allowedDays.has(dayOfWeek)) {
-                            return; // SKIP: La sede X non lavora di Martedì, quindi non mostrare questo appuntamento.
+                            return; 
                         }
 
-                        // Chiave di raggruppamento: DATA + ORARIO + SEDE
                         const key = `${dateKey}_${app.startTime}_${locName}`;
 
                         if (!clusterMap.has(key)) {
@@ -102,11 +106,21 @@ const Calendar: React.FC = () => {
             });
 
             // 2. Process Manual Lessons (Extra)
-            // Le lezioni manuali NON subiscono il filtro di disponibilità perché sono eccezioni/extra.
-            manualLessons.forEach(ml => {
+            mLessons.forEach(ml => {
                 const dateKey = ml.date.split('T')[0];
-                const key = `${dateKey}_${ml.startTime}_${ml.locationName}_MANUAL`; 
+                const key = ml.id; 
                 
+                // Generazione stringa nomi: se c'è l'array attendees, usalo. Altrimenti fallback a childName legacy.
+                let displayNames = '';
+                if (ml.attendees && ml.attendees.length > 0) {
+                    displayNames = ml.attendees.map(a => a.childName).join(', ');
+                    if (ml.attendees.length > 2) {
+                        displayNames = `${ml.attendees[0].childName} +${ml.attendees.length - 1}`;
+                    }
+                } else {
+                    displayNames = ml.childName || '';
+                }
+
                 clusterMap.set(key, {
                     id: ml.id,
                     date: ml.date,
@@ -114,9 +128,11 @@ const Calendar: React.FC = () => {
                     endTime: ml.endTime,
                     locationName: ml.locationName,
                     locationColor: ml.locationColor || '#94a3b8',
-                    count: 0, // 0 indica che è manuale/extra
+                    count: 0, 
                     isManual: true,
-                    title: 'EXTRA'
+                    title: 'EXTRA',
+                    description: ml.description,
+                    childNames: displayNames
                 });
             });
 
@@ -131,6 +147,38 @@ const Calendar: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    // --- Actions ---
+    const handleSaveLesson = async (data: LessonInput | Lesson) => {
+        setLoading(true);
+        try {
+            if ('id' in data) await updateLesson(data.id, data);
+            else await addLesson(data);
+            setIsModalOpen(false);
+            await fetchData();
+        } catch (e) { alert("Errore salvataggio"); }
+        finally { setLoading(false); }
+    };
+
+    const handleDeleteLesson = async (id: string) => {
+        if(confirm("Eliminare questo evento extra?")) {
+            setLoading(true);
+            try {
+                await deleteLesson(id);
+                setIsModalOpen(false);
+                await fetchData();
+            } catch(e) { alert("Errore eliminazione"); }
+            finally { setLoading(false); }
+        }
+    };
+
+    const handleEditManual = (id: string) => {
+        const lesson = manualLessons.find(l => l.id === id);
+        if (lesson) {
+            setEditingLesson(lesson);
+            setIsModalOpen(true);
+        }
+    };
 
     // --- Helper Colors ---
     const getTextColorForBg = (bgColor: string) => {
@@ -149,7 +197,6 @@ const Calendar: React.FC = () => {
         const firstDayOfMonth = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
         
-        // 0 = Domenica -> index 6. Lunedì (1) -> index 0.
         const startDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
         
         const grid: (Date | null)[] = Array(startDayIndex).fill(null);
@@ -172,9 +219,11 @@ const Calendar: React.FC = () => {
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-4">
                 <h1 className="text-3xl font-bold">Calendario</h1>
                 <div className="flex gap-2">
-                    {/* Placeholder per azioni future (es. Aggiungi Extra) */}
-                    <button className="md-btn md-btn-raised md-btn-green md-btn-sm opacity-50 cursor-not-allowed">
-                        <PlusIcon /><span className="ml-2">Nuovo</span>
+                    <button 
+                        onClick={() => { setEditingLesson(null); setIsModalOpen(true); }}
+                        className="md-btn md-btn-raised md-btn-green md-btn-sm flex items-center"
+                    >
+                        <PlusIcon /><span className="ml-2">Nuovo Evento</span>
                     </button>
                 </div>
             </div>
@@ -200,7 +249,6 @@ const Calendar: React.FC = () => {
                      
                      {/* Celle Giorni */}
                      {monthGrid.map((day, index) => {
-                        // Filtra gli eventi per questo giorno
                         const dayEvents = day 
                             ? clusters
                                 .filter(c => new Date(c.date).toDateString() === day.toDateString())
@@ -219,27 +267,41 @@ const Calendar: React.FC = () => {
                                      </span>
                                  )}
                                  
-                                 {/* Lista Eventi Aggregati */}
+                                 {/* Lista Eventi */}
                                  <div className="space-y-1 overflow-y-auto flex-1 custom-scrollbar">
                                      {dayEvents.map(event => {
                                          const textColor = getTextColorForBg(event.locationColor);
                                          const locPrefix = event.locationName.substring(0, 3).toUpperCase();
+                                         const isManual = event.isManual;
                                          
                                          return (
                                              <div 
                                                 key={event.id}
-                                                className="rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center"
+                                                onClick={() => isManual && handleEditManual(event.id)}
+                                                className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center ${isManual ? 'cursor-pointer hover:opacity-80 ring-1 ring-black/10' : ''}`}
                                                 style={{ backgroundColor: event.locationColor, color: textColor }}
+                                                title={isManual ? `${event.description || 'Extra'} - ${event.childNames || ''}` : undefined}
                                              >
-                                                 {/* Label: 3 Lettere Sede + Orario */}
-                                                 <span className="truncate mr-1">
-                                                     {event.isManual ? 'EXTRA' : locPrefix} {event.startTime}
+                                                 {/* Label */}
+                                                 <span className="truncate mr-1 flex-1">
+                                                     {isManual ? (
+                                                         <span className="flex items-center gap-1">
+                                                             <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">EXT</span>
+                                                             <span className="truncate">
+                                                                 {event.childNames ? event.childNames : (event.description || 'Evento')}
+                                                             </span>
+                                                         </span>
+                                                     ) : (
+                                                         <>{locPrefix} {event.startTime}</>
+                                                     )}
                                                  </span>
-                                                 {/* Numero Totale Cartellini */}
-                                                 {!event.isManual && (
-                                                     <span className="bg-white/30 px-1 rounded text-[9px]">
+                                                 {/* Counter or Time */}
+                                                 {!isManual ? (
+                                                     <span className="bg-white/30 px-1 rounded text-[9px] min-w-[1.2em] text-center flex-shrink-0">
                                                          {event.count}
                                                      </span>
+                                                 ) : (
+                                                     <span className="text-[9px] opacity-80 flex-shrink-0">{event.startTime}</span>
                                                  )}
                                              </div>
                                          );
@@ -251,6 +313,19 @@ const Calendar: React.FC = () => {
                  </div>
                  }
             </div>
+
+            {isModalOpen && (
+                <Modal onClose={() => setIsModalOpen(false)} size="md">
+                    <LessonForm 
+                        lesson={editingLesson}
+                        suppliers={suppliers}
+                        clients={clients}
+                        onSave={handleSaveLesson}
+                        onDelete={handleDeleteLesson}
+                        onCancel={() => setIsModalOpen(false)}
+                    />
+                </Modal>
+            )}
         </div>
     );
 };

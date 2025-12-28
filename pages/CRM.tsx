@@ -720,7 +720,7 @@ const CRM: React.FC = () => {
                 {activeTab === 'overview' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
                         <div className="space-y-4">
-                            <h2 className="text-xl font-bold text-indigo-800">Rinnovi Iscrizioni ({expiringEnrollments.length})</h2>
+                            <h2 className="text-xl font-bold text-indigo-800">Iscrizioni in scadenza ({expiringEnrollments.length})</h2>
                             {expiringEnrollments.length === 0 ? <p className="text-gray-400 italic">Nessuna scadenza imminente.</p> : 
                                 expiringEnrollments.map((item, idx) => (
                                     <div key={idx} className="md-card p-4 flex justify-between items-center border-l-4 border-l-indigo-500">
@@ -734,7 +734,7 @@ const CRM: React.FC = () => {
                             }
                         </div>
                         <div className="space-y-4">
-                            <h2 className="text-xl font-bold text-amber-800">Pagamenti Noli ({pendingRents.length})</h2>
+                            <h2 className="text-xl font-bold text-amber-800">Comunica pagamento Sede ({pendingRents.length})</h2>
                             {pendingRents.length === 0 ? <p className="text-gray-400 italic">Nessun pagamento in sospeso.</p> : 
                                 pendingRents.map((item, idx) => (
                                     <div key={idx} className="md-card p-4 flex justify-between items-center border-l-4 border-l-amber-500">

@@ -5,7 +5,7 @@ import PrinterIcon from '../icons/PrinterIcon';
 import TrashIcon from '../icons/TrashIcon';
 import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
-import { Transaction, Invoice, Quote, DocumentStatus, TransactionType, Supplier } from '../../types';
+import { Transaction, Invoice, Quote, DocumentStatus, Supplier } from '../../types';
 
 // --- Icona WhatsApp ---
 const WhatsAppIcon = () => (
@@ -19,7 +19,7 @@ interface FinanceListViewProps {
     transactions: Transaction[];
     invoices: Invoice[];
     quotes: Quote[];
-    suppliers?: Supplier[]; // Optional to avoid breaking other usages if any
+    suppliers?: Supplier[]; 
     filters: { search: string };
     setFilters: React.Dispatch<React.SetStateAction<{ search: string }>>;
     onExportTransactions?: () => void;
@@ -37,10 +37,10 @@ const getStatusColor = (status: string) => {
         case 'Completed':
             return 'bg-green-100 text-green-700 border-green-200';
         case DocumentStatus.SealedSDI:
-            return 'bg-cyan-100 text-cyan-700 border-cyan-200'; // Ciano
+            return 'bg-cyan-100 text-cyan-700 border-cyan-200'; 
         case DocumentStatus.PendingSDI:
         case 'pending':
-            return 'bg-amber-100 text-amber-800 border-amber-200'; // Ocra
+            return 'bg-amber-100 text-amber-800 border-amber-200'; 
         case DocumentStatus.Overdue:
             return 'bg-red-100 text-red-700 border-red-200';
         case DocumentStatus.Draft:
@@ -81,6 +81,13 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         
         return list.filter(item => (item.clientName || item.description || item.invoiceNumber || '').toLowerCase().includes(filters.search.toLowerCase()));
     }, [activeTab, transactions, invoices, quotes, filters, statusFilter]);
+
+    // Helper per estrarre il numero documento in modo sicuro (Type Guard)
+    const getDocumentNumber = (item: any) => {
+        if ('invoiceNumber' in item) return item.invoiceNumber;
+        if ('quoteNumber' in item) return item.quoteNumber;
+        return 'TRX-' + item.id.substring(0, 5).toUpperCase();
+    };
 
     // Funzione per inviare report a Simona Puddu
     const handleSendReportToSimona = () => {
@@ -222,7 +229,9 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                     <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id])} />
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
-                                <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">{item.invoiceNumber || item.quoteNumber || 'TRX-'+item.id.substring(0,5).toUpperCase()}</td>
+                                <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">
+                                    {getDocumentNumber(item)}
+                                </td>
                                 <td className="px-6 py-4 font-bold text-slate-900 truncate max-w-[250px]">{item.clientName || item.description}</td>
                                 <td className="px-6 py-4 text-right font-black text-slate-900">{(item.amount || item.totalAmount).toFixed(2)}€</td>
                                 <td className="px-6 py-4">
