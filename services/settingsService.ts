@@ -77,7 +77,8 @@ export const deleteSubscriptionType = async (id: string): Promise<void> => {
 
 // --- COMMUNICATION TEMPLATES ---
 const docToTemplate = (doc: QueryDocumentSnapshot<DocumentData>): CommunicationTemplate => {
-    return { id: doc.id, ...doc.data() } as CommunicationTemplate;
+    // FIX: Spread doc.data() first, then overwrite id with doc.id to ensure correct ID is used
+    return { ...doc.data(), id: doc.id } as CommunicationTemplate;
 };
 
 export const getCommunicationTemplates = async (): Promise<CommunicationTemplate[]> => {
@@ -90,26 +91,27 @@ export const getCommunicationTemplates = async (): Promise<CommunicationTemplate
             { id: 'payment', label: 'Sollecito Pagamento', subject: 'Sollecito Pagamento', body: 'Gentile {{cliente}}, le ricordiamo il pagamento di...', signature: 'Cordiali saluti' },
             { id: 'info', label: 'Info Generiche', subject: 'Informazioni', body: 'Gentile {{cliente}}, ...', signature: 'Cordiali saluti' }
         ];
-        // We don't save them to DB here to avoid complexity, just return them or you can save them.
-        // For now, let's assume UI handles creation or we start empty.
-        // Or better, return defaults if empty.
         return defaults; 
     }
     return templates;
 };
 
 export const saveCommunicationTemplate = async (template: CommunicationTemplate): Promise<void> => {
-    // If it has a Firestore ID (not 'payment'/'info' placeholder), update it
-    // Check if it exists or use set/add
-    // Since ID in template object might be logical (like 'payment'), we need to check if we have a doc with that ID or random ID.
-    // For simplicity, we use add/update based on if id exists in DB logic from UI.
-    // Here we assume standard Firestore ID logic for custom templates.
-    if (template.id && template.id.length > 10) {
-        const docRef = doc(db, 'communicationTemplates', template.id);
-        await setDoc(docRef, template, { merge: true });
+    // FIX: Remove 'id' from the payload to prevent saving empty/duplicate IDs in the document data
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...dataToSave } = template;
+
+    if (id) {
+        const docRef = doc(db, 'communicationTemplates', id);
+        await setDoc(docRef, dataToSave, { merge: true });
     } else {
-        await addDoc(templateCollectionRef, template);
+        await addDoc(templateCollectionRef, dataToSave);
     }
+};
+
+export const deleteCommunicationTemplate = async (id: string): Promise<void> => {
+    const docRef = doc(db, 'communicationTemplates', id);
+    await deleteDoc(docRef);
 };
 
 // --- PERIODIC CHECKS ---

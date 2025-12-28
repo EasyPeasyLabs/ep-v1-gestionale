@@ -23,8 +23,17 @@ import ConfirmModal from '../components/ConfirmModal';
 const ChatIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> );
 
 // --- Helpers ---
-// FIX: Added safe access for undefined names
 const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName || ''} ${(c as ParentClient).lastName || ''}` : ((c as InstitutionalClient).companyName || '');
+
+// --- Interface Context Data ---
+interface CommunicationContext {
+    clientName?: string;
+    childName?: string;
+    supplierName?: string;
+    description?: string;
+    amount?: string;
+    date?: string;
+}
 
 // --- Communication Modal (Invio Diretto) ---
 const CommunicationModal: React.FC<{ 
@@ -32,14 +41,75 @@ const CommunicationModal: React.FC<{
     onSent: () => void;
     clients: Client[];
     suppliers: Supplier[];
-}> = ({ onClose, onSent, clients, suppliers }) => {
-    const [recipientsType, setRecipientsType] = useState<'clients' | 'suppliers' | 'custom'>('clients');
-    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    initialData?: {
+        recipientId: string;
+        recipientType: 'clients' | 'suppliers';
+        subject: string;
+        message: string;
+    } | null;
+    contextData?: CommunicationContext | null; // NEW: Dati per ricalcolo template
+}> = ({ onClose, onSent, clients, suppliers, initialData, contextData }) => {
+    const [recipientsType, setRecipientsType] = useState<'clients' | 'suppliers' | 'custom'>(initialData?.recipientType || 'clients');
+    const [selectedIds, setSelectedIds] = useState<string[]>(initialData?.recipientId ? [initialData.recipientId] : []);
     const [customRecipient, setCustomRecipient] = useState('');
-    const [subject, setSubject] = useState('');
-    const [message, setMessage] = useState('');
+    const [subject, setSubject] = useState(initialData?.subject || '');
+    const [message, setMessage] = useState(initialData?.message || '');
     const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Templates State
+    const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
+
+    useEffect(() => {
+        getCommunicationTemplates().then(setTemplates);
+    }, []);
+
+    // Update state if initialData changes (e.g. modal re-opened with diff props)
+    useEffect(() => {
+        if (initialData) {
+            setRecipientsType(initialData.recipientType);
+            setSelectedIds([initialData.recipientId]);
+            setSubject(initialData.subject);
+            setMessage(initialData.message);
+        }
+    }, [initialData]);
+
+    const replacePlaceholders = (text: string) => {
+        if (!contextData) return text;
+        let res = text;
+        
+        // Sostituzioni standard
+        if (contextData.clientName) res = res.replace(/{{cliente}}/g, contextData.clientName);
+        if (contextData.childName) res = res.replace(/{{bambino}}/g, contextData.childName);
+        if (contextData.supplierName) {
+            res = res.replace(/{{fornitore}}/g, contextData.supplierName);
+            // Fallback: se il template fornitore usa {{cliente}}, lo sostituiamo col nome fornitore
+            res = res.replace(/{{cliente}}/g, contextData.supplierName); 
+        }
+        if (contextData.description) res = res.replace(/{{descrizione}}/g, contextData.description);
+        if (contextData.amount) res = res.replace(/{{importo}}/g, contextData.amount);
+        
+        // Data corrente se non specificata nel context
+        const dateStr = contextData.date || new Date().toLocaleDateString('it-IT');
+        res = res.replace(/{{data}}/g, dateStr);
+
+        return res;
+    };
+
+    const handleTemplateChange = (tmplId: string) => {
+        setSelectedTemplateId(tmplId);
+        const tmpl = templates.find(t => t.id === tmplId);
+        if (tmpl) {
+            // Applica replacePlaceholders al soggetto e al corpo
+            setSubject(replacePlaceholders(tmpl.subject));
+            
+            let combined = tmpl.body;
+            if (tmpl.signature) combined += `\n\n${tmpl.signature}`;
+            
+            setMessage(replacePlaceholders(combined));
+        }
+    };
 
     const filteredList = recipientsType === 'clients' 
         ? clients.filter(c => getClientName(c).toLowerCase().includes(searchTerm.toLowerCase()))
@@ -171,12 +241,22 @@ const CommunicationModal: React.FC<{
                     )}
                 </div>
 
-                {/* Channel */}
-                <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Canale</label>
-                    <div className="flex gap-4">
-                        <label className="flex items-center"><input type="radio" checked={channel === 'email'} onChange={() => setChannel('email')} className="mr-1" /> Email</label>
-                        <label className="flex items-center"><input type="radio" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} className="mr-1" /> WhatsApp</label>
+                {/* Channel & Template */}
+                <div className="flex justify-between items-center">
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1">Canale</label>
+                        <div className="flex gap-4">
+                            <label className="flex items-center"><input type="radio" checked={channel === 'email'} onChange={() => setChannel('email')} className="mr-1" /> Email</label>
+                            <label className="flex items-center"><input type="radio" checked={channel === 'whatsapp'} onChange={() => setChannel('whatsapp')} className="mr-1" /> WhatsApp</label>
+                        </div>
+                    </div>
+                    <div>
+                        <select value={selectedTemplateId} onChange={(e) => handleTemplateChange(e.target.value)} className="text-sm border border-gray-300 rounded p-1 bg-white focus:border-indigo-500">
+                            <option value="">Carica da Template...</option>
+                            {templates.map(t => (
+                                <option key={t.id} value={t.id}>{t.label}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
@@ -372,6 +452,7 @@ const CRM: React.FC = () => {
     const [pendingRents, setPendingRents] = useState<PendingRent[]>([]);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [logs, setLogs] = useState<CommunicationLog[]>([]);
+    const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     
     // Data References
     const [clients, setClients] = useState<Client[]>([]);
@@ -379,6 +460,17 @@ const CRM: React.FC = () => {
 
     // UI State for Modals
     const [isFreeCommOpen, setIsFreeCommOpen] = useState(false);
+    
+    // State per context data
+    const [communicationContext, setCommunicationContext] = useState<CommunicationContext | null>(null);
+
+    const [prefilledCommData, setPrefilledCommData] = useState<{
+        recipientId: string;
+        recipientType: 'clients' | 'suppliers';
+        subject: string;
+        message: string;
+    } | null>(null);
+
     const [isCampaignWizardOpen, setIsCampaignWizardOpen] = useState(false);
     const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
     
@@ -394,19 +486,21 @@ const CRM: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollments, transactions, clientsData, suppliersData, logsData, campaignsData] = await Promise.all([
+            const [enrollments, transactions, clientsData, suppliersData, logsData, campaignsData, templatesData] = await Promise.all([
                 getAllEnrollments(),
                 getTransactions(),
                 getClients(),
                 getSuppliers(),
                 getCommunicationLogs(),
-                getCampaigns()
+                getCampaigns(),
+                getCommunicationTemplates()
             ]);
             
             setClients(clientsData);
             setSuppliers(suppliersData);
             setLogs(logsData);
             setCampaigns(campaignsData);
+            setTemplates(templatesData);
 
             // 1. Renewals logic
             const today = new Date();
@@ -428,7 +522,18 @@ const CRM: React.FC = () => {
             const rents: PendingRent[] = [];
             transactions.forEach(t => {
                 if (t.status === TransactionStatus.Pending && t.category === TransactionCategory.Rent) {
-                    const supplier = suppliersData.find(s => t.description.toLowerCase().includes((s.companyName || '').toLowerCase()));
+                    let supplier: Supplier | undefined = undefined;
+
+                    // 1. Try match by Location ID (allocationId)
+                    if (t.allocationId) {
+                        supplier = suppliersData.find(s => s.locations.some(l => l.id === t.allocationId));
+                    }
+
+                    // 2. Fallback: Match by Name in Description
+                    if (!supplier) {
+                        supplier = suppliersData.find(s => t.description.toLowerCase().includes((s.companyName || '').toLowerCase()));
+                    }
+
                     rents.push({ transaction: t, supplier, locationColor: '#ccc' });
                 }
             });
@@ -441,6 +546,8 @@ const CRM: React.FC = () => {
 
     const handleCommunicationSent = () => {
         setIsFreeCommOpen(false);
+        setPrefilledCommData(null);
+        setCommunicationContext(null); // Reset context
         fetchData();
         alert("Messaggio inviato e archiviato!");
     };
@@ -455,6 +562,78 @@ const CRM: React.FC = () => {
     const handleLogSaved = () => {
         setEditingLog(undefined);
         fetchData();
+    };
+
+    // --- Action Handlers ---
+    const handleContactClient = (item: ExpiringEnrollment) => {
+        const client = item.client;
+        if (!client) return;
+
+        // Prepara il context per il ricalcolo in caso di cambio template
+        const context: CommunicationContext = {
+            clientName: getClientName(client),
+            childName: item.enrollment.childName,
+            date: new Date().toLocaleDateString('it-IT')
+        };
+        setCommunicationContext(context);
+
+        // Trova il template "Info" o usa default
+        const tmpl = templates.find(t => t.id === 'info') || { subject: "Rinnovo Iscrizione", body: "Gentile {{cliente}}, l'iscrizione di {{bambino}} è in scadenza. La invitiamo a rinnovare.", signature: "La Direzione" };
+        
+        // Sostituzione variabili iniziale
+        let body = tmpl.body;
+        body = body.replace(/{{cliente}}/g, context.clientName || '');
+        body = body.replace(/{{bambino}}/g, context.childName || '');
+        body = body.replace(/{{data}}/g, context.date || '');
+        
+        if (tmpl.signature) body += `\n\n${tmpl.signature}`;
+
+        setPrefilledCommData({
+            recipientId: client.id,
+            recipientType: 'clients',
+            subject: tmpl.subject,
+            message: body
+        });
+        setIsFreeCommOpen(true);
+    };
+
+    const handleContactSupplier = (item: PendingRent) => {
+        const supplier = item.supplier;
+        // Se il fornitore non è linkato direttamente (es. cancellato), usiamo comunque il dato parziale se possibile o alert
+        if (!supplier) {
+            alert("Fornitore non trovato in anagrafica per questa transazione. Assicurati che la sede sia correttamente allocata nella transazione o che il nome del fornitore sia nella descrizione.");
+            return;
+        }
+
+        // Prepara il context
+        const context: CommunicationContext = {
+            supplierName: supplier.companyName,
+            clientName: supplier.companyName, // Fallback
+            description: item.transaction.description,
+            amount: item.transaction.amount.toFixed(2),
+            date: new Date().toLocaleDateString('it-IT')
+        };
+        setCommunicationContext(context);
+
+        // Trova template "Payment" o default
+        const tmpl = templates.find(t => t.id === 'payment') || { subject: "Sollecito Pagamento", body: "Gentile {{fornitore}}, in allegato il dettaglio per il pagamento di {{descrizione}}.", signature: "Amministrazione" };
+
+        let body = tmpl.body;
+        // Placeholder adattati al contesto fornitore (alcuni template usano {{cliente}}, qui mappiamo mentalmente)
+        body = body.replace(/{{cliente}}/g, supplier.companyName); 
+        body = body.replace(/{{fornitore}}/g, supplier.companyName);
+        body = body.replace(/{{descrizione}}/g, item.transaction.description);
+        body = body.replace(/{{importo}}/g, item.transaction.amount.toFixed(2));
+
+        if (tmpl.signature) body += `\n\n${tmpl.signature}`;
+
+        setPrefilledCommData({
+            recipientId: supplier.id,
+            recipientType: 'suppliers',
+            subject: tmpl.subject,
+            message: body
+        });
+        setIsFreeCommOpen(true);
     };
 
     // --- CRUD Handlers ---
@@ -523,7 +702,7 @@ const CRM: React.FC = () => {
                     {activeTab !== 'overview' && (
                         <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
                     )}
-                    <button onClick={() => setIsFreeCommOpen(true)} className="md-btn md-btn-raised md-btn-green flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>
+                    <button onClick={() => { setPrefilledCommData(null); setCommunicationContext(null); setIsFreeCommOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center"><PlusIcon /><span className="ml-2">Nuova</span></button>
                     <button onClick={() => { setEditingCampaign(undefined); setIsCampaignWizardOpen(true); }} className="md-btn md-btn-flat border border-gray-300 bg-white flex items-center"><CalendarIcon /><span className="ml-2">Campagna</span></button>
                 </div>
             </div>
@@ -549,7 +728,7 @@ const CRM: React.FC = () => {
                                             <div className="font-bold">{item.enrollment.childName}</div>
                                             <div className="text-xs text-gray-500">{item.reason === 'expiry' ? `Scade il ${new Date(item.enrollment.endDate).toLocaleDateString()}` : `${item.enrollment.lessonsRemaining} lezioni rimaste`}</div>
                                         </div>
-                                        <button onClick={() => setIsFreeCommOpen(true)} className="md-btn md-btn-flat text-indigo-600"><ChatIcon /> Contatta</button>
+                                        <button onClick={() => handleContactClient(item)} className="md-btn md-btn-flat text-indigo-600"><ChatIcon /> Contatta</button>
                                     </div>
                                 ))
                             }
@@ -563,7 +742,7 @@ const CRM: React.FC = () => {
                                             <div className="font-bold">{item.transaction.description}</div>
                                             <div className="text-xs text-red-600 font-bold">{item.transaction.amount}€ da saldare</div>
                                         </div>
-                                        <button onClick={() => setIsFreeCommOpen(true)} className="md-btn md-btn-flat text-amber-600"><ChatIcon /> Contatta</button>
+                                        <button onClick={() => handleContactSupplier(item)} className="md-btn md-btn-flat text-amber-600"><ChatIcon /> Contatta</button>
                                     </div>
                                 ))
                             }
@@ -633,6 +812,8 @@ const CRM: React.FC = () => {
                         onSent={handleCommunicationSent}
                         clients={clients}
                         suppliers={suppliers}
+                        initialData={prefilledCommData}
+                        contextData={communicationContext} // PASSAGGI DATI
                     />
                 </Modal>
             )}

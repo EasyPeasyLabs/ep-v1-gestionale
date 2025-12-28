@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies } from '../services/settingsService';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import { requestNotificationPermission } from '../services/fcmService';
@@ -345,7 +345,54 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     ); 
 };
 
-const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { const [subject, setSubject] = useState(template.subject); const [body, setBody] = useState(template.body); const [signature, setSignature] = useState(template.signature); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...template, subject, body, signature }); }; const placeholders = template.id === 'payment' ? ['{{fornitore}}', '{{descrizione}}'] : ['{{cliente}}', '{{bambino}}', '{{data}}']; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">Modifica Template: {template.label}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> <strong>Variabili disponibili:</strong> {placeholders.join(', ')} </div> <div className="md-input-group"> <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " /> <label className="md-input-label">Oggetto / Titolo</label> </div> <div className="md-input-group"> <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label> </div> <div className="md-input-group"> <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Firma</label> </div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button> </div> </form> ); };
+// --- Template Form Updated with Label and Delete ---
+const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
+    const [label, setLabel] = useState(template.label || '');
+    const [subject, setSubject] = useState(template.subject); 
+    const [body, setBody] = useState(template.body); 
+    const [signature, setSignature] = useState(template.signature); 
+    
+    const handleSubmit = (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        onSave({ ...template, label, subject, body, signature }); 
+    }; 
+    
+    const placeholders = ['{{cliente}}', '{{fornitore}}', '{{bambino}}', '{{data}}', '{{importo}}', '{{descrizione}}']; 
+    
+    return ( 
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> 
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> 
+                <h2 className="text-xl font-bold text-gray-800">{template.id ? `Modifica Template: ${template.label}` : 'Nuovo Template'}</h2> 
+            </div> 
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
+                <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> 
+                    <strong>Variabili disponibili:</strong> {placeholders.join(', ')} 
+                </div> 
+                <div className="md-input-group"> 
+                    <input type="text" value={label} onChange={e => setLabel(e.target.value)} required className="md-input" placeholder=" " /> 
+                    <label className="md-input-label">Nome Template (Label)</label> 
+                </div> 
+                <div className="md-input-group"> 
+                    <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " /> 
+                    <label className="md-input-label">Oggetto / Titolo</label> 
+                </div> 
+                <div className="md-input-group"> 
+                    <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea> 
+                    <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label> 
+                </div> 
+                <div className="md-input-group"> 
+                    <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea> 
+                    <label className="text-xs text-gray-500 mt-1 block">Firma</label> 
+                </div> 
+            </div> 
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> 
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> 
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button> 
+            </div> 
+        </form> 
+    ); 
+};
+
 const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); const [subCategory, setSubCategory] = useState(check?.subCategory || ''); const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); const [startTime, setStartTime] = useState(check?.startTime || '09:00'); const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); const [note, setNote] = useState(check?.note || ''); const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; const toggleDay = (day: number) => { setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; if (check?.id) onSave({ ...data, id: check.id }); else onSave(data); }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> <div className="p-6 pb-2 border-b"> <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> </div> <div className="flex-1 overflow-y-auto p-6 space-y-4"> <div className="md-input-group"> <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)} </select> <label className="md-input-label">Categoria</label> </div> <div className="md-input-group"> <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> <label className="md-input-label">Dettaglio (es. Commercialista)</label> </div> <div> <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> <div className="flex flex-wrap gap-2"> {daysMap.map((d, i) => ( <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > {d} </button> ))} </div> </div> <div className="md-input-group"> <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> <label className="md-input-label !top-0">Orario Notifica</label> </div> <div className="flex items-center gap-2 mt-2"> <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> <label className="text-sm text-gray-700">Abilita Notifica Push</label> </div> <div className="md-input-group"> <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> <label className="md-input-label">Nota / Messaggio</label> </div> </div> <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> </div> </form> ); };
 
 const Settings: React.FC = () => {
@@ -366,6 +413,7 @@ const Settings: React.FC = () => {
     
     const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
     const [editingTemplate, setEditingTemplate] = useState<CommunicationTemplate | null>(null);
+    const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
     const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
     const [editingCheck, setEditingCheck] = useState<PeriodicCheck | null>(null);
@@ -414,8 +462,17 @@ const Settings: React.FC = () => {
     const handleSaveSub = async (sub: SubscriptionTypeInput | SubscriptionType) => { if ('id' in sub) { await updateSubscriptionType(sub.id, sub); } else { await addSubscriptionType(sub); } setIsSubModalOpen(false); setEditingSub(null); fetchAllData(); };
     const handleDeleteClick = (id: string) => { setSubToDelete(id); }
     const handleConfirmDelete = async () => { if(subToDelete) { await deleteSubscriptionType(subToDelete); fetchAllData(); setSubToDelete(null); } };
+    
+    // Templates CRUD
+    const handleCreateTemplate = () => { 
+        setEditingTemplate({ id: '', label: '', subject: '', body: '', signature: '' }); 
+        setIsTemplateModalOpen(true); 
+    };
     const handleOpenTemplateModal = (t: CommunicationTemplate) => { setEditingTemplate(t); setIsTemplateModalOpen(true); };
     const handleSaveTemplate = async (t: CommunicationTemplate) => { await saveCommunicationTemplate(t); setIsTemplateModalOpen(false); setEditingTemplate(null); fetchAllData(); };
+    const handleDeleteTemplateClick = (id: string) => { setTemplateToDelete(id); };
+    const handleConfirmDeleteTemplate = async () => { if(templateToDelete) { await deleteCommunicationTemplate(templateToDelete); fetchAllData(); setTemplateToDelete(null); } };
+
     const handleSaveCheck = async (c: PeriodicCheckInput | PeriodicCheck) => { if ('id' in c) await updatePeriodicCheck(c.id, c); else await addPeriodicCheck(c); setIsCheckModalOpen(false); setEditingCheck(null); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); };
     const handleDeleteCheck = async (id: string) => { if(confirm("Eliminare questo controllo periodico?")) { await deletePeriodicCheck(id); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } };
     const handleColorChange = (newPrimary: string, newBg: string) => { setPrimaryColor(newPrimary); setBgColor(newBg); applyTheme(newPrimary, newBg); };
@@ -651,12 +708,18 @@ const Settings: React.FC = () => {
 
                 {/* Template Comunicazioni */}
                 <div className="md-card p-6">
-                    <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Template Comunicazioni</h2>
+                    <div className="flex justify-between items-center border-b pb-3 mb-3">
+                        <h2 className="text-lg font-semibold">Template Comunicazioni</h2>
+                        <button onClick={handleCreateTemplate} className="md-btn md-btn-sm md-btn-raised md-btn-primary"><PlusIcon /> Nuovo</button>
+                    </div>
                     <div className="mt-4 space-y-3">
                         {templates.map(t => (
                             <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-100">
                                 <div><p className="font-medium text-sm">{t.label}</p><p className="text-xs text-gray-500 truncate max-w-[200px]">{t.subject}</p></div>
-                                <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit"><PencilIcon /></button>
+                                <div className="flex gap-1">
+                                    <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteTemplateClick(t.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -667,7 +730,9 @@ const Settings: React.FC = () => {
         {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
+        
         <ConfirmModal isOpen={!!subToDelete} onClose={() => setSubToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Abbonamento" message="Sei sicuro?" isDangerous={true} />
+        <ConfirmModal isOpen={!!templateToDelete} onClose={() => setTemplateToDelete(null)} onConfirm={handleConfirmDeleteTemplate} title="Elimina Template" message="Sei sicuro di voler eliminare questo template?" isDangerous={true} />
     </div>
   );
 };
