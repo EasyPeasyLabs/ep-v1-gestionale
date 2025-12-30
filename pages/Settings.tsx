@@ -190,7 +190,7 @@ const SubscriptionStatusModal: React.FC<{
 
 const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
     // Logic for parsing existing name if editing
-    // Expected format: Prefix - Name . Year . Annotation
+    // Expected format: Prefix-Name.Year.Annotation OR Legacy: Prefix - Name . Year . Annotation
     const initialName = sub?.name || '';
     let parsedName = initialName;
     let parsedYear = new Date().getFullYear().toString();
@@ -202,7 +202,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
         const parts = initialName.split('.').map(p => p.trim());
         if (parts.length >= 2) {
             // Tentativo euristico di parsing inverso
-            // Parte 0: "K - Trimestrale" -> Rimuoviamo prefisso
+            // Parte 0: "K - Trimestrale" o "K-Trimestrale" -> Rimuoviamo prefisso
             const namePart = parts[0];
             const prefixSeparator = namePart.indexOf('-');
             if (prefixSeparator > -1) {
@@ -237,9 +237,9 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
         
-        // Costruzione Codice Univoco
+        // Costruzione Codice Univoco (COMPATTA SENZA SPAZI)
         const prefix = target === 'kid' ? 'K' : 'A';
-        const finalName = `${prefix} - ${name} . ${year} . ${annotation}`;
+        const finalName = `${prefix}-${name}.${year}.${annotation}`;
 
         const subData = { 
             name: finalName, 
@@ -317,7 +317,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                 
                 {/* Generated Preview */}
                 <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500">
-                    Codice generato: <strong>{target === 'kid' ? 'K' : 'A'} - {name} . {year} . {annotation}</strong>
+                    Codice generato: <strong>{target === 'kid' ? 'K' : 'A'}-{name}.{year}.{annotation}</strong>
                 </div>
 
                 {/* Info Box if Promo/Future */}
