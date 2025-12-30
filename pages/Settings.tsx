@@ -17,7 +17,8 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
 
-// --- SUB-COMPONENT: Subscription Status Modal ---
+// --- SUB-COMPONENTS (DEFINED OUTSIDE TO PREVENT RE-RENDER CRASHES) ---
+
 const SubscriptionStatusModal: React.FC<{
     currentConfig?: SubscriptionStatusConfig;
     suppliers: Supplier[];
@@ -66,10 +67,16 @@ const SubscriptionStatusModal: React.FC<{
     const toggleLocation = (id: string) => setTargetLocationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     const toggleClient = (id: string) => setTargetClientIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-    // Flatten Locations
+    // Flatten Locations safely
     const allLocations = useMemo(() => {
         const locs: {id: string, name: string}[] = [];
-        suppliers.forEach(s => s.locations.forEach(l => locs.push({id: l.id, name: l.name})));
+        if (suppliers) {
+            suppliers.forEach(s => {
+                if (s.locations) {
+                    s.locations.forEach(l => locs.push({id: l.id, name: l.name}));
+                }
+            });
+        }
         return locs;
     }, [suppliers]);
 
@@ -77,7 +84,7 @@ const SubscriptionStatusModal: React.FC<{
         const name = c.clientType === ClientType.Parent 
             ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
             : (c as InstitutionalClient).companyName;
-        return name.toLowerCase().includes(clientSearch.toLowerCase());
+        return (name || '').toLowerCase().includes(clientSearch.toLowerCase());
     });
 
     return (
@@ -190,19 +197,15 @@ const SubscriptionStatusModal: React.FC<{
 
 const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
     // Logic for parsing existing name if editing
-    // Expected format: Prefix-Name.Year.Annotation OR Legacy: Prefix - Name . Year . Annotation
+    // Expected format: Prefix-Name.Year.Annotation
     const initialName = sub?.name || '';
     let parsedName = initialName;
     let parsedYear = new Date().getFullYear().toString();
     let parsedAnnotation = 'standard';
 
-    // Se stiamo modificando e il nome segue il pattern, proviamo a estrarre i campi per comodità
-    // Altrimenti lasciamo i default
     if (sub && initialName.includes('.')) {
         const parts = initialName.split('.').map(p => p.trim());
         if (parts.length >= 2) {
-            // Tentativo euristico di parsing inverso
-            // Parte 0: "K - Trimestrale" o "K-Trimestrale" -> Rimuoviamo prefisso
             const namePart = parts[0];
             const prefixSeparator = namePart.indexOf('-');
             if (prefixSeparator > -1) {
@@ -210,12 +213,10 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             } else {
                 parsedName = namePart;
             }
-            
             parsedYear = parts[1] || parsedYear;
             if (parts.length > 2) parsedAnnotation = parts[2];
         }
     } else if (sub) {
-        // Fallback per nomi vecchi (rimuovi solo prefisso se c'è)
         const prefixSeparator = initialName.indexOf('-');
         if (prefixSeparator > -1) {
             parsedName = initialName.substring(prefixSeparator + 1).trim();
@@ -230,7 +231,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0);
     const [target, setTarget] = useState<'kid' | 'adult'>(sub?.target || 'kid'); 
     
-    // Status Config State
+    // Status Config State - Safe Initialization
     const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>(sub?.statusConfig || { status: 'active' });
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
@@ -254,7 +255,8 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     
     // Helper Text for Status Badge
     const getStatusLabel = () => {
-        switch(statusConfig.status) {
+        const currentStatus = statusConfig?.status || 'active';
+        switch(currentStatus) {
             case 'active': return '🟢 Attivo';
             case 'obsolete': return '⚫ Obsoleto';
             case 'future': return '🔵 Da Attivare';
@@ -275,7 +277,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                     className="flex items-center gap-2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-bold text-gray-700 transition-colors border border-gray-300"
                 >
                     <span>{getStatusLabel()}</span>
-                    <PencilIcon /> {/* Reusing Pencil icon as generic edit icon for status */}
+                    <PencilIcon />
                 </button>
             </div> 
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
@@ -321,7 +323,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                 </div>
 
                 {/* Info Box if Promo/Future */}
-                {(statusConfig.status === 'promo' || statusConfig.status === 'future') && (
+                {statusConfig && (statusConfig.status === 'promo' || statusConfig.status === 'future') && (
                     <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
                         <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). 
                         {statusConfig.discountValue ? ` Sconto attivo: ${statusConfig.discountValue}${statusConfig.discountType === 'percent' ? '%' : '€'}` : ''}
@@ -345,7 +347,6 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     ); 
 };
 
-// --- Template Form Updated with Label and Delete ---
 const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
     const [label, setLabel] = useState(template.label || '');
     const [subject, setSubject] = useState(template.subject); 
@@ -394,6 +395,8 @@ const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: Comm
 };
 
 const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); const [subCategory, setSubCategory] = useState(check?.subCategory || ''); const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); const [startTime, setStartTime] = useState(check?.startTime || '09:00'); const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); const [note, setNote] = useState(check?.note || ''); const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; const toggleDay = (day: number) => { setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; if (check?.id) onSave({ ...data, id: check.id }); else onSave(data); }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> <div className="p-6 pb-2 border-b"> <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> </div> <div className="flex-1 overflow-y-auto p-6 space-y-4"> <div className="md-input-group"> <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)} </select> <label className="md-input-label">Categoria</label> </div> <div className="md-input-group"> <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> <label className="md-input-label">Dettaglio (es. Commercialista)</label> </div> <div> <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> <div className="flex flex-wrap gap-2"> {daysMap.map((d, i) => ( <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > {d} </button> ))} </div> </div> <div className="md-input-group"> <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> <label className="md-input-label !top-0">Orario Notifica</label> </div> <div className="flex items-center gap-2 mt-2"> <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> <label className="text-sm text-gray-700">Abilita Notifica Push</label> </div> <div className="md-input-group"> <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> <label className="md-input-label">Nota / Messaggio</label> </div> </div> <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> </div> </form> ); };
+
+// --- MAIN SETTINGS COMPONENT ---
 
 const Settings: React.FC = () => {
     const [info, setInfo] = useState<CompanyInfo | null>(null);
@@ -623,7 +626,7 @@ const Settings: React.FC = () => {
                     <div className="space-y-4 max-h-60 overflow-y-auto custom-scrollbar">
                         {suppliers.flatMap(s => s.locations).length === 0 && <p className="text-sm italic text-gray-400">Nessuna sede configurata.</p>}
                         
-                        {suppliers.flatMap(s => s.locations).map(loc => {
+                        {suppliers.flatMap(s => s.locations || []).map(loc => {
                             const currentPolicy = recoveryPolicies[loc.id] || 'allowed'; // Default allowed
                             return (
                                 <div key={loc.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-200">
