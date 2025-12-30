@@ -1,6 +1,6 @@
 
 import * as XLSX from 'xlsx';
-import { Transaction, Invoice } from '../types';
+import { Transaction, Invoice, Enrollment, Client, ClientType, ParentClient, InstitutionalClient } from '../types';
 
 export const exportTransactionsToExcel = (transactions: Transaction[], invoices: Invoice[]) => {
     const dataToExport = transactions.filter(t => !t.isDeleted).map(t => {
@@ -43,4 +43,38 @@ export const exportInvoicesToExcel = (invoices: Invoice[]) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Fatture");
     XLSX.writeFile(wb, `Fatture_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
+export const exportEnrollmentsToExcel = (enrollments: Enrollment[], clients: Client[]) => {
+    const data = enrollments.map(e => {
+        const client = clients.find(c => c.id === e.clientId);
+        let parentName = '';
+        if (client) {
+            if (client.clientType === ClientType.Parent) {
+                const p = client as ParentClient;
+                parentName = `${p.firstName} ${p.lastName}`;
+            } else {
+                parentName = (client as InstitutionalClient).companyName || '';
+            }
+        }
+
+        return {
+            'Stato': e.status === 'Pending' ? 'In Attesa' : e.status === 'Active' ? 'Attivo' : e.status === 'Completed' ? 'Completato' : 'Scaduto',
+            'Allievo': e.childName,
+            'Genitore/Cliente': parentName,
+            'Pacchetto': e.subscriptionName,
+            'Prezzo': e.price,
+            'Sede': e.locationName,
+            'Fornitore': e.supplierName,
+            'Data Inizio': new Date(e.startDate).toLocaleDateString('it-IT'),
+            'Data Fine': new Date(e.endDate).toLocaleDateString('it-IT'),
+            'Lezioni Totali': e.lessonsTotal,
+            'Lezioni Rimanenti': e.lessonsRemaining
+        };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Iscrizioni");
+    XLSX.writeFile(wb, `Iscrizioni_Storico_${new Date().toISOString().split('T')[0]}.xlsx`);
 };

@@ -7,6 +7,7 @@ import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, a
 import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
 import { importEnrollmentsFromExcel } from '../services/importService';
+import { exportEnrollmentsToExcel } from '../utils/financeExport';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -545,6 +546,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         return result;
     };
 
+    // --- EXPORT HANDLER ---
+    const handleExport = () => {
+        exportEnrollmentsToExcel(enrollments, allClients);
+    };
+
     // --- Helper per estrarre dati derivati ---
     const getChildAge = (enrollment: Enrollment): string => {
         const client = allClients.find(c => c.id === enrollment.clientId);
@@ -662,6 +668,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             {/* ACTION BAR (New Position) */}
             <div className="flex justify-end gap-3 mb-6 border-b border-gray-100 pb-4">
                 <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold"><TrashIcon /> Elimina Tutto</button>
+                <button onClick={handleExport} className="md-btn md-btn-sm bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 flex items-center text-xs font-bold">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export Excel
+                </button>
                 <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-sm bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 flex items-center text-xs font-bold"><UploadIcon /> Importa</button>
                 <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center"><PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span></button>
             </div>
