@@ -41,7 +41,7 @@ const parseSubscriptionName = (fullName: string | undefined) => {
     return { name, year, annotation };
 };
 
-// --- SUB-COMPONENTS (STABILI E MEMOIZZATI) ---
+// --- SUB-COMPONENTS ---
 
 const SubscriptionStatusModal: React.FC<{
     currentConfig?: SubscriptionStatusConfig;
@@ -64,8 +64,8 @@ const SubscriptionStatusModal: React.FC<{
     const [clientSearch, setClientSearch] = useState('');
 
     useEffect(() => {
+        let mounted = true;
         if (status === 'promo') {
-            let mounted = true;
             const loadClients = async () => {
                 setLoadingClients(true);
                 try {
@@ -74,8 +74,8 @@ const SubscriptionStatusModal: React.FC<{
                 } catch (e) { console.error(e); } finally { if (mounted) setLoadingClients(false); }
             };
             loadClients();
-            return () => { mounted = false; };
         }
+        return () => { mounted = false; };
     }, [status]);
 
     const handleSave = () => {
@@ -221,37 +221,58 @@ const SubscriptionStatusModal: React.FC<{
     );
 };
 
-// Utilizziamo React.memo per evitare re-render causati dal genitore quando non necessario
-const SubscriptionForm = React.memo(({ sub, onSave, onCancel, suppliers }: { sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }) => { 
+// FORM RIFATTO: Sincronizzazione via useEffect per massima stabilità
+const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
     
-    // Inizializzazione Lazy con Helper Esterno
-    const initialParsed = useMemo(() => parseSubscriptionName(sub?.name), [sub]);
-
-    const [name, setName] = useState(initialParsed.name); 
-    const [year, setYear] = useState(initialParsed.year);
-    const [annotation, setAnnotation] = useState(initialParsed.annotation);
+    // State Initialization con Default sicuri
+    const [name, setName] = useState(''); 
+    const [year, setYear] = useState('');
+    const [annotation, setAnnotation] = useState('');
     
-    // Gestione Input Numerici come STRINGHE per evitare problemi di UX con "0" o "NaN" durante la digitazione
-    const [price, setPrice] = useState(sub?.price?.toString() || '0'); 
-    const [lessons, setLessons] = useState(sub?.lessons?.toString() || '0'); 
-    const [durationInDays, setDurationInDays] = useState(sub?.durationInDays?.toString() || '0');
+    const [price, setPrice] = useState('0'); 
+    const [lessons, setLessons] = useState('0'); 
+    const [durationInDays, setDurationInDays] = useState('0');
     
-    const [target, setTarget] = useState<'kid' | 'adult'>(sub?.target || 'kid'); 
+    const [target, setTarget] = useState<'kid' | 'adult'>('kid'); 
+    const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' });
     
-    // Status Config State
-    const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>(sub?.statusConfig || { status: 'active' });
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+
+    // SYNCHRONIZATION EFFECT
+    // Popola il form quando cambia la prop 'sub'.
+    useEffect(() => {
+        if (sub) {
+            const parsed = parseSubscriptionName(sub.name);
+            setName(parsed.name);
+            setYear(parsed.year);
+            setAnnotation(parsed.annotation);
+            setPrice(sub.price?.toString() || '0');
+            setLessons(sub.lessons?.toString() || '0');
+            setDurationInDays(sub.durationInDays?.toString() || '0');
+            setTarget(sub.target || 'kid');
+            setStatusConfig(sub.statusConfig || { status: 'active' });
+        } else {
+            // Reset for New
+            setName('');
+            setYear(new Date().getFullYear().toString());
+            setAnnotation('standard');
+            setPrice('0');
+            setLessons('0');
+            setDurationInDays('0');
+            setTarget('kid');
+            setStatusConfig({ status: 'active' });
+        }
+    }, [sub?.id]); // Dipendenza solo dall'ID per evitare loop se l'oggetto cambia ref
 
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
         
-        // Costruzione Codice Univoco (COMPATTA SENZA SPAZI)
         const prefix = target === 'kid' ? 'K' : 'A';
         const finalName = `${prefix}-${name}.${year}.${annotation}`;
 
         const subData = { 
             name: finalName, 
-            price: Number(price), // Conversione sicura al salvataggio
+            price: Number(price), 
             lessons: Number(lessons), 
             durationInDays: Number(durationInDays),
             target,
@@ -276,7 +297,6 @@ const SubscriptionForm = React.memo(({ sub, onSave, onCancel, suppliers }: { sub
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex justify-between items-center"> 
                 <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> 
                 
-                {/* STATUS BUTTON */}
                 <button 
                     type="button" 
                     onClick={() => setIsStatusModalOpen(true)}
@@ -299,7 +319,6 @@ const SubscriptionForm = React.memo(({ sub, onSave, onCancel, suppliers }: { sub
                     </label>
                 </div>
 
-                {/* Composite Name Fields */}
                 <div className="flex gap-2 items-end">
                     <div className="flex-1 md-input-group">
                         <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " autoComplete="off" />
@@ -332,12 +351,10 @@ const SubscriptionForm = React.memo(({ sub, onSave, onCancel, suppliers }: { sub
                     <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
                 </div> 
                 
-                {/* Generated Preview */}
                 <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500">
                     Codice generato: <strong>{target === 'kid' ? 'K' : 'A'}-{name}.{year}.{annotation}</strong>
                 </div>
 
-                {/* Info Box if Promo/Future */}
                 {statusConfig && (statusConfig.status === 'promo' || statusConfig.status === 'future') && (
                     <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
                         <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). 
@@ -360,7 +377,7 @@ const SubscriptionForm = React.memo(({ sub, onSave, onCancel, suppliers }: { sub
             )}
         </form> 
     ); 
-});
+};
 
 const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
     const [label, setLabel] = useState(template.label || '');
@@ -745,7 +762,7 @@ const Settings: React.FC = () => {
             </div>
         </div>
 
-        {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm key={editingSub ? editingSub.id : 'new'} sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
+        {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
         
