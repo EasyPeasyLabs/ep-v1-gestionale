@@ -17,7 +17,31 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
 
-// --- SUB-COMPONENTS (DEFINED OUTSIDE TO PREVENT RE-RENDER CRASHES) ---
+// --- HELPER PURA PER PARSING NOME ---
+const parseSubscriptionName = (fullName: string | undefined) => {
+    let name = '';
+    let year = new Date().getFullYear().toString();
+    let annotation = 'standard';
+
+    if (!fullName) return { name, year, annotation };
+
+    if (fullName.includes('.')) {
+        const parts = fullName.split('.').map(p => p.trim());
+        if (parts.length >= 1) {
+            const namePart = parts[0];
+            const prefixSeparator = namePart.indexOf('-');
+            name = prefixSeparator > -1 ? namePart.substring(prefixSeparator + 1).trim() : namePart;
+        }
+        if (parts.length >= 2) year = parts[1];
+        if (parts.length >= 3) annotation = parts[2];
+    } else {
+        const prefixSeparator = fullName.indexOf('-');
+        name = prefixSeparator > -1 ? fullName.substring(prefixSeparator + 1).trim() : fullName;
+    }
+    return { name, year, annotation };
+};
+
+// --- SUB-COMPONENTS (STABILI E MEMOIZZATI) ---
 
 const SubscriptionStatusModal: React.FC<{
     currentConfig?: SubscriptionStatusConfig;
@@ -41,14 +65,16 @@ const SubscriptionStatusModal: React.FC<{
 
     useEffect(() => {
         if (status === 'promo') {
+            let mounted = true;
             const loadClients = async () => {
                 setLoadingClients(true);
                 try {
                     const data = await getClients();
-                    setClients(data);
-                } catch (e) { console.error(e); } finally { setLoadingClients(false); }
+                    if (mounted) setClients(data);
+                } catch (e) { console.error(e); } finally { if (mounted) setLoadingClients(false); }
             };
             loadClients();
+            return () => { mounted = false; };
         }
     }, [status]);
 
@@ -195,43 +221,24 @@ const SubscriptionStatusModal: React.FC<{
     );
 };
 
-const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
-    // Logic for parsing existing name if editing
-    // Expected format: Prefix-Name.Year.Annotation
-    const initialName = sub?.name || '';
-    let parsedName = initialName;
-    let parsedYear = new Date().getFullYear().toString();
-    let parsedAnnotation = 'standard';
+// Utilizziamo React.memo per evitare re-render causati dal genitore quando non necessario
+const SubscriptionForm = React.memo(({ sub, onSave, onCancel, suppliers }: { sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }) => { 
+    
+    // Inizializzazione Lazy con Helper Esterno
+    const initialParsed = useMemo(() => parseSubscriptionName(sub?.name), [sub]);
 
-    if (sub && initialName.includes('.')) {
-        const parts = initialName.split('.').map(p => p.trim());
-        if (parts.length >= 2) {
-            const namePart = parts[0];
-            const prefixSeparator = namePart.indexOf('-');
-            if (prefixSeparator > -1) {
-                parsedName = namePart.substring(prefixSeparator + 1).trim();
-            } else {
-                parsedName = namePart;
-            }
-            parsedYear = parts[1] || parsedYear;
-            if (parts.length > 2) parsedAnnotation = parts[2];
-        }
-    } else if (sub) {
-        const prefixSeparator = initialName.indexOf('-');
-        if (prefixSeparator > -1) {
-            parsedName = initialName.substring(prefixSeparator + 1).trim();
-        }
-    }
-
-    const [name, setName] = useState(parsedName); 
-    const [year, setYear] = useState(parsedYear);
-    const [annotation, setAnnotation] = useState(parsedAnnotation);
-    const [price, setPrice] = useState(sub?.price || 0); 
-    const [lessons, setLessons] = useState(sub?.lessons || 0); 
-    const [durationInDays, setDurationInDays] = useState(sub?.durationInDays || 0);
+    const [name, setName] = useState(initialParsed.name); 
+    const [year, setYear] = useState(initialParsed.year);
+    const [annotation, setAnnotation] = useState(initialParsed.annotation);
+    
+    // Gestione Input Numerici come STRINGHE per evitare problemi di UX con "0" o "NaN" durante la digitazione
+    const [price, setPrice] = useState(sub?.price?.toString() || '0'); 
+    const [lessons, setLessons] = useState(sub?.lessons?.toString() || '0'); 
+    const [durationInDays, setDurationInDays] = useState(sub?.durationInDays?.toString() || '0');
+    
     const [target, setTarget] = useState<'kid' | 'adult'>(sub?.target || 'kid'); 
     
-    // Status Config State - Safe Initialization
+    // Status Config State
     const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>(sub?.statusConfig || { status: 'active' });
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
@@ -244,16 +251,15 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
 
         const subData = { 
             name: finalName, 
-            price: Number(price), 
+            price: Number(price), // Conversione sicura al salvataggio
             lessons: Number(lessons), 
             durationInDays: Number(durationInDays),
             target,
-            statusConfig // Save config
+            statusConfig 
         }; 
         if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } 
     }; 
     
-    // Helper Text for Status Badge
     const getStatusLabel = () => {
         const currentStatus = statusConfig?.status || 'active';
         switch(currentStatus) {
@@ -296,26 +302,35 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                 {/* Composite Name Fields */}
                 <div className="flex gap-2 items-end">
                     <div className="flex-1 md-input-group">
-                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " />
+                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " autoComplete="off" />
                         <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label>
                     </div>
                     <span className="text-gray-400 pb-2">.</span>
                     <div className="w-20 md-input-group">
-                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} required className="md-input text-center" placeholder=" " />
+                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} required className="md-input text-center" placeholder=" " autoComplete="off" />
                         <label htmlFor="subYear" className="md-input-label">Anno</label>
                     </div>
                     <span className="text-gray-400 pb-2">.</span>
                     <div className="w-24 md-input-group">
-                        <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " />
+                        <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
                         <label htmlFor="subNote" className="md-input-label">Note</label>
                     </div>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
-                    <div className="md-input-group"><input id="subPrice" type="number" value={price} onChange={e => setPrice(Number(e.target.value))} required min="0" className="md-input" placeholder=" " /><label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label></div> 
-                    <div className="md-input-group"><input id="subLessons" type="number" value={lessons} onChange={e => setLessons(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subLessons" className="md-input-label">N. Lezioni</label></div> 
+                    <div className="md-input-group">
+                        <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} required min="0" className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label>
+                    </div> 
+                    <div className="md-input-group">
+                        <input id="subLessons" type="number" value={lessons} onChange={e => setLessons(e.target.value)} required min="1" className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subLessons" className="md-input-label">N. Lezioni</label>
+                    </div> 
                 </div> 
-                <div className="md-input-group"><input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(Number(e.target.value))} required min="1" className="md-input" placeholder=" " /><label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label></div> 
+                <div className="md-input-group">
+                    <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} required min="1" className="md-input" placeholder=" " autoComplete="off" />
+                    <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
+                </div> 
                 
                 {/* Generated Preview */}
                 <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500">
@@ -345,7 +360,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             )}
         </form> 
     ); 
-};
+});
 
 const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
     const [label, setLabel] = useState(template.label || '');
@@ -730,7 +745,7 @@ const Settings: React.FC = () => {
             </div>
         </div>
 
-        {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
+        {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm key={editingSub ? editingSub.id : 'new'} sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
         
