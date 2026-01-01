@@ -91,9 +91,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         if(confirm("Vuoi ricalcolare i costi di affitto per tutte le sedi in base all'occupazione reale del calendario? Questa operazione potrebbe richiedere alcuni secondi.")) {
             setLoading(true);
             try {
-                await syncRentExpenses();
+                const resultMsg = await syncRentExpenses();
                 await fetchData();
-                alert("Sincronizzazione Noli completata!");
+                alert(resultMsg);
             } catch (e) {
                 console.error(e);
                 alert("Errore durante la sincronizzazione.");

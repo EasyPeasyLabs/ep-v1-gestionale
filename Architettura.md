@@ -65,6 +65,12 @@ L'intelligenza dell'applicazione risiede in diversi "Motori Logici" eseguiti pri
 Per garantire la coerenza in un DB NoSQL non relazionale, è stata implementata una logica di **Cascading Delete** via software:
 -   Quando un'entità "padre" (es. Iscrizione o Cliente) viene eliminata, i service (`financeService`, `enrollmentService`) si occupano di eliminare ricorsivamente tutte le entità "figlie" correlate (Lezioni, Presenze, Transazioni, Fatture, Log Attività).
 
+### 2.4 Pattern di Stabilità UI
+
+-   **Gestione Modali & Form**: Per prevenire errori di rendering (`insertBefore` crash) e rallentamenti durante l'input in form complessi (es. `SubscriptionForm`), l'applicazione adotta il pattern **Controlled Component + useEffect Synchronization**.
+    -   Si evita l'uso di `React.memo` su componenti con stato interno complesso.
+    -   Si evita l'inizializzazione lazy dello stato (`useState(() => ...)` basata su props) se le props possono cambiare frequentemente, preferendo un `useEffect` esplicito per resettare o popolare i campi del form quando l'entità target cambia.
+
 ---
 
 ## 3. Modello Dati (Firestore)

@@ -131,14 +131,19 @@ export const calculateRentTransactions = (
     return [];
 };
 
-export const syncRentExpenses = async (): Promise<void> => {
-    console.log("[Finance] Avvio sincronizzazione Noli...");
+export const syncRentExpenses = async (): Promise<string> => {
+    console.log("[Finance] Avvio sincronizzazione Noli (Logica: Affitto Sala / Flat Rate)...");
     
     const [enrollments, suppliers, transactions] = await Promise.all([
         getAllEnrollments(),
         getSuppliers(),
         getTransactions()
     ]);
+
+    // Counters for Feedback
+    let created = 0;
+    let updated = 0;
+    let deleted = 0;
 
     // 1. Mappa Costi Sedi
     const locationMap = new Map<string, {cost: number, name: string}>();
@@ -148,9 +153,10 @@ export const syncRentExpenses = async (): Promise<void> => {
         });
     });
 
-    // 2. Aggregazione Costi (Slot Occupati - Festività)
-    // Key: YYYY-MM|LOCATION_ID
-    const aggregates = new Map<string, number>();
+    // 2. DEDUPLICAZIONE SLOT (Logica Affitto Sala)
+    // Identifichiamo gli slot unici occupati (Data + Ora Inizio + Sede)
+    // Indipendentemente da quanti bambini ci sono.
+    const uniqueSlots = new Set<string>(); // Key format: YYYY-MM-DD|HH:mm|LOC_ID
 
     enrollments.forEach(enr => {
         if (enr.appointments) {
@@ -161,22 +167,38 @@ export const syncRentExpenses = async (): Promise<void> => {
                 if (isItalianHoliday(date)) return;
 
                 // Identificazione Sede (Storicizzata o Attuale)
-                // Se l'appuntamento ha locationId (nuova logica), usa quello. Altrimenti usa quello dell'iscrizione.
                 const locId = app.locationId || enr.locationId; 
                 
                 // Se la sede non è definita o è "unassigned", salta
                 if (!locId || locId === 'unassigned') return;
 
-                const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                const key = `${monthKey}|${locId}`;
+                // Costruisci chiave univoca per lo slot
+                // Usa la parte data ISO (YYYY-MM-DD) + Ora Inizio + ID Sede
+                const dateStr = app.date.split('T')[0];
+                const slotKey = `${dateStr}|${app.startTime}|${locId}`;
                 
-                const currentCount = aggregates.get(key) || 0;
-                aggregates.set(key, currentCount + 1);
+                uniqueSlots.add(slotKey);
             });
         }
     });
 
-    // 3. Preparazione Batch Write
+    // 3. AGGREGAZIONE COSTI (Basata sugli slot unici)
+    // Key: YYYY-MM|LOCATION_ID -> Count
+    const aggregates = new Map<string, number>();
+
+    uniqueSlots.forEach(slotKey => {
+        const [dateStr, startTime, locId] = slotKey.split('|');
+        const date = new Date(dateStr);
+        
+        // Chiave aggregazione mensile
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const aggKey = `${monthKey}|${locId}`;
+        
+        const currentCount = aggregates.get(aggKey) || 0;
+        aggregates.set(aggKey, currentCount + 1);
+    });
+
+    // 4. Preparazione Batch Write
     const batch = writeBatch(db);
     const processedKeys = new Set<string>();
 
@@ -201,20 +223,21 @@ export const syncRentExpenses = async (): Promise<void> => {
         if (locData && locData.cost > 0) {
             const totalCost = count * locData.cost;
             const docId = `AUTO-RENT-${key}`;
-            const description = `Nolo Sede: ${locData.name} - ${month}/${year} (${count} slot)`;
+            const description = `Nolo Sede: ${locData.name} - ${month}/${year} (${count} slot unici)`;
             
             processedKeys.add(docId);
 
             if (existingMap.has(docId)) {
                 // UPDATE
                 const existing = existingMap.get(docId)!;
-                // Aggiorna solo se l'importo è cambiato (evita scritture inutili)
-                if (Math.abs(existing.amount - totalCost) > 0.01) {
+                // Aggiorna solo se l'importo o la descrizione (count) è cambiata
+                if (Math.abs(existing.amount - totalCost) > 0.01 || existing.description !== description) {
                     const ref = doc(db, 'transactions', existing.id);
                     batch.update(ref, { 
                         amount: totalCost,
-                        description: description // Aggiorna anche descrizione col nuovo count
+                        description: description 
                     });
+                    updated++;
                 }
             } else {
                 // CREATE
@@ -234,21 +257,24 @@ export const syncRentExpenses = async (): Promise<void> => {
                     allocationName: locData.name,
                     isDeleted: false
                 });
+                created++;
             }
         }
     });
 
-    // 4. Pulizia Obsoleti (Delete)
-    // Se una transazione esiste ma non è più negli aggregati (es. spostamento totale alunni), azzerala o eliminala.
+    // 5. Pulizia Obsoleti (Delete)
+    // Se una transazione esiste ma non è più negli aggregati (es. spostamento totale alunni o cancellazione), eliminala.
     autoRentTransactions.forEach(t => {
         if (t.relatedDocumentId && !processedKeys.has(t.relatedDocumentId)) {
             const ref = doc(db, 'transactions', t.id);
             batch.delete(ref); 
+            deleted++;
         }
     });
 
     await batch.commit();
-    console.log("[Finance] Sync completato.");
+    console.log(`[Finance] Sync completato. C:${created} U:${updated} D:${deleted}`);
+    return `Sincronizzazione Noli Completata.\n\n✅ Create: ${created}\n📝 Aggiornate: ${updated}\n🗑️ Eliminate: ${deleted}\n\nVai alla tab "Controllo di Gestione" per vedere i nuovi importi aggiornati.`;
 };
 
 

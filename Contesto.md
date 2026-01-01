@@ -14,10 +14,11 @@ Ho già creato:
 
 ## Stato di Avanzamento (Roadmap)
 
-Di seguito lo stato corrente delle funzionalità implementate al **18 Dicembre 2025**:
+Di seguito lo stato corrente delle funzionalità implementate al **30 Dicembre 2025**:
 
 ### Core Features (Completate)
 - [x] **Autenticazione**: Login Admin via Firebase Auth.
+- [x] **Impostazioni**: Configurazione Azienda, Abbonamenti (Refactoring Stabilità), Template Comunicazioni e Planner.
 - [x] **Gestione Clienti**: CRUD completo, anagrafica Genitori/Enti, gestione Figli.
 - [x] **Gestione Fornitori**: CRUD completo, gestione Sedi multiple con slot orari.
 - [x] **Iscrizioni**: Workflow iscrizione guidato, generazione automatica lezioni, gestione pagamenti (Acconto/Saldo).

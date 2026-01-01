@@ -39,6 +39,23 @@ Questo file contiene lo storico delle interazioni significative per la tracciabi
 - Aggiornamento `Chat.md` con storico modifiche.
 - **STATO FINANZA: STABILE (FROZEN).**
 
+## Sessione del 30 Dicembre 2025
+
+### Richiesta 14
+**Prompt:** Fix critico su Modale Creazione/Modifica Abbonamenti (Impostazioni). Errore `NotFoundError: Failed to execute 'insertBefore'` e performance degradate.
+**Azione:**
+- Analisi stack trace: individuato conflitto tra gestione stato React e DOM updates durante rendering condizionale spinto.
+- Refactoring componente `SubscriptionForm` in `Settings.tsx`.
+- Rimozione `React.memo` e inizializzazione lazy dello stato (`useState(() => ...)`).
+- Adozione pattern standard `useEffect` per la sincronizzazione dei dati del form quando cambia la prop `sub`.
+- Risultato: Modale stabile, nessun crash, input fluido.
+
+### Richiesta 15
+**Prompt:** Quesiti su architettura PWA, conversione in APK nativo (TWA/Sideloading) e aggiornamento documentazione.
+**Azione:**
+- Fornite spiegazioni dettagliate su TWA, PWABuilder, Bubblewrap e firma APK con Android Studio.
+- Aggiornamento file `Contesto.md`, `Architettura.md` e `Chat.md`.
+
 ## Sessioni Precedenti
 
 (Log archiviato...)
