@@ -1,7 +1,7 @@
 
 import { jsPDF } from "jspdf";
 import autoTable from 'jspdf-autotable';
-import { Invoice, Quote, CompanyInfo, Client, DocumentItem, ParentClient, InstitutionalClient, ClientType, PaymentMethod, Installment } from '../types';
+import { Invoice, Quote, CompanyInfo, Client, DocumentItem, ParentClient, InstitutionalClient, ClientType, Installment } from '../types';
 
 const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('it-IT');
@@ -249,7 +249,7 @@ export const generateDocumentPDF = async (
     const itemRows = doc.items.map((item: DocumentItem) => {
         const desc = item.notes ? `${item.description}\n${item.notes}` : item.description;
         
-        let gross = item.quantity * item.price;
+        const gross = item.quantity * item.price;
         let discountAmount = 0;
         
         // Calculate Discount logic for PDF view
@@ -296,7 +296,8 @@ export const generateDocumentPDF = async (
     if ('globalDiscount' in doc && doc.globalDiscount) {
         const inv = doc as Invoice;
         if (inv.globalDiscountType === 'percent') {
-            globalDiscountVal = calculatedSubtotal * (inv.globalDiscount / 100);
+            // FIX TS18048: Handle possible undefined
+            globalDiscountVal = calculatedSubtotal * ((inv.globalDiscount || 0) / 100);
         } else {
             globalDiscountVal = inv.globalDiscount || 0;
         }
@@ -437,7 +438,8 @@ export const generateDocumentPDF = async (
     docPdf.text(splitFooter, marginX, pageHeight - 15);
 
     if (previewMode) {
-        return docPdf.output('bloburl');
+        // FIX TS2322: output('bloburl') might return URL type in recent definitions, cast to string
+        return String(docPdf.output('bloburl'));
     }
 
     // Filename
