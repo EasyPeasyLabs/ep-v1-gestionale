@@ -43,8 +43,9 @@ export const generateDocumentPDF = async (
     doc: Invoice | Quote,
     type: 'Fattura' | 'Preventivo',
     companyInfo: CompanyInfo | null,
-    client: Client | undefined
-) => {
+    client: Client | undefined,
+    previewMode: boolean = false // New Parameter
+): Promise<string | void> => { // Returns string (URL) if previewMode is true
     const docPdf = new jsPDF();
     
     // Colors
@@ -136,7 +137,7 @@ export const generateDocumentPDF = async (
     docPdf.setFontSize(16);
     docPdf.setTextColor(...primaryColor);
     docPdf.setFont("helvetica", "bold");
-    const title = type === 'Fattura' && (doc as Invoice).isProForma ? 'FATTURA PRO-FORMA' : type.toUpperCase();
+    const title = type === 'Fattura' && (doc as Invoice).isGhost ? 'FATTURA PRO-FORMA' : type.toUpperCase();
     docPdf.text(title, rightAlignX, row1Y + 8, { align: 'right' });
 
     // DETTAGLI (Sotto il titolo, sopra la linea)
@@ -231,6 +232,7 @@ export const generateDocumentPDF = async (
     
     const tableStartY = 85; // Start closer to header
 
+    // NOTE: Updated PDF logic to reflect row discounts if present
     const tableColumn = ["Descrizione", "Quantità", "Prezzo Unit.", "Totale"];
     let tableRows: any[] = [];
 
@@ -242,13 +244,30 @@ export const generateDocumentPDF = async (
         }]);
     }
 
+    let calculatedSubtotal = 0;
+
     const itemRows = doc.items.map((item: DocumentItem) => {
         const desc = item.notes ? `${item.description}\n${item.notes}` : item.description;
+        
+        let gross = item.quantity * item.price;
+        let discountAmount = 0;
+        
+        // Calculate Discount logic for PDF view
+        if (item.discount) {
+            if (item.discountType === 'percent') {
+                discountAmount = gross * (item.discount / 100);
+            } else {
+                discountAmount = item.discount;
+            }
+        }
+        const net = gross - discountAmount;
+        calculatedSubtotal += net;
+
         return [
             desc,
             item.quantity,
             formatCurrency(item.price),
-            formatCurrency(item.quantity * item.price)
+            formatCurrency(net) // Show net total
         ];
     });
 
@@ -272,17 +291,41 @@ export const generateDocumentPDF = async (
     // --- TOTALS SECTION ---
     let finalY = (docPdf as any).lastAutoTable?.finalY || tableStartY;
     
-    const subtotal = doc.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+    // Apply Global Discount
+    let globalDiscountVal = 0;
+    if ('globalDiscount' in doc && doc.globalDiscount) {
+        const inv = doc as Invoice;
+        if (inv.globalDiscountType === 'percent') {
+            globalDiscountVal = calculatedSubtotal * (inv.globalDiscount / 100);
+        } else {
+            globalDiscountVal = inv.globalDiscount || 0;
+        }
+    }
+
+    const taxable = calculatedSubtotal - globalDiscountVal;
     const stampDuty = (type === 'Fattura' && (doc as Invoice).hasStampDuty) ? 2.00 : 0;
-    const grandTotal = subtotal + stampDuty;
+    const grandTotal = taxable + stampDuty;
 
     // Spacing before totals
     finalY += 5;
 
     docPdf.setFont("helvetica", "normal");
     docPdf.setFontSize(10);
-    docPdf.text(`Imponibile:`, 140, finalY + 5);
-    docPdf.text(`${formatCurrency(subtotal)}`, rightAlignX, finalY + 5, { align: 'right' });
+    
+    // Show Subtotal if discounts applied
+    if (globalDiscountVal > 0) {
+        docPdf.text(`Imponibile Lordo:`, 140, finalY + 5);
+        docPdf.text(`${formatCurrency(calculatedSubtotal)}`, rightAlignX, finalY + 5, { align: 'right' });
+        
+        docPdf.setTextColor(200, 0, 0); // Red for discount
+        docPdf.text(`Sconto Globale:`, 140, finalY + 10);
+        docPdf.text(`-${formatCurrency(globalDiscountVal)}`, rightAlignX, finalY + 10, { align: 'right' });
+        docPdf.setTextColor(0, 0, 0);
+        finalY += 10;
+    }
+
+    docPdf.text(`Imponibile Netto:`, 140, finalY + 5);
+    docPdf.text(`${formatCurrency(taxable)}`, rightAlignX, finalY + 5, { align: 'right' });
 
     if (type === 'Fattura' && (doc as Invoice).hasStampDuty) {
         docPdf.text(`Bollo Virtuale:`, 140, finalY + 10);
@@ -320,7 +363,7 @@ export const generateDocumentPDF = async (
     docPdf.setFontSize(10);
     
     // Payment Method
-    if (doc.paymentMethod) {
+    if ('paymentMethod' in doc && doc.paymentMethod) {
         docPdf.setFont("helvetica", "bold");
         docPdf.text("Modalità di Pagamento:", marginX, finalY);
         docPdf.setFont("helvetica", "normal");
@@ -328,13 +371,14 @@ export const generateDocumentPDF = async (
     }
 
     // Installments Table
-    if (doc.installments && doc.installments.length > 0) {
+    if ('installments' in doc && doc.installments && doc.installments.length > 0) {
         finalY += 8;
         docPdf.setFont("helvetica", "bold");
         docPdf.setFontSize(9);
         docPdf.text("Piano Rateale", marginX, finalY);
         
-        const instRows = doc.installments.map((inst: Installment) => [
+        const quoteDoc = doc as Quote;
+        const instRows = quoteDoc.installments.map((inst: Installment) => [
             inst.description,
             formatDate(inst.dueDate),
             formatCurrency(inst.amount),
@@ -381,6 +425,7 @@ export const generateDocumentPDF = async (
     }
 
     // Legal Footer
+    // (Testo già presente nei PDF, ma ridondante se presente nelle note. Lo lasciamo come fallback)
     const footerText = "Operazione senza applicazione dell’IVA ai sensi dell’art. 1, commi da 54 a 89, Legge n. 190/2014.\nOperazione non soggetta a ritenuta alla fonte a titolo di acconto ai sensi dell’art. 1, comma 67, Legge n. 190/2014.";
     
     const pageHeight = docPdf.internal.pageSize.height;
@@ -391,6 +436,10 @@ export const generateDocumentPDF = async (
     const splitFooter = docPdf.splitTextToSize(footerText, 180);
     docPdf.text(splitFooter, marginX, pageHeight - 15);
 
+    if (previewMode) {
+        return docPdf.output('bloburl');
+    }
+
     // Filename
     let filename = "";
     if (type === 'Fattura') {
@@ -399,7 +448,7 @@ export const generateDocumentPDF = async (
         const dateStr = formatDateForFilename(doc.issueDate);
         const prefix = "FT";
         filename = `${prefix}${shortNum}_${dateStr}`;
-        if ((doc as Invoice).isProForma) filename += "_PROFORMA";
+        if ((doc as Invoice).isGhost) filename += "_PROFORMA";
     } else {
         filename = docNumber; 
     }

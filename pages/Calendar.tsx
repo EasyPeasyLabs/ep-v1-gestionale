@@ -62,7 +62,7 @@ const Calendar: React.FC = () => {
             const locationAvailabilityMap = new Map<string, Set<number>>();
             supps.forEach(s => {
                 s.locations.forEach(l => {
-                    const days = new Set(l.availability?.map(a => a.dayOfWeek) || []);
+                    const days = new Set<number>(l.availability?.map(a => a.dayOfWeek) || []);
                     if (l.name) locationAvailabilityMap.set(l.name.trim(), days);
                 });
             });

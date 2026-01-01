@@ -21,7 +21,8 @@ const defaultCompanyInfo: CompanyInfo = {
     email: 'labeasypeasy@gmail.com',
     phone: '+39 3405234353',
     logoBase64: DEFAULT_LOGO_BASE64,
-    carFuelConsumption: 16.5
+    carFuelConsumption: 16.5,
+    iban: ''
 };
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
@@ -33,7 +34,8 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
                 ...data, 
                 id: docSnap.id,
                 logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64,
-                carFuelConsumption: data.carFuelConsumption || 16.5
+                carFuelConsumption: data.carFuelConsumption || 16.5,
+                iban: data.iban || ''
             };
         } else {
             // Se non esiste, crealo con default
@@ -67,7 +69,10 @@ export const addSubscriptionType = async (sub: SubscriptionTypeInput): Promise<s
 
 export const updateSubscriptionType = async (id: string, sub: Partial<SubscriptionTypeInput>): Promise<void> => {
     const docRef = doc(db, 'subscriptionTypes', id);
-    await updateDoc(docRef, sub);
+    // Strip ID from payload to avoid Firestore errors or redundancy
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _, ...data } = sub as any;
+    await updateDoc(docRef, data);
 };
 
 export const deleteSubscriptionType = async (id: string): Promise<void> => {

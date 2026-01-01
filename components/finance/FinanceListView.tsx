@@ -5,7 +5,9 @@ import PrinterIcon from '../icons/PrinterIcon';
 import TrashIcon from '../icons/TrashIcon';
 import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
+import BanknotesIcon from '../icons/BanknotesIcon';
 import { Transaction, Invoice, Quote, DocumentStatus, Supplier } from '../../types';
+import { updateInvoice, markInvoicesAsPaid } from '../../services/financeService';
 
 // --- Icona WhatsApp ---
 const WhatsAppIcon = () => (
@@ -192,6 +194,32 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         });
     };
 
+    // Segna Pagate (Massivo)
+    const handleBulkMarkAsPaid = async () => {
+        if (selectedItems.length === 0) return;
+        if (!confirm(`Vuoi segnare come PAGATE ${selectedItems.length} fatture?`)) return;
+
+        try {
+            await markInvoicesAsPaid(selectedItems);
+            // Trigger update per ricaricare la lista
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+            setSelectedItems([]);
+        } catch (e) {
+            alert("Errore durante l'aggiornamento.");
+            console.error(e);
+        }
+    };
+
+    // Segna Pagato (Singolo)
+    const handleMarkAsPaid = async (item: Invoice) => {
+        try {
+            await updateInvoice(item.id, { status: DocumentStatus.Paid });
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (e) {
+            alert("Errore aggiornamento stato.");
+        }
+    };
+
     return (
         <div className="md-card overflow-hidden bg-white shadow-2xl border-0">
             <div className="p-6 bg-slate-50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
@@ -235,6 +263,15 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                     )}
                     {selectedItems.length > 0 && (
                         <div className="flex gap-2 animate-fade-in">
+                            {activeTab === 'invoices' && (
+                                <button 
+                                    onClick={handleBulkMarkAsPaid} 
+                                    className="md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm"
+                                    title="Segna selezionati come pagati"
+                                >
+                                    <BanknotesIcon /> Segna Pagate
+                                </button>
+                            )}
                             {activeTab === 'archive' && (
                                 <button 
                                     onClick={handleSendReportToSimona} 
@@ -312,6 +349,17 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                                 title="Converti in Fattura"
                                             >
                                                 <MagicWandIcon />
+                                            </button>
+                                        )}
+
+                                        {/* Bottone Paga (Solo Fatture non pagate) */}
+                                        {activeTab === 'invoices' && item.status !== DocumentStatus.Paid && (
+                                            <button 
+                                                onClick={() => handleMarkAsPaid(item)} 
+                                                className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" 
+                                                title="Segna come Pagata"
+                                            >
+                                                €
                                             </button>
                                         )}
 

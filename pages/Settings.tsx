@@ -79,14 +79,23 @@ const SubscriptionStatusModal: React.FC<{
     }, [status]);
 
     const handleSave = () => {
-        onSave({
+        // FIX: Costruiamo l'oggetto dinamicamente per evitare valori 'undefined' che mandano in crash Firestore
+        const config: SubscriptionStatusConfig = {
             status,
-            validDate: (status !== 'active') ? date : undefined,
-            discountType: status === 'promo' ? discountType : undefined,
-            discountValue: status === 'promo' ? discountValue : undefined,
             targetLocationIds: status === 'promo' ? targetLocationIds : [],
             targetClientIds: status === 'promo' ? targetClientIds : []
-        });
+        };
+
+        if (status !== 'active') {
+            config.validDate = date;
+        }
+
+        if (status === 'promo') {
+            config.discountType = discountType;
+            config.discountValue = discountValue;
+        }
+
+        onSave(config);
         onClose();
     };
 
@@ -124,10 +133,10 @@ const SubscriptionStatusModal: React.FC<{
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/* Status Selection */}
                     <div className="grid grid-cols-2 gap-3">
-                        <button onClick={() => setStatus('active')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'active' ? 'bg-green-50 border-green-500 text-green-700 ring-1 ring-green-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Attivo</button>
-                        <button onClick={() => setStatus('obsolete')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'obsolete' ? 'bg-gray-100 border-gray-500 text-gray-700 ring-1 ring-gray-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Obsoleto</button>
-                        <button onClick={() => setStatus('future')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'future' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Da Attivare</button>
-                        <button onClick={() => setStatus('promo')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'promo' ? 'bg-yellow-50 border-yellow-500 text-yellow-700 ring-1 ring-yellow-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Promo</button>
+                        <button type="button" onClick={() => setStatus('active')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'active' ? 'bg-green-50 border-green-500 text-green-700 ring-1 ring-green-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Attivo</button>
+                        <button type="button" onClick={() => setStatus('obsolete')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'obsolete' ? 'bg-gray-100 border-gray-500 text-gray-700 ring-1 ring-gray-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Obsoleto</button>
+                        <button type="button" onClick={() => setStatus('future')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'future' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Da Attivare</button>
+                        <button type="button" onClick={() => setStatus('promo')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'promo' ? 'bg-yellow-50 border-yellow-500 text-yellow-700 ring-1 ring-yellow-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Promo</button>
                     </div>
 
                     {/* Dynamic Fields */}
@@ -176,6 +185,7 @@ const SubscriptionStatusModal: React.FC<{
                                         {allLocations.map(l => (
                                             <button 
                                                 key={l.id} 
+                                                type="button"
                                                 onClick={() => toggleLocation(l.id)}
                                                 className={`px-2 py-1 rounded border text-xs ${targetLocationIds.includes(l.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
                                             >
@@ -191,7 +201,9 @@ const SubscriptionStatusModal: React.FC<{
                                             <input type="text" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="w-full text-xs border-b pb-1 mb-2 outline-none"/>
                                             <div className="max-h-32 overflow-y-auto space-y-1">
                                                 {filteredClients.map(c => {
-                                                    const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
+                                                    const name = c.clientType === ClientType.Parent 
+                                                        ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
+                                                        : (c as InstitutionalClient).companyName;
                                                     return (
                                                         <label key={c.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer">
                                                             <input type="checkbox" checked={targetClientIds.includes(c.id)} onChange={() => toggleClient(c.id)} className="rounded text-indigo-600"/>
@@ -213,8 +225,8 @@ const SubscriptionStatusModal: React.FC<{
                 </div>
 
                 <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
-                    <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                    <button onClick={handleSave} className="md-btn md-btn-raised md-btn-primary">Applica Stato</button>
+                    <button type="button" onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                    <button type="button" onClick={handleSave} className="md-btn md-btn-raised md-btn-primary">Applica Stato</button>
                 </div>
             </div>
         </Modal>
@@ -264,9 +276,15 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
         }
     }, [sub?.id]); // Dipendenza solo dall'ID per evitare loop se l'oggetto cambia ref
 
-    const handleSubmit = (e: React.FormEvent) => { 
+    const handleSubmit = async (e: React.FormEvent) => { 
         e.preventDefault(); 
         
+        // Manual Validation
+        if (!name || !price || !lessons || !durationInDays) {
+            alert("Compila tutti i campi obbligatori.");
+            return;
+        }
+
         const prefix = target === 'kid' ? 'K' : 'A';
         const finalName = `${prefix}-${name}.${year}.${annotation}`;
 
@@ -278,7 +296,17 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             target,
             statusConfig 
         }; 
-        if (sub?.id) { onSave({ ...subData, id: sub.id }); } else { onSave(subData); } 
+        
+        try {
+            if (sub?.id) { 
+                await onSave({ ...subData, id: sub.id }); 
+            } else { 
+                await onSave(subData); 
+            } 
+        } catch (err) {
+            console.error(err);
+            alert("Errore durante il salvataggio.");
+        }
     }; 
     
     const getStatusLabel = () => {
@@ -321,12 +349,12 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
 
                 <div className="flex gap-2 items-end">
                     <div className="flex-1 md-input-group">
-                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " autoComplete="off" />
+                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
                         <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label>
                     </div>
                     <span className="text-gray-400 pb-2">.</span>
                     <div className="w-20 md-input-group">
-                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} required className="md-input text-center" placeholder=" " autoComplete="off" />
+                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} className="md-input text-center" placeholder=" " autoComplete="off" />
                         <label htmlFor="subYear" className="md-input-label">Anno</label>
                     </div>
                     <span className="text-gray-400 pb-2">.</span>
@@ -338,16 +366,16 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
                     <div className="md-input-group">
-                        <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} required min="0" className="md-input" placeholder=" " autoComplete="off" />
+                        <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
                         <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label>
                     </div> 
                     <div className="md-input-group">
-                        <input id="subLessons" type="number" value={lessons} onChange={e => setLessons(e.target.value)} required min="1" className="md-input" placeholder=" " autoComplete="off" />
+                        <input id="subLessons" type="number" value={lessons} onChange={e => setLessons(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
                         <label htmlFor="subLessons" className="md-input-label">N. Lezioni</label>
                     </div> 
                 </div> 
                 <div className="md-input-group">
-                    <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} required min="1" className="md-input" placeholder=" " autoComplete="off" />
+                    <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
                     <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
                 </div> 
                 
@@ -379,6 +407,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     ); 
 };
 
+// ... (Resto del file invariato: TemplateForm, CheckForm, Settings)
 const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
     const [label, setLabel] = useState(template.label || '');
     const [subject, setSubject] = useState(template.subject); 
@@ -565,6 +594,16 @@ const Settings: React.FC = () => {
         }
     };
 
+    // --- HELPERS VISUALI ---
+    const getStatusBadgeInfo = (status: string) => {
+        switch(status) {
+            case 'obsolete': return { label: 'Obsoleto', className: 'bg-gray-100 text-gray-600 border-gray-200' };
+            case 'future': return { label: 'Da Attivare', className: 'bg-blue-50 text-blue-600 border-blue-200' };
+            case 'promo': return { label: 'Promo', className: 'bg-yellow-50 text-yellow-700 border-yellow-200' };
+            default: return null;
+        }
+    };
+
     const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 
     if (loading) return <div className="mt-8 flex justify-center items-center h-64"><Spinner /></div>;
@@ -601,6 +640,8 @@ const Settings: React.FC = () => {
                                 <div className="md-input-group"><input id="infoEmail" type="email" value={info.email || ''} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
                                 <div className="md-input-group"><input id="infoPhone" type="tel" value={info.phone || ''} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
                             </div>
+                            <div className="md-input-group mt-4"><input id="infoIban" type="text" value={info.iban || ''} onChange={(e) => handleInfoChange('iban', e.target.value)} className="md-input font-mono" placeholder=" " /><label htmlFor="infoIban" className="md-input-label">IBAN</label></div>
+                            
                             <div className="pt-4 border-t mt-4">
                                 <h3 className="text-sm font-bold text-gray-700 mb-3">Parametri Veicolo Aziendale</h3>
                                 <div className="md-input-group"><input id="fuelCons" type="number" step="0.1" value={info.carFuelConsumption || 16.5} onChange={(e) => handleInfoChange('carFuelConsumption', parseFloat(e.target.value))} className="md-input" placeholder=" " /><label htmlFor="fuelCons" className="md-input-label">Consumo Medio (km/l)</label></div>
@@ -628,25 +669,40 @@ const Settings: React.FC = () => {
                         <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-raised md-btn-green md-btn-sm"><PlusIcon /> Nuovo</button>
                     </div>
                     <div className="mt-4 space-y-3">
-                        {subscriptions.map(sub => (
-                            <div key={sub.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-100">
-                                <div>
-                                    <p className="font-medium flex items-center gap-2">
-                                        {sub.name}
-                                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${sub.target === 'adult' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
-                                            {sub.target === 'adult' ? 'Adulti' : 'Bambini'}
-                                        </span>
-                                        {sub.statusConfig && sub.statusConfig.status !== 'active' && (
-                                            <span className="text-[10px] bg-gray-200 text-gray-700 px-1 rounded uppercase font-bold">
-                                                {sub.statusConfig.status}
+                        {subscriptions.map(sub => {
+                            const status = sub.statusConfig?.status || 'active';
+                            const badgeInfo = status !== 'active' ? getStatusBadgeInfo(status) : null;
+                            
+                            const cardClass = (() => {
+                                switch(status) {
+                                    case 'active': return 'bg-green-50 border-green-200';
+                                    case 'obsolete': return 'bg-red-50 border-red-200';
+                                    case 'future': return 'bg-amber-50 border-amber-200';
+                                    case 'promo': return 'bg-cyan-50 border-cyan-200';
+                                    default: return 'bg-gray-50 border-gray-200';
+                                }
+                            })();
+                            
+                            return (
+                                <div key={sub.id} className={`flex justify-between items-center p-3 rounded border ${cardClass}`}>
+                                    <div>
+                                        <p className="font-medium flex items-center gap-2">
+                                            {sub.name}
+                                            <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${sub.target === 'adult' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                {sub.target === 'adult' ? 'Adulti' : 'Bambini'}
                                             </span>
-                                        )}
-                                    </p>
-                                    <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
+                                            {badgeInfo && (
+                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase border ${badgeInfo.className}`}>
+                                                    {badgeInfo.label}
+                                                </span>
+                                            )}
+                                        </p>
+                                        <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
+                                    </div>
+                                    <div className="flex items-center gap-3"><span className="font-bold text-sm">{sub.price}€</span><div className="flex space-x-1"><button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon /></button></div></div>
                                 </div>
-                                <div className="flex items-center gap-3"><span className="font-bold text-sm">{sub.price}€</span><div className="flex space-x-1"><button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon /></button></div></div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 

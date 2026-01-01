@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/financeService';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -19,11 +19,12 @@ import FinanceOverview from '../components/finance/FinanceOverview';
 import FinanceCFO from '../components/finance/FinanceCFO';
 import FinanceControlling from '../components/finance/FinanceControlling';
 import FinanceListView from '../components/finance/FinanceListView';
+import FiscalYearManager from '../components/finance/FiscalYearManager'; // NEW IMPORT
 import LocationDetailModal from '../components/finance/LocationDetailModal';
 import { getAllEnrollments } from '../services/enrollmentService';
-import { Enrollment } from '../types';
+import { Enrollment, PaymentMethod, TransactionStatus } from '../types';
 
-// --- CONFIG FISCALE FORFETTARIO ---
+// ... (COSTANTI FISCALI e Interfacce rimangono uguali) ...
 const INPS_RATE = 0.2623;
 const TAX_RATE_STARTUP = 0.05;
 const COEFF_REDDITIVITA = 0.78;
@@ -31,14 +32,15 @@ const LIMIT_FORFETTARIO = 85000;
 
 interface FinanceProps {
     initialParams?: {
-        tab?: 'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes';
+        tab?: 'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure';
         searchTerm?: string;
     };
     onNavigate?: (page: Page, params?: any) => void;
 }
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
-    const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes'>('overview');
+    const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
+    // ... (Stati esistenti: transactions, invoices, etc.) ...
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -69,6 +71,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
     const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null);
 
+    // ... (fetchData e useEffect uguali) ...
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -92,6 +95,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     }, [fetchData, initialParams]);
 
+    // ... (handleSyncRents, stats, reverseEngineering, simulatorData, roiSedi, handlePrint, handleWhatsApp, handleSeal ... TUTTI UGUALI) ...
     const handleSyncRents = async () => {
         if(confirm("Vuoi ricalcolare i costi di affitto per tutte le sedi in base all'occupazione reale del calendario? Questa operazione potrebbe richiedere alcuni secondi.")) {
             setLoading(true);
@@ -141,8 +145,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const totalInpsTax = inps + tax;
         const totalAll = totalInpsTax + stampDutyTotal;
         
-        // Scenario Start-up: Bisogna coprire Saldo (100%) + Acconto anno succ (100%)
-        // Quindi il carico fiscale reale percepito è il doppio della tassa calcolata sull'anno corrente + bolli.
         const totalLoadStartup = (totalInpsTax * 2) + stampDutyTotal;
         const savingsSuggestion = totalLoadStartup;
 
@@ -164,7 +166,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         };
     }, [transactions, invoices]);
 
-    // --- REVERSE ENGINEERING AI CALC ---
+    // ... (reverseEngineering, simulatorData, roiSedi, handlers... TUTTI UGUALI) ...
     const reverseEngineering = useMemo(() => {
         const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP);
         const netRatio = 1 - compositeTaxRate;
@@ -179,38 +181,26 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         return { annualNetTarget, grossNeeded, gap, extraLessonsNeeded, studentsNeeded };
     }, [targetMonthlyNet, lessonPrice, stats.revenue]);
 
-    // --- SIMULATORE RATE (START-UP SCENARIO) ---
     const simulatorData = useMemo(() => {
         const tax2025 = stats.totalInpsTax; // Tassa calcolata sull'anno corrente
-        
-        // Scenario Start-up:
-        // 1° Versamento (Giu): Saldo (100%) + 1° Acconto (50%) = 1.5 * tax2025
-        // 2° Versamento (Nov): 2° Acconto (50%) = 0.5 * tax2025
         
         const tranche1 = tax2025 * 1.5; 
         const tranche2 = tax2025 * 0.5;
         const monthlyInstallment = tranche1 / 6; // Rateizzabile Giu-Nov
 
-        // Scadenze Bolli (Trimestrali)
         const stampDeadlines = [
-            { label: '31 Mag (I Trim)', amount: stats.stampDutyQuarters.q1, month: 'MAG' }, // Tecnicamente fuori dalla rateazione giu-nov, ma rilevante
+            { label: '31 Mag (I Trim)', amount: stats.stampDutyQuarters.q1, month: 'MAG' }, 
             { label: '30 Set (II Trim)', amount: stats.stampDutyQuarters.q2, month: 'SET' },
             { label: '30 Nov (III Trim)', amount: stats.stampDutyQuarters.q3, month: 'NOV' },
             { label: '28 Feb (IV Trim)', amount: stats.stampDutyQuarters.q4, month: 'FEB' },
         ];
 
-        // Piano Mensile (Giugno - Novembre) per la visualizzazione rate
         const months = ['GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV'];
         const savingsPlan = months.map(m => {
             let amount = monthlyInstallment;
-            
-            // Aggiungi Bolli se scadono nel mese (Settembre, Novembre)
             const stamp = stampDeadlines.find(s => s.month === m);
             if (stamp) amount += stamp.amount;
-
-            // Aggiungi Tranche 2 a Novembre
             if (m === 'NOV') amount += tranche2;
-
             return { month: m, amount };
         });
 
@@ -266,9 +256,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             setIsTransactionModalOpen(false);
             setEditingTransaction(null);
             await fetchData();
-        } catch(e) {
+        } catch(e: any) {
             console.error(e);
-            alert("Errore salvataggio transazione.");
+            alert("Errore salvataggio transazione: " + e.message);
         } finally {
             setLoading(false);
         }
@@ -287,17 +277,57 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
-    const handleSaveInvoice = async (data: Partial<InvoiceInput>) => {
+    const handleSaveInvoice = async (data: InvoiceInput) => {
         if (!editingInvoice) return;
         setLoading(true);
         try {
-            await updateInvoice(editingInvoice.id, data);
+            // AUTOMAZIONE STATO: Se c'è SDI ID, diventa automaticamente SealedSDI
+            if (data.sdiId && data.sdiId.trim().length > 0) {
+                data.status = DocumentStatus.SealedSDI;
+            }
+
+            let invoiceId = editingInvoice.id;
+            let finalData = data;
+
+            if (invoiceId) {
+                await updateInvoice(invoiceId, data);
+            } else {
+                // Creazione nuova fattura
+                const res = await addInvoice(data);
+                invoiceId = res.id;
+            }
+
+            // AUTOMAZIONE TRANSAZIONE (Se Nuova Fattura e NON Bozza)
+            // Se la fattura è appena creata (non era in edit) o è diventata definitiva, e non è bozza/fantasma
+            // Generiamo la transazione di entrata corrispondente.
+            // Per evitare duplicati, lo facciamo solo se non stiamo modificando una fattura esistente (che potrebbe già averla)
+            // OPPURE se è una nuova creazione con status Pagato/Sent/Sealed/PendingSDI.
+            
+            if (!editingInvoice.id && data.status !== DocumentStatus.Draft && !data.isGhost && data.totalAmount > 0) {
+                // Creazione automatica transazione
+                const newTransaction: TransactionInput = {
+                    date: data.issueDate,
+                    description: `Incasso Fattura ${data.invoiceNumber || 'N/D'} - ${data.clientName}`,
+                    amount: data.totalAmount,
+                    type: TransactionType.Income,
+                    category: TransactionCategory.Sales,
+                    paymentMethod: data.paymentMethod,
+                    status: TransactionStatus.Completed,
+                    relatedDocumentId: invoiceId,
+                    clientName: data.clientName,
+                    isDeleted: false,
+                    allocationType: 'general' // Default
+                };
+                await addTransaction(newTransaction);
+                // Alert o feedback silenzioso? Meglio silenzioso o toast, ma qui usiamo alert standard se errore.
+            }
+            
             setIsInvoiceModalOpen(false);
             setEditingInvoice(null);
             await fetchData();
-        } catch(e) {
+        } catch(e: any) {
             console.error(e);
-            alert("Errore salvataggio fattura.");
+            alert("Errore salvataggio fattura: " + e.message);
         } finally {
             setLoading(false);
         }
@@ -332,7 +362,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 else if (activeTab === 'quotes') await deleteQuote(transactionToDelete);
                 
                 await fetchData();
-            } catch(e) { console.error(e); }
+            } catch(e: any) { 
+                console.error(e); 
+                alert("Errore eliminazione: " + e.message);
+            }
             finally { setLoading(false); setTransactionToDelete(null); }
         }
     };
@@ -343,19 +376,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     const processConversion = async () => {
         if (!quoteToConvert) return;
-        
         setLoading(true);
         try {
             const invoiceId = await convertQuoteToInvoice(quoteToConvert.id);
-            
-            // Refresh first to get the new invoice list
             await fetchData();
-            
-            // Find and open the new invoice
-            // Fetch updated list directly to ensure we have the latest
             const updatedInvoices = await getInvoices();
             const inv = updatedInvoices.find(i => i.id === invoiceId);
-            
             if (inv) {
                 setEditingInvoice(inv);
                 setIsInvoiceModalOpen(true);
@@ -369,7 +395,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
-    // --- EXPORT FUNCTIONS (Delegated to Utility) ---
     const handleExportTransactions = () => {
         exportTransactionsToExcel(transactions, invoices);
     };
@@ -378,6 +403,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         exportInvoicesToExcel(invoices);
     };
 
+    // --- RENDER ---
     return (
         <div className="animate-fade-in pb-20">
             {/* HEADER */}
@@ -394,6 +420,25 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                             if (activeTab === 'quotes') {
                                 setEditingQuote(null);
                                 setIsQuoteModalOpen(true);
+                            } else if (activeTab === 'invoices') {
+                                // Creazione Nuova Fattura (Template Vuoto)
+                                const newInv: any = {
+                                    id: '', // Empty ID signals creation
+                                    invoiceNumber: '', // Will be auto-generated or manual
+                                    issueDate: new Date().toISOString(),
+                                    dueDate: new Date().toISOString(),
+                                    clientName: '',
+                                    clientId: '',
+                                    items: [],
+                                    totalAmount: 0,
+                                    status: DocumentStatus.Draft,
+                                    paymentMethod: PaymentMethod.BankTransfer,
+                                    hasStampDuty: false,
+                                    isGhost: false,
+                                    isDeleted: false
+                                };
+                                setEditingInvoice(newInv);
+                                setIsInvoiceModalOpen(true);
                             } else {
                                 setEditingTransaction(null);
                                 setIsTransactionModalOpen(true);
@@ -401,12 +446,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         }} 
                         className="md-btn md-btn-raised md-btn-green"
                     >
-                        <PlusIcon /> {activeTab === 'quotes' ? 'Nuovo Preventivo' : 'Nuova Voce'}
+                        <PlusIcon /> 
+                        {activeTab === 'quotes' ? 'Nuovo Preventivo' : (activeTab === 'invoices' ? 'Nuova Fattura' : 'Nuova Voce')}
                     </button>
                 </div>
             </div>
 
-            {/* TABS */}
+            {/* TABS (UPDATED) */}
             <nav className="flex space-x-6 border-b border-gray-200 mb-8 overflow-x-auto">
                 {[
                     { id: 'overview', label: 'Panoramica' },
@@ -415,7 +461,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     { id: 'transactions', label: 'Transazioni' }, 
                     { id: 'invoices', label: 'Fatture' },
                     { id: 'archive', label: 'Archivio' },
-                    { id: 'quotes', label: 'Preventivi' }
+                    { id: 'quotes', label: 'Preventivi' },
+                    { id: 'fiscal_closure', label: '🔒 Chiusura Fiscale' } // NEW TAB
                 ].map(t => (
                     <button 
                         key={t.id} 
@@ -447,6 +494,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         <FinanceControlling 
                             roiSedi={roiSedi} 
                             onSelectLocation={setSelectedLocationROI} 
+                        />
+                    )}
+
+                    {activeTab === 'fiscal_closure' && (
+                        <FiscalYearManager 
+                            transactions={transactions}
+                            invoices={invoices}
                         />
                     )}
 
@@ -508,9 +562,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             )}
 
             {isInvoiceModalOpen && editingInvoice && (
-                <Modal onClose={() => setIsInvoiceModalOpen(false)} size="md">
+                <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl">
                     <InvoiceEditForm 
                         invoice={editingInvoice}
+                        clients={clients} // Added clients prop
+                        companyInfo={companyInfo} // NEW: Pass companyInfo prop
                         onSave={handleSaveInvoice}
                         onCancel={() => setIsInvoiceModalOpen(false)}
                     />

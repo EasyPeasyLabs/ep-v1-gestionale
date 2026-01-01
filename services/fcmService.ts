@@ -10,24 +10,26 @@ const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7
 const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null> => {
   if ('serviceWorker' in navigator) {
     try {
-      // FIX: Attendere che la pagina sia completamente caricata per evitare "The document is in an invalid state"
-      // Usiamo una Promise che si risolve immediatamente se 'complete', altrimenti attende 'load'.
-      if (document.readyState !== 'complete') {
+      // FIX: Check robusto sullo stato del documento
+      // Evita "Failed to register a ServiceWorker: The document is in an invalid state"
+      if (document.readyState === 'loading') {
+          // Se sta ancora caricando, aspettiamo
           await new Promise<void>((resolve) => {
-              const handler = () => {
-                  window.removeEventListener('load', handler);
-                  resolve();
-              };
-              window.addEventListener('load', handler);
+              window.addEventListener('load', () => resolve(), { once: true });
           });
       }
 
-      // FIX: Costruiamo l'URL completo usando window.location.origin per evitare mismatch di origine
+      // Costruiamo l'URL completo
       const swUrl = new URL('/firebase-messaging-sw.js', window.location.origin).href;
       
       const registration = await navigator.serviceWorker.register(swUrl);
       return registration;
     } catch (err: any) {
+      // Gestione silenziosa se l'errore è "invalid state" (può capitare in fase di unmount/reload rapido)
+      if (err.name === 'InvalidStateError' || err.message?.includes('invalid state')) {
+          console.warn('[FCM Service] Registrazione SW saltata: stato documento non valido.');
+          return null;
+      }
       console.error('[FCM Service] Errore CRITICO registrazione SW:', err);
       return null;
     }
@@ -46,7 +48,8 @@ export const requestNotificationPermission = async (userId: string): Promise<{ s
   // 2. Registrazione SW
   const registration = await registerServiceWorker();
   if (!registration) {
-      return { success: false, error: "Impossibile registrare il Service Worker. Verifica di essere su HTTPS o localhost." };
+      // Se fallisce per invalid state, non è un errore bloccante per l'uso dell'app, ma le notifiche non andranno.
+      return { success: false, error: "Service Worker non registrato (contesto non sicuro o stato non valido)." };
   }
 
   // 3. Richiesta Permesso Utente
@@ -59,7 +62,15 @@ export const requestNotificationPermission = async (userId: string): Promise<{ s
   try {
       if (!VAPID_KEY) return { success: false, error: "VAPID KEY mancante nel codice." };
 
-      const activeRegistration = registration || await navigator.serviceWorker.ready;
+      // Attendiamo che il SW sia pronto, se la registrazione è avvenuta
+      let activeRegistration = registration;
+      if (!activeRegistration.active) {
+          try {
+            activeRegistration = await navigator.serviceWorker.ready;
+          } catch (e) {
+             console.warn("[FCM] SW ready timeout, using initial registration.");
+          }
+      }
       
       const currentToken = await getToken(messaging, { 
           vapidKey: VAPID_KEY,
