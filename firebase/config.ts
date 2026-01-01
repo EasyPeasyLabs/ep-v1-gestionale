@@ -1,3 +1,4 @@
+
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -32,9 +33,11 @@ const app = initializeApp(firebaseConfig);
 // Abilitiamo la persistenza offline con la nuova API.
 // Reintroduciamo experimentalForceLongPolling: true perché l'ambiente attuale sembra bloccare i WebSockets,
 // causando il timeout "Backend didn't respond within 10 seconds".
+// Aggiungiamo ignoreUndefinedProperties: true per compatibilità con i tipi opzionali TS.
 export const db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    experimentalForceLongPolling: true
+    experimentalForceLongPolling: true,
+    ignoreUndefinedProperties: true
 });
 
 export const auth = getAuth(app);

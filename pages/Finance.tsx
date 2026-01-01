@@ -438,8 +438,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     isDeleted: false,
                     // Usa i valori Smart Link se trovati, altrimenti fallback a 'general'
                     allocationType: autoAllocationId ? 'location' : 'general',
-                    allocationId: autoAllocationId || null,
-                    allocationName: autoAllocationName || null
+                    allocationId: autoAllocationId || undefined,
+                    allocationName: autoAllocationName || undefined
                 };
                 await addTransaction(newTransaction);
             }
