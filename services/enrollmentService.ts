@@ -15,6 +15,29 @@ export const getEnrollmentsForClient = async (clientId: string): Promise<Enrollm
     return snapshot.docs.map(docToEnrollment);
 };
 
+// --- SMART LINK HELPER ---
+// Restituisce ID e Nome della sede attiva per un dato cliente (se esiste)
+// Usato per auto-allocare le fatture/transazioni extra
+export const getActiveLocationForClient = async (clientId: string): Promise<{id: string, name: string} | null> => {
+    try {
+        const enrollments = await getEnrollmentsForClient(clientId);
+        // Cerca la prima iscrizione ATTIVA che ha una sede assegnata
+        const activeEnr = enrollments.find(e => 
+            e.status === EnrollmentStatus.Active && 
+            e.locationId && 
+            e.locationId !== 'unassigned'
+        );
+        
+        if (activeEnr) {
+            return { id: activeEnr.locationId, name: activeEnr.locationName };
+        }
+        return null;
+    } catch (e) {
+        console.warn("Smart Link Error:", e);
+        return null;
+    }
+};
+
 export const getAllEnrollments = async (): Promise<Enrollment[]> => {
     const snapshot = await getDocs(enrollmentCollectionRef);
     return snapshot.docs.map(docToEnrollment);

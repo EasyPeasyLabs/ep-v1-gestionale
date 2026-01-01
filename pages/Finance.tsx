@@ -19,9 +19,9 @@ import FinanceOverview from '../components/finance/FinanceOverview';
 import FinanceCFO from '../components/finance/FinanceCFO';
 import FinanceControlling from '../components/finance/FinanceControlling';
 import FinanceListView from '../components/finance/FinanceListView';
-import FiscalYearManager from '../components/finance/FiscalYearManager'; // NEW IMPORT
+import FiscalYearManager from '../components/finance/FiscalYearManager'; 
 import LocationDetailModal from '../components/finance/LocationDetailModal';
-import { getAllEnrollments } from '../services/enrollmentService';
+import { getAllEnrollments, getActiveLocationForClient } from '../services/enrollmentService';
 import { Enrollment, PaymentMethod, TransactionStatus } from '../types';
 
 // ... (COSTANTI FISCALI e Interfacce rimangono uguali) ...
@@ -40,7 +40,7 @@ interface FinanceProps {
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
-    // ... (Stati esistenti: transactions, invoices, etc.) ...
+    
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -53,12 +53,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [targetMonthlyNet, setTargetMonthlyNet] = useState(3000);
     const [lessonPrice, setLessonPrice] = useState(25);
 
+    // Stato per l'anno di analisi del Controllo di Gestione (Default: Anno Corrente o 2025)
+    const [controllingYear, setControllingYear] = useState<number>(Math.max(2025, new Date().getFullYear()));
+
     const [isSealModalOpen, setIsSealModalOpen] = useState(false);
     const [invoiceToSeal, setInvoiceToSeal] = useState<Invoice | null>(null);
     const [sdiId, setSdiId] = useState('');
     const [filters, setFilters] = useState({ search: '' });
 
-    const [selectedLocationROI, setSelectedLocationROI] = useState<{name: string, color: string, revenue: number, costs: number} | null>(null);
+    const [selectedLocationROI, setSelectedLocationROI] = useState<{
+        name: string, 
+        color: string, 
+        revenue: number, 
+        costs: number, 
+        breakdown: { rent: number, logistics: number } 
+    } | null>(null);
 
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -95,7 +104,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     }, [fetchData, initialParams]);
 
-    // ... (handleSyncRents, stats, reverseEngineering, simulatorData, roiSedi, handlePrint, handleWhatsApp, handleSeal ... TUTTI UGUALI) ...
     const handleSyncRents = async () => {
         if(confirm("Vuoi ricalcolare i costi di affitto per tutte le sedi in base all'occupazione reale del calendario? Questa operazione potrebbe richiedere alcuni secondi.")) {
             setLoading(true);
@@ -166,7 +174,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         };
     }, [transactions, invoices]);
 
-    // ... (reverseEngineering, simulatorData, roiSedi, handlers... TUTTI UGUALI) ...
     const reverseEngineering = useMemo(() => {
         const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP);
         const netRatio = 1 - compositeTaxRate;
@@ -210,19 +217,120 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     }, [stats]);
 
     const roiSedi = useMemo(() => {
-        const data: Record<string, { name: string, color: string, revenue: number, costs: number }> = {};
+        const data: Record<string, { 
+            name: string, 
+            color: string, 
+            revenue: number, 
+            costs: number,
+            breakdown: { rent: number, logistics: number }
+        }> = {};
+        const locMap: Record<string, { distance: number }> = {};
+
+        // Init data from Suppliers
         suppliers.flatMap(s => s.locations).forEach(l => {
-            data[l.id] = { name: l.name, color: l.color, revenue: 0, costs: 0 };
+            data[l.id] = { 
+                name: l.name, 
+                color: l.color, 
+                revenue: 0, 
+                costs: 0,
+                breakdown: { rent: 0, logistics: 0 }
+            };
+            locMap[l.id] = { distance: l.distance || 0 };
         });
 
-        transactions.filter(t => !t.isDeleted && t.allocationId).forEach(t => {
+        const targetYear = controllingYear;
+
+        // 1. Transaction Costs (Rent) & Revenue - DIRECT ASSIGNMENT
+        transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === targetYear && t.allocationId).forEach(t => {
             if (data[t.allocationId!]) {
-                if (t.type === TransactionType.Income) data[t.allocationId!].revenue += t.amount;
-                else data[t.allocationId!].costs += t.amount;
+                if (t.type === TransactionType.Income) {
+                    data[t.allocationId!].revenue += t.amount;
+                } else {
+                    data[t.allocationId!].costs += t.amount;
+                    if (t.category === TransactionCategory.Rent) {
+                        data[t.allocationId!].breakdown.rent += t.amount;
+                    }
+                }
             }
         });
+
+        // 2. SHARED OVERHEAD (Pro-Quota per Volume Lezioni)
+        // Calcola volume lezioni per sede nell'anno
+        const locationLessonCounts: Record<string, number> = {};
+        let totalLessonsGlobal = 0;
+
+        enrollments.forEach(enr => {
+            if (enr.appointments) {
+                enr.appointments.forEach(app => {
+                    // Considera lezioni dell'anno target e con sede valida
+                    if (new Date(app.date).getFullYear() === targetYear && app.locationId && app.locationId !== 'unassigned') {
+                        locationLessonCounts[app.locationId] = (locationLessonCounts[app.locationId] || 0) + 1;
+                        totalLessonsGlobal++;
+                    }
+                });
+            }
+        });
+
+        // Calcola Pool Spese Generali (Esclusi Nolo, Logistica e Capitale)
+        const overheadExpenses = transactions.filter(t => 
+            !t.isDeleted && 
+            new Date(t.date).getFullYear() === targetYear &&
+            t.type === TransactionType.Expense &&
+            t.category !== TransactionCategory.Capital &&
+            t.category !== TransactionCategory.Rent && // EXCLUDE RENT (Must be specific)
+            t.category !== TransactionCategory.Fuel && // Exclude (handled by Logistics)
+            t.category !== TransactionCategory.Vehicles && // Exclude (handled by Logistics)
+            (!t.allocationId || t.allocationId === 'general') // Unallocated items
+        ).reduce((sum, t) => sum + t.amount, 0);
+
+        // Distribuisci Overhead
+        Object.keys(data).forEach(locId => {
+            if (totalLessonsGlobal > 0) {
+                const lessonCount = locationLessonCounts[locId] || 0;
+                const weight = lessonCount / totalLessonsGlobal;
+                const share = overheadExpenses * weight;
+                data[locId].costs += share;
+            }
+        });
+
+        // 3. DYNAMIC LOGISTICS CALCULATION (YTD)
+        const vehicleExpenses = transactions.filter(t => 
+            !t.isDeleted && 
+            new Date(t.date).getFullYear() === targetYear &&
+            (t.category === TransactionCategory.Fuel || t.category === TransactionCategory.Vehicles)
+        ).reduce((sum, t) => sum + t.amount, 0);
+
+        // Calcola Km Totali percorsi per tutte le sedi
+        let totalKm = 0;
+        const locationKmMap: Record<string, number> = {};
+
+        enrollments.forEach(enr => {
+            if (enr.appointments) {
+                enr.appointments.forEach(app => {
+                    if (new Date(app.date).getFullYear() === targetYear && app.locationId && app.locationId !== 'unassigned') {
+                        const loc = locMap[app.locationId];
+                        if (loc && loc.distance > 0) {
+                            const tripKm = loc.distance * 2;
+                            totalKm += tripKm;
+                            locationKmMap[app.locationId] = (locationKmMap[app.locationId] || 0) + tripKm;
+                        }
+                    }
+                });
+            }
+        });
+
+        const dynamicCostPerKm = totalKm > 0 ? vehicleExpenses / totalKm : 0;
+
+        Object.keys(locationKmMap).forEach(locId => {
+            if (data[locId]) {
+                const logisticsCost = locationKmMap[locId] * dynamicCostPerKm;
+                data[locId].costs += logisticsCost;
+                data[locId].breakdown.logistics += logisticsCost;
+            }
+        });
+
         return Object.values(data).sort((a,b) => b.revenue - a.revenue);
-    }, [suppliers, transactions]);
+    }, [suppliers, transactions, enrollments, controllingYear]);
 
     const handlePrint = async (doc: Invoice | Quote) => {
         const client = clients.find(c => c.id === doc.clientId);
@@ -298,13 +406,25 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             }
 
             // AUTOMAZIONE TRANSAZIONE (Se Nuova Fattura e NON Bozza)
-            // Se la fattura è appena creata (non era in edit) o è diventata definitiva, e non è bozza/fantasma
-            // Generiamo la transazione di entrata corrispondente.
-            // Per evitare duplicati, lo facciamo solo se non stiamo modificando una fattura esistente (che potrebbe già averla)
-            // OPPURE se è una nuova creazione con status Pagato/Sent/Sealed/PendingSDI.
-            
             if (!editingInvoice.id && data.status !== DocumentStatus.Draft && !data.isGhost && data.totalAmount > 0) {
-                // Creazione automatica transazione
+                
+                // --- SMART LINK: Auto-Allocazione Sede ---
+                let autoAllocationId = null;
+                let autoAllocationName = null;
+
+                if (data.clientId) {
+                    try {
+                        const activeLoc = await getActiveLocationForClient(data.clientId);
+                        if (activeLoc) {
+                            autoAllocationId = activeLoc.id;
+                            autoAllocationName = activeLoc.name;
+                        }
+                    } catch (e) {
+                        console.warn("Smart Link: Impossibile recuperare sede cliente", e);
+                    }
+                }
+                // -----------------------------------------
+
                 const newTransaction: TransactionInput = {
                     date: data.issueDate,
                     description: `Incasso Fattura ${data.invoiceNumber || 'N/D'} - ${data.clientName}`,
@@ -316,10 +436,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     relatedDocumentId: invoiceId,
                     clientName: data.clientName,
                     isDeleted: false,
-                    allocationType: 'general' // Default
+                    // Usa i valori Smart Link se trovati, altrimenti fallback a 'general'
+                    allocationType: autoAllocationId ? 'location' : 'general',
+                    allocationId: autoAllocationId || null,
+                    allocationName: autoAllocationName || null
                 };
                 await addTransaction(newTransaction);
-                // Alert o feedback silenzioso? Meglio silenzioso o toast, ma qui usiamo alert standard se errore.
             }
             
             setIsInvoiceModalOpen(false);
@@ -493,7 +615,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {activeTab === 'controlling' && (
                         <FinanceControlling 
                             roiSedi={roiSedi} 
-                            onSelectLocation={setSelectedLocationROI} 
+                            onSelectLocation={setSelectedLocationROI}
+                            year={controllingYear}
+                            onYearChange={setControllingYear}
                         />
                     )}
 

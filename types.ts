@@ -16,6 +16,7 @@ export enum TransactionCategory {
     Rent = 'Rent',
     Taxes = 'Taxes',
     Fuel = 'Fuel',
+    Vehicles = 'Vehicles', // NEW: RCA, Bollo, Manutenzione, Leasing
     Materials = 'Materials',
     ProfessionalServices = 'ProfessionalServices',
     Software = 'Software',
@@ -338,7 +339,9 @@ export interface CompanyInfo {
     phone: string;
     logoBase64: string;
     carFuelConsumption: number;
-    iban?: string; // New field
+    averageFuelPrice?: number;
+    // carWearAndTearCost rimosso dalla logica (diventa dinamico)
+    iban?: string; 
 }
 
 export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';

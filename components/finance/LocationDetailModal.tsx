@@ -4,7 +4,13 @@ import Chart from 'chart.js/auto';
 import Modal from '../Modal';
 
 interface LocationDetailModalProps {
-    data: { name: string, color: string, revenue: number, costs: number };
+    data: { 
+        name: string, 
+        color: string, 
+        revenue: number, 
+        costs: number, 
+        breakdown?: { rent: number, logistics: number } 
+    };
     onClose: () => void;
 }
 
@@ -13,6 +19,9 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
     const isProfitable = profit >= 0;
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     
+    // Breakdown defaults
+    const bd = data.breakdown || { rent: data.costs, logistics: 0 };
+    
     // Efficiency: Quanto rimane in tasca su 10 euro
     const pocketMoneyPer10 = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
     
@@ -20,17 +29,24 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
         if (chartRef.current) {
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
-                const chartData = isProfitable 
-                    ? [data.costs, profit] 
-                    : [data.revenue, data.costs - data.revenue]; 
+                // Se breakdown disponibile, mostriamo il dettaglio costi nel grafico se in perdita, o "Profit vs Costi" se in guadagno
+                // Per semplicità narrativa, manteniamo la logica "Dove vanno i soldi"
                 
-                const colors = isProfitable 
-                    ? ['#ef4444', '#22c55e'] // Rosso (Costi), Verde (Profitto)
-                    : ['#22c55e', '#ef4444']; // Verde (Coperto), Rosso (Scoperto)
+                let chartData = [];
+                let colors = [];
+                let labels = [];
 
-                const labels = isProfitable
-                    ? ['Affitto (Costi)', 'Tasca Tua (Profitto)']
-                    : ['Coperto da Incassi', 'Perdita (Di tasca tua)'];
+                if (isProfitable) {
+                    // Guadagno: Profitto vs Costi Totali
+                    chartData = [data.costs, profit];
+                    colors = ['#ef4444', '#22c55e'];
+                    labels = ['Spese Totali', 'Tuo Guadagno'];
+                } else {
+                    // Perdita: Entrate vs Scoperto
+                    chartData = [data.revenue, data.costs - data.revenue];
+                    colors = ['#22c55e', '#ef4444'];
+                    labels = ['Coperto', 'Perdita'];
+                }
 
                 const chart = new Chart(ctx, {
                     type: 'doughnut',
@@ -84,44 +100,51 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                         {isProfitable ? (
                             <h4 className="text-xl font-bold text-green-600">
                                 Ottimo Lavoro! <br/>
-                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. Gli studenti coprono abbondantemente l'affitto.</span>
+                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. Gli incassi coprono affitto e logistica.</span>
                             </h4>
                         ) : (
                             <h4 className="text-xl font-bold text-red-600">
                                 Attenzione: Costi Alti <br/>
-                                <span className="text-gray-600 text-base font-normal">Gli incassi attuali non bastano a coprire l'affitto. Stai usando soldi di altre sedi per mantenere questa.</span>
+                                <span className="text-gray-600 text-base font-normal">Gli incassi non coprono le spese. Stai usando risorse di altre sedi.</span>
                             </h4>
                         )}
                     </div>
 
-                    {/* 2. VISUALIZZAZIONE (LA TORTA) */}
+                    {/* 2. VISUALIZZAZIONE E BREAKDOWN */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                         <div className="h-56 relative">
                             <canvas ref={chartRef}></canvas>
-                            {/* Centro della ciambella */}
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-6">
-                                <span className="text-[10px] text-gray-400 font-bold uppercase">COSA TI RIMANE</span>
+                                <span className="text-[10px] text-gray-400 font-bold uppercase">UTILE NETTO</span>
                                 <span className={`text-2xl font-black ${isProfitable ? 'text-green-600' : 'text-red-600'}`}>
                                     {profit > 0 ? '+' : ''}{profit.toFixed(0)}€
                                 </span>
                             </div>
                         </div>
                         
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
-                                <div className="p-2 bg-green-100 rounded-full text-xl">💰</div>
-                                <div>
-                                    <p className="text-xs text-gray-500 font-bold uppercase">Totale raccolto dagli studenti</p>
-                                    <p className="text-lg font-bold text-gray-800">{data.revenue.toFixed(2)}€</p>
+                        <div className="space-y-3">
+                            <h5 className="text-xs font-bold text-gray-400 uppercase border-b pb-1 mb-2">Dettaglio Costi</h5>
+                            
+                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">🏠</span>
+                                    <span className="text-xs font-bold text-gray-600">Affitto (Real)</span>
                                 </div>
+                                <span className="font-bold text-gray-800">{bd.rent.toFixed(2)}€</span>
                             </div>
 
-                            <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-100">
-                                <div className="p-2 bg-red-100 rounded-full text-xl">🏠</div>
-                                <div>
-                                    <p className="text-xs text-gray-500 font-bold uppercase">Affitto pagato al proprietario</p>
-                                    <p className="text-lg font-bold text-gray-800">{data.costs.toFixed(2)}€</p>
+                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">🚗</span>
+                                    <span className="text-xs font-bold text-gray-600">Logistica Auto (Dinamico)</span>
                                 </div>
+                                <span className="font-bold text-gray-800">{bd.logistics.toFixed(2)}€</span>
+                            </div>
+                            <p className="text-[9px] text-gray-400 italic text-right">Include Carburante, RCA e Manutenzione ripartiti per km.</p>
+
+                            <div className="pt-2 border-t mt-2 flex justify-between text-sm">
+                                <span className="font-bold text-red-600 uppercase">Totale Uscite</span>
+                                <span className="font-black text-red-600">{data.costs.toFixed(2)}€</span>
                             </div>
                         </div>
                     </div>
@@ -135,23 +158,15 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Per ogni <strong>10€</strong> che incassi in questa sede, ne spendi <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> per l'affitto.
+                                    Per ogni <strong>10€</strong> incassati, ne spendi <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> per mantenere la sede.
                                 </span>
                             </li>
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Ti restano in tasca puliti <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€).
+                                    Ti restano in tasca <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato affitto e viaggi.
                                 </span>
                             </li>
-                            {!isProfitable && (
-                                <li className="flex gap-2 text-red-600 font-medium bg-red-50 p-2 rounded mt-2">
-                                    <span className="font-bold">!</span>
-                                    <span>
-                                        Consiglio: Devi trovare nuovi iscritti per questa sede o rinegoziare l'affitto.
-                                    </span>
-                                </li>
-                            )}
                         </ul>
                     </div>
 

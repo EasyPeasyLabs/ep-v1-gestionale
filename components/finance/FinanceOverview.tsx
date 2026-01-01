@@ -53,11 +53,44 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
             };
         } else if (type === 'costs') {
             // Costi Operativi - Doughnut per Categoria
+            
+            // FUNZIONE DI NORMALIZZAZIONE AVANZATA (Raggruppamento)
+            const normalizeCategory = (raw: string): string => {
+                const val = (raw || '').trim();
+                const lower = val.toLowerCase();
+
+                // 1. Gruppo Materiali & Cancelleria
+                if (['materials', 'materiali', 'materiali didattici', 'attrezzature', 'materiali & cancelleria'].includes(lower)) {
+                    return 'Materiali & Cancelleria';
+                }
+
+                // 2. Gruppo Carburante & Trasporti
+                if (['fuel', 'carburante', 'carburante & trasporti'].includes(lower)) {
+                    return 'Carburante & Trasporti';
+                }
+
+                // 3. Mappatura Standard Enum (Inglese -> Italiano)
+                const standardMap: Record<string, string> = {
+                    'Sales': 'Vendite / Incassi',
+                    'Rent': 'Affitto / Locazione',
+                    'Taxes': 'Tasse & Bolli',
+                    'ProfessionalServices': 'Servizi & Consulenze',
+                    'Software': 'Software & Internet',
+                    'Marketing': 'Marketing & Pubblicità',
+                    'Capital': 'Capitale / Versamenti Propri',
+                    'Other': 'Altro / Spese Bancarie'
+                };
+
+                return standardMap[val] || val;
+            };
+
             const expenses = transactions.filter(t => t.type === TransactionType.Expense && !t.isDeleted);
             const categories: Record<string, number> = {};
+            
             expenses.forEach(t => {
-                const cat = t.category || 'Altro';
-                categories[cat] = (categories[cat] || 0) + t.amount;
+                const rawCat = t.category || 'Other';
+                const label = normalizeCategory(rawCat);
+                categories[label] = (categories[label] || 0) + t.amount;
             });
             
             config = {
@@ -66,7 +99,7 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                     labels: Object.keys(categories),
                     datasets: [{
                         data: Object.values(categories),
-                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b'],
+                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b', '#10b981', '#9ca3af'],
                         borderWidth: 0,
                         hoverOffset: 10
                     }]
@@ -76,7 +109,17 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                     maintainAspectRatio: false,
                     cutout: '65%',
                     plugins: { 
-                        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } 
+                        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: (context: any) => {
+                                    const value = Number(context.raw);
+                                    const total = context.chart._metasets[context.datasetIndex].total;
+                                    const percentage = ((value / total) * 100).toFixed(1) + '%';
+                                    return ` ${context.label}: ${value.toFixed(2)}€ (${percentage})`;
+                                }
+                            }
+                        }
                     }
                 }
             };

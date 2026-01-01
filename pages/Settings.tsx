@@ -53,12 +53,8 @@ const SubscriptionStatusModal: React.FC<{
     const [date, setDate] = useState(currentConfig?.validDate || new Date().toISOString().split('T')[0]);
     const [discountType, setDiscountType] = useState<'percent' | 'fixed'>(currentConfig?.discountType || 'percent');
     const [discountValue, setDiscountValue] = useState(currentConfig?.discountValue || 0);
-    
-    // Target Arrays
     const [targetLocationIds, setTargetLocationIds] = useState<string[]>(currentConfig?.targetLocationIds || []);
     const [targetClientIds, setTargetClientIds] = useState<string[]>(currentConfig?.targetClientIds || []);
-
-    // Clients Loading for Promo
     const [clients, setClients] = useState<Client[]>([]);
     const [loadingClients, setLoadingClients] = useState(false);
     const [clientSearch, setClientSearch] = useState('');
@@ -79,22 +75,13 @@ const SubscriptionStatusModal: React.FC<{
     }, [status]);
 
     const handleSave = () => {
-        // FIX: Costruiamo l'oggetto dinamicamente per evitare valori 'undefined' che mandano in crash Firestore
         const config: SubscriptionStatusConfig = {
             status,
             targetLocationIds: status === 'promo' ? targetLocationIds : [],
             targetClientIds: status === 'promo' ? targetClientIds : []
         };
-
-        if (status !== 'active') {
-            config.validDate = date;
-        }
-
-        if (status === 'promo') {
-            config.discountType = discountType;
-            config.discountValue = discountValue;
-        }
-
+        if (status !== 'active') config.validDate = date;
+        if (status === 'promo') { config.discountType = discountType; config.discountValue = discountValue; }
         onSave(config);
         onClose();
     };
@@ -102,23 +89,14 @@ const SubscriptionStatusModal: React.FC<{
     const toggleLocation = (id: string) => setTargetLocationIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     const toggleClient = (id: string) => setTargetClientIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-    // Flatten Locations safely
     const allLocations = useMemo(() => {
         const locs: {id: string, name: string}[] = [];
-        if (suppliers) {
-            suppliers.forEach(s => {
-                if (s.locations) {
-                    s.locations.forEach(l => locs.push({id: l.id, name: l.name}));
-                }
-            });
-        }
+        if (suppliers) { suppliers.forEach(s => { if (s.locations) { s.locations.forEach(l => locs.push({id: l.id, name: l.name})); } }); }
         return locs;
     }, [suppliers]);
 
     const filteredClients = clients.filter(c => {
-        const name = c.clientType === ClientType.Parent 
-            ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
-            : (c as InstitutionalClient).companyName;
+        const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
         return (name || '').toLowerCase().includes(clientSearch.toLowerCase());
     });
 
@@ -129,332 +107,43 @@ const SubscriptionStatusModal: React.FC<{
                     <h3 className="text-lg font-bold text-gray-800">Stato Abbonamento</h3>
                     <p className="text-xs text-gray-500">Definisci disponibilità e regole promozionali.</p>
                 </div>
-                
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Status Selection */}
                     <div className="grid grid-cols-2 gap-3">
                         <button type="button" onClick={() => setStatus('active')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'active' ? 'bg-green-50 border-green-500 text-green-700 ring-1 ring-green-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Attivo</button>
                         <button type="button" onClick={() => setStatus('obsolete')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'obsolete' ? 'bg-gray-100 border-gray-500 text-gray-700 ring-1 ring-gray-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Obsoleto</button>
                         <button type="button" onClick={() => setStatus('future')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'future' ? 'bg-blue-50 border-blue-500 text-blue-700 ring-1 ring-blue-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Da Attivare</button>
                         <button type="button" onClick={() => setStatus('promo')} className={`p-3 border rounded-lg text-sm font-bold transition-all ${status === 'promo' ? 'bg-yellow-50 border-yellow-500 text-yellow-700 ring-1 ring-yellow-500' : 'bg-white text-gray-600 hover:bg-gray-50'}`}>Promo</button>
                     </div>
-
-                    {/* Dynamic Fields */}
                     <div className="bg-white border rounded-lg p-4 space-y-4 animate-fade-in">
                         {status === 'active' && <p className="text-sm text-green-600">L'abbonamento è visibile e selezionabile liberamente.</p>}
-                        
-                        {status === 'obsolete' && (
-                            <div className="md-input-group">
-                                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
-                                <label className="md-input-label !top-0">Non più selezionabile dal:</label>
-                                <p className="text-xs text-gray-400 mt-1">Le iscrizioni esistenti non verranno modificate.</p>
-                            </div>
-                        )}
-
-                        {status === 'future' && (
-                            <div className="md-input-group">
-                                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
-                                <label className="md-input-label !top-0">Disponibile a partire dal:</label>
-                            </div>
-                        )}
-
+                        {status === 'obsolete' && (<div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label !top-0">Non più selezionabile dal:</label></div>)}
+                        {status === 'future' && (<div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label !top-0">Disponibile a partire dal:</label></div>)}
                         {status === 'promo' && (
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-xs font-bold text-gray-500">Tipo Sconto</label>
-                                        <select value={discountType} onChange={e => setDiscountType(e.target.value as any)} className="md-input">
-                                            <option value="percent">Percentuale (%)</option>
-                                            <option value="fixed">Importo Fisso (€)</option>
-                                        </select>
-                                    </div>
-                                    <div className="md-input-group">
-                                        <input type="number" value={discountValue} onChange={e => setDiscountValue(Number(e.target.value))} className="md-input" placeholder=" " />
-                                        <label className="md-input-label">Valore Sconto</label>
-                                    </div>
+                                    <div><label className="text-xs font-bold text-gray-500">Tipo Sconto</label><select value={discountType} onChange={e => setDiscountType(e.target.value as any)} className="md-input"><option value="percent">Percentuale (%)</option><option value="fixed">Importo Fisso (€)</option></select></div>
+                                    <div className="md-input-group"><input type="number" value={discountValue} onChange={e => setDiscountValue(Number(e.target.value))} className="md-input" placeholder=" " /><label className="md-input-label">Valore Sconto</label></div>
                                 </div>
-                                <div className="md-input-group">
-                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
-                                    <label className="md-input-label !top-0">Valido dal:</label>
-                                </div>
-
-                                {/* Target Selectors */}
+                                <div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label !top-0">Valido dal:</label></div>
                                 <div className="border-t pt-4">
                                     <label className="text-xs font-bold text-indigo-600 uppercase mb-2 block">A) Target Sedi (Recinti)</label>
-                                    <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto mb-4">
-                                        {allLocations.map(l => (
-                                            <button 
-                                                key={l.id} 
-                                                type="button"
-                                                onClick={() => toggleLocation(l.id)}
-                                                className={`px-2 py-1 rounded border text-xs ${targetLocationIds.includes(l.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}
-                                            >
-                                                {l.name}
-                                            </button>
-                                        ))}
-                                        {allLocations.length === 0 && <span className="text-xs text-gray-400 italic">Nessuna sede configurata.</span>}
-                                    </div>
-
+                                    <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto mb-4">{allLocations.map(l => (<button key={l.id} type="button" onClick={() => toggleLocation(l.id)} className={`px-2 py-1 rounded border text-xs ${targetLocationIds.includes(l.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>{l.name}</button>))}</div>
                                     <label className="text-xs font-bold text-indigo-600 uppercase mb-2 block">B) Target Clienti</label>
-                                    {loadingClients ? <Spinner /> : (
-                                        <div className="border rounded-lg p-2">
-                                            <input type="text" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="w-full text-xs border-b pb-1 mb-2 outline-none"/>
-                                            <div className="max-h-32 overflow-y-auto space-y-1">
-                                                {filteredClients.map(c => {
-                                                    const name = c.clientType === ClientType.Parent 
-                                                        ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` 
-                                                        : (c as InstitutionalClient).companyName;
-                                                    return (
-                                                        <label key={c.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer">
-                                                            <input type="checkbox" checked={targetClientIds.includes(c.id)} onChange={() => toggleClient(c.id)} className="rounded text-indigo-600"/>
-                                                            <span className="truncate">{name}</span>
-                                                        </label>
-                                                    );
-                                                })}
-                                                {filteredClients.length === 0 && <p className="text-xs text-gray-400 text-center">Nessun cliente trovato.</p>}
-                                            </div>
-                                            <div className="mt-2 text-[10px] text-gray-400 text-right">
-                                                {targetClientIds.length} selezionati (Vuoto = Tutti)
-                                            </div>
-                                        </div>
-                                    )}
+                                    {loadingClients ? <Spinner /> : (<div className="border rounded-lg p-2"><input type="text" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="w-full text-xs border-b pb-1 mb-2 outline-none"/><div className="max-h-32 overflow-y-auto space-y-1">{filteredClients.map(c => { const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName; return (<label key={c.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={targetClientIds.includes(c.id)} onChange={() => toggleClient(c.id)} className="rounded text-indigo-600"/><span className="truncate">{name}</span></label>); })}</div></div>)}
                                 </div>
                             </div>
                         )}
                     </div>
                 </div>
-
-                <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
-                    <button type="button" onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                    <button type="button" onClick={handleSave} className="md-btn md-btn-raised md-btn-primary">Applica Stato</button>
-                </div>
+                <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0"><button type="button" onClick={onClose} className="md-btn md-btn-flat">Annulla</button><button type="button" onClick={handleSave} className="md-btn md-btn-raised md-btn-primary">Applica Stato</button></div>
             </div>
         </Modal>
     );
 };
 
-// FORM RIFATTO: Sincronizzazione via useEffect per massima stabilità
-const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { 
-    
-    // State Initialization con Default sicuri
-    const [name, setName] = useState(''); 
-    const [year, setYear] = useState('');
-    const [annotation, setAnnotation] = useState('');
-    
-    const [price, setPrice] = useState('0'); 
-    const [lessons, setLessons] = useState('0'); 
-    const [durationInDays, setDurationInDays] = useState('0');
-    
-    const [target, setTarget] = useState<'kid' | 'adult'>('kid'); 
-    const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' });
-    
-    const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
-
-    // SYNCHRONIZATION EFFECT
-    // Popola il form quando cambia la prop 'sub'.
-    useEffect(() => {
-        if (sub) {
-            const parsed = parseSubscriptionName(sub.name);
-            setName(parsed.name);
-            setYear(parsed.year);
-            setAnnotation(parsed.annotation);
-            setPrice(sub.price?.toString() || '0');
-            setLessons(sub.lessons?.toString() || '0');
-            setDurationInDays(sub.durationInDays?.toString() || '0');
-            setTarget(sub.target || 'kid');
-            setStatusConfig(sub.statusConfig || { status: 'active' });
-        } else {
-            // Reset for New
-            setName('');
-            setYear(new Date().getFullYear().toString());
-            setAnnotation('standard');
-            setPrice('0');
-            setLessons('0');
-            setDurationInDays('0');
-            setTarget('kid');
-            setStatusConfig({ status: 'active' });
-        }
-    }, [sub?.id]); // Dipendenza solo dall'ID per evitare loop se l'oggetto cambia ref
-
-    const handleSubmit = async (e: React.FormEvent) => { 
-        e.preventDefault(); 
-        
-        // Manual Validation
-        if (!name || !price || !lessons || !durationInDays) {
-            alert("Compila tutti i campi obbligatori.");
-            return;
-        }
-
-        const prefix = target === 'kid' ? 'K' : 'A';
-        const finalName = `${prefix}-${name}.${year}.${annotation}`;
-
-        const subData = { 
-            name: finalName, 
-            price: Number(price), 
-            lessons: Number(lessons), 
-            durationInDays: Number(durationInDays),
-            target,
-            statusConfig 
-        }; 
-        
-        try {
-            if (sub?.id) { 
-                await onSave({ ...subData, id: sub.id }); 
-            } else { 
-                await onSave(subData); 
-            } 
-        } catch (err) {
-            console.error(err);
-            alert("Errore durante il salvataggio.");
-        }
-    }; 
-    
-    const getStatusLabel = () => {
-        const currentStatus = statusConfig?.status || 'active';
-        switch(currentStatus) {
-            case 'active': return '🟢 Attivo';
-            case 'obsolete': return '⚫ Obsoleto';
-            case 'future': return '🔵 Da Attivare';
-            case 'promo': return '🟡 Promo';
-            default: return 'Attivo';
-        }
-    };
-
-    return ( 
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> 
-            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex justify-between items-center"> 
-                <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> 
-                
-                <button 
-                    type="button" 
-                    onClick={() => setIsStatusModalOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-bold text-gray-700 transition-colors border border-gray-300"
-                >
-                    <span>{getStatusLabel()}</span>
-                    <PencilIcon />
-                </button>
-            </div> 
-            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
-                
-                <div className="flex gap-4 mb-4">
-                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
-                        <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" />
-                        👶 Bambini (K)
-                    </label>
-                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
-                        <input type="radio" name="target" value="adult" checked={target === 'adult'} onChange={() => setTarget('adult')} className="hidden" />
-                        🧑 Adulti (A)
-                    </label>
-                </div>
-
-                <div className="flex gap-2 items-end">
-                    <div className="flex-1 md-input-group">
-                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
-                        <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label>
-                    </div>
-                    <span className="text-gray-400 pb-2">.</span>
-                    <div className="w-20 md-input-group">
-                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} className="md-input text-center" placeholder=" " autoComplete="off" />
-                        <label htmlFor="subYear" className="md-input-label">Anno</label>
-                    </div>
-                    <span className="text-gray-400 pb-2">.</span>
-                    <div className="w-24 md-input-group">
-                        <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
-                        <label htmlFor="subNote" className="md-input-label">Note</label>
-                    </div>
-                </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
-                    <div className="md-input-group">
-                        <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
-                        <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label>
-                    </div> 
-                    <div className="md-input-group">
-                        <input id="subLessons" type="number" value={lessons} onChange={e => setLessons(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
-                        <label htmlFor="subLessons" className="md-input-label">N. Lezioni</label>
-                    </div> 
-                </div> 
-                <div className="md-input-group">
-                    <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
-                    <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
-                </div> 
-                
-                <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500">
-                    Codice generato: <strong>{target === 'kid' ? 'K' : 'A'}-{name}.{year}.{annotation}</strong>
-                </div>
-
-                {statusConfig && (statusConfig.status === 'promo' || statusConfig.status === 'future') && (
-                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
-                        <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). 
-                        {statusConfig.discountValue ? ` Sconto attivo: ${statusConfig.discountValue}${statusConfig.discountType === 'percent' ? '%' : '€'}` : ''}
-                    </div>
-                )}
-            </div> 
-            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> 
-                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> 
-                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> 
-            </div> 
-
-            {isStatusModalOpen && (
-                <SubscriptionStatusModal 
-                    currentConfig={statusConfig} 
-                    suppliers={suppliers}
-                    onSave={setStatusConfig} 
-                    onClose={() => setIsStatusModalOpen(false)} 
-                />
-            )}
-        </form> 
-    ); 
-};
-
-// ... (Resto del file invariato: TemplateForm, CheckForm, Settings)
-const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
-    const [label, setLabel] = useState(template.label || '');
-    const [subject, setSubject] = useState(template.subject); 
-    const [body, setBody] = useState(template.body); 
-    const [signature, setSignature] = useState(template.signature); 
-    
-    const handleSubmit = (e: React.FormEvent) => { 
-        e.preventDefault(); 
-        onSave({ ...template, label, subject, body, signature }); 
-    }; 
-    
-    const placeholders = ['{{cliente}}', '{{fornitore}}', '{{bambino}}', '{{data}}', '{{importo}}', '{{descrizione}}']; 
-    
-    return ( 
-        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> 
-            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> 
-                <h2 className="text-xl font-bold text-gray-800">{template.id ? `Modifica Template: ${template.label}` : 'Nuovo Template'}</h2> 
-            </div> 
-            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
-                <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> 
-                    <strong>Variabili disponibili:</strong> {placeholders.join(', ')} 
-                </div> 
-                <div className="md-input-group"> 
-                    <input type="text" value={label} onChange={e => setLabel(e.target.value)} required className="md-input" placeholder=" " /> 
-                    <label className="md-input-label">Nome Template (Label)</label> 
-                </div> 
-                <div className="md-input-group"> 
-                    <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " /> 
-                    <label className="md-input-label">Oggetto / Titolo</label> 
-                </div> 
-                <div className="md-input-group"> 
-                    <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea> 
-                    <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label> 
-                </div> 
-                <div className="md-input-group"> 
-                    <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea> 
-                    <label className="text-xs text-gray-500 mt-1 block">Firma</label> 
-                </div> 
-            </div> 
-            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> 
-                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> 
-                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button> 
-            </div> 
-        </form> 
-    ); 
-};
-
+// ... (Resto dei componenti Form invariati: SubscriptionForm, TemplateForm, CheckForm)
+const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { const [name, setName] = useState(''); const [year, setYear] = useState(''); const [annotation, setAnnotation] = useState(''); const [price, setPrice] = useState('0'); const [lessons, setLessons] = useState('0'); const [durationInDays, setDurationInDays] = useState('0'); const [target, setTarget] = useState<'kid' | 'adult'>('kid'); const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' }); const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); useEffect(() => { if (sub) { const parsed = parseSubscriptionName(sub.name); setName(parsed.name); setYear(parsed.year); setAnnotation(parsed.annotation); setPrice(sub.price?.toString() || '0'); setLessons(sub.lessons?.toString() || '0'); setDurationInDays(sub.durationInDays?.toString() || '0'); setTarget(sub.target || 'kid'); setStatusConfig(sub.statusConfig || { status: 'active' }); } else { setName(''); setYear(new Date().getFullYear().toString()); setAnnotation('standard'); setPrice('0'); setLessons('0'); setDurationInDays('0'); setTarget('kid'); setStatusConfig({ status: 'active' }); } }, [sub?.id]); const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!name || !price || !lessons || !durationInDays) { alert("Compila tutti i campi obbligatori."); return; } const prefix = target === 'kid' ? 'K' : 'A'; const finalName = `${prefix}-${name}.${year}.${annotation}`; const subData = { name: finalName, price: Number(price), lessons: Number(lessons), durationInDays: Number(durationInDays), target, statusConfig }; try { if (sub?.id) { await onSave({ ...subData, id: sub.id }); } else { await onSave(subData); } } catch (err) { console.error(err); alert("Errore durante il salvataggio."); } }; const getStatusLabel = () => { const currentStatus = statusConfig?.status || 'active'; switch(currentStatus) { case 'active': return '🟢 Attivo'; case 'obsolete': return '⚫ Obsoleto'; case 'future': return '🔵 Da Attivare'; case 'promo': return '🟡 Promo'; default: return 'Attivo'; } }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex justify-between items-center"> <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> <button type="button" onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-bold text-gray-700 transition-colors border border-gray-300"> <span>{getStatusLabel()}</span> <PencilIcon /> </button> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="flex gap-4 mb-4"> <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}> <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" /> 👶 Bambini (K) </label> <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}> <input type="radio" name="target" value="adult" checked={target === 'adult'} onChange={() => setTarget('adult')} className="hidden" /> 🧑 Adulti (A) </label> </div> <div className="flex gap-2 items-end"> <div className="flex-1 md-input-group"> <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label> </div> <span className="text-gray-400 pb-2">.</span> <div className="w-20 md-input-group"> <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} className="md-input text-center" placeholder=" " autoComplete="off" /> <label htmlFor="subYear" className="md-input-label">Anno</label> </div> <span className="text-gray-400 pb-2">.</span> <div className="w-24 md-input-group"> <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subNote" className="md-input-label">Note</label> </div> </div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div className="md-input-group"> <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label> </div> <div className="md-input-group"> <input id="subLessons" type="number" value={lessons} onChange={e => setLessons(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subLessons" className="md-input-label">N. Lezioni</label> </div> </div> <div className="md-input-group"> <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label> </div> <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500"> Codice generato: <strong>{target === 'kid' ? 'K' : 'A'}-{name}.{year}.{annotation}</strong> </div> {statusConfig && (statusConfig.status === 'promo' || statusConfig.status === 'future') && ( <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800"> <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). {statusConfig.discountValue ? ` Sconto attivo: ${statusConfig.discountValue}${statusConfig.discountType === 'percent' ? '%' : '€'}` : ''} </div> )} </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> </div> {isStatusModalOpen && ( <SubscriptionStatusModal currentConfig={statusConfig} suppliers={suppliers} onSave={setStatusConfig} onClose={() => setIsStatusModalOpen(false)} /> )} </form> ); };
+const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { const [label, setLabel] = useState(template.label || ''); const [subject, setSubject] = useState(template.subject); const [body, setBody] = useState(template.body); const [signature, setSignature] = useState(template.signature); const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...template, label, subject, body, signature }); }; const placeholders = ['{{cliente}}', '{{fornitore}}', '{{bambino}}', '{{data}}', '{{importo}}', '{{descrizione}}']; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100"> <h2 className="text-xl font-bold text-gray-800">{template.id ? `Modifica Template: ${template.label}` : 'Nuovo Template'}</h2> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> <strong>Variabili disponibili:</strong> {placeholders.join(', ')} </div> <div className="md-input-group"> <input type="text" value={label} onChange={e => setLabel(e.target.value)} required className="md-input" placeholder=" " /> <label className="md-input-label">Nome Template (Label)</label> </div> <div className="md-input-group"> <input type="text" value={subject} onChange={e => setSubject(e.target.value)} required className="md-input" placeholder=" " /> <label className="md-input-label">Oggetto / Titolo</label> </div> <div className="md-input-group"> <textarea rows={6} value={body} onChange={e => setBody(e.target.value)} required className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Messaggio..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Corpo del messaggio</label> </div> <div className="md-input-group"> <textarea rows={2} value={signature} onChange={e => setSignature(e.target.value)} className="w-full p-2 border rounded text-sm bg-transparent focus:border-indigo-500" style={{borderColor: 'var(--md-divider)'}} placeholder="Firma..."></textarea> <label className="text-xs text-gray-500 mt-1 block">Firma</label> </div> </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Template</button> </div> </form> ); };
 const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); const [subCategory, setSubCategory] = useState(check?.subCategory || ''); const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); const [startTime, setStartTime] = useState(check?.startTime || '09:00'); const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); const [note, setNote] = useState(check?.note || ''); const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; const toggleDay = (day: number) => { setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; if (check?.id) onSave({ ...data, id: check.id }); else onSave(data); }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> <div className="p-6 pb-2 border-b"> <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> </div> <div className="flex-1 overflow-y-auto p-6 space-y-4"> <div className="md-input-group"> <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)} </select> <label className="md-input-label">Categoria</label> </div> <div className="md-input-group"> <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> <label className="md-input-label">Dettaglio (es. Commercialista)</label> </div> <div> <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> <div className="flex flex-wrap gap-2"> {daysMap.map((d, i) => ( <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > {d} </button> ))} </div> </div> <div className="md-input-group"> <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> <label className="md-input-label !top-0">Orario Notifica</label> </div> <div className="flex items-center gap-2 mt-2"> <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> <label className="text-sm text-gray-700">Abilita Notifica Push</label> </div> <div className="md-input-group"> <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> <label className="md-input-label">Nota / Messaggio</label> </div> </div> <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> </div> </form> ); };
 
 // --- MAIN SETTINGS COMPONENT ---
@@ -643,8 +332,14 @@ const Settings: React.FC = () => {
                             <div className="md-input-group mt-4"><input id="infoIban" type="text" value={info.iban || ''} onChange={(e) => handleInfoChange('iban', e.target.value)} className="md-input font-mono" placeholder=" " /><label htmlFor="infoIban" className="md-input-label">IBAN</label></div>
                             
                             <div className="pt-4 border-t mt-4">
-                                <h3 className="text-sm font-bold text-gray-700 mb-3">Parametri Veicolo Aziendale</h3>
-                                <div className="md-input-group"><input id="fuelCons" type="number" step="0.1" value={info.carFuelConsumption || 16.5} onChange={(e) => handleInfoChange('carFuelConsumption', parseFloat(e.target.value))} className="md-input" placeholder=" " /><label htmlFor="fuelCons" className="md-input-label">Consumo Medio (km/l)</label></div>
+                                <div className="flex justify-between items-center mb-3">
+                                    <h3 className="text-sm font-bold text-gray-700">Parametri Veicolo (Logistica)</h3>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="md-input-group"><input id="fuelCons" type="number" step="0.1" value={info.carFuelConsumption || 16.5} onChange={(e) => handleInfoChange('carFuelConsumption', parseFloat(e.target.value))} className="md-input text-sm" placeholder=" " /><label htmlFor="fuelCons" className="md-input-label !text-xs">Consumo (km/l)</label></div>
+                                    <div className="md-input-group"><input id="fuelPrice" type="number" step="0.01" value={info.averageFuelPrice || 1.80} onChange={(e) => handleInfoChange('averageFuelPrice', parseFloat(e.target.value))} className="md-input text-sm" placeholder=" " /><label htmlFor="fuelPrice" className="md-input-label !text-xs">Benzina (€/l)</label></div>
+                                </div>
+                                <p className="text-[10px] text-gray-400 mt-2 italic">Il costo usura veicolo viene calcolato dinamicamente dalle spese registrate.</p>
                             </div>
                             <div className="flex justify-end pt-4"><button onClick={handleSaveInfo} disabled={isSaving} className="md-btn md-btn-raised md-btn-primary">{isSaving ? 'Salvataggio...' : 'Salva Modifiche'}</button></div>
                         </div>

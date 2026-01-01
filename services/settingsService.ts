@@ -22,6 +22,7 @@ const defaultCompanyInfo: CompanyInfo = {
     phone: '+39 3405234353',
     logoBase64: DEFAULT_LOGO_BASE64,
     carFuelConsumption: 16.5,
+    averageFuelPrice: 1.80, 
     iban: ''
 };
 
@@ -35,6 +36,7 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
                 id: docSnap.id,
                 logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64,
                 carFuelConsumption: data.carFuelConsumption || 16.5,
+                averageFuelPrice: data.averageFuelPrice || 1.80,
                 iban: data.iban || ''
             };
         } else {
