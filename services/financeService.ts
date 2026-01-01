@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch, getDoc } from 'firebase/firestore';
 import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment } from '../types';
 import { getAllEnrollments } from './enrollmentService';
 import { getSuppliers } from './supplierService';
@@ -471,6 +471,53 @@ export const deleteQuote = async (id: string): Promise<void> => {
 export const permanentDeleteQuote = async (id: string): Promise<void> => {
     const quoteDoc = doc(db, 'quotes', id);
     await deleteDoc(quoteDoc);
+};
+
+// --- NEW: Convert Quote to Invoice ---
+export const convertQuoteToInvoice = async (quoteId: string): Promise<string> => {
+    const batch = writeBatch(db);
+    
+    // 1. Get Quote
+    const quoteRef = doc(db, 'quotes', quoteId);
+    const quoteSnap = await getDoc(quoteRef);
+    
+    if (!quoteSnap.exists()) throw new Error("Preventivo non trovato.");
+    const quote = quoteSnap.data() as Quote;
+
+    // 2. Prepare Invoice Number
+    const today = new Date().toISOString();
+    const invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, today);
+
+    // 3. Create Invoice Object
+    // Include all items and installment plan from quote
+    const invoiceData: InvoiceInput = {
+        invoiceNumber,
+        clientId: quote.clientId,
+        clientName: quote.clientName,
+        issueDate: today,
+        dueDate: quote.expiryDate, // Or today + 30
+        status: DocumentStatus.PendingSDI,
+        paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer,
+        items: quote.items,
+        installments: quote.installments,
+        totalAmount: quote.totalAmount,
+        hasStampDuty: quote.totalAmount > 77.47,
+        isGhost: false,
+        isDeleted: false,
+        notes: quote.notes,
+        relatedQuoteNumber: quote.quoteNumber
+    };
+
+    const invoiceRef = doc(collection(db, 'invoices'));
+    batch.set(invoiceRef, invoiceData);
+
+    // 4. Mark Quote as Accepted/Converted (Using status logic if implemented, or just notes)
+    // We update the status to reflect conversion. Assuming DocumentStatus has relevant fields or we reuse 'Sent'/'Paid' logic.
+    // For quotes, 'Paid' could mean 'Accepted/Converted'. Let's stick to standard types.
+    batch.update(quoteRef, { status: DocumentStatus.Sent }); // Or a specific status if available
+
+    await batch.commit();
+    return invoiceRef.id;
 };
 
 // --- CLEANUP HELPER ---

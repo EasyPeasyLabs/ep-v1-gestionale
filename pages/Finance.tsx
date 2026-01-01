@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote } from '../services/financeService';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput } from '../types';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -14,6 +14,7 @@ import PlusIcon from '../components/icons/PlusIcon';
 import RefreshIcon from '../components/icons/RestoreIcon';
 import TransactionForm from '../components/finance/TransactionForm';
 import InvoiceEditForm from '../components/finance/InvoiceEditForm';
+import QuoteForm from '../components/finance/QuoteForm';
 import FinanceOverview from '../components/finance/FinanceOverview';
 import FinanceCFO from '../components/finance/FinanceCFO';
 import FinanceControlling from '../components/finance/FinanceControlling';
@@ -63,6 +64,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+
+    const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+    const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -240,7 +244,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         if ('clientId' in item) {
             const c = clients.find(cl => cl.id === item.clientId);
             phone = c?.phone || '';
-            msg = `Gentile cliente, ti inviamo copia di cortesia della fattura emessa per l'importo da te versato di ${(item as Invoice).totalAmount}€.`;
+            msg = `Gentile cliente, le inviamo riferimento per il pagamento di ${(item as Invoice).totalAmount}€.`;
         }
         if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
         else alert("Numero non trovato.");
@@ -273,6 +277,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         if ('invoiceNumber' in item) {
             setEditingInvoice(item as Invoice);
             setIsInvoiceModalOpen(true);
+        } else if ('quoteNumber' in item) {
+            setEditingQuote(item as Quote);
+            setIsQuoteModalOpen(true);
         } else {
             setEditingTransaction(item);
             setIsTransactionModalOpen(true);
@@ -290,6 +297,22 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         } catch(e) {
             console.error(e);
             alert("Errore salvataggio fattura.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSaveQuote = async (data: QuoteInput | Quote) => {
+        setLoading(true);
+        try {
+            if ('id' in data) await updateQuote(data.id, data);
+            else await addQuote(data);
+            setIsQuoteModalOpen(false);
+            setEditingQuote(null);
+            await fetchData();
+        } catch(e) {
+            console.error(e);
+            alert("Errore salvataggio preventivo.");
         } finally {
             setLoading(false);
         }
@@ -313,6 +336,27 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
+    const handleConvertQuote = async (quote: Quote) => {
+        if (!confirm(`Convertire il preventivo ${quote.quoteNumber} in Fattura?`)) return;
+        setLoading(true);
+        try {
+            const invoiceId = await convertQuoteToInvoice(quote.id);
+            alert("Fattura generata con successo!");
+            // Apri la fattura generata per controllo
+            const inv = invoices.find(i => i.id === invoiceId) || (await getInvoices()).find(i => i.id === invoiceId);
+            if (inv) {
+                setEditingInvoice(inv);
+                setIsInvoiceModalOpen(true);
+            }
+            await fetchData();
+        } catch (e) {
+            alert("Errore durante la conversione.");
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // --- EXPORT FUNCTIONS (Delegated to Utility) ---
     const handleExportTransactions = () => {
         exportTransactionsToExcel(transactions, invoices);
@@ -333,7 +377,20 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 <div className="flex gap-3">
                     <button onClick={handleSyncRents} className="md-btn md-btn-flat bg-white border border-indigo-200 text-indigo-700 shadow-sm font-bold flex items-center gap-1 hover:bg-indigo-50"><RefreshIcon /> Sync Noli</button>
                     <button onClick={() => fetchData()} className="md-btn md-btn-flat bg-white border shadow-sm"><RefreshIcon /> Sync</button>
-                    <button onClick={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova Voce</button>
+                    <button 
+                        onClick={() => {
+                            if (activeTab === 'quotes') {
+                                setEditingQuote(null);
+                                setIsQuoteModalOpen(true);
+                            } else {
+                                setEditingTransaction(null);
+                                setIsTransactionModalOpen(true);
+                            }
+                        }} 
+                        className="md-btn md-btn-raised md-btn-green"
+                    >
+                        <PlusIcon /> {activeTab === 'quotes' ? 'Nuovo Preventivo' : 'Nuova Voce'}
+                    </button>
                 </div>
             </div>
 
@@ -397,6 +454,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                             onPrint={handlePrint}
                             onSeal={(inv) => { setInvoiceToSeal(inv); setIsSealModalOpen(true); }}
                             onWhatsApp={handleWhatsApp}
+                            onConvert={activeTab === 'quotes' ? handleConvertQuote : undefined}
                         />
                     )}
                 </div>
@@ -443,6 +501,17 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         invoice={editingInvoice}
                         onSave={handleSaveInvoice}
                         onCancel={() => setIsInvoiceModalOpen(false)}
+                    />
+                </Modal>
+            )}
+
+            {isQuoteModalOpen && (
+                <Modal onClose={() => setIsQuoteModalOpen(false)} size="lg">
+                    <QuoteForm 
+                        quote={editingQuote}
+                        clients={clients}
+                        onSave={handleSaveQuote}
+                        onCancel={() => setIsQuoteModalOpen(false)}
                     />
                 </Modal>
             )}
