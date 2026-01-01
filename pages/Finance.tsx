@@ -240,7 +240,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         if ('clientId' in item) {
             const c = clients.find(cl => cl.id === item.clientId);
             phone = c?.phone || '';
-            msg = `Gentile cliente, in allegato fattura emessa per l'importo pagato di ${(item as Invoice).totalAmount}€.`;
+            msg = `Gentile cliente, ti inviamo copia di cortesia della fattura emessa per l'importo da te versato di ${(item as Invoice).totalAmount}€.`;
         }
         if (phone) window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
         else alert("Numero non trovato.");
