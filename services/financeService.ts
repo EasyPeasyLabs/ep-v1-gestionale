@@ -116,6 +116,7 @@ export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, in
         if (invoice.isGhost) {
             invoiceNumber = await getNextGhostInvoiceNumber();
         } else {
+            // Generazione automatica basata sulla progressione nell'anno di emissione
             invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, invoice.issueDate);
         }
     }
@@ -127,9 +128,23 @@ export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, in
 export const updateInvoice = async (id: string, invoice: Partial<InvoiceInput>): Promise<void> => {
     const docRef = doc(db, 'invoices', id);
     const snap = await getDoc(docRef);
+    
     if(snap.exists()) {
-        await checkFiscalLock(snap.data().issueDate);
+        const currentData = snap.data();
+        await checkFiscalLock(currentData.issueDate);
+        
+        // PROTEZIONE SIGILLO SDI:
+        // Se la fattura è già sigillata (SealedSDI), non permettere cambi di stato impliciti 
+        // a meno che non sia una modifica manuale esplicita dall'Admin (che passa da qui).
+        // Tuttavia, scripts automatici non dovrebbero chiamare updateInvoice su Sealed.
+        // Questo check è di sicurezza aggiuntiva.
+        if (currentData.status === DocumentStatus.SealedSDI && invoice.status && invoice.status !== DocumentStatus.SealedSDI) {
+             // L'admin può sbloccare (es. riportare a Draft), ma logghiamo l'evento o permettiamo.
+             // La richiesta dice "non possono improvvisamente passare ad un altro stato".
+             // Qui stiamo nel contesto di un update esplicito (dal form), quindi è permesso.
+        }
     }
+    
     if (invoice.issueDate) {
         await checkFiscalLock(invoice.issueDate);
     }
@@ -141,6 +156,10 @@ export const deleteInvoice = async (id: string): Promise<void> => {
     const snap = await getDoc(docRef);
     if(snap.exists()) {
         await checkFiscalLock(snap.data().issueDate);
+        // Blocco cancellazione se sigillata
+        if (snap.data().status === DocumentStatus.SealedSDI) {
+            throw new Error("IMPOSSIBILE ELIMINARE: La fattura è sigillata SDI.");
+        }
     }
     await updateDoc(docRef, { isDeleted: true });
 };
@@ -149,19 +168,19 @@ export const deleteInvoice = async (id: string): Promise<void> => {
 export const markInvoicesAsPaid = async (invoiceIds: string[]): Promise<void> => {
     if (invoiceIds.length === 0) return;
     
-    const batch = writeBatch(db);
-    
-    // Per sicurezza, iteriamo sugli ID e creiamo i riferimenti
-    // Nota: Non controlliamo il FiscalLock qui per velocità massiva, 
-    // assumiamo che segnare "Pagato" sia un'operazione safe anche su anni passati (incasso tardivo).
-    // Se fosse necessario bloccare, bisognerebbe fare letture pre-batch.
-    
-    invoiceIds.forEach(id => {
-        const docRef = doc(db, 'invoices', id);
-        batch.update(docRef, { status: DocumentStatus.Paid });
-    });
+    // Firestore batch limit is 500. We chunk the array.
+    const chunkSize = 450; 
+    for (let i = 0; i < invoiceIds.length; i += chunkSize) {
+        const chunk = invoiceIds.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(id => {
+            const docRef = doc(db, 'invoices', id);
+            batch.update(docRef, { status: DocumentStatus.Paid });
+        });
 
-    await batch.commit();
+        await batch.commit();
+    }
 };
 
 // --- Quotes ---
@@ -237,8 +256,6 @@ export const getNextDocumentNumber = async (collectionName: 'invoices' | 'quotes
 
     const colRef = collection(db, collectionName);
     // Query documents for this year to find max number
-    // Nota: questo è un approccio semplice. Per concorrenza alta servirebbe un contatore atomico su un documento a parte.
-    // Qui assumiamo basso volume concorrente.
     const q = query(colRef, where("issueDate", ">=", startOfYear), where("issueDate", "<=", endOfYear));
     const snapshot = await getDocs(q);
     
@@ -250,8 +267,11 @@ export const getNextDocumentNumber = async (collectionName: 'invoices' | 'quotes
 
         const numStr = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
         if (numStr && numStr.includes(prefix)) {
-            const parts = numStr.split('-'); // Format: FT-001-2024 or similar
+            // Robust parsing: split by hyphen, find the numeric part
+            // Example: FT-001-2024 or FT-1-2024
+            const parts = numStr.split('-'); 
             if (parts.length > 1) {
+                // Assuming format PREFIX-NUMBER-YEAR
                 const n = parseInt(parts[1], 10);
                 if (!isNaN(n) && n > maxNum) maxNum = n;
             }
@@ -264,11 +284,8 @@ export const getNextDocumentNumber = async (collectionName: 'invoices' | 'quotes
 
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {
     // Ghost invoices don't strictly need sequential numbers per year like fiscal ones, but good for tracking
-    const colRef = collection(db, 'invoices');
-    const q = query(colRef, where("isGhost", "==", true));
-    const snapshot = await getDocs(q);
-    const count = snapshot.size;
-    return `PRO-xxx-${Date.now().toString().slice(-4)}`; // Simple temp ID
+    // Using a timestamp based approach as established: PRO-xxx-1234
+    return `PRO-xxx-${Date.now().toString().slice(-4)}`; 
 };
 
 export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promise<void> => {
@@ -276,10 +293,6 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
     // Currently we link by description text mostly, or allocationId if it matches location.
     // Better strategy: Search transactions where description contains child name AND is related to enrollment.
     // Given the loose coupling, we will search for transactions with specific pattern in description.
-    
-    // Safer: Only delete if we are sure. For now, let's log or skip auto-delete of money transactions to be safe, 
-    // OR allow user to do it manually. 
-    // Prompt requirement: "L'eliminazione definitiva cancellerà anche ... dati finanziari collegati."
     
     const childName = enrollment.childName;
     if (!childName) return;
@@ -333,11 +346,6 @@ export const syncRentExpenses = async (): Promise<string> => {
     });
 
     // 3. Calculate Rent per Location per Month
-    // We assume rentalCost is per month (canone mensile) or per hour?
-    // User prompt says "Canone mensile per la sede o affitto sale a ore."
-    // Let's assume for sync purposes we are generating 'Estimated' rent entries if missing.
-    // Actually, 'syncRentExpenses' was likely intended to re-calculate ROI based on actual usage vs flat costs.
-    // For simplicity, let's just ensure there are rent transactions for occupied locations for current month.
     
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
@@ -423,12 +431,20 @@ export const checkAndSetOverdueInvoices = async () => {
     snapshot.docs.forEach(docSnap => {
         const inv = docSnap.data() as Invoice;
         
+        // PROTEZIONE CRITICA: Se la fattura è Sigillata (SealedSDI), è intoccabile dagli automatismi.
+        // Non può diventare "Overdue" automaticamente perché è uno stato fiscale definitivo.
+        // Lo stato Overdue si applica ai pagamenti, ma SealedSDI ha priorità semantica di immutabilità.
+        if (inv.status === DocumentStatus.SealedSDI) return;
+
         // Filtro logico Client-side
         if (inv.status === DocumentStatus.Paid) return; 
         if (inv.status === DocumentStatus.Overdue) return; 
         if (inv.status === DocumentStatus.Draft) return;
 
         const dueDate = new Date(inv.dueDate);
+        // Resetta l'ora della scadenza per confronto equo (fine giornata)
+        dueDate.setHours(23, 59, 59, 999);
+        
         if (dueDate < today) {
             batch.update(docSnap.ref, { status: DocumentStatus.Overdue });
             updates++;

@@ -8,6 +8,7 @@ import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
 import { Transaction, Invoice, Quote, DocumentStatus, Supplier } from '../../types';
 import { updateInvoice, markInvoicesAsPaid } from '../../services/financeService';
+import Spinner from '../Spinner';
 
 // --- Icona WhatsApp ---
 const WhatsAppIcon = () => (
@@ -76,6 +77,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [statusFilter, setStatusFilter] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'number'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+    const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
     const handleSort = (key: 'date' | 'number') => {
         setSortConfig(current => ({
@@ -199,6 +201,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         if (selectedItems.length === 0) return;
         if (!confirm(`Vuoi segnare come PAGATE ${selectedItems.length} fatture?`)) return;
 
+        setIsBulkUpdating(true);
         try {
             await markInvoicesAsPaid(selectedItems);
             // Trigger update per ricaricare la lista
@@ -207,6 +210,8 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         } catch (e) {
             alert("Errore durante l'aggiornamento.");
             console.error(e);
+        } finally {
+            setIsBulkUpdating(false);
         }
     };
 
@@ -266,10 +271,15 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                             {activeTab === 'invoices' && (
                                 <button 
                                     onClick={handleBulkMarkAsPaid} 
-                                    className="md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm"
+                                    disabled={isBulkUpdating}
+                                    className={`md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm ${isBulkUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
                                     title="Segna selezionati come pagati"
                                 >
-                                    <BanknotesIcon /> Segna Pagate
+                                    {isBulkUpdating ? (
+                                        <><div className="w-3 h-3 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div> Attendere...</>
+                                    ) : (
+                                        <><BanknotesIcon /> Segna Pagate</>
+                                    )}
                                 </button>
                             )}
                             {activeTab === 'archive' && (
@@ -352,8 +362,11 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                             </button>
                                         )}
 
-                                        {/* Bottone Paga (Solo Fatture non pagate) */}
-                                        {activeTab === 'invoices' && item.status !== DocumentStatus.Paid && (
+                                        {/* Bottone Paga: Nascosto se Pagato o se in ciclo SDI (Pending/Sealed) */}
+                                        {activeTab === 'invoices' && 
+                                         item.status !== DocumentStatus.Paid && 
+                                         item.status !== DocumentStatus.PendingSDI && 
+                                         item.status !== DocumentStatus.SealedSDI && (
                                             <button 
                                                 onClick={() => handleMarkAsPaid(item)} 
                                                 className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" 

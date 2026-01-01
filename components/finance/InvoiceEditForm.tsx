@@ -303,7 +303,13 @@ const InvoiceEditForm: React.FC<{
 
                         <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Numero (Opzionale)</label>
-                            <input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} placeholder="Automatico se vuoto" className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded text-xs font-mono text-slate-700 placeholder:text-slate-300" />
+                            <input 
+                                type="text" 
+                                value={invoiceNumber} 
+                                onChange={e => setInvoiceNumber(e.target.value)} 
+                                placeholder="Automatico se vuoto" 
+                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs font-mono text-slate-800 font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-indigo-200" 
+                            />
                         </div>
                     </div>
                 </div>
