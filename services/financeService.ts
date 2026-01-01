@@ -298,19 +298,21 @@ export const getNextDocumentNumber = async (
     // Filtriamo per escludere Ghost e documenti di anni precedenti (usando il range)
     let q;
     if (collectionName === 'invoices') {
+        // FIX CHIRURGICO: Rimosso filtro isGhost e isDeleted dalla query per evitare errore indice mancante.
+        // Il filtro viene fatto in memoria.
         q = query(
             coll, 
-            where("isGhost", "==", false),
-            where("isDeleted", "==", false),
             where("issueDate", ">=", startOfYear),
             where("issueDate", "<=", endOfYear),
             orderBy('issueDate', 'desc'), 
-            limit(100) // Prende le ultime 100 dell'anno target
+            limit(100)
         );
     } else {
+        // PER PREVENTIVI (QUOTES)
+        // Rimosso filtro isDeleted per evitare errore indice mancante e per garantire
+        // che i numeri dei preventivi cancellati non vengano riutilizzati (buco sequenza preferibile a duplicato)
         q = query(
             coll, 
-            where("isDeleted", "==", false),
             where("issueDate", ">=", startOfYear),
             where("issueDate", "<=", endOfYear),
             orderBy('issueDate', 'desc'), 
@@ -324,6 +326,12 @@ export const getNextDocumentNumber = async (
     if (!snapshot.empty) {
         snapshot.docs.forEach(d => {
             const data = d.data() as any;
+            
+            // Manual Filter for Invoices to avoid Composite Index Error
+            if (collectionName === 'invoices') {
+                if (data.isGhost || data.isDeleted) return;
+            }
+
             const num = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
             
             // Verifichiamo che il numero appartenga all'anno target e segua il pattern PREFIX-YYYY-SEQ
@@ -495,26 +503,27 @@ export const convertQuoteToInvoice = async (quoteId: string): Promise<string> =>
         clientId: quote.clientId,
         clientName: quote.clientName,
         issueDate: today,
-        dueDate: quote.expiryDate, // Or today + 30
+        dueDate: quote.expiryDate || today, // Default to today if expiry missing
         status: DocumentStatus.PendingSDI,
         paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer,
-        items: quote.items,
-        installments: quote.installments,
-        totalAmount: quote.totalAmount,
-        hasStampDuty: quote.totalAmount > 77.47,
+        items: quote.items || [],
+        installments: quote.installments || [],
+        totalAmount: quote.totalAmount || 0,
+        hasStampDuty: (quote.totalAmount || 0) > 77.47,
         isGhost: false,
         isDeleted: false,
-        notes: quote.notes,
+        notes: quote.notes || '',
         relatedQuoteNumber: quote.quoteNumber
     };
 
     const invoiceRef = doc(collection(db, 'invoices'));
-    batch.set(invoiceRef, invoiceData);
+    // Use JSON.parse(JSON.stringify()) as a safety net to remove any 'undefined' fields before saving to Firestore
+    batch.set(invoiceRef, JSON.parse(JSON.stringify(invoiceData)));
 
     // 4. Mark Quote as Accepted/Converted (Using status logic if implemented, or just notes)
     // We update the status to reflect conversion. Assuming DocumentStatus has relevant fields or we reuse 'Sent'/'Paid' logic.
     // For quotes, 'Paid' could mean 'Accepted/Converted'. Let's stick to standard types.
-    batch.update(quoteRef, { status: DocumentStatus.Sent }); // Or a specific status if available
+    batch.update(quoteRef, { status: DocumentStatus.Sent }); 
 
     await batch.commit();
     return invoiceRef.id;

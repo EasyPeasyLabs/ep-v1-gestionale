@@ -67,6 +67,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
     const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+    const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -336,24 +337,35 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
     };
 
-    const handleConvertQuote = async (quote: Quote) => {
-        if (!confirm(`Convertire il preventivo ${quote.quoteNumber} in Fattura?`)) return;
+    const handleConvertQuote = (quote: Quote) => {
+        setQuoteToConvert(quote);
+    };
+
+    const processConversion = async () => {
+        if (!quoteToConvert) return;
+        
         setLoading(true);
         try {
-            const invoiceId = await convertQuoteToInvoice(quote.id);
-            alert("Fattura generata con successo!");
-            // Apri la fattura generata per controllo
-            const inv = invoices.find(i => i.id === invoiceId) || (await getInvoices()).find(i => i.id === invoiceId);
+            const invoiceId = await convertQuoteToInvoice(quoteToConvert.id);
+            
+            // Refresh first to get the new invoice list
+            await fetchData();
+            
+            // Find and open the new invoice
+            // Fetch updated list directly to ensure we have the latest
+            const updatedInvoices = await getInvoices();
+            const inv = updatedInvoices.find(i => i.id === invoiceId);
+            
             if (inv) {
                 setEditingInvoice(inv);
                 setIsInvoiceModalOpen(true);
             }
-            await fetchData();
-        } catch (e) {
-            alert("Errore durante la conversione.");
+        } catch (e: any) {
             console.error(e);
+            alert("Errore durante la conversione: " + (e.message || e));
         } finally {
             setLoading(false);
+            setQuoteToConvert(null);
         }
     };
 
@@ -523,6 +535,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 title="Elimina Voce"
                 message="Sei sicuro di voler eliminare questo elemento?"
                 isDangerous={true}
+            />
+
+            <ConfirmModal 
+                isOpen={!!quoteToConvert}
+                onClose={() => setQuoteToConvert(null)}
+                onConfirm={processConversion}
+                title="Converti in Fattura"
+                message={`Sei sicuro di voler convertire il preventivo ${quoteToConvert?.quoteNumber} in una nuova fattura?`}
+                confirmText="Sì, Converti"
             />
         </div>
     );

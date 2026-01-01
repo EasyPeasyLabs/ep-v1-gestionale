@@ -21,6 +21,13 @@ const MagicWandIcon = () => (
     </svg>
 );
 
+// --- Icona Sort ---
+const SortIcon: React.FC<{ active: boolean; direction: 'asc' | 'desc' }> = ({ active, direction }) => (
+    <span className={`ml-1 text-[10px] ${active ? 'text-indigo-600 font-bold' : 'text-slate-300'}`}>
+        {active ? (direction === 'asc' ? '▲' : '▼') : '↕'}
+    </span>
+);
+
 interface FinanceListViewProps {
     activeTab: 'transactions' | 'invoices' | 'archive' | 'quotes';
     transactions: Transaction[];
@@ -66,6 +73,14 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 }) => {
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [statusFilter, setStatusFilter] = useState('');
+    const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'number'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+
+    const handleSort = (key: 'date' | 'number') => {
+        setSortConfig(current => ({
+            key,
+            direction: current.key === key && current.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
 
     const filteredList = useMemo(() => {
         let list: any[] = [];
@@ -87,8 +102,28 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         }
         else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
         
-        return list.filter(item => (item.clientName || item.description || item.invoiceNumber || '').toLowerCase().includes(filters.search.toLowerCase()));
-    }, [activeTab, transactions, invoices, quotes, filters, statusFilter]);
+        let result = list.filter(item => (item.clientName || item.description || item.invoiceNumber || '').toLowerCase().includes(filters.search.toLowerCase()));
+
+        // Sorting Logic
+        result.sort((a, b) => {
+            let valA: any = '';
+            let valB: any = '';
+
+            if (sortConfig.key === 'date') {
+                valA = new Date(a.date || a.issueDate).getTime();
+                valB = new Date(b.date || b.issueDate).getTime();
+            } else if (sortConfig.key === 'number') {
+                valA = a.invoiceNumber || a.quoteNumber || ('id' in a ? a.id : '');
+                valB = b.invoiceNumber || b.quoteNumber || ('id' in b ? b.id : '');
+            }
+
+            if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+            if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return result;
+    }, [activeTab, transactions, invoices, quotes, filters, statusFilter, sortConfig]);
 
     // Helper per estrarre il numero documento in modo sicuro (Type Guard)
     const getDocumentNumber = (item: any) => {
@@ -222,8 +257,24 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                             <th className="px-6 py-4 w-10">
                                 <input type="checkbox" onChange={e => setSelectedItems(e.target.checked ? filteredList.map(i => i.id) : [])} checked={selectedItems.length === filteredList.length && filteredList.length > 0} />
                             </th>
-                            <th className="px-6 py-4">Data</th>
-                            <th className="px-6 py-4">Rif / ID</th>
+                            <th 
+                                className="px-6 py-4 cursor-pointer hover:bg-slate-100 hover:text-slate-600 transition-colors select-none group" 
+                                onClick={() => handleSort('date')}
+                            >
+                                <div className="flex items-center gap-1">
+                                    Data
+                                    <SortIcon active={sortConfig.key === 'date'} direction={sortConfig.direction} />
+                                </div>
+                            </th>
+                            <th 
+                                className="px-6 py-4 cursor-pointer hover:bg-slate-100 hover:text-slate-600 transition-colors select-none group" 
+                                onClick={() => handleSort('number')}
+                            >
+                                <div className="flex items-center gap-1">
+                                    Rif / ID
+                                    <SortIcon active={sortConfig.key === 'number'} direction={sortConfig.direction} />
+                                </div>
+                            </th>
                             <th className="px-6 py-4">Soggetto / Causale</th>
                             <th className="px-6 py-4 text-right">Importo</th>
                             <th className="px-6 py-4">Stato</th>
@@ -250,7 +301,16 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-1">
                                         {onConvert && (
-                                            <button onClick={() => onConvert(item)} className="md-icon-btn text-purple-600" title="Converti in Fattura">
+                                            <button 
+                                                type="button" 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    e.preventDefault();
+                                                    onConvert(item);
+                                                }} 
+                                                className="md-icon-btn text-purple-600" 
+                                                title="Converti in Fattura"
+                                            >
                                                 <MagicWandIcon />
                                             </button>
                                         )}

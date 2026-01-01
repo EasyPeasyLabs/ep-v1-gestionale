@@ -46,7 +46,8 @@ const InvoiceEditForm: React.FC<{
             invoiceNumber,
             totalAmount,
             items,
-            sdiId: invoice.status === DocumentStatus.SealedSDI ? sdiId : invoice.sdiId,
+            // FIX: Assicura che sdiId non sia mai undefined. Se manca, usa stringa vuota.
+            sdiId: invoice.status === DocumentStatus.SealedSDI ? sdiId : (invoice.sdiId || ''),
             issueDate: new Date(issueDate).toISOString(),
             dueDate: new Date(dueDate).toISOString(),
             paymentMethod,
