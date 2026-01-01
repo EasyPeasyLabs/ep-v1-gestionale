@@ -127,6 +127,7 @@ const InvoiceEditForm: React.FC<{
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
         const dataToSave: InvoiceInput = {
             invoiceNumber,
             issueDate: new Date(issueDate).toISOString(),
@@ -145,6 +146,12 @@ const InvoiceEditForm: React.FC<{
             isGhost: invoice.isGhost,
             isDeleted: invoice.isDeleted
         };
+
+        // AUTOMAZIONE: Se SDI è presente, forza lo stato a SealedSDI
+        if (sdiId && sdiId.trim().length > 0) {
+            dataToSave.status = DocumentStatus.SealedSDI;
+        }
+
         onSave(dataToSave);
     };
 
@@ -404,6 +411,7 @@ const InvoiceEditForm: React.FC<{
                         <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Codice SDI / PEC</label>
                             <input type="text" value={sdiId} onChange={e => setSdiId(e.target.value)} placeholder="0000000" className="w-full bg-white border border-slate-200 rounded p-1.5 text-xs font-mono" />
+                            <p className="text-[9px] text-slate-400 mt-1 italic">Inserendo un valore qui, la fattura verrà salvata automaticamente come "Sigillata SDI".</p>
                         </div>
                     </div>
 

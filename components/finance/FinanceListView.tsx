@@ -376,7 +376,19 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                             </button>
                                         )}
 
-                                        {item.status === 'PendingSDI' && onSeal && <button onClick={() => onSeal(item)} className="md-icon-btn text-indigo-600" title="Sigilla SDI"><DocumentCheckIcon /></button>}
+                                        {/* Bottone SIGILLA: Se in Attesa (PendingSDI) O se ha SDI ID ma non ancora Sigillata */}
+                                        {onSeal && (item.status === DocumentStatus.PendingSDI || (item.sdiId && item.status !== DocumentStatus.SealedSDI)) && (
+                                            <button 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onSeal(item);
+                                                }} 
+                                                className="md-icon-btn text-indigo-600 hover:bg-indigo-50" 
+                                                title={item.sdiId ? "SDI Presente: Sigilla Ora" : "Inserisci SDI e Sigilla"}
+                                            >
+                                                <DocumentCheckIcon />
+                                            </button>
+                                        )}
                                         
                                         <button onClick={() => onWhatsApp(item)} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
                                         

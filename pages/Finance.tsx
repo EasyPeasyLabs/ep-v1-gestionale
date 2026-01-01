@@ -518,7 +518,35 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                             onEdit={handleEditItem}
                             onDelete={handleDelete}
                             onPrint={handlePrint}
-                            onSeal={(inv) => { setInvoiceToSeal(inv); setIsSealModalOpen(true); }}
+                            onSeal={async (inv) => { 
+                                // Robust check: ensure sdiId is treated as string
+                                const safeSdi = inv.sdiId ? String(inv.sdiId).trim() : '';
+                                
+                                if (safeSdi.length > 0) {
+                                    // Immediate Seal logic
+                                    if(confirm(`Codice SDI presente (${safeSdi}). Confermi il sigillo fiscale?`)) {
+                                        setLoading(true);
+                                        try {
+                                            await updateInvoice(inv.id, { status: DocumentStatus.SealedSDI });
+                                            // No need to call fetchData here if we rely on the event listener, 
+                                            // but Finance.tsx has 'EP_DataUpdated' listener which calls fetchData.
+                                            // However, to be safe and sequential:
+                                            await fetchData();
+                                            window.dispatchEvent(new Event('EP_DataUpdated'));
+                                        } catch (e) {
+                                            console.error(e);
+                                            alert("Errore durante il sigillo.");
+                                        } finally {
+                                            setLoading(false);
+                                        }
+                                    }
+                                } else {
+                                    // Open Modal
+                                    setInvoiceToSeal(inv); 
+                                    setSdiId('');
+                                    setIsSealModalOpen(true); 
+                                }
+                            }}
                             onWhatsApp={handleWhatsApp}
                             onConvert={activeTab === 'quotes' ? handleConvertQuote : undefined}
                         />
