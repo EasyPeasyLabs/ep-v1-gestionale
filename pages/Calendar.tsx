@@ -13,17 +13,17 @@ import LessonForm from '../components/calendar/LessonForm';
 
 // --- Types for Calendar Logic ---
 interface CalendarCluster {
-    id: string; // Unique key for React list (Lesson ID for manual, Composite for standard)
+    id: string; // Unique key for React list
     date: string;
     startTime: string;
     endTime: string;
     locationName: string;
     locationColor: string;
-    count: number; // Numero totale cartellini
-    isManual?: boolean; // Per distinguere lezioni extra manuali
-    title?: string; // Per lezioni manuali
-    description?: string; // Extra
-    childNames?: string; // Extra (Stringa composta per visualizzazione)
+    count: number; // Numero studenti (se manuale)
+    isManual?: boolean; 
+    title?: string;
+    description?: string; 
+    childNames?: string; 
 }
 
 const Calendar: React.FC = () => {
@@ -67,7 +67,7 @@ const Calendar: React.FC = () => {
                 });
             });
 
-            // 1. Process Enrollments (Cartellini)
+            // 1. Process Enrollments (Cartellini) -> Raggruppati per Lezione (TimeSlot)
             enrollments.forEach(enr => {
                 if (enr.appointments && enr.appointments.length > 0) {
                     enr.appointments.forEach(app => {
@@ -93,7 +93,7 @@ const Calendar: React.FC = () => {
                                 endTime: app.endTime,
                                 locationName: locName,
                                 locationColor: locColor,
-                                count: 0
+                                count: 0 // Will increment per student
                             });
                         }
 
@@ -110,15 +110,18 @@ const Calendar: React.FC = () => {
                 const dateKey = ml.date.split('T')[0];
                 const key = ml.id; 
                 
-                // Generazione stringa nomi: se c'è l'array attendees, usalo. Altrimenti fallback a childName legacy.
+                // Generazione stringa nomi
                 let displayNames = '';
+                let attendeeCount = 0;
                 if (ml.attendees && ml.attendees.length > 0) {
                     displayNames = ml.attendees.map(a => a.childName).join(', ');
+                    attendeeCount = ml.attendees.length;
                     if (ml.attendees.length > 2) {
                         displayNames = `${ml.attendees[0].childName} +${ml.attendees.length - 1}`;
                     }
                 } else {
                     displayNames = ml.childName || '';
+                    if (displayNames) attendeeCount = 1;
                 }
 
                 clusterMap.set(key, {
@@ -128,7 +131,7 @@ const Calendar: React.FC = () => {
                     endTime: ml.endTime,
                     locationName: ml.locationName,
                     locationColor: ml.locationColor || '#94a3b8',
-                    count: 0, 
+                    count: attendeeCount, 
                     isManual: true,
                     title: 'EXTRA',
                     description: ml.description,
@@ -280,7 +283,7 @@ const Calendar: React.FC = () => {
                                                 onClick={() => isManual && handleEditManual(event.id)}
                                                 className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center ${isManual ? 'cursor-pointer hover:opacity-80 ring-1 ring-black/10' : ''}`}
                                                 style={{ backgroundColor: event.locationColor, color: textColor }}
-                                                title={isManual ? `${event.description || 'Extra'} - ${event.childNames || ''}` : undefined}
+                                                title={isManual ? `${event.description || 'Extra'} - ${event.childNames || ''}` : `${event.count} Allievi`}
                                              >
                                                  {/* Label */}
                                                  <span className="truncate mr-1 flex-1">
@@ -295,13 +298,11 @@ const Calendar: React.FC = () => {
                                                          <>{locPrefix} {event.startTime}</>
                                                      )}
                                                  </span>
-                                                 {/* Counter or Time */}
-                                                 {!isManual ? (
-                                                     <span className="bg-white/30 px-1 rounded text-[9px] min-w-[1.2em] text-center flex-shrink-0">
+                                                 {/* Counter (Solo Manuale o Nascosto per lezioni standard per evitare confusione) */}
+                                                 {isManual && event.count > 1 && (
+                                                     <span className="bg-white/30 px-1 rounded text-[9px] min-w-[1.2em] text-center flex-shrink-0" title="Partecipanti">
                                                          {event.count}
                                                      </span>
-                                                 ) : (
-                                                     <span className="text-[9px] opacity-80 flex-shrink-0">{event.startTime}</span>
                                                  )}
                                              </div>
                                          );

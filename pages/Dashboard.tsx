@@ -6,7 +6,7 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getLessons } from '../services/calendarService'; 
 import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, Page } from '../types';
+import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
@@ -125,8 +125,10 @@ interface LocationOccupancy {
     endTime: string;
     color: string;
     capacity: number;
-    occupied: number;
+    occupied: number; // Saturazione Complessiva
     occupancyPercent: number;
+    locationAverage: number; // Saturazione Media Sede (Assoluta)
+    locationAveragePercent: number; // Saturazione Media Sede (%)
 }
 
 interface DashboardProps {
@@ -136,15 +138,20 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'ratings'>('overview');
   const [loading, setLoading] = useState(true);
+  
+  // Data States
   const [clientsData, setClientsData] = useState<any[]>([]);
   const [suppliersData, setSuppliersData] = useState<any[]>([]);
+  const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
+  const [manualLessonsData, setManualLessonsData] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   
+  // Stats States
   const [clientCount, setClientCount] = useState(0);
   const [activeClientCount, setActiveClientCount] = useState(0);
   const [supplierCount, setSupplierCount] = useState(0);
   const [activeSupplierCount, setActiveSupplierCount] = useState(0);
   const [lessonsThisMonth, setLessonsThisMonth] = useState(0);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   
   // Top 5 Tab State
   const [top5Tab, setTop5Tab] = useState<'clients' | 'suppliers'>('clients');
@@ -152,8 +159,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   // Weekly Calendar Data
   const [weekDays, setWeekDays] = useState<{date: Date, count: number, dayName: string}[]>([]);
   
-  // Occupazione Sedi Dettagliata
-  const [locationOccupancy, setLocationOccupancy] = useState<LocationOccupancy[]>([]);
+  // Saturazione Aule - Anno Filter
+  const [saturationYear, setSaturationYear] = useState<number>(new Date().getFullYear());
 
   const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
 
@@ -173,11 +180,14 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         
         setClientsData(clients);
         setSuppliersData(suppliers);
-        setClientCount(clients.length);
-        setSupplierCount(suppliers.length);
+        setAllEnrollments(enrollments);
+        setManualLessonsData(manualLessons);
         setNotifications(notifs);
 
-        // 1. Calcolo Clienti e Fornitori Attivi
+        setClientCount(clients.length);
+        setSupplierCount(suppliers.length);
+
+        // 1. Calcolo Clienti e Fornitori Attivi (Stato Corrente)
         const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
         
         const activeClientIds = new Set(activeOrPendingEnrollments.map(e => e.clientId));
@@ -187,8 +197,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setActiveSupplierCount(activeSupplierIds.size);
 
         // 2. Calcolo Lezioni Erogate (Mese Corrente)
-        // Conta SOLO le lezioni delle iscrizioni attive.
-        // Ignora le lezioni manuali "extra" che non hanno allievi, per coerenza con lo stato "0 iscrizioni = 0 lezioni".
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -207,63 +215,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         
         setLessonsThisMonth(lessonsCount);
 
-        // 3. Calcolo Occupazione Dettagliata (Saturazione)
-        const slotsMap: Record<string, LocationOccupancy> = {};
-
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                if(l.availability && l.availability.length > 0) {
-                    l.availability.forEach(slot => {
-                        const key = `${l.id}-${slot.dayOfWeek}-${slot.startTime}`;
-                        slotsMap[key] = {
-                            key,
-                            locationName: l.name,
-                            dayIndex: slot.dayOfWeek,
-                            dayName: daysMap[slot.dayOfWeek].substring(0, 3), 
-                            startTime: slot.startTime,
-                            endTime: slot.endTime,
-                            color: l.color || '#ccc',
-                            capacity: l.capacity || 0,
-                            occupied: 0,
-                            occupancyPercent: 0
-                        };
-                    });
-                }
-            });
-        });
-
-        activeOrPendingEnrollments.forEach(enr => {
-            if(enr.appointments && enr.appointments.length > 0) {
-                const firstApp = enr.appointments[0];
-                const firstDate = new Date(firstApp.date);
-                const dayOfWeek = firstDate.getDay();
-                const startTime = firstApp.startTime;
-                
-                const key = `${enr.locationId}-${dayOfWeek}-${startTime}`;
-                
-                if(slotsMap[key]) {
-                    slotsMap[key].occupied += 1;
-                }
-            }
-        });
-
-        const occupancyList = Object.values(slotsMap).map(slot => {
-            const percent = slot.capacity > 0 ? Math.round((slot.occupied / slot.capacity) * 100) : 0;
-            return { ...slot, occupancyPercent: percent };
-        });
-
-        occupancyList.sort((a, b) => {
-            const dayA = a.dayIndex === 0 ? 7 : a.dayIndex;
-            const dayB = b.dayIndex === 0 ? 7 : b.dayIndex;
-            if (dayA !== dayB) return dayA - dayB;
-            if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
-            return a.locationName.localeCompare(b.locationName);
-        });
-
-        setLocationOccupancy(occupancyList);
-
-
-        // 4. Calendario Settimanale
+        // 3. Calendario Settimanale
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); 
@@ -289,7 +241,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 }
             });
             
-            // Manual lessons are counted in weekly overview as they occupy slots
             manualLessons.forEach(ml => {
                 if(new Date(ml.date).toDateString() === currentDay.toDateString()) {
                     dayLessonCount++;
@@ -319,8 +270,114 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
   }, []);
 
-  // --- Rating Calculations ---
+  // --- Saturation Logic (Reactive to Year) ---
+  const locationOccupancy = useMemo(() => {
+      const slotsMap: Record<string, LocationOccupancy> = {};
+
+      // 1. Inizializza Slot dai Fornitori (Skeleton)
+      suppliersData.forEach(s => {
+          s.locations.forEach((l: any) => {
+              if(l.availability && l.availability.length > 0) {
+                  l.availability.forEach((slot: any) => {
+                      const key = `${l.id}-${slot.dayOfWeek}-${slot.startTime}`;
+                      slotsMap[key] = {
+                          key,
+                          locationName: l.name,
+                          dayIndex: slot.dayOfWeek,
+                          dayName: daysMap[slot.dayOfWeek].substring(0, 3), 
+                          startTime: slot.startTime,
+                          endTime: slot.endTime,
+                          color: l.color || '#ccc',
+                          capacity: l.capacity || 0,
+                          occupied: 0,
+                          occupancyPercent: 0,
+                          locationAverage: 0,
+                          locationAveragePercent: 0
+                      };
+                  });
+              }
+          });
+      });
+
+      // 2. Popola Occupazione (Filtra per Anno)
+      const activeOrPending = allEnrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
+      
+      activeOrPending.forEach(enr => {
+          if(enr.appointments) {
+              // Set per evitare di contare lo stesso studente più volte nello stesso slot (es. 52 Lunedì)
+              const processedSlotsForStudent = new Set<string>();
+
+              enr.appointments.forEach(app => {
+                  const appDate = new Date(app.date);
+                  // FILTRO FONDAMENTALE: Conta solo se la lezione è nell'anno selezionato
+                  if (appDate.getFullYear() === saturationYear) {
+                      const dayOfWeek = appDate.getDay();
+                      const key = `${enr.locationId}-${dayOfWeek}-${app.startTime}`;
+                      
+                      // Conta solo una volta per studente per slot (Media settimanale)
+                      if (!processedSlotsForStudent.has(key)) {
+                          if (slotsMap[key]) {
+                              slotsMap[key].occupied += 1;
+                          }
+                          processedSlotsForStudent.add(key);
+                      }
+                  }
+              });
+          }
+      });
+
+      // 3. Calcolo Medie per Sede
+      const locationStats: Record<string, { totalOccupied: number, slotCount: number }> = {};
+      Object.values(slotsMap).forEach(slot => {
+          if (!locationStats[slot.locationName]) {
+              locationStats[slot.locationName] = { totalOccupied: 0, slotCount: 0 };
+          }
+          locationStats[slot.locationName].totalOccupied += slot.occupied;
+          locationStats[slot.locationName].slotCount += 1;
+      });
+
+      const occupancyList = Object.values(slotsMap).map(slot => {
+          const percent = slot.capacity > 0 ? Math.round((slot.occupied / slot.capacity) * 100) : 0;
+          const stats = locationStats[slot.locationName];
+          const avg = stats && stats.slotCount > 0 ? stats.totalOccupied / stats.slotCount : 0;
+          const avgPercent = slot.capacity > 0 ? Math.round((avg / slot.capacity) * 100) : 0;
+
+          return { 
+              ...slot, 
+              occupancyPercent: percent,
+              locationAverage: avg,
+              locationAveragePercent: avgPercent
+          };
+      });
+
+      occupancyList.sort((a, b) => {
+          const dayA = a.dayIndex === 0 ? 7 : a.dayIndex;
+          const dayB = b.dayIndex === 0 ? 7 : b.dayIndex;
+          if (dayA !== dayB) return dayA - dayB;
+          if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
+          return a.locationName.localeCompare(b.locationName);
+      });
+
+      return occupancyList;
+  }, [allEnrollments, suppliersData, saturationYear]);
+
+  // Handler scroll to Alerts
+  const scrollToAlerts = () => {
+      const element = document.getElementById('alerts-section');
+      if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+  };
+
+  // Genera anni disponibili per filtro (Corrente +/- 1)
+  const availableYears = useMemo(() => {
+      const cy = new Date().getFullYear();
+      return [cy - 1, cy, cy + 1];
+  }, []);
+
+  // --- Rating Calculations (Memoized) ---
   const ratings = useMemo(() => {
+      // (Codice Rating invariato...)
       // Parents
       let pCount = 0;
       let pSums = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
@@ -387,13 +444,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           }
       });
 
-      // Averages
       const pAvg = pCount > 0 ? (pSums.availability + pSums.complaints + pSums.churnRate + pSums.distance) / (pCount * 4) : 0;
       const cAvg = cCount > 0 ? (cSums.learning + cSums.behavior + cSums.attendance + cSums.hygiene) / (cCount * 4) : 0;
       const sAvg = sCount > 0 ? (sSums.responsiveness + sSums.partnership + sSums.negotiation) / (sCount * 3) : 0;
       const lAvg = lCount > 0 ? Object.values(lSums).reduce((a, b) => a + b, 0) / (lCount * 9) : 0;
 
-      // Summaries Logic
+      // Summaries
       let pSummary = "";
       if (pCount > 0) {
           const avgComplaints = pSums.complaints / pCount;
@@ -408,7 +464,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           const avgLearning = cSums.learning / cCount;
           const avgAttendance = cSums.attendance / cCount;
           const avgBehavior = cSums.behavior / cCount;
-          
           if (avgLearning > 3.5 && avgAttendance < 3) cSummary = "Bravi ma con troppe assenze.";
           else if (avgBehavior < 3) cSummary = "Richiesta attenzione disciplinare.";
           else if (avgLearning > 4) cSummary = "Gruppo allievi eccellente.";
@@ -419,7 +474,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       if (sCount > 0) {
           const avgNegotiation = sSums.negotiation / sCount;
           const avgResponse = sSums.responsiveness / sCount;
-          
           if (avgNegotiation < 2.5) sSummary = "Prezzi rigidi, poco trattabili.";
           else if (avgResponse > 4) sSummary = "Partner strategici e reattivi.";
           else sSummary = "Fornitori affidabili.";
@@ -428,8 +482,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       let lSummary = "";
       if (lCount > 0) {
           const avgEnv = lSums.environment / lCount;
-          const avgCost = lSums.cost / lCount; // 1=Expensive, 5=Cheap
-          
+          const avgCost = lSums.cost / lCount; 
           if (avgEnv > 3.5 && avgCost < 2.5) lSummary = "Sedi belle ma costose.";
           else if (avgCost > 4) lSummary = "Sedi molto economiche.";
           else if (avgEnv < 3) lSummary = "Ambienti da migliorare.";
@@ -437,93 +490,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       }
 
       return {
-          parents: {
-              avg: pAvg,
-              count: pCount,
-              details: [
-                  { label: 'Disponibilità variazioni', value: pCount ? pSums.availability / pCount : 0 },
-                  { label: 'Atteggiamento', value: pCount ? pSums.complaints / pCount : 0 },
-                  { label: 'Costanza Iscrizioni', value: pCount ? pSums.churnRate / pCount : 0 },
-                  { label: 'Mobilità', value: pCount ? pSums.distance / pCount : 0 },
-              ],
-              summary: pSummary
-          },
-          children: {
-              avg: cAvg,
-              count: cCount,
-              details: [
-                  { label: 'Apprendimento', value: cCount ? cSums.learning / cCount : 0 },
-                  { label: 'Condotta', value: cCount ? cSums.behavior / cCount : 0 },
-                  { label: 'Assenze', value: cCount ? cSums.attendance / cCount : 0 },
-                  { label: 'Igiene/Salute', value: cCount ? cSums.hygiene / cCount : 0 },
-              ],
-              summary: cSummary
-          },
-          suppliers: {
-              avg: sAvg,
-              count: sCount,
-              details: [
-                  { label: 'Reattività', value: sCount ? sSums.responsiveness / sCount : 0 },
-                  { label: 'Partnership', value: sCount ? sSums.partnership / sCount : 0 },
-                  { label: 'Flessibilità', value: sCount ? sSums.negotiation / sCount : 0 },
-              ],
-              summary: sSummary
-          },
-          locations: {
-              avg: lAvg,
-              count: lCount,
-              details: [
-                  { label: 'Economicità', value: lCount ? lSums.cost / lCount : 0 },
-                  { label: 'Sicurezza (Norma)', value: lCount ? lSums.safety / lCount : 0 },
-                  { label: 'Ambiente/Luce', value: lCount ? lSums.environment / lCount : 0 },
-                  { label: 'Disponibilità Slot', value: lCount ? lSums.availability / lCount : 0 },
-                  { label: 'Vicinanza', value: lCount ? lSums.distance / lCount : 0 },
-              ],
-              summary: lSummary
-          }
+          parents: { avg: pAvg, count: pCount, details: [ { label: 'Disponibilità variazioni', value: pCount ? pSums.availability / pCount : 0 }, { label: 'Atteggiamento', value: pCount ? pSums.complaints / pCount : 0 }, { label: 'Costanza Iscrizioni', value: pCount ? pSums.churnRate / pCount : 0 }, { label: 'Mobilità', value: pCount ? pSums.distance / pCount : 0 }, ], summary: pSummary },
+          children: { avg: cAvg, count: cCount, details: [ { label: 'Apprendimento', value: cCount ? cSums.learning / cCount : 0 }, { label: 'Condotta', value: cCount ? cSums.behavior / cCount : 0 }, { label: 'Assenze', value: cCount ? cSums.attendance / cCount : 0 }, { label: 'Igiene/Salute', value: cCount ? cSums.hygiene / cCount : 0 }, ], summary: cSummary },
+          suppliers: { avg: sAvg, count: sCount, details: [ { label: 'Reattività', value: sCount ? sSums.responsiveness / sCount : 0 }, { label: 'Partnership', value: sCount ? sSums.partnership / sCount : 0 }, { label: 'Flessibilità', value: sCount ? sSums.negotiation / sCount : 0 }, ], summary: sSummary },
+          locations: { avg: lAvg, count: lCount, details: [ { label: 'Economicità', value: lCount ? lSums.cost / lCount : 0 }, { label: 'Sicurezza (Norma)', value: lCount ? lSums.safety / lCount : 0 }, { label: 'Ambiente/Luce', value: lCount ? lSums.environment / lCount : 0 }, { label: 'Disponibilità Slot', value: lCount ? lSums.availability / lCount : 0 }, { label: 'Vicinanza', value: lCount ? lSums.distance / lCount : 0 }, ], summary: lSummary }
       };
   }, [clientsData, suppliersData]);
 
   // --- Top 5 Calculation ---
   const topFiveData = useMemo(() => {
-      // Parents
-      const parents = clientsData
-          .filter(c => c.clientType === ClientType.Parent)
-          .map(c => {
-              const p = c as ParentClient;
-              const r = p.rating || { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
-              const avg = (r.availability + r.complaints + r.churnRate + r.distance) / 4;
-              return { id: p.id, name: `${p.firstName} ${p.lastName}`, score: avg };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5);
-
-      // Suppliers - UPDATED: Include Automatic Fuel Rating from Locations
-      const suppliers = suppliersData
-          .map(s => {
-              const r = s.rating || { responsiveness: 0, partnership: 0, negotiation: 0 };
-              
-              // Calcolo Rating Automatico Carburante
-              let fuelRatingSum = 0;
-              let locCount = 0;
-              if (s.locations && s.locations.length > 0) {
-                  s.locations.forEach((l: any) => {
-                      fuelRatingSum += calculateFuelRating(l.distance || 0);
-                      locCount++;
-                  });
-              }
-              const avgFuelRating = locCount > 0 ? fuelRatingSum / locCount : 0;
-
-              // Calcolo Media Ponderata (Se non ci sono sedi, usiamo solo i 3 manuali)
-              const divisor = locCount > 0 ? 4 : 3;
-              const sum = r.responsiveness + r.partnership + r.negotiation + avgFuelRating;
-              const avg = sum / divisor;
-
-              return { id: s.id, name: s.companyName, score: avg };
-          })
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5);
-
+      // (Codice invariato...)
+      const parents = clientsData.filter(c => c.clientType === ClientType.Parent).map(c => { const p = c as ParentClient; const r = p.rating || { availability: 0, complaints: 0, churnRate: 0, distance: 0 }; const avg = (r.availability + r.complaints + r.churnRate + r.distance) / 4; return { id: p.id, name: `${p.firstName} ${p.lastName}`, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
+      const suppliers = suppliersData.map(s => { const r = s.rating || { responsiveness: 0, partnership: 0, negotiation: 0 }; let fuelRatingSum = 0; let locCount = 0; if (s.locations && s.locations.length > 0) { s.locations.forEach((l: any) => { fuelRatingSum += calculateFuelRating(l.distance || 0); locCount++; }); } const avgFuelRating = locCount > 0 ? fuelRatingSum / locCount : 0; const divisor = locCount > 0 ? 4 : 3; const sum = r.responsiveness + r.partnership + r.negotiation + avgFuelRating; const avg = sum / divisor; return { id: s.id, name: s.companyName, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
       return { parents, suppliers };
   }, [clientsData, suppliersData]);
 
@@ -616,9 +594,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         title="Azioni Richieste" 
                         value={notifications.length}
                         subtext={notifications.length > 0 ? "Richiedono attenzione" : "Tutto in ordine"}
-                        onClick={() => {
-                            // Scroll to alerts or open notifs
-                        }}
+                        onClick={scrollToAlerts}
                         icon={<ExclamationIcon />}
                         colorClass={notifications.length > 0 ? "bg-amber-50 text-amber-600" : "bg-gray-50 text-gray-400"}
                     />
@@ -651,11 +627,26 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         </div>
                     </div>
 
-                    {/* COL 2: Saturazione */}
+                    {/* COL 2: Saturazione Aule (UPDATED) */}
                     <div className="md-card p-6 flex flex-col border-t-4 border-pink-500">
-                        <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                            Saturazione Aule
-                        </h2>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                Saturazione Aule
+                            </h2>
+                            <div className="flex items-center gap-2">
+                                <select 
+                                    value={saturationYear} 
+                                    onChange={(e) => setSaturationYear(Number(e.target.value))} 
+                                    className="text-[10px] font-bold bg-white border border-gray-300 rounded px-2 py-1 outline-none cursor-pointer text-gray-700"
+                                >
+                                    {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wide flex gap-2">
+                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-500"></span> Reale</span>
+                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300"></span> Media</span>
+                                </div>
+                            </div>
+                        </div>
                         
                         <div className="flex-1 overflow-y-auto max-h-80 pr-2 space-y-5 custom-scrollbar">
                             {locationOccupancy.map((slot, idx) => (
@@ -670,28 +661,44 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                                                 <span className="text-[10px] text-gray-400">{slot.startTime} - {slot.endTime}</span>
                                             </div>
                                         </div>
-                                        <span className="text-xs font-bold px-2 py-1 rounded bg-gray-50 text-gray-600">
-                                            {slot.occupied}/{slot.capacity}
-                                        </span>
+                                        <div className="text-right">
+                                            <span className="block text-xs font-bold text-gray-700">{slot.occupied}/{slot.capacity}</span>
+                                        </div>
                                     </div>
-                                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                                        <div 
-                                            className="h-2 rounded-full transition-all duration-1000 ease-out" 
-                                            style={{ width: `${slot.occupancyPercent}%`, backgroundColor: slot.color }}
-                                        ></div>
+                                    
+                                    {/* Dual Progress Bar Container */}
+                                    <div className="space-y-1">
+                                        {/* 1. Saturazione Complessiva (Reale per questo slot) */}
+                                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden flex">
+                                            <div 
+                                                className="h-full rounded-full transition-all duration-1000 ease-out" 
+                                                style={{ width: `${slot.occupancyPercent}%`, backgroundColor: slot.color }}
+                                            ></div>
+                                        </div>
+                                        
+                                        {/* 2. Saturazione Media Sede */}
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[9px] text-gray-400">Media: {slot.locationAverage.toFixed(1)}</span>
+                                            <div className="w-2/3 bg-gray-50 rounded-full h-1 overflow-hidden ml-2">
+                                                <div 
+                                                    className="h-full rounded-full bg-gray-300 transition-all duration-1000 ease-out" 
+                                                    style={{ width: `${slot.locationAveragePercent}%` }}
+                                                ></div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}
                             {locationOccupancy.length === 0 && (
                                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                                        <p className="text-sm italic">Nessun dato di occupazione.</p>
+                                        <p className="text-sm italic">Nessun dato di occupazione per il {saturationYear}.</p>
                                     </div>
                             )}
                         </div>
                     </div>
 
-                    {/* COL 3: Avvisi */}
-                    <div className="md-card p-6 flex flex-col border-t-4 border-amber-500">
+                    {/* COL 3: Avvisi (Added ID for scrolling) */}
+                    <div id="alerts-section" className="md-card p-6 flex flex-col border-t-4 border-amber-500 scroll-mt-24">
                         <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
                             Avvisi & Scadenze
                         </h2>
@@ -729,6 +736,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           )}
 
           {activeTab === 'ratings' && (
+              // (Codice Tab Ratings invariato...)
               <div className="animate-fade-in space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <RatingCard 
@@ -770,7 +778,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                    {/* Top 5 Ranking Card (Moved from Overview) */}
                     <div className="md-card p-6 flex flex-col border-t-4 border-yellow-400 h-80">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -819,7 +826,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         </div>
                     </div>
 
-                    {/* Legend */}
                     <div className="flex items-end pb-2 md:col-span-2 h-full">
                         <div className="text-xs text-gray-400 flex items-center gap-2">
                             <span className="font-bold">Legenda:</span> 1 Stella = Pessimo / 5 Stelle = Ottimo

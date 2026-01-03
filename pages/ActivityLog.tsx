@@ -80,30 +80,33 @@ const SelectActivityModal: React.FC<{
 
 
 // --- Pagina Principale ---
-interface LessonRow extends Appointment {
-    enrollmentId: string;
-    childName: string;
-    assignedActivities: Activity[]; // Populated
+interface GroupedLessonRow {
+    id: string; // Composite ID for key
+    date: string;
+    startTime: string;
+    endTime: string;
+    locationName: string;
+    locationColor: string;
+    childNames: string[];
+    lessonIds: string[]; // All appointment IDs in this group
+    assignedActivities: Activity[];
 }
 
 const ActivityLog: React.FC = () => {
     const [loading, setLoading] = useState(true);
-    const [lessons, setLessons] = useState<LessonRow[]>([]);
+    const [lessons, setLessons] = useState<GroupedLessonRow[]>([]);
     const [activities, setActivities] = useState<Activity[]>([]);
-    const [homeworks, setHomeworks] = useState<Homework[]>([]); // New State
+    const [homeworks, setHomeworks] = useState<Homework[]>([]); 
     
     // View State
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     
-    // Selection State
-    const [selectedLessonIds, setSelectedLessonIds] = useState<string[]>([]);
+    // Selection State (contains composite IDs of grouped rows)
+    const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
     
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
-
-    // Sort State
-    const [sortOrder, setSortOrder] = useState<'time_asc' | 'time_desc'>('time_asc');
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -134,43 +137,72 @@ const ActivityLog: React.FC = () => {
                 end.setHours(23,59,59,999);
             }
 
-            const dailyLessons: LessonRow[] = [];
+            // Map Activity Data
+            const activityMap = new Map(allActivities.map(a => [a.id, a]));
+
+            // Flatten Appointments & Group
+            const groups: Record<string, GroupedLessonRow> = {};
+            const allLessonIds: string[] = [];
+
             allEnrollments.forEach(enr => {
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments) {
                         enr.appointments.forEach(app => {
                             const appDate = new Date(app.date);
                             if (appDate >= start && appDate <= end) {
-                                dailyLessons.push({
-                                    ...app,
-                                    enrollmentId: enr.id,
-                                    childName: enr.childName,
-                                    assignedActivities: [] // Will be filled
-                                });
+                                // Grouping Key: Date + StartTime + Location
+                                const dateKey = app.date.split('T')[0];
+                                const locKey = (app.locationName || enr.locationName || 'N/D').trim();
+                                const groupKey = `${dateKey}_${app.startTime}_${locKey}`;
+
+                                if (!groups[groupKey]) {
+                                    groups[groupKey] = {
+                                        id: groupKey,
+                                        date: app.date,
+                                        startTime: app.startTime,
+                                        endTime: app.endTime,
+                                        locationName: locKey,
+                                        locationColor: app.locationColor || enr.locationColor || '#ccc',
+                                        childNames: [],
+                                        lessonIds: [],
+                                        assignedActivities: []
+                                    };
+                                }
+                                groups[groupKey].childNames.push(enr.childName);
+                                groups[groupKey].lessonIds.push(app.lessonId);
+                                allLessonIds.push(app.lessonId);
                             }
                         });
                     }
                 }
             });
 
-            // Fetch existing assignments
-            const lessonIds = dailyLessons.map(l => l.lessonId);
-            const logEntries = await getLessonActivities(lessonIds);
-
-            // Map activities to lessons
-            const activityMap = new Map(allActivities.map(a => [a.id, a]));
+            // Fetch assigned activities for ALL lessons involved
+            const logEntries = await getLessonActivities(allLessonIds);
             
-            dailyLessons.forEach(l => {
-                const entry = logEntries.find(e => e.lessonId === l.lessonId);
-                if (entry) {
-                    l.assignedActivities = entry.activityIds
-                        .map(id => activityMap.get(id))
-                        .filter((a): a is Activity => !!a);
-                }
+            // Map activities back to groups (Union of activities)
+            Object.values(groups).forEach(group => {
+                const groupActivityIds = new Set<string>();
+                group.lessonIds.forEach(lId => {
+                    const entry = logEntries.find(e => e.lessonId === lId);
+                    if (entry) entry.activityIds.forEach(aId => groupActivityIds.add(aId));
+                });
+                
+                group.assignedActivities = Array.from(groupActivityIds)
+                    .map(id => activityMap.get(id))
+                    .filter((a): a is Activity => !!a);
             });
 
-            setLessons(dailyLessons);
-            setSelectedLessonIds([]); // Reset selection on date change
+            const sortedGroups = Object.values(groups).sort((a,b) => {
+                // Sort by date then time
+                const dateA = new Date(a.date).getTime();
+                const dateB = new Date(b.date).getTime();
+                if (dateA !== dateB) return dateA - dateB;
+                return a.startTime.localeCompare(b.startTime);
+            });
+
+            setLessons(sortedGroups);
+            setSelectedGroupIds([]);
 
         } catch (err) {
             console.error("Error fetching activity log:", err);
@@ -182,21 +214,6 @@ const ActivityLog: React.FC = () => {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
-
-    // Sorting Effect
-    useEffect(() => {
-        setLessons(prev => {
-            const sorted = [...prev];
-            sorted.sort((a, b) => {
-                if (sortOrder === 'time_asc') {
-                    return a.startTime.localeCompare(b.startTime);
-                } else {
-                    return b.startTime.localeCompare(a.startTime);
-                }
-            });
-            return sorted;
-        });
-    }, [sortOrder]);
 
     const handleNavigate = (direction: number) => {
         const newDate = new Date(currentDate);
@@ -217,17 +234,24 @@ const ActivityLog: React.FC = () => {
         return currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
     };
 
-    const toggleLessonSelection = (lessonId: string) => {
-        setSelectedLessonIds(prev => 
-            prev.includes(lessonId) ? prev.filter(id => id !== lessonId) : [...prev, lessonId]
+    const toggleGroupSelection = (groupId: string) => {
+        setSelectedGroupIds(prev => 
+            prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
         );
     };
 
     const handleAssignActivities = async (activityIds: string[]) => {
         try {
-            await saveLessonActivities(selectedLessonIds, activityIds, new Date().toISOString()); // Use generic date for log creation, lessons have their own dates
+            // Collect all lessonIds from selected groups
+            const allTargetLessonIds: string[] = [];
+            selectedGroupIds.forEach(gId => {
+                const group = lessons.find(l => l.id === gId);
+                if (group) allTargetLessonIds.push(...group.lessonIds);
+            });
+
+            await saveLessonActivities(allTargetLessonIds, activityIds, new Date().toISOString()); 
             setIsModalOpen(false);
-            fetchData(); // Refresh to show new assignments
+            fetchData(); 
         } catch (err) {
             console.error("Error saving assignments:", err);
             alert("Errore durante il salvataggio.");
@@ -236,7 +260,7 @@ const ActivityLog: React.FC = () => {
 
     // Grouping Logic for Render: Date -> Location -> Lessons
     const groupedView = (() => {
-        const grouped: Record<string, Record<string, LessonRow[]>> = {}; // Date -> Location -> Lessons
+        const grouped: Record<string, Record<string, GroupedLessonRow[]>> = {}; // Date -> Location -> Lessons
         
         lessons.forEach(l => {
             const dateKey = new Date(l.date).toDateString();
@@ -280,12 +304,12 @@ const ActivityLog: React.FC = () => {
                         <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
                     </div>
 
-                    {selectedLessonIds.length > 0 && (
+                    {selectedGroupIds.length > 0 && (
                         <button 
                             onClick={() => setIsModalOpen(true)} 
                             className="md-btn md-btn-raised md-btn-green animate-fade-in"
                         >
-                            Assegna ({selectedLessonIds.length})
+                            Assegna ({selectedGroupIds.length})
                         </button>
                     )}
                 </div>
@@ -365,35 +389,39 @@ const ActivityLog: React.FC = () => {
                                                     <tr>
                                                         <th className="p-4 w-10">#</th>
                                                         <th className="p-4 font-semibold">Orario</th>
-                                                        <th className="p-4 font-semibold">Allievo</th>
+                                                        <th className="p-4 font-semibold">Allievi ({locLessons.reduce((acc, l) => acc + l.childNames.length, 0)})</th>
                                                         <th className="p-4 font-semibold">Attività Svolte</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-50">
-                                                    {locLessons.map((lesson) => (
+                                                    {locLessons.map((lessonGroup) => (
                                                         <tr 
-                                                            key={lesson.lessonId} 
-                                                            onClick={() => toggleLessonSelection(lesson.lessonId)}
-                                                            className={`cursor-pointer transition-colors ${selectedLessonIds.includes(lesson.lessonId) ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-gray-50'}`}
+                                                            key={lessonGroup.id} 
+                                                            onClick={() => toggleGroupSelection(lessonGroup.id)}
+                                                            className={`cursor-pointer transition-colors ${selectedGroupIds.includes(lessonGroup.id) ? 'bg-indigo-50 hover:bg-indigo-100' : 'hover:bg-gray-50'}`}
                                                         >
                                                             <td className="p-4">
                                                                 <input 
                                                                     type="checkbox" 
-                                                                    checked={selectedLessonIds.includes(lesson.lessonId)}
-                                                                    onChange={() => toggleLessonSelection(lesson.lessonId)}
-                                                                    className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 pointer-events-none" // Pointer events none because row click handles it
+                                                                    checked={selectedGroupIds.includes(lessonGroup.id)}
+                                                                    onChange={() => toggleGroupSelection(lessonGroup.id)}
+                                                                    className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 pointer-events-none" 
                                                                 />
                                                             </td>
                                                             <td className="p-4 whitespace-nowrap font-mono font-bold text-sm text-gray-600">
-                                                                {lesson.startTime} - {lesson.endTime}
+                                                                {lessonGroup.startTime} - {lessonGroup.endTime}
                                                             </td>
                                                             <td className="p-4">
-                                                                <div className="font-bold text-gray-800 text-sm">{lesson.childName}</div>
+                                                                <div className="text-sm text-gray-800">
+                                                                    {lessonGroup.childNames.length > 5 
+                                                                        ? `${lessonGroup.childNames.slice(0, 5).join(', ')} (+${lessonGroup.childNames.length - 5})` 
+                                                                        : lessonGroup.childNames.join(', ')}
+                                                                </div>
                                                             </td>
                                                             <td className="p-4">
-                                                                {lesson.assignedActivities.length > 0 ? (
+                                                                {lessonGroup.assignedActivities.length > 0 ? (
                                                                     <div className="flex flex-wrap gap-2">
-                                                                        {lesson.assignedActivities.map(act => (
+                                                                        {lessonGroup.assignedActivities.map(act => (
                                                                             <span key={act.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
                                                                                 {act.title}
                                                                             </span>
@@ -422,11 +450,8 @@ const ActivityLog: React.FC = () => {
                         activities={activities} 
                         onSave={handleAssignActivities} 
                         onCancel={() => setIsModalOpen(false)}
-                        // Seleziona solo se è stata selezionata una sola lezione e ha già attività
-                        initialSelection={selectedLessonIds.length === 1 
-                            ? (lessons.find(l => l.lessonId === selectedLessonIds[0])?.assignedActivities.map(a => a.id) || [])
-                            : []
-                        }
+                        // Pre-selezione se solo una lezione selezionata e ha già attività (opzionale, complesso con gruppi multipli)
+                        initialSelection={[]}
                     />
                 </Modal>
             )}

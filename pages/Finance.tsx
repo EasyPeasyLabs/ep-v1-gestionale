@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput } from '../types';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson } from '../types';
 import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
+import { getLessons } from '../services/calendarService'; // Import added
 import { generateDocumentPDF } from '../utils/pdfGenerator';
 import { exportTransactionsToExcel, exportInvoicesToExcel } from '../utils/financeExport';
 import Spinner from '../components/Spinner';
@@ -47,6 +48,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
+    const [manualLessons, setManualLessons] = useState<Lesson[]>([]); // New state
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -66,7 +68,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         color: string, 
         revenue: number, 
         costs: number, 
-        breakdown: { rent: number, logistics: number } 
+        costPerLesson: number, 
+        costPerStudent: number, // NEW
+        breakdown: { rent: number, logistics: number, overhead: number } 
     } | null>(null);
 
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
@@ -84,10 +88,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [t, i, q, e, s, c, info] = await Promise.all([
-                getTransactions(), getInvoices(), getQuotes(), getAllEnrollments(), getSuppliers(), getClients(), getCompanyInfo()
+            const [t, i, q, e, s, c, ml, info] = await Promise.all([
+                getTransactions(), getInvoices(), getQuotes(), getAllEnrollments(), getSuppliers(), getClients(), getLessons(), getCompanyInfo()
             ]);
-            setTransactions(t); setInvoices(i); setQuotes(q); setEnrollments(e); setSuppliers(s); setClients(c); setCompanyInfo(info);
+            setTransactions(t); setInvoices(i); setQuotes(q); setEnrollments(e); setSuppliers(s); setClients(c); setManualLessons(ml); setCompanyInfo(info);
         } finally { setLoading(false); }
     }, []);
 
@@ -217,36 +221,58 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     }, [stats]);
 
     const roiSedi = useMemo(() => {
+        const targetYear = controllingYear;
+        
+        // 0. CALCOLO RICAVI TOTALI AZIENDALI (Per ROI Commercialista)
+        const totalGlobalRevenue = transactions.filter(t => 
+            !t.isDeleted && 
+            t.type === TransactionType.Income && 
+            t.category !== TransactionCategory.Capital &&
+            new Date(t.date).getFullYear() === targetYear
+        ).reduce((sum, t) => sum + t.amount, 0);
+
         const data: Record<string, { 
             name: string, 
             color: string, 
             revenue: number, 
-            costs: number,
-            breakdown: { rent: number, logistics: number }
+            costs: number, // Real ROI Costs
+            costPerLesson: number, 
+            costPerStudent: number, // NEW: Costo singolo studente
+            studentBasedCosts: number, // Theoretical Volume Costs (Stima)
+            breakdown: { rent: number, logistics: number, overhead: number },
+            isAccountant?: boolean,
+            globalRevenue?: number 
         }> = {};
+        
         const locMap: Record<string, { distance: number }> = {};
+        const locationNameMap = new Map<string, string>(); // Name -> ID for manual lessons
 
-        // Init data from Suppliers
+        // Init data from Suppliers (Locations)
         suppliers.flatMap(s => s.locations).forEach(l => {
             data[l.id] = { 
                 name: l.name, 
                 color: l.color, 
                 revenue: 0, 
                 costs: 0,
-                breakdown: { rent: 0, logistics: 0 }
+                costPerLesson: 0,
+                costPerStudent: 0,
+                studentBasedCosts: 0,
+                breakdown: { rent: 0, logistics: 0, overhead: 0 }
             };
             locMap[l.id] = { distance: l.distance || 0 };
+            locationNameMap.set(l.name, l.id);
         });
 
-        const targetYear = controllingYear;
-
-        // 1. Transaction Costs (Rent) & Revenue - DIRECT ASSIGNMENT
+        // 1. COSTI DIRETTI (Affitto) & RICAVI - Assegnazione Diretta
         transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === targetYear && t.allocationId).forEach(t => {
             if (data[t.allocationId!]) {
                 if (t.type === TransactionType.Income) {
                     data[t.allocationId!].revenue += t.amount;
                 } else {
+                    // Costi diretti vanno su entrambi i binari
                     data[t.allocationId!].costs += t.amount;
+                    data[t.allocationId!].studentBasedCosts += t.amount;
+                    
                     if (t.category === TransactionCategory.Rent) {
                         data[t.allocationId!].breakdown.rent += t.amount;
                     }
@@ -254,83 +280,206 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             }
         });
 
-        // 2. SHARED OVERHEAD (Pro-Quota per Volume Lezioni)
-        // Calcola volume lezioni per sede nell'anno
-        const locationLessonCounts: Record<string, number> = {};
-        let totalLessonsGlobal = 0;
+        // --- CALCOLO PARAMETRI RIPARTIZIONE (Lezioni Uniche e Studenti Distinti) ---
+        const locationUniqueLessons: Record<string, Set<string>> = {};
+        const locationStudentSlots: Record<string, number> = {};
+        const locationDistinctStudents: Record<string, Set<string>> = {}; // NEW: Tracciamento studenti unici
+        
+        let totalUniqueLessonsGlobal = 0;
+        let totalStudentSlotsGlobal = 0;
 
+        // A. Da Iscrizioni (Standard)
         enrollments.forEach(enr => {
             if (enr.appointments) {
                 enr.appointments.forEach(app => {
-                    // Considera lezioni dell'anno target e con sede valida
                     if (new Date(app.date).getFullYear() === targetYear && app.locationId && app.locationId !== 'unassigned') {
-                        locationLessonCounts[app.locationId] = (locationLessonCounts[app.locationId] || 0) + 1;
-                        totalLessonsGlobal++;
+                        const locId = app.locationId;
+                        locationStudentSlots[locId] = (locationStudentSlots[locId] || 0) + 1;
+                        totalStudentSlotsGlobal++;
+                        
+                        // Count Distinct Students
+                        if (!locationDistinctStudents[locId]) locationDistinctStudents[locId] = new Set();
+                        locationDistinctStudents[locId].add(enr.childId);
+
+                        const datePart = app.date.split('T')[0]; 
+                        
+                        // KEY UNICA PER LEZIONE: SEDE + DATA + ORA
+                        // Se ci sono 10 bambini allo stesso orario, conta come 1 "apertura porta".
+                        const uniqueKey = `${locId}_${datePart}_${app.startTime}`;
+                        if (!locationUniqueLessons[locId]) locationUniqueLessons[locId] = new Set();
+                        locationUniqueLessons[locId].add(uniqueKey);
                     }
                 });
             }
         });
 
-        // Calcola Pool Spese Generali (Esclusi Nolo, Logistica e Capitale)
+        // B. Da Lezioni Manuali (Extra)
+        manualLessons.forEach(ml => {
+            if (new Date(ml.date).getFullYear() === targetYear) {
+                const locId = locationNameMap.get(ml.locationName);
+                if (locId) {
+                    // Contiamo come slot anche la lezione manuale
+                    const attendeesCount = ml.attendees ? ml.attendees.length : 1;
+                    locationStudentSlots[locId] = (locationStudentSlots[locId] || 0) + attendeesCount;
+                    totalStudentSlotsGlobal += attendeesCount;
+
+                    // Distinct Students logic for manual lessons (if possible)
+                    if (ml.attendees && ml.attendees.length > 0) {
+                        if (!locationDistinctStudents[locId]) locationDistinctStudents[locId] = new Set();
+                        ml.attendees.forEach(att => {
+                            if (att.childId) locationDistinctStudents[locId].add(att.childId);
+                        });
+                    }
+
+                    const datePart = ml.date.split('T')[0];
+                    const uniqueKey = `${locId}_${datePart}_${ml.startTime}`;
+                    if (!locationUniqueLessons[locId]) locationUniqueLessons[locId] = new Set();
+                    locationUniqueLessons[locId].add(uniqueKey);
+                }
+            }
+        });
+
+        const locationUniqueLessonCounts: Record<string, number> = {};
+        Object.keys(locationUniqueLessons).forEach(locId => {
+            const count = locationUniqueLessons[locId].size;
+            locationUniqueLessonCounts[locId] = count;
+            totalUniqueLessonsGlobal += count;
+        });
+
+        // --- RIPARTIZIONE SPESE GENERALI ---
         const overheadExpenses = transactions.filter(t => 
             !t.isDeleted && 
             new Date(t.date).getFullYear() === targetYear &&
             t.type === TransactionType.Expense &&
             t.category !== TransactionCategory.Capital &&
-            t.category !== TransactionCategory.Rent && // EXCLUDE RENT (Must be specific)
-            t.category !== TransactionCategory.Fuel && // Exclude (handled by Logistics)
-            t.category !== TransactionCategory.Vehicles && // Exclude (handled by Logistics)
-            (!t.allocationId || t.allocationId === 'general') // Unallocated items
+            t.category !== TransactionCategory.Rent && 
+            t.category !== TransactionCategory.Fuel && 
+            t.category !== TransactionCategory.Vehicles && 
+            (!t.allocationId || t.allocationId === 'general')
         ).reduce((sum, t) => sum + t.amount, 0);
 
-        // Distribuisci Overhead
         Object.keys(data).forEach(locId => {
-            if (totalLessonsGlobal > 0) {
-                const lessonCount = locationLessonCounts[locId] || 0;
-                const weight = lessonCount / totalLessonsGlobal;
-                const share = overheadExpenses * weight;
-                data[locId].costs += share;
+            if (totalUniqueLessonsGlobal > 0) {
+                const uniqueCount = locationUniqueLessonCounts[locId] || 0;
+                const weightEvent = uniqueCount / totalUniqueLessonsGlobal;
+                const allocatedOverhead = (overheadExpenses * weightEvent);
+                data[locId].costs += allocatedOverhead;
+                data[locId].breakdown.overhead += allocatedOverhead;
+            }
+            if (totalStudentSlotsGlobal > 0) {
+                const slotCount = locationStudentSlots[locId] || 0;
+                const weightVolume = slotCount / totalStudentSlotsGlobal;
+                data[locId].studentBasedCosts += (overheadExpenses * weightVolume);
             }
         });
 
-        // 3. DYNAMIC LOGISTICS CALCULATION (YTD)
+        // --- RIPARTIZIONE LOGISTICA ---
         const vehicleExpenses = transactions.filter(t => 
             !t.isDeleted && 
             new Date(t.date).getFullYear() === targetYear &&
             (t.category === TransactionCategory.Fuel || t.category === TransactionCategory.Vehicles)
         ).reduce((sum, t) => sum + t.amount, 0);
 
-        // Calcola Km Totali percorsi per tutte le sedi
-        let totalKm = 0;
-        const locationKmMap: Record<string, number> = {};
+        let totalKmEventBased = 0;
+        let totalKmVolumeBased = 0;
+        
+        const locationKmEventMap: Record<string, number> = {};
+        const locationKmVolumeMap: Record<string, number> = {};
 
-        enrollments.forEach(enr => {
-            if (enr.appointments) {
-                enr.appointments.forEach(app => {
-                    if (new Date(app.date).getFullYear() === targetYear && app.locationId && app.locationId !== 'unassigned') {
-                        const loc = locMap[app.locationId];
-                        if (loc && loc.distance > 0) {
-                            const tripKm = loc.distance * 2;
-                            totalKm += tripKm;
-                            locationKmMap[app.locationId] = (locationKmMap[app.locationId] || 0) + tripKm;
-                        }
-                    }
-                });
+        Object.keys(data).forEach(locId => {
+            const loc = locMap[locId];
+            if (loc && loc.distance > 0) {
+                const uniqueCount = locationUniqueLessonCounts[locId] || 0;
+                const kmEvent = uniqueCount * (loc.distance * 2);
+                locationKmEventMap[locId] = kmEvent;
+                totalKmEventBased += kmEvent;
+
+                const slotCount = locationStudentSlots[locId] || 0;
+                const kmVolume = slotCount * (loc.distance * 2);
+                locationKmVolumeMap[locId] = kmVolume;
+                totalKmVolumeBased += kmVolume;
             }
         });
 
-        const dynamicCostPerKm = totalKm > 0 ? vehicleExpenses / totalKm : 0;
+        const costPerKmEvent = totalKmEventBased > 0 ? vehicleExpenses / totalKmEventBased : 0;
+        const costPerKmVolume = totalKmVolumeBased > 0 ? vehicleExpenses / totalKmVolumeBased : 0;
 
-        Object.keys(locationKmMap).forEach(locId => {
-            if (data[locId]) {
-                const logisticsCost = locationKmMap[locId] * dynamicCostPerKm;
-                data[locId].costs += logisticsCost;
-                data[locId].breakdown.logistics += logisticsCost;
+        Object.keys(data).forEach(locId => {
+            if (locationKmEventMap[locId]) {
+                const logCost = locationKmEventMap[locId] * costPerKmEvent;
+                data[locId].costs += logCost;
+                data[locId].breakdown.logistics += logCost;
+            }
+            if (locationKmVolumeMap[locId]) {
+                const logCostVol = locationKmVolumeMap[locId] * costPerKmVolume;
+                data[locId].studentBasedCosts += logCostVol;
+            }
+
+            // --- CALCOLO COSTI UNITARI AVANZATI ---
+            const uniqueLessons = locationUniqueLessonCounts[locId] || 0; // Aperture Uniche
+            const totalSlots = locationStudentSlots[locId] || 0; // Totale Lezioni (Somma allievi)
+            const distinctStudents = locationDistinctStudents[locId]?.size || 0; // Teste uniche
+
+            if (uniqueLessons > 0) {
+                // Formula Costo Singola Lezione: [Totale Costi Reali / Numero Lezioni (somma totale)] / numero di volte che la sede è stata aperta
+                if (totalSlots > 0) {
+                    data[locId].costPerLesson = (data[locId].costs / totalSlots) / uniqueLessons;
+                }
+
+                // Formula Costo Singolo Studente: [Costo studenti (stima) / numero di volte che la sede è stata aperta] / numero singoli studenti
+                if (distinctStudents > 0) {
+                    data[locId].costPerStudent = (data[locId].studentBasedCosts / uniqueLessons) / distinctStudents;
+                }
             }
         });
 
-        return Object.values(data).sort((a,b) => b.revenue - a.revenue);
-    }, [suppliers, transactions, enrollments, controllingYear]);
+        // --- GESTIONE SPECIALE: SIMONA PUDDU (Commercialista) ---
+        // Filtro specifico: Categoria "Servizi e Consulenze" + parola "commercialista"
+        const accountantTransactions = transactions.filter(t => 
+            !t.isDeleted && 
+            t.type === TransactionType.Expense && 
+            t.category === TransactionCategory.ProfessionalServices && // Categoria Rigorosa
+            new Date(t.date).getFullYear() === targetYear &&
+            t.description.toLowerCase().includes("commercialista") // Parola Chiave
+        );
+
+        if (accountantTransactions.length > 0) {
+            const accountantTotal = accountantTransactions.reduce((acc, t) => acc + t.amount, 0);
+            
+            // Cerchiamo Simona tra i fornitori per recuperare il colore
+            const simonaSupplier = suppliers.find(s => 
+                s.companyName.toLowerCase().includes("simona") && 
+                s.companyName.toLowerCase().includes("puddu")
+            );
+            const simonaColor = simonaSupplier?.locations?.[0]?.color || '#a855f7'; // Usa colore location o fallback purple
+
+            // Creiamo un oggetto "finto" location per Simona
+            const simonaObj = {
+                name: "Simona Puddu (COMMERCIALISTA)",
+                color: simonaColor,
+                revenue: 0, 
+                costs: accountantTotal,
+                costPerLesson: 0,
+                costPerStudent: 0,
+                studentBasedCosts: 0, 
+                breakdown: { rent: 0, logistics: 0, overhead: accountantTotal },
+                isAccountant: true, 
+                globalRevenue: totalGlobalRevenue
+            };
+            
+            // Aggiungiamo alla lista finale
+            data['SIMONA_PUDDU_ACC'] = simonaObj;
+        }
+
+        const sortedList = Object.values(data).sort((a,b) => {
+            // Mettiamo il commercialista sempre in fondo
+            if (a.isAccountant) return 1;
+            if (b.isAccountant) return -1;
+            return b.revenue - a.revenue;
+        });
+
+        return sortedList;
+    }, [suppliers, transactions, enrollments, manualLessons, controllingYear]); // Added manualLessons dep
 
     const handlePrint = async (doc: Invoice | Quote) => {
         const client = clients.find(c => c.id === doc.clientId);

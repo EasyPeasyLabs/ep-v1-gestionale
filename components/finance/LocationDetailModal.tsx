@@ -9,18 +9,31 @@ interface LocationDetailModalProps {
         color: string, 
         revenue: number, 
         costs: number, 
-        breakdown?: { rent: number, logistics: number } 
+        costPerLesson?: number, 
+        costPerStudent?: number, // NEW
+        breakdown?: { rent: number, logistics: number, overhead: number } 
     };
     onClose: () => void;
 }
+
+// Helper per Tooltip (Local)
+const InfoTooltip: React.FC<{ text: string }> = ({ text }) => (
+    <div className="group relative inline-block ml-1">
+        <span className="cursor-pointer text-gray-400 text-[10px] border border-gray-300 rounded-full w-4 h-4 flex items-center justify-center hover:bg-gray-100 hover:text-gray-600 transition-colors">?</span>
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-slate-800 text-white text-[10px] p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 text-center leading-snug">
+            {text}
+            <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+        </div>
+    </div>
+);
 
 const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose }) => {
     const profit = data.revenue - data.costs;
     const isProfitable = profit >= 0;
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     
-    // Breakdown defaults
-    const bd = data.breakdown || { rent: data.costs, logistics: 0 };
+    // Breakdown defaults (Ensure overhead is handled)
+    const bd = data.breakdown || { rent: 0, logistics: 0, overhead: 0 };
     
     // Efficiency: Quanto rimane in tasca su 10 euro
     const pocketMoneyPer10 = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
@@ -29,9 +42,6 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
         if (chartRef.current) {
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
-                // Se breakdown disponibile, mostriamo il dettaglio costi nel grafico se in perdita, o "Profit vs Costi" se in guadagno
-                // Per semplicità narrativa, manteniamo la logica "Dove vanno i soldi"
-                
                 let chartData = [];
                 let colors = [];
                 let labels = [];
@@ -100,7 +110,7 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                         {isProfitable ? (
                             <h4 className="text-xl font-bold text-green-600">
                                 Ottimo Lavoro! <br/>
-                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. Gli incassi coprono affitto e logistica.</span>
+                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. Gli incassi coprono affitto, logistica e spese generali.</span>
                             </h4>
                         ) : (
                             <h4 className="text-xl font-bold text-red-600">
@@ -128,7 +138,10 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                             <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🏠</span>
-                                    <span className="text-xs font-bold text-gray-600">Affitto (Real)</span>
+                                    <div className="flex items-center">
+                                        <span className="text-xs font-bold text-gray-600">Nolo Sede</span>
+                                        <InfoTooltip text="Costo affitto diretto." />
+                                    </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.rent.toFixed(2)}€</span>
                             </div>
@@ -136,11 +149,24 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                             <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🚗</span>
-                                    <span className="text-xs font-bold text-gray-600">Logistica Auto (Dinamico)</span>
+                                    <div className="flex items-center">
+                                        <span className="text-xs font-bold text-gray-600">Logistica</span>
+                                        <InfoTooltip text="Carburante e spese auto (Km)." />
+                                    </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.logistics.toFixed(2)}€</span>
                             </div>
-                            <p className="text-[9px] text-gray-400 italic text-right">Include Carburante, RCA e Manutenzione ripartiti per km.</p>
+
+                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">📊</span>
+                                    <div className="flex items-center">
+                                        <span className="text-xs font-bold text-gray-600">Spese Generali</span>
+                                        <InfoTooltip text="Quota parte overhead aziendale." />
+                                    </div>
+                                </div>
+                                <span className="font-bold text-gray-800">{bd.overhead.toFixed(2)}€</span>
+                            </div>
 
                             <div className="pt-2 border-t mt-2 flex justify-between text-sm">
                                 <span className="font-bold text-red-600 uppercase">Totale Uscite</span>
@@ -164,9 +190,27 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Ti restano in tasca <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato affitto e viaggi.
+                                    Ti restano in tasca <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato affitto, viaggi e spese generali.
                                 </span>
                             </li>
+                            {data.costPerLesson && data.costPerLesson > 0 && (
+                                <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
+                                    <span className="font-bold text-red-500">•</span>
+                                    <span>
+                                        Il "Costo Singola Lezione" (Cost to Serve) reale è di <strong>{data.costPerLesson.toFixed(2)}€</strong>.
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">(Totale Costi / Totale Slot) / Aperture Uniche.</span>
+                                    </span>
+                                </li>
+                            )}
+                            {data.costPerStudent && data.costPerStudent > 0 && (
+                                <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
+                                    <span className="font-bold text-red-500">•</span>
+                                    <span>
+                                        Il "Costo Singolo Studente" (Marginal Cost) è di <strong>{data.costPerStudent.toFixed(2)}€</strong>.
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">(Costo Stima / Aperture Uniche) / Studenti Distinti.</span>
+                                    </span>
+                                </li>
+                            )}
                         </ul>
                     </div>
 
