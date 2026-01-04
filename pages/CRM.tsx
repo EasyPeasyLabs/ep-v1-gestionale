@@ -5,9 +5,9 @@ import { getTransactions } from '../services/financeService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getCommunicationLogs, logCommunication, deleteCommunicationLog, getCampaigns, addCampaign, updateCampaign, deleteCampaign, updateCommunicationLog } from '../services/crmService';
-import { getCommunicationTemplates } from '../services/settingsService';
+import { getCommunicationTemplates, getCompanyInfo } from '../services/settingsService';
 import { uploadCampaignFile } from '../services/storageService';
-import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate } from '../types';
+import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
@@ -77,8 +77,9 @@ const CommunicationModal: React.FC<{
     } | null;
     initialSelectedIds?: string[]; // NEW: For Bulk
     initialRecipientType?: 'clients' | 'suppliers'; // NEW: Force type
-    contextData?: CommunicationContext | null; 
-}> = ({ onClose, onSent, clients, suppliers, initialData, initialSelectedIds, initialRecipientType, contextData }) => {
+    contextData?: CommunicationContext | null;
+    companyInfo?: CompanyInfo | null;
+}> = ({ onClose, onSent, clients, suppliers, initialData, initialSelectedIds, initialRecipientType, contextData, companyInfo }) => {
     
     const [recipientsType, setRecipientsType] = useState<'clients' | 'suppliers' | 'custom'>(initialData?.recipientType || initialRecipientType || 'clients');
     
@@ -104,20 +105,30 @@ const CommunicationModal: React.FC<{
     }, []);
 
     const replacePlaceholders = (text: string) => {
-        if (!contextData) return text;
         let res = text;
         
-        if (contextData.clientName) res = res.replace(/{{cliente}}/g, contextData.clientName);
-        if (contextData.childName) res = res.replace(/{{bambino}}/g, contextData.childName);
-        if (contextData.supplierName) {
-            res = res.replace(/{{fornitore}}/g, contextData.supplierName);
-            res = res.replace(/{{cliente}}/g, contextData.supplierName); 
+        if (contextData) {
+            if (contextData.clientName) res = res.replace(/{{cliente}}/g, contextData.clientName);
+            if (contextData.childName) res = res.replace(/{{bambino}}/g, contextData.childName);
+            if (contextData.supplierName) {
+                res = res.replace(/{{fornitore}}/g, contextData.supplierName);
+                res = res.replace(/{{cliente}}/g, contextData.supplierName); 
+            }
+            if (contextData.description) res = res.replace(/{{descrizione}}/g, contextData.description);
+            if (contextData.amount) res = res.replace(/{{importo}}/g, contextData.amount);
+            
+            const dateStr = contextData.date || new Date().toLocaleDateString('it-IT');
+            res = res.replace(/{{data}}/g, dateStr);
         }
-        if (contextData.description) res = res.replace(/{{descrizione}}/g, contextData.description);
-        if (contextData.amount) res = res.replace(/{{importo}}/g, contextData.amount);
-        
-        const dateStr = contextData.date || new Date().toLocaleDateString('it-IT');
-        res = res.replace(/{{data}}/g, dateStr);
+
+        // Company Info Replacements
+        if (companyInfo) {
+            if (companyInfo.iban) res = res.replace(/{{iban}}/g, companyInfo.iban);
+            if (companyInfo.paypal) res = res.replace(/{{paypal}}/g, companyInfo.paypal);
+            if (companyInfo.satispay) res = res.replace(/{{satispay}}/g, companyInfo.satispay);
+            if (companyInfo.googlePay) res = res.replace(/{{googlePay}}/g, companyInfo.googlePay);
+            if (companyInfo.klarna) res = res.replace(/{{klarna}}/g, companyInfo.klarna);
+        }
 
         return res;
     };
@@ -294,6 +305,7 @@ const CRM: React.FC = () => {
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
 
     // Filters Overview
     const [filterLocation, setFilterLocation] = useState<string>('');
@@ -337,14 +349,15 @@ const CRM: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollments, transactions, clientsData, suppliersData, logsData, campaignsData, templatesData] = await Promise.all([
+            const [enrollments, transactions, clientsData, suppliersData, logsData, campaignsData, templatesData, companyInfoData] = await Promise.all([
                 getAllEnrollments(),
                 getTransactions(),
                 getClients(),
                 getSuppliers(),
                 getCommunicationLogs(),
                 getCampaigns(),
-                getCommunicationTemplates()
+                getCommunicationTemplates(),
+                getCompanyInfo()
             ]);
             
             setClients(clientsData);
@@ -352,6 +365,7 @@ const CRM: React.FC = () => {
             setLogs(logsData);
             setCampaigns(campaignsData);
             setTemplates(templatesData);
+            setCompanyInfo(companyInfoData);
 
             // --- NORMALIZE ALERTS ---
             const alerts: CrmAlertItem[] = [];
@@ -863,6 +877,7 @@ const CRM: React.FC = () => {
                         initialSelectedIds={initialBulkRecipients}
                         initialRecipientType={initialRecipientType}
                         contextData={communicationContext} 
+                        companyInfo={companyInfo}
                     />
                 </Modal>
             )}
