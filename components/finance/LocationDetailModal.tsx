@@ -37,6 +37,10 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
     
     // Efficiency: Quanto rimane in tasca su 10 euro
     const pocketMoneyPer10 = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
+
+    // FIX TS18048: Ensure numeric values for optional props
+    const costPerLesson = data.costPerLesson || 0;
+    const costPerStudent = data.costPerStudent || 0;
     
     useEffect(() => {
         if (chartRef.current) {
@@ -193,20 +197,20 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                     Ti restano in tasca <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato affitto, viaggi e spese generali.
                                 </span>
                             </li>
-                            {data.costPerLesson > 0 && (
+                            {costPerLesson > 0 && (
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
-                                        Il "Costo Singola Lezione" (Cost to Serve) è di <strong>{data.costPerLesson.toFixed(2)}€</strong>.
+                                        Il "Costo Singola Lezione" (Cost to Serve) è di <strong>{costPerLesson.toFixed(2)}€</strong>.
                                         <br/><span className="text-xs text-gray-400 italic font-normal">Include logistica diviso per il numero di viaggi (aperture).</span>
                                     </span>
                                 </li>
                             )}
-                            {data.costPerStudent > 0 && (
+                            {costPerStudent > 0 && (
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
-                                        Il "Costo Singolo Studente" (Marginal Cost) è di <strong>{data.costPerStudent.toFixed(2)}€</strong>.
+                                        Il "Costo Singolo Studente" (Marginal Cost) è di <strong>{costPerStudent.toFixed(2)}€</strong>.
                                         <br/><span className="text-xs text-gray-400 italic font-normal">Totale costi sede diviso per iscritti reali.</span>
                                     </span>
                                 </li>
