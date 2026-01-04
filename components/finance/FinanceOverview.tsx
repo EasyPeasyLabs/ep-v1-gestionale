@@ -163,6 +163,48 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                     scales: { x: { grid: { display: false } }, y: { grid: { display: false } } }
                 }
             };
+        } else if (type === 'cashflow') {
+            // ANALISI FLUSSI: Double Bar Chart (Revenue vs Expenses)
+            config = {
+                type: 'bar',
+                data: {
+                    labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'],
+                    datasets: [
+                        {
+                            label: 'Ricavi',
+                            data: stats.monthlyData.map((d: any) => d.revenue),
+                            backgroundColor: '#10b981', // Verde
+                            borderRadius: 4,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.8
+                        },
+                        {
+                            label: 'Costi',
+                            data: stats.monthlyData.map((d: any) => d.expenses), // Expenses must be calculated in Finance.tsx stats
+                            backgroundColor: '#ef4444', // Rosso
+                            borderRadius: 4,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.8
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { position: 'top', align: 'end' },
+                        tooltip: {
+                            callbacks: {
+                                label: (context: any) => ` ${context.dataset.label}: ${Number(context.raw).toFixed(2)}€`
+                            }
+                        }
+                    },
+                    scales: { 
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6' } }, 
+                        x: { grid: { display: false } } 
+                    }
+                }
+            };
         }
 
         if (config.type) {
@@ -219,6 +261,7 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     const chartInstance = useRef<Chart | null>(null);
     const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
+    const [showCashFlowModal, setShowCashFlowModal] = useState(false);
 
     // --- Main Chart Overview ---
     useEffect(() => {
@@ -320,8 +363,13 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 md-card p-8 bg-white h-[450px] relative overflow-hidden">
-                    <h3 className="text-xl font-black mb-6 flex items-center gap-2"><CalculatorIcon /> Analisi Flussi Temporali</h3>
+                <div 
+                    className="lg:col-span-2 md-card p-8 bg-white h-[450px] relative overflow-hidden cursor-pointer hover:shadow-lg transition-shadow group"
+                    onClick={() => setShowCashFlowModal(true)}
+                >
+                    <h3 className="text-xl font-black mb-6 flex items-center gap-2 group-hover:text-indigo-600 transition-colors">
+                        <CalculatorIcon /> Analisi Flussi Temporali (Clicca per dettagli)
+                    </h3>
                     <div className="h-[320px]"><canvas ref={chartRef}></canvas></div>
                 </div>
                 <div className="space-y-6">
@@ -363,6 +411,27 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
                             <p className="text-sm text-indigo-900 leading-relaxed font-medium">
                                 "{detail.explanation}"
                             </p>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* MODALE CASHFLOW (Doppio Istogramma) */}
+            {showCashFlowModal && (
+                <Modal onClose={() => setShowCashFlowModal(false)} size="xl">
+                    <div className="flex flex-col h-full max-h-[90vh]">
+                        <div className="p-6 bg-slate-50 border-b flex justify-between items-center flex-shrink-0">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-800">Analisi Flussi Annuali</h3>
+                                <p className="text-sm text-slate-500">Confronto diretto Ricavi vs Costi mensili</p>
+                            </div>
+                            <button onClick={() => setShowCashFlowModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">✕</button>
+                        </div>
+                        
+                        <div className="p-8 flex-1 flex flex-col items-center justify-center bg-white min-h-[400px]">
+                            <div className="w-full h-full relative">
+                                <KpiDetailChart type="cashflow" stats={stats} transactions={transactions} />
+                            </div>
                         </div>
                     </div>
                 </Modal>

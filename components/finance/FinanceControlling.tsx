@@ -26,27 +26,31 @@ const LegendBox = () => (
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-                <strong className="text-slate-700">Nolo Sede / Logistica:</strong>
-                <p className="mt-1 leading-snug text-slate-500">Costi diretti di affitto, carburante e usura veicolo per la sede.</p>
+                <strong className="text-slate-700">Nolo Sede:</strong>
+                <p className="mt-1 leading-snug text-slate-500">Costo affitto diretto della sede.</p>
             </div>
             <div>
-                <strong className="text-slate-700">Spese Generali:</strong>
-                <p className="mt-1 leading-snug text-slate-500">Quota parte dei costi fissi aziendali ripartita sulle lezioni.</p>
+                <strong className="text-slate-700">Logistica:</strong>
+                <p className="mt-1 leading-snug text-slate-500">
+                    Costi totali veicoli (Carburante, RCA, Manutenzione) divisi per il numero di sedi attive.
+                </p>
             </div>
             <div>
                 <strong className="text-slate-700">Costo Studenti (stima):</strong>
-                <p className="mt-1 leading-snug text-slate-500">Costi indiretti (Spese Generali) ripartiti in base al numero di studenti iscritti.</p>
+                <p className="mt-1 leading-snug text-slate-500">
+                    Materiali diretti + quota parte Spese Generali (Software, Marketing, etc.).
+                </p>
             </div>
             <div>
                 <strong className="text-slate-700">Costo Singola Lezione:</strong>
                 <p className="mt-1 leading-snug text-slate-500">
-                    (Totale Costi Reali / Totale Slot Studenti) / Numero Aperture Uniche (Giorno+Ora).
+                    (Totale Costi Reali inclusa Logistica) / Numero Aperture Uniche (Viaggi).
                 </p>
             </div>
             <div>
                 <strong className="text-slate-700">Costo Singolo Studente:</strong>
                 <p className="mt-1 leading-snug text-slate-500">
-                    (Costo Studenti Stima / Numero Aperture Uniche) / Numero Studenti Distinti.
+                    Totale Costi Sede / Numero Studenti Iscritti.
                 </p>
             </div>
         </div>
@@ -87,8 +91,8 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                     const isAccountant = sede.isAccountant;
                     const roiPercent = sede.revenue > 0 ? (((sede.revenue - sede.costs) / sede.revenue) * 100) : 0;
                     
-                    // Calcolo speciale per Commercialista (Incidenza su Fatturato Globale)
-                    const accountantIncidence = isAccountant && sede.globalRevenue && sede.globalRevenue > 0
+                    // Calcolo speciale per Commercialista (Incidenza su Fatturato Globale) - Lo mostriamo sempre se disponibile come info extra
+                    const accountantIncidence = sede.globalRevenue && sede.globalRevenue > 0
                         ? (sede.costs / sede.globalRevenue) * 100
                         : 0;
 
@@ -119,71 +123,61 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                             </div>
 
                             <div className="space-y-2">
-                                {!isAccountant && (
-                                    <div className="flex justify-between text-xs items-center mb-2">
-                                        <span>Ricavi Studenti</span>
-                                        <span className="font-bold text-green-600">+{sede.revenue.toFixed(2)}€</span>
+                                <div className="flex justify-between text-xs items-center mb-2">
+                                    <span>Ricavi Studenti</span>
+                                    <span className="font-bold text-green-600">+{sede.revenue.toFixed(2)}€</span>
+                                </div>
+                                
+                                {/* Student Absorption Cost (Volume Based) - ALWAYS VISIBLE */}
+                                <div className="flex justify-between text-xs items-center bg-gray-50 p-1.5 rounded mb-1 border border-gray-100">
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500">Costo Studenti (Stima)</span>
+                                    </div>
+                                    <span className="font-bold text-gray-500">-{sede.studentBasedCosts.toFixed(2)}€</span>
+                                </div>
+                                {sede.costPerStudent > 0 && (
+                                    <div className="flex justify-between text-[10px] items-center px-1.5 mb-3">
+                                        <span className="text-gray-400 italic">└ Costo singolo studente:</span>
+                                        <span className="font-bold text-gray-400">-{sede.costPerStudent.toFixed(2)}€</span>
                                     </div>
                                 )}
-                                
-                                {/* Student Absorption Cost (Volume Based) - Hidden for Accountant */}
-                                {!isAccountant && (
-                                    <>
-                                        <div className="flex justify-between text-xs items-center bg-gray-50 p-1.5 rounded mb-1 border border-gray-100">
-                                            <div className="flex items-center">
-                                                <span className="text-gray-500">Costo Studenti (Stima)</span>
-                                            </div>
-                                            <span className="font-bold text-gray-500">-{sede.studentBasedCosts.toFixed(2)}€</span>
-                                        </div>
-                                        {sede.costPerStudent > 0 && (
-                                            <div className="flex justify-between text-[10px] items-center px-1.5 mb-3">
-                                                <span className="text-gray-400 italic">└ Costo singolo studente:</span>
-                                                <span className="font-bold text-gray-400">-{sede.costPerStudent.toFixed(2)}€</span>
-                                            </div>
-                                        )}
-                                    </>
-                                )}
 
-                                {/* Breakdown Costi Reali */}
+                                {/* Breakdown Costi Reali - ALWAYS VISIBLE */}
                                 <div className="space-y-1 pt-1 border-t border-dashed border-gray-200">
-                                    {!isAccountant && (
-                                        <div className="flex justify-between text-xs items-center">
-                                            <span className="text-gray-600">Nolo Sede</span>
-                                            <span className="font-bold text-red-600">-{sede.breakdown.rent.toFixed(2)}€</span>
-                                        </div>
-                                    )}
                                     <div className="flex justify-between text-xs items-center">
-                                        <span className="text-gray-600">Logistica</span>
+                                        <span className="text-gray-600">Nolo Sede</span>
+                                        <span className="font-bold text-red-600">-{sede.breakdown.rent.toFixed(2)}€</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs items-center">
+                                        <span className="text-gray-600">Logistica (Quota Fissa)</span>
                                         <span className="font-bold text-red-600">-{sede.breakdown.logistics.toFixed(2)}€</span>
                                     </div>
                                     <div className="flex justify-between text-xs items-center">
-                                        <span className="text-gray-400 text-[10px] uppercase">{isAccountant ? 'Costo Servizio' : 'Spese Generali'}</span>
+                                        <span className="text-gray-400 text-[10px] uppercase">Spese Generali (Quota)</span>
                                         <span className="font-bold text-red-400">-{sede.breakdown.overhead.toFixed(2)}€</span>
                                     </div>
                                 </div>
                                 
                                 <div className="pt-3 border-t flex flex-col gap-1 mt-2">
                                     <div className="flex justify-between text-sm font-black">
-                                        <span>{isAccountant ? 'Totale Uscite' : 'Utile Sede'}</span>
-                                        <span className={`text-lg ${!isAccountant && (sede.revenue - sede.costs >= 0) ? 'text-indigo-600' : 'text-red-600'}`}>
-                                            {isAccountant ? '-' : ''}{Math.abs(isAccountant ? sede.costs : (sede.revenue - sede.costs)).toFixed(2)}€
+                                        <span>Utile Sede</span>
+                                        <span className={`text-lg ${(sede.revenue - sede.costs >= 0) ? 'text-indigo-600' : 'text-red-600'}`}>
+                                            {Math.abs(sede.revenue - sede.costs).toFixed(2)}€
                                         </span>
                                     </div>
-                                    {/* Costo Singola Lezione (Hidden for Accountant) */}
-                                    {!isAccountant && sede.costPerLesson > 0 && (
+                                    {/* Costo Singola Lezione - ALWAYS VISIBLE */}
+                                    {sede.costPerLesson > 0 && (
                                         <div className="flex justify-between text-[10px] text-gray-400">
-                                            <span>Costo singola lezione:</span>
+                                            <span>Costo singola lezione (Viaggio):</span>
                                             <span>-{sede.costPerLesson.toFixed(2)}€</span>
                                         </div>
                                     )}
                                 </div>
                             </div>
                             
-                            {!isAccountant && (
-                                <div className="mt-3 text-center text-[10px] text-gray-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                                    Clicca per analisi dettagliata
-                                </div>
-                            )}
+                            <div className="mt-3 text-center text-[10px] text-gray-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                                Clicca per analisi dettagliata
+                            </div>
                         </div>
                     );
                 })}

@@ -151,7 +151,7 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                     <span className="text-lg">🚗</span>
                                     <div className="flex items-center">
                                         <span className="text-xs font-bold text-gray-600">Logistica</span>
-                                        <InfoTooltip text="Carburante e spese auto (Km)." />
+                                        <InfoTooltip text="Costo veicoli diviso per n. sedi attive." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.logistics.toFixed(2)}€</span>
@@ -162,7 +162,7 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                     <span className="text-lg">📊</span>
                                     <div className="flex items-center">
                                         <span className="text-xs font-bold text-gray-600">Spese Generali</span>
-                                        <InfoTooltip text="Quota parte overhead aziendale." />
+                                        <InfoTooltip text="Quota parte overhead + materiali." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.overhead.toFixed(2)}€</span>
@@ -193,21 +193,21 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                     Ti restano in tasca <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato affitto, viaggi e spese generali.
                                 </span>
                             </li>
-                            {data.costPerLesson && data.costPerLesson > 0 && (
+                            {data.costPerLesson > 0 && (
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
-                                        Il "Costo Singola Lezione" (Cost to Serve) reale è di <strong>{data.costPerLesson.toFixed(2)}€</strong>.
-                                        <br/><span className="text-xs text-gray-400 italic font-normal">(Totale Costi / Totale Slot) / Aperture Uniche.</span>
+                                        Il "Costo Singola Lezione" (Cost to Serve) è di <strong>{data.costPerLesson.toFixed(2)}€</strong>.
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">Include logistica diviso per il numero di viaggi (aperture).</span>
                                     </span>
                                 </li>
                             )}
-                            {data.costPerStudent && data.costPerStudent > 0 && (
+                            {data.costPerStudent > 0 && (
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
                                         Il "Costo Singolo Studente" (Marginal Cost) è di <strong>{data.costPerStudent.toFixed(2)}€</strong>.
-                                        <br/><span className="text-xs text-gray-400 italic font-normal">(Costo Stima / Aperture Uniche) / Studenti Distinti.</span>
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">Totale costi sede diviso per iscritti reali.</span>
                                     </span>
                                 </li>
                             )}
