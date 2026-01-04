@@ -23,7 +23,11 @@ const defaultCompanyInfo: CompanyInfo = {
     logoBase64: DEFAULT_LOGO_BASE64,
     carFuelConsumption: 16.5,
     averageFuelPrice: 1.80, 
-    iban: ''
+    iban: '',
+    paypal: '',
+    satispay: '',
+    googlePay: '',
+    klarna: ''
 };
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
@@ -37,7 +41,11 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
                 logoBase64: data.logoBase64 || DEFAULT_LOGO_BASE64,
                 carFuelConsumption: data.carFuelConsumption || 16.5,
                 averageFuelPrice: data.averageFuelPrice || 1.80,
-                iban: data.iban || ''
+                iban: data.iban || '',
+                paypal: data.paypal || '',
+                satispay: data.satispay || '',
+                googlePay: data.googlePay || '',
+                klarna: data.klarna || ''
             };
         } else {
             // Se non esiste, crealo con default

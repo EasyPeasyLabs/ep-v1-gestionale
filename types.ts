@@ -341,7 +341,11 @@ export interface CompanyInfo {
     carFuelConsumption: number;
     averageFuelPrice?: number;
     // carWearAndTearCost rimosso dalla logica (diventa dinamico)
-    iban?: string; 
+    iban?: string;
+    paypal?: string;
+    satispay?: string;
+    googlePay?: string;
+    klarna?: string; 
 }
 
 export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';
