@@ -80,7 +80,7 @@ export const deleteAutoRentTransactions = async (locationId: string): Promise<vo
     // Qui lasciamo libero per ora o implementiamo logica granulare nel sync.
     const q = query(transactionCollectionRef, 
         where("allocationId", "==", locationId),
-        where("category", "==", TransactionCategory.Rent),
+        where("category", "==", TransactionCategory.Nolo),
         where("relatedDocumentId", ">=", "AUTO-RENT")
     );
     const snapshot = await getDocs(q);
@@ -299,7 +299,7 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
 
     // Search transactions
     const qTrans = query(transactionCollectionRef, 
-        where("category", "==", TransactionCategory.Sales),
+        where("category", "==", TransactionCategory.Vendite),
         where("isDeleted", "==", false)
     );
     
@@ -354,7 +354,7 @@ export const syncRentExpenses = async (): Promise<string> => {
 
     // Check existing rent transactions for this month
     const q = query(transactionCollectionRef, 
-        where("category", "==", TransactionCategory.Rent),
+        where("category", "==", TransactionCategory.Nolo),
         where("date", ">=", startOfMonth),
         where("date", "<=", endOfMonth),
         where("isDeleted", "==", false)
@@ -388,7 +388,7 @@ export const syncRentExpenses = async (): Promise<string> => {
                     description: `Affitto Sede: ${costInfo.supplierName} (Auto-Gen)`,
                     amount: costInfo.cost,
                     type: TransactionType.Expense,
-                    category: TransactionCategory.Rent,
+                    category: TransactionCategory.Nolo,
                     paymentMethod: PaymentMethod.BankTransfer,
                     status: TransactionStatus.Pending, // Pending review
                     allocationType: 'location',

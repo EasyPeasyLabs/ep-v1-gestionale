@@ -7,12 +7,12 @@ interface FinanceControllingProps {
         color: string, 
         revenue: number, 
         costs: number, // Event-based (Real Total)
-        costPerLesson: number, // NEW: Costo medio per lezione
-        costPerStudent: number, // NEW: Costo medio per studente singolo
-        studentBasedCosts: number, // Volume-based (Absorption)
-        breakdown: { rent: number, logistics: number, overhead: number }, // Added breakdown
-        isAccountant?: boolean; // Flag speciale per commercialista
-        globalRevenue?: number; // Passato solo al commercialista per calcolo incidenza
+        costPerLesson: { value: number, min: number, max: number, avg: number }, // Object Vectorial
+        costPerStudent: number, 
+        studentBasedCosts: number, 
+        breakdown: { rent: number, logistics: number, overhead: number }, 
+        isAccountant?: boolean; 
+        globalRevenue?: number; 
     }[];
     onSelectLocation: (loc: any) => void;
     year: number;
@@ -22,35 +22,29 @@ interface FinanceControllingProps {
 const LegendBox = () => (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-600 shadow-sm max-w-2xl">
         <h4 className="font-bold text-slate-800 mb-2 uppercase flex items-center gap-2">
-            <span className="text-lg">📖</span> Come leggere i dati
+            <span className="text-lg">📖</span> Come leggere i dati (New Model)
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <strong className="text-slate-700">Nolo Sede:</strong>
-                <p className="mt-1 leading-snug text-slate-500">Costo affitto diretto della sede.</p>
+                <p className="mt-1 leading-snug text-slate-500">Costi "Operazioni" allocati direttamente alla sede (es. Affitto sale).</p>
             </div>
             <div>
-                <strong className="text-slate-700">Logistica:</strong>
+                <strong className="text-slate-700">Logistica (Weighted):</strong>
                 <p className="mt-1 leading-snug text-slate-500">
-                    Costi totali veicoli (Carburante, RCA, Manutenzione) divisi per il numero di sedi attive.
+                    Costi globali "Logistica" ripartiti per Viaggi (Aperture Sede).
                 </p>
             </div>
             <div>
-                <strong className="text-slate-700">Costo Studenti (stima):</strong>
+                <strong className="text-slate-700">Costo Studenti (Overhead):</strong>
                 <p className="mt-1 leading-snug text-slate-500">
-                    Materiali diretti + quota parte Spese Generali (Software, Marketing, etc.).
+                    ("Generali" + "Operazioni non allocate") ripartiti per numero studenti attivi.
                 </p>
             </div>
             <div>
-                <strong className="text-slate-700">Costo Singola Lezione:</strong>
+                <strong className="text-slate-700">Costo Assoluto Studente (Lezione):</strong>
                 <p className="mt-1 leading-snug text-slate-500">
-                    (Totale Costi Reali inclusa Logistica) / Numero Aperture Uniche (Viaggi).
-                </p>
-            </div>
-            <div>
-                <strong className="text-slate-700">Costo Singolo Studente:</strong>
-                <p className="mt-1 leading-snug text-slate-500">
-                    Totale Costi Sede / Numero Studenti Iscritti.
+                    (Totale Uscite Aziendali / Viaggi Sede / Iscritti Sede). Stress Test KPI.
                 </p>
             </div>
         </div>
@@ -91,7 +85,6 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                     const isAccountant = sede.isAccountant;
                     const roiPercent = sede.revenue > 0 ? (((sede.revenue - sede.costs) / sede.revenue) * 100) : 0;
                     
-                    // Calcolo speciale per Commercialista (Incidenza su Fatturato Globale) - Lo mostriamo sempre se disponibile come info extra
                     const accountantIncidence = sede.globalRevenue && sede.globalRevenue > 0
                         ? (sede.costs / sede.globalRevenue) * 100
                         : 0;
@@ -100,7 +93,7 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                         <div 
                             key={idx} 
                             className={`md-card p-6 bg-white border-t-4 hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group ${isAccountant ? 'border-purple-500' : ''}`} 
-                            style={{ borderColor: isAccountant ? sede.color : sede.color }} // Use sede.color even for accountant (now dynamic)
+                            style={{ borderColor: isAccountant ? sede.color : sede.color }}
                             onClick={() => onSelectLocation(sede)}
                         >
                             <div className="flex justify-between items-start mb-4">
@@ -128,32 +121,32 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                                     <span className="font-bold text-green-600">+{sede.revenue.toFixed(2)}€</span>
                                 </div>
                                 
-                                {/* Student Absorption Cost (Volume Based) - ALWAYS VISIBLE */}
+                                {/* Overhead (Generali + Operazioni Indirette) */}
                                 <div className="flex justify-between text-xs items-center bg-gray-50 p-1.5 rounded mb-1 border border-gray-100">
                                     <div className="flex items-center">
-                                        <span className="text-gray-500">Costo Studenti (Stima)</span>
+                                        <span className="text-gray-500">Overhead (per Iscritto)</span>
                                     </div>
                                     <span className="font-bold text-gray-500">-{sede.studentBasedCosts.toFixed(2)}€</span>
                                 </div>
                                 {sede.costPerStudent > 0 && (
                                     <div className="flex justify-between text-[10px] items-center px-1.5 mb-3">
-                                        <span className="text-gray-400 italic">└ Costo singolo studente:</span>
+                                        <span className="text-gray-400 italic">└ Costo Op. unitario:</span>
                                         <span className="font-bold text-gray-400">-{sede.costPerStudent.toFixed(2)}€</span>
                                     </div>
                                 )}
 
-                                {/* Breakdown Costi Reali - ALWAYS VISIBLE */}
+                                {/* Breakdown Costi Reali */}
                                 <div className="space-y-1 pt-1 border-t border-dashed border-gray-200">
                                     <div className="flex justify-between text-xs items-center">
-                                        <span className="text-gray-600">Nolo Sede</span>
+                                        <span className="text-gray-600">Nolo (Op. Dirette)</span>
                                         <span className="font-bold text-red-600">-{sede.breakdown.rent.toFixed(2)}€</span>
                                     </div>
                                     <div className="flex justify-between text-xs items-center">
-                                        <span className="text-gray-600">Logistica (Quota Fissa)</span>
+                                        <span className="text-gray-600">Logistica (per Viaggio)</span>
                                         <span className="font-bold text-red-600">-{sede.breakdown.logistics.toFixed(2)}€</span>
                                     </div>
                                     <div className="flex justify-between text-xs items-center">
-                                        <span className="text-gray-400 text-[10px] uppercase">Spese Generali (Quota)</span>
+                                        <span className="text-gray-400 text-[10px] uppercase">Generali (Quota)</span>
                                         <span className="font-bold text-red-400">-{sede.breakdown.overhead.toFixed(2)}€</span>
                                     </div>
                                 </div>
@@ -165,11 +158,11 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                                             {Math.abs(sede.revenue - sede.costs).toFixed(2)}€
                                         </span>
                                     </div>
-                                    {/* Costo Singola Lezione - ALWAYS VISIBLE */}
-                                    {sede.costPerLesson > 0 && (
+                                    {/* Costo Assoluto Studente (Stress Test) */}
+                                    {sede.costPerLesson && sede.costPerLesson.value > 0 && (
                                         <div className="flex justify-between text-[10px] text-gray-400">
-                                            <span>Costo singola lezione (Viaggio):</span>
-                                            <span>-{sede.costPerLesson.toFixed(2)}€</span>
+                                            <span>Costo Assoluto Studente (Lez.):</span>
+                                            <span>-{sede.costPerLesson.value.toFixed(2)}€</span>
                                         </div>
                                     )}
                                 </div>

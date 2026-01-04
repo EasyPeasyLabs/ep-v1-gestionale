@@ -11,18 +11,50 @@ export enum TransactionType {
     Expense = 'expense'
 }
 
+// NUOVA GERARCHIA CATEGORIE
 export enum TransactionCategory {
-    Sales = 'Sales',
-    Rent = 'Rent',
-    Taxes = 'Taxes',
-    Fuel = 'Fuel',
-    Vehicles = 'Vehicles', // NEW: RCA, Bollo, Manutenzione, Leasing
-    Materials = 'Materials',
-    ProfessionalServices = 'ProfessionalServices',
-    Software = 'Software',
-    Marketing = 'Marketing',
-    Capital = 'Capital',
-    Other = 'Other'
+    // A. LOGISTICA
+    // 1. Costi Amministrativi
+    RCA = 'RCA',
+    BolloAuto = 'Bollo Auto',
+    // 2. Costi Operativi
+    ManutenzioneAuto = 'Manutenzione Auto',
+    ConsumoAuto = 'Consumo Auto', // Usura
+    Carburante = 'Carburante',
+    Parcheggio = 'Parcheggio',
+    Sanzioni = 'Sanzioni',
+    BigliettoViaggio = 'Biglietto Viaggio',
+
+    // B. GENERALI
+    // 1. Costi Amministrativi
+    Consulenze = 'Consulenze/Commercialista',
+    Tasse = 'Tasse/Bollo',
+    SpeseBancarie = 'Spese Bancarie',
+    // 2. Costi Operativi
+    InternetTelefonia = 'Internet e telefonia', // Unificato (Fibra + SIM)
+    Formazione = 'Formazione', // Nuova voce
+    Software = 'Licenze Software',
+    HardwareGenerale = 'Hardware Ufficio',
+    // 3. Ricavi Operativi (Income)
+    Vendite = 'Vendite/Incassi',
+    Capitale = 'Capitale/Versamenti',
+
+    // C. OPERAZIONI
+    // 1. Costi Sedi
+    Nolo = 'Nolo',
+    QuoteAssociative = 'Quote Associative',
+    AttrezzatureSede = 'Attrezzature Sede',
+    IgieneSicurezza = 'Igiene e Sicurezza',
+    // 2. Costi Corsi
+    Materiali = 'Materiali/Cancelleria',
+    Libri = 'Libri',
+    HardwareSoftwareCorsi = 'Hardware/Software Didattico',
+    // 3. Costi Marketing
+    Stampa = 'Stampa',
+    Social = 'Social',
+    
+    // Fallback
+    Altro = 'Altro'
 }
 
 export enum PaymentMethod {

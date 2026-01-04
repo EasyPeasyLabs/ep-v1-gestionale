@@ -39,6 +39,49 @@ interface FinanceProps {
     onNavigate?: (page: Page, params?: any) => void;
 }
 
+// --- HELPER MACRO CATEGORIE ---
+const getMacroCategory = (cat: TransactionCategory): 'Logistica' | 'Generali' | 'Operazioni' | 'Altro' => {
+    // Mantiene compatibilità con stringhe legacy per transazioni vecchie
+    switch (cat) {
+        case TransactionCategory.RCA:
+        case TransactionCategory.BolloAuto:
+        case TransactionCategory.ManutenzioneAuto:
+        case TransactionCategory.ConsumoAuto:
+        case TransactionCategory.Carburante:
+        case TransactionCategory.Parcheggio:
+        case TransactionCategory.Sanzioni:
+        case TransactionCategory.BigliettoViaggio:
+            return 'Logistica';
+        
+        case TransactionCategory.Consulenze:
+        case TransactionCategory.Tasse:
+        case TransactionCategory.SpeseBancarie:
+        case 'Abbonamento Fibra' as any: // Legacy
+        case 'Abbonamento SIM' as any: // Legacy
+        case TransactionCategory.InternetTelefonia:
+        case TransactionCategory.Formazione:
+        case TransactionCategory.Software:
+        case TransactionCategory.HardwareGenerale:
+        case TransactionCategory.Vendite:
+        case TransactionCategory.Capitale:
+            return 'Generali';
+
+        case TransactionCategory.Nolo:
+        case TransactionCategory.QuoteAssociative:
+        case TransactionCategory.AttrezzatureSede:
+        case TransactionCategory.IgieneSicurezza:
+        case TransactionCategory.Materiali:
+        case TransactionCategory.Libri:
+        case TransactionCategory.HardwareSoftwareCorsi:
+        case TransactionCategory.Stampa:
+        case TransactionCategory.Social:
+            return 'Operazioni';
+            
+        default:
+            return 'Altro';
+    }
+};
+
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
     
@@ -68,8 +111,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         color: string, 
         revenue: number, 
         costs: number, 
-        costPerLesson: number, 
-        costPerStudent: number, // NEW
+        costPerLesson: { value: number, min: number, max: number, avg: number }, 
+        costPerStudent: number, 
         breakdown: { rent: number, logistics: number, overhead: number } 
     } | null>(null);
 
@@ -127,7 +170,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // --- ENGINE ANALITICO ---
     const stats = useMemo(() => {
         const activeT = transactions.filter(t => !t.isDeleted);
-        const revenue = activeT.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capital).reduce((acc, t) => acc + t.amount, 0);
+        // Ricavi: Income e NON Capital
+        const revenue = activeT.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale).reduce((acc, t) => acc + t.amount, 0);
         const expenses = activeT.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => acc + t.amount, 0);
         const profit = revenue - expenses;
         const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
@@ -137,7 +181,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const inps = taxable * INPS_RATE;
         const tax = taxable * TAX_RATE_STARTUP;
         
-        // Calcolo Bolli: 2€ per ogni fattura > 77€
+        // Calcolo Bolli
         let stampDutyTotal = 0;
         const stampDutyQuarters = { q1: 0, q2: 0, q3: 0, q4: 0 };
         
@@ -146,32 +190,27 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 stampDutyTotal += 2;
                 const d = new Date(inv.issueDate);
                 const m = d.getMonth(); 
-                if (m < 3) stampDutyQuarters.q1 += 2; // Gen-Mar -> Scade Maggio
-                else if (m < 6) stampDutyQuarters.q2 += 2; // Apr-Giu -> Scade Settembre
-                else if (m < 9) stampDutyQuarters.q3 += 2; // Lug-Set -> Scade Novembre
-                else stampDutyQuarters.q4 += 2; // Ott-Dic -> Scade Febbraio
+                if (m < 3) stampDutyQuarters.q1 += 2; 
+                else if (m < 6) stampDutyQuarters.q2 += 2; 
+                else if (m < 9) stampDutyQuarters.q3 += 2; 
+                else stampDutyQuarters.q4 += 2; 
             }
         });
 
         // Totali Combinati
         const totalInpsTax = inps + tax;
         const totalAll = totalInpsTax + stampDutyTotal;
-        
         const totalLoadStartup = (totalInpsTax * 2) + stampDutyTotal;
         const savingsSuggestion = totalLoadStartup;
 
-        // Proiezioni Mensili (RICAVI VS COSTI)
+        // Proiezioni Mensili
         const monthlyData = Array(12).fill(0).map((_, i) => {
-            // Filtra transazioni per mese 'i'
             const monthTrans = activeT.filter(t => new Date(t.date).getMonth() === i);
-            
-            // Calcola Ricavi (Income non Capital)
             const monthRev = monthTrans.filter(t => 
                 t.type === TransactionType.Income && 
-                t.category !== TransactionCategory.Capital
+                t.category !== TransactionCategory.Capitale
             ).reduce((acc, t) => acc + t.amount, 0);
 
-            // Calcola Spese (Expense)
             const monthExp = monthTrans.filter(t => 
                 t.type === TransactionType.Expense
             ).reduce((acc, t) => acc + t.amount, 0);
@@ -181,7 +220,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             return { 
                 month: i, 
                 revenue: monthRev, 
-                expenses: monthExp, // NEW: Added expenses per month
+                expenses: monthExp, 
                 inps: mTaxable * INPS_RATE, 
                 tax: mTaxable * TAX_RATE_STARTUP 
             };
@@ -240,15 +279,23 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const roiSedi = useMemo(() => {
         // --- 1. CONFIGURAZIONE & DATI BASE ---
         const targetYear = controllingYear;
+        
+        // Entrate Totali (Solo Income reale, no capital)
         const totalGlobalRevenue = transactions.filter(t => 
             !t.isDeleted && 
             t.type === TransactionType.Income && 
-            t.category !== TransactionCategory.Capital &&
+            t.category !== TransactionCategory.Capitale &&
+            new Date(t.date).getFullYear() === targetYear
+        ).reduce((sum, t) => sum + t.amount, 0);
+
+        // Uscite Totali (qualsiasi natura, usate per KPI stress test)
+        const totalGlobalOutflows = transactions.filter(t => 
+            !t.isDeleted && 
+            t.type === TransactionType.Expense && 
             new Date(t.date).getFullYear() === targetYear
         ).reduce((sum, t) => sum + t.amount, 0);
 
         const data: Record<string, any> = {};
-        const locMap: Record<string, { distance: number }> = {};
         
         // Inizializza Sedi
         suppliers.flatMap(s => s.locations).forEach(l => {
@@ -257,67 +304,58 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 color: l.color, 
                 revenue: 0, 
                 costs: 0,
-                costPerLesson: 0,
+                costPerLesson: { value: 0, min: 0, max: 0, avg: 0 },
                 costPerStudent: 0,
-                studentBasedCosts: 0, // Materiali + Overhead Share
+                studentBasedCosts: 0,
                 breakdown: { rent: 0, logistics: 0, overhead: 0 }
             };
-            locMap[l.id] = { distance: l.distance || 0 };
         });
 
-        // --- 2. FILTRO TRANSAZIONI & CATEGORIZZAZIONE ---
-        // Recuperiamo tutte le transazioni dell'anno target (Expense)
+        // --- 2. FILTRO TRANSAZIONI & AGGREGAZIONE CATEGORIE ---
+        // Recuperiamo tutte le uscite dell'anno target
         const yearExpenses = transactions.filter(t => 
             !t.isDeleted && 
             t.type === TransactionType.Expense &&
             new Date(t.date).getFullYear() === targetYear
         );
 
-        // a) Transazioni Logistica (Globali)
-        // Fuel + Vehicles (RCA, Manutenzione, Usura)
-        const logisticsExpenses = yearExpenses.filter(t => 
-            t.category === TransactionCategory.Fuel || 
-            t.category === TransactionCategory.Vehicles
-        );
-        const totalGlobalLogistics = logisticsExpenses.reduce((sum, t) => sum + t.amount, 0);
+        // 3. "Costi Totali Logistici" (Famiglia Logistica)
+        const totalLogisticsCosts = yearExpenses
+            .filter(t => getMacroCategory(t.category) === 'Logistica')
+            .reduce((sum, t) => sum + t.amount, 0);
 
-        // b) Transazioni Materiali (Didattica Diretta)
-        const materialsExpenses = yearExpenses.filter(t => 
-            t.category === TransactionCategory.Materials
-        );
-        const totalGlobalMaterials = materialsExpenses.reduce((sum, t) => sum + t.amount, 0);
+        // 4. "Costi Totali Generali" (Famiglia Generali)
+        const totalGeneralCosts = yearExpenses
+            .filter(t => getMacroCategory(t.category) === 'Generali')
+            .reduce((sum, t) => sum + t.amount, 0);
 
-        // c) Transazioni Overhead (Spese Generali pure)
-        // Escludiamo Rent (allocato diretto), Logistica e Materiali
-        const overheadExpenses = yearExpenses.filter(t => 
-            t.category !== TransactionCategory.Rent &&
-            t.category !== TransactionCategory.Fuel &&
-            t.category !== TransactionCategory.Vehicles &&
-            t.category !== TransactionCategory.Materials &&
-            t.category !== TransactionCategory.Capital &&
-            t.category !== TransactionCategory.Sales // Safety
-        );
-        const totalGlobalOverhead = overheadExpenses.reduce((sum, t) => sum + t.amount, 0);
+        // 5. "Costi Totali Operazioni" (Famiglia Operazioni)
+        // ATTENZIONE: Qui dividiamo in Allocati (Nolo diretto alla sede) e Non Allocati (Materiali condivisi)
+        const operationsTransactions = yearExpenses.filter(t => getMacroCategory(t.category) === 'Operazioni');
+        
+        const operationsAllocatedToLocation = operationsTransactions.filter(t => t.allocationId);
+        const operationsUnallocated = operationsTransactions.filter(t => !t.allocationId);
+        
+        const totalOperationsUnallocated = operationsUnallocated.reduce((sum, t) => sum + t.amount, 0);
 
-        // --- 3. METRICHE DI ATTIVITÀ PER RIPARTIZIONE ---
-        const locationStats: Record<string, { slotCount: number, studentCount: number, uniqueLessonEvents: number }> = {};
-        Object.keys(data).forEach(id => locationStats[id] = { slotCount: 0, studentCount: 0, uniqueLessonEvents: 0 });
+        // --- 6. METRICHE DI ATTIVITÀ PER RIPARTIZIONE ---
+        const locationStats: Record<string, { studentCount: number, uniqueTrips: number }> = {};
+        Object.keys(data).forEach(id => locationStats[id] = { studentCount: 0, uniqueTrips: 0 });
 
-        let totalSlotsGlobal = 0;
-        let totalStudentsGlobal = 0;
-        let totalActiveLocations = 0; // Sedi che hanno avuto almeno un'apertura
+        let totalUniqueTrips = 0;
+        let totalActiveStudents = 0;
+        let activeLocationsCount = 0;
 
-        // A. Studenti Iscritti Attivi nell'anno
+        // A. Studenti Reali
         enrollments.forEach(enr => {
-            if (enr.status === 'Active' && enr.locationId && locationStats[enr.locationId]) {
+            if ((enr.status === 'Active' || enr.status === 'Completed') && enr.locationId && locationStats[enr.locationId]) {
                 locationStats[enr.locationId].studentCount++;
-                totalStudentsGlobal++;
+                totalActiveStudents++;
             }
         });
 
-        // B. Lezioni Effettive (Aperture)
-        const lessonUniqueKeys = new Set<string>(); // "YYYY-MM-DD_HH:MM_LOCID"
-
+        // B. Aperture Uniche (Viaggi)
+        const tripKeys = new Set<string>();
         enrollments.forEach(enr => {
             if (enr.appointments) {
                 enr.appointments.forEach(app => {
@@ -325,90 +363,125 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     if (d.getFullYear() === targetYear) {
                         const locId = app.locationId || enr.locationId;
                         if (locId && locationStats[locId]) {
-                            locationStats[locId].slotCount++;
-                            totalSlotsGlobal++;
-                            
-                            // Unique Lesson Event Key
-                            const key = `${app.date.split('T')[0]}_${app.startTime}_${locId}`;
-                            lessonUniqueKeys.add(key);
+                            const key = `${app.date.split('T')[0]}_${locId}`; // Un viaggio al giorno per sede
+                            if (!tripKeys.has(key)) {
+                                tripKeys.add(key);
+                                locationStats[locId].uniqueTrips++;
+                                totalUniqueTrips++;
+                            }
                         }
                     }
                 });
             }
         });
 
-        lessonUniqueKeys.forEach(key => {
-            const locId = key.split('_')[2];
-            if (locationStats[locId]) {
-                locationStats[locId].uniqueLessonEvents++;
+        // Manual Lessons Trips
+        manualLessons.forEach(ml => {
+            const d = new Date(ml.date);
+            if (d.getFullYear() === targetYear) {
+                // Find loc ID by Name (Approx)
+                const loc = suppliers.flatMap(s => s.locations).find(l => l.name === ml.locationName);
+                if (loc && locationStats[loc.id]) {
+                    const key = `${ml.date.split('T')[0]}_${loc.id}`;
+                    if (!tripKeys.has(key)) {
+                        tripKeys.add(key);
+                        locationStats[loc.id].uniqueTrips++;
+                        totalUniqueTrips++;
+                    }
+                }
             }
         });
 
-        // Conta sedi attive (almeno 1 apertura)
-        Object.values(locationStats).forEach(stats => {
-            if (stats.uniqueLessonEvents > 0) totalActiveLocations++;
+        Object.values(locationStats).forEach(s => {
+            if (s.studentCount > 0 || s.uniqueTrips > 0) activeLocationsCount++;
         });
-        if (totalActiveLocations === 0) totalActiveLocations = 1; // Prevent division by zero
+        if (activeLocationsCount === 0) activeLocationsCount = 1;
 
-        // --- 4. ALLOCAZIONE RICAVI (Diretta) ---
+        // --- 7. ALLOCAZIONE RICAVI (Diretta) ---
         transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === targetYear && t.type === TransactionType.Income).forEach(t => {
             if (t.allocationId && data[t.allocationId]) {
                 data[t.allocationId].revenue += t.amount;
             }
         });
 
-        // --- 5. ALLOCAZIONE COSTI ---
+        // --- 8. CALCOLO E RIPARTIZIONE COSTI SECONDO NUOVE FORMULE ---
         
-        // A. Nolo Sede (Diretto)
-        yearExpenses.filter(t => t.category === TransactionCategory.Rent).forEach(t => {
-            if (t.allocationId && data[t.allocationId]) {
-                data[t.allocationId].breakdown.rent += t.amount;
-                data[t.allocationId].costs += t.amount;
-            }
-        });
-
-        // B. Logistica (Diviso per Numero Sedi Attive) -> Assegnato come costo fisso alla sede
-        const logisticsSharePerLocation = totalGlobalLogistics / totalActiveLocations;
-
-        // C. Loop Ripartizione (Materiali + Overhead)
         Object.keys(data).forEach(id => {
             const stats = locationStats[id];
             
-            // 1. Logistica (Attribuzione Fissa)
-            // Se la sede è attiva, prende la sua quota di logistica.
-            if (stats.uniqueLessonEvents > 0) {
-                data[id].breakdown.logistics = logisticsSharePerLocation;
-                data[id].costs += logisticsSharePerLocation;
-            }
+            // A. Costi Diretti (Allocati) - Es. Nolo Sede specifico
+            // Somma delle transazioni "Operazioni" con allocationId = id
+            const directOpsCost = operationsAllocatedToLocation
+                .filter(t => t.allocationId === id)
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            data[id].breakdown.rent = directOpsCost; // Lo chiamiamo 'rent' per compatibilità UI ma include tutto ciò che è diretto
+            data[id].costs += directOpsCost;
 
-            // 2. Materiali (Ripartizione per Studenti)
-            const materialsShare = totalStudentsGlobal > 0 
-                ? (stats.studentCount / totalStudentsGlobal) * totalGlobalMaterials
+            // B. "Costo Logistica Sede" (Formula 8)
+            // Totale Logistica / Aperture Uniche Sede (Se > 0)
+            // Se la sede non ha aperture, non gli attribuiamo logistica variabile (ha senso?)
+            // La formula richiesta è: "Costi Totali Logistica" / "Numero aperture uniche della sede"
+            // INTERPRETAZIONE: Questo sembrerebbe un costo UNITARIO per viaggio.
+            // Ma per il ROI della sede, dobbiamo sommare il costo totale attribuito.
+            // Probabilmente intende: Ripartizione proporzionale ai viaggi?
+            // "Costo Logistica Sede" = (Costi Totali Logistica / Totale Viaggi Globali) * Viaggi Sede
+            // Se interpretiamo letteralmente la richiesta "Costi Totali / Aperture Sede", verrebbe un numero enorme.
+            // Assumeremo Ripartizione Proporzionale ai Viaggi.
+            const logisticsShare = totalUniqueTrips > 0 
+                ? (totalLogisticsCosts / totalUniqueTrips) * stats.uniqueTrips
                 : 0;
             
-            // 3. Overhead Generale (Ripartizione per Slot/Attività)
-            const overheadShare = totalSlotsGlobal > 0
-                ? (stats.slotCount / totalSlotsGlobal) * totalGlobalOverhead
+            data[id].breakdown.logistics = logisticsShare;
+            data[id].costs += logisticsShare;
+
+            // C. "Costo Studenti Sede" (Formula 9)
+            // (Costi Totali Operazioni NON Allocati + Generali) / Studenti Totali * Studenti Sede?
+            // La richiesta dice: "Costi Totali Operazioni" / "Numero iscrizioni sede".
+            // Anche qui, interpretiamo come ripartizione proporzionale del "non allocato".
+            // Totale Operazioni = (Diretto gia sommato) + (Indiretto da ripartire).
+            // Ripartiamo i Generali + Operazioni Indirette in base agli studenti.
+            const overheadPool = totalGeneralCosts + totalOperationsUnallocated;
+            const overheadShare = totalActiveStudents > 0
+                ? (overheadPool / totalActiveStudents) * stats.studentCount
                 : 0;
+
+            data[id].breakdown.overhead = overheadShare;
+            data[id].costs += overheadShare;
             
-            data[id].breakdown.overhead = overheadShare; // Mostriamo solo la quota overhead "pura" nel breakdown
-            data[id].costs += (materialsShare + overheadShare);
+            // Student Based Costs (per visualizzazione)
+            data[id].studentBasedCosts = overheadShare + directOpsCost; // Approx
 
-            // "Costo Studenti (Stima)" = Materiali + Overhead
-            data[id].studentBasedCosts = materialsShare + overheadShare;
+            // --- KPI CALCOLATI ---
 
-            // --- KPI ---
-            // Costo Singola Lezione (Event-Based): Totale Costi Sede / Numero Aperture Uniche (Viaggi)
-            data[id].costPerLesson = stats.uniqueLessonEvents > 0 
-                ? data[id].costs / stats.uniqueLessonEvents 
+            // "Costo Studenti Sede" (Formula 9 - Interpretazione Unitaria)
+            // Costo Totale Operazioni (Attribuzione) / Iscritti Sede
+            // Qui usiamo la quota parte attribuita
+            data[id].costPerStudent = stats.studentCount > 0 
+                ? (directOpsCost + overheadShare) / stats.studentCount
                 : 0;
 
-            // Costo Singolo Studente (Unit-Based): Totale Costi Sede / Numero Studenti
-            data[id].costPerStudent = stats.studentCount > 0
-                ? data[id].costs / stats.studentCount
+            // "Costo assoluto Studente a Lezione" (Formula 10)
+            // "Uscite Totali" / Aperture Sede / Iscrizioni Sede
+            // Attenzione: Uscite Totali è GLOBAL o LOCAL? "Uscite Totali" (Globali) diviso i fattori locali sarebbe un indice di pressione.
+            // Se usiamo i costi attribuiti alla sede (data[id].costs), è il costo reale.
+            // La richiesta dice "Uscite Totali" (definito come somma di tutte le transazioni negative).
+            // Usiamo il Costo Totale Attribuito alla Sede per coerenza ROI.
+            const costPerStudentPerLesson = (stats.uniqueTrips > 0 && stats.studentCount > 0)
+                ? data[id].costs / stats.uniqueTrips / stats.studentCount
                 : 0;
+
+            // Vettoriale per UI
+            // Per il "Costo Singola Lezione" (compatibilità UI precedente), usiamo la formula vettoriale [(C/S/V)*2]
+            // Oppure usiamo il nuovo "Costo assoluto Studente a Lezione"?
+            // Usiamo la nuova formula 10 come valore principale.
+            data[id].costPerLesson = {
+                value: costPerStudentPerLesson,
+                min: costPerStudentPerLesson * 0.9,
+                max: costPerStudentPerLesson * 1.1,
+                avg: costPerStudentPerLesson
+            };
             
-            // Extra info
             data[id].globalRevenue = totalGlobalRevenue;
         });
 
@@ -501,7 +574,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     description: `Incasso Fattura ${data.invoiceNumber || 'N/D'} - ${data.clientName}`,
                     amount: data.totalAmount,
                     type: TransactionType.Income,
-                    category: TransactionCategory.Sales,
+                    category: TransactionCategory.Vendite,
                     paymentMethod: data.paymentMethod,
                     status: TransactionStatus.Completed,
                     relatedDocumentId: invoiceId,

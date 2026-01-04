@@ -9,8 +9,8 @@ interface LocationDetailModalProps {
         color: string, 
         revenue: number, 
         costs: number, 
-        costPerLesson?: number, 
-        costPerStudent?: number, // NEW
+        costPerLesson?: { value: number, min: number, max: number, avg: number }, 
+        costPerStudent?: number, 
         breakdown?: { rent: number, logistics: number, overhead: number } 
     };
     onClose: () => void;
@@ -32,14 +32,14 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
     const isProfitable = profit >= 0;
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     
-    // Breakdown defaults (Ensure overhead is handled)
+    // Breakdown defaults
     const bd = data.breakdown || { rent: 0, logistics: 0, overhead: 0 };
     
     // Efficiency: Quanto rimane in tasca su 10 euro
     const pocketMoneyPer10 = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
 
-    // FIX TS18048: Ensure numeric values for optional props
-    const costPerLesson = data.costPerLesson || 0;
+    // Costo Assoluto
+    const costPerLesson = data.costPerLesson ? data.costPerLesson.value : 0;
     const costPerStudent = data.costPerStudent || 0;
     
     useEffect(() => {
@@ -143,8 +143,8 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🏠</span>
                                     <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Nolo Sede</span>
-                                        <InfoTooltip text="Costo affitto diretto." />
+                                        <span className="text-xs font-bold text-gray-600">Operazioni Dirette</span>
+                                        <InfoTooltip text="Costi Operativi allocati (es. Nolo, Materiali specifici)." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.rent.toFixed(2)}€</span>
@@ -154,8 +154,8 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🚗</span>
                                     <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Logistica</span>
-                                        <InfoTooltip text="Costo veicoli diviso per n. sedi attive." />
+                                        <span className="text-xs font-bold text-gray-600">Logistica (Weighted)</span>
+                                        <InfoTooltip text="Costi Logistica globali ripartiti per Viaggi." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.logistics.toFixed(2)}€</span>
@@ -165,8 +165,8 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">📊</span>
                                     <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Spese Generali</span>
-                                        <InfoTooltip text="Quota parte overhead + materiali." />
+                                        <span className="text-xs font-bold text-gray-600">Generali (Overhead)</span>
+                                        <InfoTooltip text="Costi Generali + Operazioni non allocate ripartiti per Studenti." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.overhead.toFixed(2)}€</span>
@@ -201,8 +201,10 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
-                                        Il "Costo Singola Lezione" (Cost to Serve) è di <strong>{costPerLesson.toFixed(2)}€</strong>.
-                                        <br/><span className="text-xs text-gray-400 italic font-normal">Include logistica diviso per il numero di viaggi (aperture).</span>
+                                        Il "Costo Assoluto Studente a Lezione" è di <strong>{costPerLesson.toFixed(2)}€</strong>.
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">
+                                            Stress Test: (Uscite Totali Aziendali / Viaggi Sede / Iscritti Sede).
+                                        </span>
                                     </span>
                                 </li>
                             )}
@@ -210,8 +212,8 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
-                                        Il "Costo Singolo Studente" (Marginal Cost) è di <strong>{costPerStudent.toFixed(2)}€</strong>.
-                                        <br/><span className="text-xs text-gray-400 italic font-normal">Totale costi sede diviso per iscritti reali.</span>
+                                        Il "Costo Operativo per Studente" è di <strong>{costPerStudent.toFixed(2)}€</strong>.
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">Costi Sede (Diretti) + Overhead ripartito.</span>
                                     </span>
                                 </li>
                             )}

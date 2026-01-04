@@ -526,7 +526,7 @@ const CRM: React.FC = () => {
 
             // 2. Pending Rents
             transactions.forEach(t => {
-                if (t.status === TransactionStatus.Pending && t.category === TransactionCategory.Rent) {
+                if (t.status === TransactionStatus.Pending && t.category === TransactionCategory.Nolo) {
                     let supplier = suppliersData.find(s => t.description.toLowerCase().includes((s.companyName || '').toLowerCase()));
                     // Try allocation match
                     if (!supplier && t.allocationId) {

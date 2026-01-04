@@ -141,7 +141,7 @@ export const processPayment = async (
                     description: `Incasso ${nextRealInvoiceNumber || 'Iscrizione'} - ${safeChildName}`,
                     amount: cleanAmount,
                     type: TransactionType.Income,
-                    category: TransactionCategory.Sales,
+                    category: TransactionCategory.Vendite,
                     paymentMethod: method,
                     status: TransactionStatus.Completed,
                     allocationType: 'location',

@@ -3,16 +3,28 @@ import React, { useEffect, useRef, useState, useMemo } from 'react';
 import Chart from 'chart.js/auto';
 import CalculatorIcon from '../icons/CalculatorIcon';
 import Modal from '../Modal';
-import { Transaction, TransactionType } from '../../types';
+import { Transaction, TransactionType, TransactionCategory } from '../../types';
 
 interface FinanceOverviewProps {
     stats: any;
     transactions: Transaction[];
 }
 
-// --- SOTTO-COMPONENTE PER GRAFICO MODALE ---
-// Estraiamo il componente per garantire che il mounting del Canvas avvenga correttamente
-// all'apertura della modale, risolvendo il problema del ref nullo.
+// Helper duplicato (local) per overview
+const getMacroCategory = (cat: TransactionCategory): 'Logistica' | 'Generali' | 'Operazioni' | 'Altro' => {
+    // Replica della logica definita in Finance.tsx per coerenza visiva
+    const catStr = cat as string; 
+    // Logistica
+    if (['RCA', 'Bollo Auto', 'Manutenzione Auto', 'Consumo Auto', 'Carburante', 'Parcheggio', 'Sanzioni', 'Biglietto Viaggio'].includes(catStr)) return 'Logistica';
+    // Generali
+    // Include stringhe legacy 'Abbonamento Fibra', 'Abbonamento SIM' per retrocompatibilità
+    if (['Consulenze/Commercialista', 'Tasse/Bollo', 'Spese Bancarie', 'Abbonamento Fibra', 'Abbonamento SIM', 'Internet e telefonia', 'Formazione', 'Licenze Software', 'Hardware Ufficio', 'Vendite/Incassi', 'Capitale/Versamenti'].includes(catStr)) return 'Generali';
+    // Operazioni
+    if (['Nolo', 'Quote Associative', 'Attrezzature Sede', 'Igiene e Sicurezza', 'Materiali/Cancelleria', 'Libri', 'Hardware/Software Didattico', 'Stampa', 'Social'].includes(catStr)) return 'Operazioni';
+    
+    return 'Altro';
+};
+
 const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transaction[] }> = ({ type, stats, transactions }) => {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const chartInstanceRef = useRef<Chart | null>(null);
@@ -20,7 +32,6 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
     useEffect(() => {
         if (!canvasRef.current) return;
 
-        // Distruggi istanza precedente se esiste
         if (chartInstanceRef.current) {
             chartInstanceRef.current.destroy();
         }
@@ -31,7 +42,6 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
         let config: any = {};
 
         if (type === 'revenue') {
-            // Fatturato Lordo - Bar Chart Mensile
             config = {
                 type: 'bar',
                 data: {
@@ -52,54 +62,34 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                 }
             };
         } else if (type === 'costs') {
-            // Costi Operativi - Doughnut per Categoria
-            
-            // FUNZIONE DI NORMALIZZAZIONE AVANZATA (Raggruppamento)
-            const normalizeCategory = (raw: string): string => {
-                const val = (raw || '').trim();
-                const lower = val.toLowerCase();
-
-                // 1. Gruppo Materiali & Cancelleria
-                if (['materials', 'materiali', 'materiali didattici', 'attrezzature', 'materiali & cancelleria'].includes(lower)) {
-                    return 'Materiali & Cancelleria';
-                }
-
-                // 2. Gruppo Carburante & Trasporti
-                if (['fuel', 'carburante', 'carburante & trasporti'].includes(lower)) {
-                    return 'Carburante & Trasporti';
-                }
-
-                // 3. Mappatura Standard Enum (Inglese -> Italiano)
-                const standardMap: Record<string, string> = {
-                    'Sales': 'Vendite / Incassi',
-                    'Rent': 'Affitto / Locazione',
-                    'Taxes': 'Tasse & Bolli',
-                    'ProfessionalServices': 'Servizi & Consulenze',
-                    'Software': 'Software & Internet',
-                    'Marketing': 'Marketing & Pubblicità',
-                    'Capital': 'Capitale / Versamenti Propri',
-                    'Other': 'Altro / Spese Bancarie'
-                };
-
-                return standardMap[val] || val;
-            };
-
+            // Costi Operativi - Raggruppati per Macro-Categoria
             const expenses = transactions.filter(t => t.type === TransactionType.Expense && !t.isDeleted);
-            const categories: Record<string, number> = {};
+            const macros: Record<string, number> = { 'Logistica': 0, 'Generali': 0, 'Operazioni': 0, 'Altro': 0 };
             
             expenses.forEach(t => {
-                const rawCat = t.category || 'Other';
-                const label = normalizeCategory(rawCat);
-                categories[label] = (categories[label] || 0) + t.amount;
+                const m = getMacroCategory(t.category);
+                macros[m] += t.amount;
             });
             
+            // Filtra solo quelli > 0
+            const labels = Object.keys(macros).filter(k => macros[k] > 0);
+            const data = labels.map(k => macros[k]);
+            
+            // Colori standard per Macro
+            const macroColors: Record<string, string> = {
+                'Logistica': '#f59e0b', // Amber
+                'Generali': '#64748b',  // Slate
+                'Operazioni': '#ef4444', // Red
+                'Altro': '#9ca3af'
+            };
+
             config = {
                 type: 'doughnut',
                 data: {
-                    labels: Object.keys(categories),
+                    labels: labels,
                     datasets: [{
-                        data: Object.values(categories),
-                        backgroundColor: ['#ef4444', '#f97316', '#eab308', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#64748b', '#10b981', '#9ca3af'],
+                        data: data,
+                        backgroundColor: labels.map(l => macroColors[l] || '#ccc'),
                         borderWidth: 0,
                         hoverOffset: 10
                     }]
@@ -124,7 +114,6 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                 }
             };
         } else if (type === 'margin') {
-            // Margine Operativo - Pie (Profit vs Expenses)
             config = {
                 type: 'pie',
                 data: {
@@ -142,7 +131,6 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                 }
             };
         } else if (type === 'taxes') {
-            // Accantonamento - Bar Comparison
             config = {
                 type: 'bar',
                 data: {
@@ -164,7 +152,6 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                 }
             };
         } else if (type === 'cashflow') {
-            // ANALISI FLUSSI: Double Bar Chart (Revenue vs Expenses)
             config = {
                 type: 'bar',
                 data: {
@@ -173,15 +160,15 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
                         {
                             label: 'Ricavi',
                             data: stats.monthlyData.map((d: any) => d.revenue),
-                            backgroundColor: '#10b981', // Verde
+                            backgroundColor: '#10b981', 
                             borderRadius: 4,
                             barPercentage: 0.7,
                             categoryPercentage: 0.8
                         },
                         {
                             label: 'Costi',
-                            data: stats.monthlyData.map((d: any) => d.expenses), // Expenses must be calculated in Finance.tsx stats
-                            backgroundColor: '#ef4444', // Rosso
+                            data: stats.monthlyData.map((d: any) => d.expenses), 
+                            backgroundColor: '#ef4444', 
                             borderRadius: 4,
                             barPercentage: 0.7,
                             categoryPercentage: 0.8
@@ -242,11 +229,6 @@ const KpiCard = ({ title, value, color, progress, label, sub, onClick }: any) =>
                 </div>
             </div>
         )}
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-slate-300">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-        </div>
     </div>
 );
 
@@ -263,7 +245,6 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
     const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
     const [showCashFlowModal, setShowCashFlowModal] = useState(false);
 
-    // --- Main Chart Overview ---
     useEffect(() => {
         if (chartRef.current) {
             if (chartInstance.current) chartInstance.current.destroy();
@@ -300,28 +281,28 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
                 return {
                     title: "Fatturato Lordo",
                     desc: "Il totale di tutte le vendite prima di togliere le spese.",
-                    explanation: "Immagina che ogni barra sia una pila di monete raccolte in quel mese. Le barre più alte significano che il salvadanaio si è riempito di più! Questo è tutto il denaro che è entrato, senza togliere ancora nulla.",
+                    explanation: "Immagina che ogni barra sia una pila di monete raccolte in quel mese. Le barre più alte significano che il salvadanaio si è riempito di più!",
                     icon: "💰"
                 };
             case 'costs':
                 return {
-                    title: "Costi Operativi",
-                    desc: "Tutte le spese necessarie per mandare avanti la baracca.",
-                    explanation: "Questa ciambella mostra dove sono finiti i tuoi soldi. Ogni spicchio colorato è un tipo di spesa diversa: l'affitto della sala, i materiali per i bambini, o le tasse. Più grande è lo spicchio, più quella spesa 'mangia' i tuoi guadagni.",
+                    title: "Costi Operativi (Macro)",
+                    desc: "Suddivisione spese per aree: Logistica, Generali, Operazioni.",
+                    explanation: "Questa ciambella mostra le 3 grandi aree di spesa. La Logistica riguarda i viaggi, le Operazioni riguardano sedi e corsi, i Generali la struttura aziendale.",
                     icon: "💸"
                 };
             case 'margin':
                 return {
                     title: "Margine Operativo",
                     desc: "La percentuale di incasso che rimane dopo aver pagato i costi.",
-                    explanation: "Guarda la torta: la fetta blu è quella che ti rimane in tasca per ogni euro che incassi. La parte grigia è quella che hai dovuto dare via per pagare le spese. Il nostro obiettivo è rendere la fetta blu sempre più grande!",
+                    explanation: "La fetta blu è quella che ti rimane in tasca per ogni euro che incassi.",
                     icon: "🍰"
                 };
             case 'taxes':
                 return {
                     title: "Accantonamento Tasse",
                     desc: "Soldi da mettere da parte per lo Stato.",
-                    explanation: "Attenzione! La barra gialla sono soldi che hai incassato ma non sono tuoi: sono dello Stato (Tasse e Bolli). Non spenderli! La barra verde invece sono i soldi puliti che puoi usare per te o per la scuola.",
+                    explanation: "Attenzione! La barra gialla sono soldi che hai incassato ma non sono tuoi: sono dello Stato (Tasse e Bolli).",
                     icon: "🏛️"
                 };
             default: return null;
@@ -373,12 +354,11 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
                     <div className="h-[320px]"><canvas ref={chartRef}></canvas></div>
                 </div>
                 <div className="space-y-6">
-                    <StrategyCard title="Soglia Forfettario" desc={stats.revenue > 60000 ? "ATTENZIONE: Sei vicino alla soglia. Monitora le prossime fatture." : "Stato Sicuro: Ampiamente sotto la soglia degli 85k."} status={stats.revenue > 70000 ? 'danger' : 'success'} />
-                    <StrategyCard title="Efficiency Insight" desc={stats.margin < 30 ? "Margine basso rilevato. Controlla i costi di nolo delle sedi periferiche." : "Ottima efficienza operativa rilevata questo mese."} status={stats.margin < 30 ? 'warning' : 'success'} />
+                    <StrategyCard title="Soglia Forfettario" desc={stats.revenue > 60000 ? "ATTENZIONE: Sei vicino alla soglia." : "Stato Sicuro."} status={stats.revenue > 70000 ? 'danger' : 'success'} />
+                    <StrategyCard title="Efficiency Insight" desc={stats.margin < 30 ? "Margine basso rilevato." : "Ottima efficienza operativa."} status={stats.margin < 30 ? 'warning' : 'success'} />
                     <div className="md-card p-6 bg-indigo-900 text-white shadow-indigo-200">
                         <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato</h4>
                         <p className="text-3xl font-black">{(stats.profit - stats.totalAll).toFixed(2)}€</p>
-                        <p className="text-[10px] mt-4 text-indigo-400 italic">Calcolato dopo INPS, Imposta e Bolli</p>
                     </div>
                 </div>
             </div>
@@ -398,7 +378,6 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
                         
                         <div className="p-8 flex-1 flex flex-col items-center justify-center bg-white min-h-[350px]">
                             <div className="w-full max-w-md h-72 relative">
-                                {/* Usa il sotto-componente per garantire il rendering */}
                                 <KpiDetailChart type={selectedKpi} stats={stats} transactions={transactions} />
                             </div>
                         </div>
@@ -416,7 +395,6 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions }
                 </Modal>
             )}
 
-            {/* MODALE CASHFLOW (Doppio Istogramma) */}
             {showCashFlowModal && (
                 <Modal onClose={() => setShowCashFlowModal(false)} size="xl">
                     <div className="flex flex-col h-full max-h-[90vh]">
