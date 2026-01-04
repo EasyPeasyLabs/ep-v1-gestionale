@@ -72,7 +72,6 @@ const App: React.FC = () => {
                   appleLink.href = info.logoBase64;
 
                   // 3. Genera Manifest Dinamico per installazione PWA
-                  // Questo sovrascrive il manifest.json statico permettendo di usare il logo e il nome personalizzati
                   const manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement;
                   if (manifestLink) {
                       const dynamicManifest = {
@@ -81,8 +80,8 @@ const App: React.FC = () => {
                           gcm_sender_id: "103953800507",
                           start_url: ".",
                           display: "standalone",
-                          theme_color: "#757575", 
-                          background_color: "#f5f5f5",
+                          theme_color: "#4318FF", // Updated Theme Color
+                          background_color: "#F4F7FE", // Updated BG Color
                           icons: [
                               {
                                   src: info.logoBase64,
@@ -116,21 +115,17 @@ const App: React.FC = () => {
       return () => window.removeEventListener('EP_DataUpdated', updateAppIdentity);
   }, []);
 
-  // Funzione di navigazione centralizzata che supporta parametri
   const handleNavigation = (page: Page, params?: any) => {
-      // DEBUG LISTENER 3: Cambio stato pagina
       console.log('[DEBUG 3] App: handleNavigation verso', page);
       setCurrentPage(page);
       setPageParams(params || null);
   };
 
   const renderContent = () => {
-    if (!user) return null; // Should not happen if user is logged in
+    if (!user) return null; 
     
-    // DEBUG LISTENER 4: Rendering content
     console.log('[DEBUG 4] App: rendering content per', currentPage);
 
-    // Use a key to force remounting and trigger the animation
     return (
         <div key={currentPage} className="animate-slide-up h-full">
             {(() => {
@@ -182,9 +177,8 @@ const App: React.FC = () => {
   }
 
   return (
-    // FIX MOBILE: Use h-[100dvh] for dynamic viewport height (avoids address bar cutoff)
-    <div className="flex h-screen h-[100dvh] w-full bg-slate-50 text-gray-900 font-sans overflow-hidden">
-      {/* Scheduler locale come fallback per quando il browser è aperto */}
+    // Updated Background Color variable var(--md-bg-light) from CSS
+    <div className="flex h-screen h-[100dvh] w-full text-gray-800 font-sans overflow-hidden" style={{ backgroundColor: 'var(--md-bg-light)' }}>
       <NotificationScheduler />
       
       <Sidebar 
@@ -201,7 +195,6 @@ const App: React.FC = () => {
             onNavigate={handleNavigation}
             onMenuClick={() => setIsSidebarOpen(true)} 
         />
-        {/* FIX MOBILE: Added padding-bottom (pb-24) for mobile to prevent content being hidden behind bottom bars. Added touch-scrolling support. */}
         <main 
             className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 scroll-smooth pb-24 md:pb-8 touch-pan-y" 
             style={{ WebkitOverflowScrolling: 'touch' }}

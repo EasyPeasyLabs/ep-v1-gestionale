@@ -258,17 +258,18 @@ const Attendance: React.FC = () => {
                     <p className="text-gray-500">Gestione presenze e recuperi.</p>
                 </div>
                 
-                <div className="flex gap-2 items-center">
+                {/* TOOLBAR SCORREVOLE SU MOBILE */}
+                <div className="w-full md:w-auto flex gap-2 items-center overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
                     {/* Bulk Actions */}
-                    <button onClick={handleBulkMarkPresent} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 whitespace-nowrap">
+                    <button onClick={handleBulkMarkPresent} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 whitespace-nowrap flex-shrink-0">
                         ✓ Tutti Presenti
                     </button>
-                    <button onClick={handleBulkMarkAbsent} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap">
+                    <button onClick={handleBulkMarkAbsent} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap flex-shrink-0">
                         ✕ Tutti Assenti
                     </button>
 
                     {/* View Toggles */}
-                    <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm ml-2">
+                    <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm ml-2 flex-shrink-0">
                         <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
                         <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
                         <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>

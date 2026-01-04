@@ -379,22 +379,28 @@ const Settings: React.FC = () => {
                             })();
                             
                             return (
-                                <div key={sub.id} className={`flex justify-between items-center p-3 rounded border ${cardClass}`}>
-                                    <div>
-                                        <p className="font-medium flex items-center gap-2">
+                                <div key={sub.id} className={`flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 rounded border ${cardClass} gap-3`}>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium flex flex-wrap items-center gap-2">
                                             {sub.name}
-                                            <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold ${sub.target === 'adult' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded font-bold whitespace-nowrap ${sub.target === 'adult' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
                                                 {sub.target === 'adult' ? 'Adulti' : 'Bambini'}
                                             </span>
                                             {badgeInfo && (
-                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase border ${badgeInfo.className}`}>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase border whitespace-nowrap ${badgeInfo.className}`}>
                                                     {badgeInfo.label}
                                                 </span>
                                             )}
                                         </p>
-                                        <p className="text-xs" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
+                                        <p className="text-xs mt-1" style={{color: 'var(--md-text-secondary)'}}>{sub.lessons} lezioni - {sub.durationInDays} giorni</p>
                                     </div>
-                                    <div className="flex items-center gap-3"><span className="font-bold text-sm">{sub.price}€</span><div className="flex space-x-1"><button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete"><TrashIcon /></button></div></div>
+                                    <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end gap-3 mt-2 sm:mt-0">
+                                        <span className="font-bold text-sm">{sub.price}€</span>
+                                        <div className="flex space-x-1">
+                                            <button onClick={() => handleOpenSubModal(sub)} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                            <button onClick={() => handleDeleteClick(sub.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
+                                        </div>
+                                    </div>
                                 </div>
                             );
                         })}
@@ -449,13 +455,19 @@ const Settings: React.FC = () => {
                     
                     <div className="space-y-3 max-h-60 overflow-y-auto mb-4">
                         {checks.map(check => (
-                            <div key={check.id} className={`p-3 rounded border flex justify-between items-start ${check.pushEnabled ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200 opacity-70'}`}>
+                            <div key={check.id} className={`p-3 rounded border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${check.pushEnabled ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200 opacity-70'}`}>
                                 <div>
-                                    <div className="flex items-center gap-2"><span className="text-xs font-bold uppercase tracking-wider">{check.category}</span>{check.pushEnabled && <span className="text-[9px] bg-green-100 text-green-800 px-1 rounded">PUSH</span>}</div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-bold uppercase tracking-wider">{check.category}</span>
+                                        {check.pushEnabled && <span className="text-[9px] bg-green-100 text-green-800 px-1 rounded">PUSH</span>}
+                                    </div>
                                     <p className="text-sm font-medium text-gray-800">{check.subCategory || 'Generico'}</p>
                                     <div className="text-xs text-gray-500 flex items-center gap-1 mt-1"><ClockIcon /> {check.startTime} • {check.daysOfWeek.map(d => daysMap[d].substring(0,3)).join(', ')}</div>
                                 </div>
-                                <div className="flex gap-1"><button onClick={() => { setEditingCheck(check); setIsCheckModalOpen(true); }} className="md-icon-btn edit p-1"><PencilIcon /></button><button onClick={() => handleDeleteCheck(check.id)} className="md-icon-btn delete p-1"><TrashIcon /></button></div>
+                                <div className="flex gap-1 self-end sm:self-auto">
+                                    <button onClick={() => { setEditingCheck(check); setIsCheckModalOpen(true); }} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteCheck(check.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -468,7 +480,7 @@ const Settings: React.FC = () => {
                         <div className="flex justify-between items-center mb-2">
                             <div>
                                 <p className="text-sm text-gray-800 font-medium">Target: <span className="font-mono text-indigo-700">Admin</span></p>
-                                <p className="text-[10px] text-gray-500 mt-0.5">Stato Browser: {notifPermission}</p>
+                                <p className="text-xs text-gray-500 mt-0.5">Stato Browser: {notifPermission}</p>
                             </div>
                             <div className="flex flex-col items-end">
                                 <button 
@@ -500,11 +512,14 @@ const Settings: React.FC = () => {
                     </div>
                     <div className="mt-4 space-y-3">
                         {templates.map(t => (
-                            <div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded border border-gray-100">
-                                <div><p className="font-medium text-sm">{t.label}</p><p className="text-xs text-gray-500 truncate max-w-[200px]">{t.subject}</p></div>
-                                <div className="flex gap-1">
-                                    <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit"><PencilIcon /></button>
-                                    <button onClick={() => handleDeleteTemplateClick(t.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                            <div key={t.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-50 rounded border border-gray-100 gap-3">
+                                <div>
+                                    <p className="font-medium text-sm">{t.label}</p>
+                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">{t.subject}</p>
+                                </div>
+                                <div className="flex gap-1 self-end sm:self-auto">
+                                    <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteTemplateClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
                                 </div>
                             </div>
                         ))}

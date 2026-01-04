@@ -5,8 +5,8 @@ export interface ThemeColors {
 }
 
 export const defaultTheme: ThemeColors = {
-    primary: '#757575', // Grigio richiesto (equivale a shade 600)
-    bgLight: '#f5f5f5'
+    primary: '#3C3C52', // Brand Gray
+    bgLight: '#F6F8FA'  // Clean Light Grey
 };
 
 // Helper per convertire HEX in RGB
@@ -54,22 +54,21 @@ export const applyTheme = (primaryHex: string, bgHex?: string) => {
     // Helper per settare variabile
     const set = (name: string, val: string) => root.style.setProperty(name, val);
 
-    // Generazione Sfumature (Assumiamo che il colore scelto sia il "600" o "Primary")
-    // Creiamo una scala tonale miscelando con bianco e nero
+    // Generazione Sfumature
     
     set('--theme-50',  mix(base, white, 95));
     set('--theme-100', mix(base, white, 90));
     set('--theme-200', mix(base, white, 75));
     set('--theme-300', mix(base, white, 60));
     set('--theme-400', mix(base, white, 30));
-    set('--theme-500', mix(base, white, 10)); // Leggermente più chiaro del base
+    set('--theme-500', mix(base, white, 10)); 
     set('--theme-600', `rgb(${base.r}, ${base.g}, ${base.b})`); // Colore Base
     set('--theme-700', mix(base, black, 15));
     set('--theme-800', mix(base, black, 30));
     set('--theme-900', mix(base, black, 50));
     set('--theme-950', mix(base, black, 70));
 
-    // Variabili Legacy (per compatibilità con CSS statico in index.html)
+    // Variabili Legacy
     set('--md-primary', primaryHex);
     set('--md-primary-dark', mix(base, black, 20));
     set('--md-bg-light', bg);

@@ -365,9 +365,8 @@ const Suppliers: React.FC = () => {
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {paginatedSuppliers.map(supplier => {
                     const avgRating = getAverageRating(supplier.rating);
-                    const earliestDay = getEarliestDay(supplier);
                     return (
-                        <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'opacity-75' : ''} border-t-4 ${earliestDay <= 5 ? 'border-green-400' : 'border-gray-300'}`}>
+                        <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'opacity-75' : ''} border-t-4 border-indigo-500`}>
                             <div className="flex-1">
                                 <div className="flex justify-between items-start">
                                     <h2 className="text-lg font-bold">{supplier.companyName}</h2>

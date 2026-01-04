@@ -124,15 +124,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
   ];
 
   const handleNavClick = (page: Page) => {
-    // DEBUG LISTENER 1: Click su elemento menu
-    console.log('[DEBUG 1] Sidebar: Click su menu', page);
     setCurrentPage(page);
     setIsOpen(false);
   }
 
   const toggleSubMenu = (label: string) => {
-      // DEBUG LISTENER 2: Click su sottomenu
-      console.log('[DEBUG 2] Sidebar: Toggle sottomenu', label);
       setExpandedMenu(prev => prev === label ? null : label);
   }
 
@@ -145,49 +141,48 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
         aria-hidden="true"
       ></div>
 
-      <nav className={`w-64 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col fixed md:relative h-full z-40 transition-transform transform md:translate-x-0 duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <nav className={`w-72 bg-white flex-shrink-0 flex flex-col fixed md:relative h-full z-40 transition-transform transform md:translate-x-0 duration-300 ease-in-out border-r border-gray-100 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         
-        {/* Header Logo with Image */}
-        <div className="h-20 flex items-center px-6 border-b border-gray-100">
-          <div className="flex items-center gap-3">
+        {/* Header Logo - Centered and Larger */}
+        <div className="h-28 flex items-center justify-center mx-4 mb-2">
+          <div className="flex flex-col items-center">
              {logoSrc ? (
                  <img 
                     src={logoSrc} 
                     alt="EP Logo" 
-                    className="w-10 h-10 object-contain" 
+                    className="w-16 h-16 object-contain mb-2" 
                  />
              ) : (
-                 // Fallback visuale mentre carica
-                 <div className="w-10 h-10 rounded-full bg-gray-200 animate-pulse"></div>
+                 <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white font-black text-xl mb-2">ep</div>
              )}
-             <div>
-                <h1 className="text-lg font-bold tracking-tight text-gray-800 leading-tight">EP v1</h1>
-                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Gestionale</p>
+             <div className="text-center">
+                {/* Logotipo easypeasy - lowercase, bold, tracking */}
+                <h1 className="text-2xl font-black tracking-wide text-gray-900 leading-none">easypeasy</h1> 
              </div>
           </div>
         </div>
 
         {/* Navigation List */}
-        <ul className="flex-1 px-3 py-6 space-y-1 overflow-y-auto custom-scrollbar">
+        <ul className="flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map((item, idx) => {
             
             if (item.subItems) {
-                // Render Group Item (Collapsible)
+                // Group Item
                 const isExpanded = expandedMenu === item.label;
                 const isActiveParent = item.subItems.some(sub => sub.page === currentPage);
 
                 return (
-                    <li key={`group-${idx}`} className="mb-1">
+                    <li key={`group-${idx}`} className="mb-2">
                         <button
                             onClick={() => toggleSubMenu(item.label)}
-                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out group
+                            className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-200 ease-in-out group
                                 ${isActiveParent 
-                                    ? 'bg-indigo-50 text-indigo-700' 
-                                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                                    ? 'text-gray-900 bg-gray-50' 
+                                    : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
                                 }`}
                         >
                             <div className="flex items-center">
-                                <span className={`mr-3 transition-colors ${isActiveParent ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                                <span className={`mr-4 transition-colors ${isActiveParent ? 'text-[#3C3C52]' : 'text-gray-300 group-hover:text-[#3C3C52]'}`}>
                                     {item.icon}
                                 </span>
                                 {item.label}
@@ -197,21 +192,21 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                             </span>
                         </button>
                         
-                        {/* Sub Items */}
-                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-40 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
-                            <ul className="space-y-1 pl-11 pr-2">
+                        <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-60 opacity-100 mt-1' : 'max-h-0 opacity-0'}`}>
+                            <ul className="space-y-1 pl-12 pr-2">
                                 {item.subItems.map(sub => {
                                     const isSubActive = currentPage === sub.page;
                                     return (
                                         <li key={sub.page}>
                                             <button
                                                 onClick={() => handleNavClick(sub.page)}
-                                                className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-all
+                                                className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative flex items-center
                                                     ${isSubActive 
-                                                        ? 'bg-white text-indigo-600 shadow-sm border border-gray-100' 
-                                                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                                                        ? 'text-gray-900 font-bold bg-amber-50' 
+                                                        : 'text-gray-400 hover:text-gray-900'
                                                     }`}
                                             >
+                                                {isSubActive && <span className="absolute -left-1 w-1.5 h-1.5 rounded-full bg-amber-400"></span>}
                                                 {sub.label}
                                             </button>
                                         </li>
@@ -223,25 +218,22 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                 );
             }
 
-            // Render Single Item
+            // Single Item
             const isActive = currentPage === item.page;
             return (
-                <li key={item.page}>
+                <li key={item.page} className="mb-2 relative">
                   <button
                     onClick={() => item.page && handleNavClick(item.page)}
-                    className={`w-full flex items-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ease-in-out group relative
+                    className={`w-full flex items-center px-4 py-3.5 rounded-2xl text-sm font-bold transition-all duration-200 ease-in-out relative
                       ${isActive 
-                        ? 'bg-indigo-50 text-indigo-700' 
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                        ? 'text-gray-900 bg-amber-400 shadow-md shadow-amber-200/50' 
+                        : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                   >
-                    <span className={`mr-3 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-600'}`}>
+                    <span className={`mr-4 transition-colors ${isActive ? 'text-gray-900' : 'text-gray-300 group-hover:text-[#3C3C52]'}`}>
                         {item.icon}
                     </span>
                     {item.label}
-                    
-                    {/* Pill Indicator for Active State */}
-                    {isActive && <div className="absolute right-3 w-1.5 h-1.5 rounded-full bg-indigo-600"></div>}
                   </button>
                 </li>
             );
@@ -249,14 +241,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
         </ul>
 
         {/* Footer Profile */}
-        <div className="p-4 border-t border-gray-100 bg-gray-50/30">
-          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white hover:shadow-sm transition-all cursor-pointer" onClick={() => handleNavClick('Profile')}>
-              <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm border border-indigo-200">
+        <div className="p-6 mt-2">
+          <div 
+            className="flex items-center gap-3 p-3 rounded-2xl bg-gray-50 border border-gray-100 hover:shadow-md transition-all cursor-pointer" 
+            onClick={() => handleNavClick('Profile')}
+          >
+              <div className="w-10 h-10 rounded-xl bg-gray-900 flex items-center justify-center text-white font-bold text-sm shadow-sm">
                   {user.email ? user.email.charAt(0).toUpperCase() : 'U'}
               </div>
               <div className="overflow-hidden flex-1">
-                  <p className="font-medium text-xs text-gray-900 truncate" title={user.email || ''}>{user.email}</p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold">Admin</p>
+                  <p className="font-bold text-sm text-gray-900 truncate">{user.email?.split('@')[0]}</p>
+                  <p className="text-[10px] text-gray-400 font-medium">Admin</p>
               </div>
           </div>
         </div>

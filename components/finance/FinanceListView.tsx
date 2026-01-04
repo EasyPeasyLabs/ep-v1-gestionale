@@ -215,6 +215,57 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         }
     };
 
+    // --- NUOVA LOGICA: Segna Sigillate Automatica (Massiva) ---
+    const handleBulkAutoSeal = async () => {
+        if (selectedItems.length === 0) return;
+        if (!confirm(`Vuoi elaborare lo stato SDI per le ${selectedItems.length} fatture selezionate?\n\nQuesta operazione rileverà se il codice SDI è presente e aggiornerà lo stato automaticamente.`)) return;
+
+        setIsBulkUpdating(true);
+        try {
+            const targets = invoices.filter(i => selectedItems.includes(i.id));
+            const updates: Promise<void>[] = [];
+
+            for (const inv of targets) {
+                let newStatus: DocumentStatus | null = null;
+                const hasSdi = inv.sdiId && inv.sdiId.trim().length > 0;
+
+                if (hasSdi) {
+                    // Se SDI presente -> SealedSDI
+                    if (inv.status !== DocumentStatus.SealedSDI) {
+                        newStatus = DocumentStatus.SealedSDI;
+                    }
+                } else {
+                    // Se SDI vuoto
+                    if (inv.status === DocumentStatus.Paid) {
+                        // Caso A: Pagata -> PendingSDI
+                        newStatus = DocumentStatus.PendingSDI;
+                    }
+                    // Caso B: Già PendingSDI -> No change
+                    // Caso C: Altro stato (Bozza/Inviata) -> No change
+                }
+
+                if (newStatus) {
+                    updates.push(updateInvoice(inv.id, { status: newStatus }));
+                }
+            }
+
+            if (updates.length > 0) {
+                await Promise.all(updates);
+                window.dispatchEvent(new Event('EP_DataUpdated'));
+                alert(`${updates.length} fatture aggiornate con successo.`);
+            } else {
+                alert("Nessuna modifica necessaria in base alle regole.");
+            }
+            setSelectedItems([]);
+
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante l'elaborazione SDI.");
+        } finally {
+            setIsBulkUpdating(false);
+        }
+    };
+
     // Segna Pagato (Singolo)
     const handleMarkAsPaid = async (item: Invoice) => {
         try {
@@ -227,17 +278,19 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 
     return (
         <div className="md-card overflow-hidden bg-white shadow-2xl border-0">
-            <div className="p-6 bg-slate-50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex gap-2 w-full md:w-auto flex-1">
-                    <div className="relative flex-1 max-w-md">
+            <div className="p-6 bg-slate-50 border-b flex flex-col gap-4">
+                
+                {/* RIGA 1: INPUT RICERCA E FILTRI */}
+                <div className="flex flex-col md:flex-row gap-4 w-full items-center">
+                    <div className="relative flex-1 w-full md:w-auto md:max-w-md">
                         <div className="absolute left-3 top-3"><SearchIcon /></div>
-                        <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500" />
+                        <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500 w-full" />
                     </div>
                     {activeTab === 'invoices' && (
                         <select 
                             value={statusFilter} 
                             onChange={(e) => setStatusFilter(e.target.value)} 
-                            className="block w-40 pl-3 pr-8 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                            className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
                         >
                             <option value="">Tutti gli stati</option>
                             <option value={DocumentStatus.Draft}>Bozza (Draft)</option>
@@ -249,7 +302,10 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                         </select>
                     )}
                 </div>
-                <div className="flex gap-2 items-center">
+
+                {/* RIGA 2: BARRA AZIONI E EXPORT */}
+                <div className="flex flex-wrap gap-2 items-center w-full">
+                    {/* BOTTONI EXPORT */}
                     {activeTab === 'transactions' && onExportTransactions && (
                         <button onClick={onExportTransactions} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center gap-1 font-bold">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -266,21 +322,35 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                             Export Excel
                         </button>
                     )}
+
+                    {/* BOTTONI AZIONI MASSIVE (Visibili se selezione attiva) */}
                     {selectedItems.length > 0 && (
-                        <div className="flex gap-2 animate-fade-in">
+                        <div className="flex gap-2 animate-fade-in flex-wrap">
                             {activeTab === 'invoices' && (
-                                <button 
-                                    onClick={handleBulkMarkAsPaid} 
-                                    disabled={isBulkUpdating}
-                                    className={`md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm ${isBulkUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                    title="Segna selezionati come pagati"
-                                >
-                                    {isBulkUpdating ? (
-                                        <><div className="w-3 h-3 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div> Attendere...</>
-                                    ) : (
-                                        <><BanknotesIcon /> Segna Pagate</>
-                                    )}
-                                </button>
+                                <>
+                                    <button 
+                                        onClick={handleBulkMarkAsPaid} 
+                                        disabled={isBulkUpdating}
+                                        className={`md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm ${isBulkUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        title="Segna selezionati come pagati"
+                                    >
+                                        {isBulkUpdating ? (
+                                            <><div className="w-3 h-3 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div> Attendere...</>
+                                        ) : (
+                                            <><BanknotesIcon /> Segna Pagate</>
+                                        )}
+                                    </button>
+                                    
+                                    {/* NUOVO BOTTONE SEGNA SIGILLATE */}
+                                    <button 
+                                        onClick={handleBulkAutoSeal}
+                                        disabled={isBulkUpdating}
+                                        className={`md-btn md-btn-sm bg-cyan-100 text-cyan-800 border border-cyan-200 font-bold flex items-center gap-1 hover:bg-cyan-200 shadow-sm ${isBulkUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        title="Processa stato SDI (Sigilla se ID presente, Pending se pagata)"
+                                    >
+                                        <DocumentCheckIcon /> Segna Sigillate
+                                    </button>
+                                </>
                             )}
                             {activeTab === 'archive' && (
                                 <button 
@@ -297,6 +367,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                     )}
                 </div>
             </div>
+            
             <div className="overflow-x-auto">
                 <table className="w-full text-sm text-left">
                     <thead className="text-[10px] text-slate-400 uppercase bg-slate-50/50 border-b font-black tracking-widest">

@@ -99,6 +99,8 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
         };
     }, [fetchAndGenerateNotifications, fetchLogo]);
 
+    // Derived state per UI
+    const hasNotifications = !loadingNotifications && notifications.length > 0;
 
   return (
     <header className="h-16 bg-white shadow-sm flex-shrink-0 flex items-center justify-between px-4 md:px-6 lg:px-8 border-b" style={{ backgroundColor: 'var(--md-bg-card)', borderColor: 'var(--md-divider)'}}>
@@ -132,10 +134,16 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
       </div>
       <div className="flex items-center space-x-2 md:space-x-4">
         <div className="relative" ref={notificationsRef}>
-            <button onClick={() => setNotificationsOpen(!notificationsOpen)} className="md-icon-btn relative" aria-label="Apri notifiche">
+            <button 
+                onClick={() => setNotificationsOpen(!notificationsOpen)} 
+                className={`md-icon-btn relative transition-colors duration-300 ${hasNotifications ? '!bg-amber-400 !text-gray-900 hover:!bg-amber-500' : ''}`}
+                aria-label="Apri notifiche"
+            >
                 <BellIcon />
-                 {!loadingNotifications && notifications.length > 0 && (
-                    <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-xs font-bold text-white rounded-full" style={{backgroundColor: 'var(--md-red)'}}>{notifications.length}</span>
+                 {hasNotifications && (
+                    <span className="absolute top-1 right-1 flex items-center justify-center w-4 h-4 text-xs font-bold text-white rounded-full bg-red-600 border border-white">
+                        {notifications.length}
+                    </span>
                 )}
             </button>
              {notificationsOpen && (

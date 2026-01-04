@@ -13,8 +13,9 @@ import ExclamationIcon from '../components/icons/ExclamationIcon';
 import ChecklistIcon from '../components/icons/ChecklistIcon';
 import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
+import CalendarIcon from '../components/icons/CalendarIcon';
 
-// Helper per calcolo rating carburante (Duplicato per coerenza con Suppliers.tsx)
+// Helper per calcolo rating carburante
 const calculateFuelRating = (distance: number) => {
     if (distance <= 5) return 5;
     if (distance <= 15) return 4;
@@ -23,35 +24,34 @@ const calculateFuelRating = (distance: number) => {
     return 1;
 };
 
-// Premium Stat Card 2.0
+// --- NEW STAT CARD (SOLID BLOCK STYLE) ---
 const StatCard: React.FC<{ 
     title: string; 
     value: string | React.ReactNode; 
     subtext?: string; 
     onClick?: () => void;
     icon: React.ReactNode;
-    colorClass?: string; // bg-color + text-color classes for icon bubble
-}> = ({ title, value, subtext, onClick, icon, colorClass = 'bg-gray-100 text-gray-600' }) => (
+    isAlert?: boolean;
+}> = ({ title, value, subtext, onClick, icon, isAlert }) => (
   <div 
-    className={`md-card p-6 flex flex-col justify-between h-full relative overflow-hidden ${onClick ? 'cursor-pointer hover:translate-y-[-2px] transition-transform' : ''}`} 
+    className={`md-card p-5 flex items-center gap-5 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`} 
     onClick={onClick}
   >
-    <div className="flex justify-between items-start z-10">
-        <div>
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{title}</h3>
-            <div className="text-3xl font-bold mt-3 text-gray-800 tracking-tight">{value}</div>
-        </div>
-        <div className={`p-3 rounded-xl ${colorClass} shadow-sm`}>
-            {icon}
-        </div>
+    {/* Block Icon: Solid dark or AMBER background for contrast */}
+    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 transition-transform group-hover:scale-105 shadow-sm
+        ${isAlert ? 'bg-amber-400 text-gray-900' : 'bg-[#3C3C52] text-white'}`}>
+        {icon}
     </div>
-    {subtext && (
-      <div className="text-xs font-medium text-gray-400 mt-4 pt-3 border-t border-gray-50 z-10">
-        {subtext}
-      </div>
-    )}
-    {/* Background decoration */}
-    <div className={`absolute -bottom-4 -right-4 w-24 h-24 rounded-full opacity-5 ${colorClass.split(' ')[0]}`}></div>
+    
+    <div className="flex-1 min-w-0 z-10">
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{title}</p>
+        <div className="text-3xl font-black text-gray-900 mt-0.5 truncate">{value}</div>
+        {subtext && (
+            <p className={`text-xs mt-1 font-bold ${isAlert ? 'text-amber-600' : 'text-gray-400'}`}>
+                {subtext}
+            </p>
+        )}
+    </div>
   </div>
 );
 
@@ -62,16 +62,15 @@ const RatingCard: React.FC<{
     count: number;
     icon: React.ReactNode;
     details: { label: string; value: number }[];
-    colorClass: string;
     summary?: string;
-}> = ({ title, average, count, icon, details, colorClass, summary }) => (
-    <div className="md-card p-6 flex flex-col h-full border-t-4" style={{ borderColor: 'var(--md-divider)' }}>
+}> = ({ title, average, count, icon, details, summary }) => (
+    <div className="md-card p-6 flex flex-col h-full border border-gray-200">
         <div className="flex justify-between items-start mb-4">
             <div>
-                <h3 className="text-lg font-bold text-gray-800">{title}</h3>
-                <p className="text-xs text-gray-500">{count} valutazioni</p>
+                <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+                <p className="text-xs text-gray-400">{count} valutazioni</p>
             </div>
-            <div className={`p-2 rounded-lg ${colorClass} opacity-80`}>
+            <div className={`p-3 rounded-xl bg-gray-100 text-gray-600`}>
                 {icon}
             </div>
         </div>
@@ -81,26 +80,26 @@ const RatingCard: React.FC<{
             <span className="text-sm text-gray-400">/ 5.0</span>
             <div className="flex ml-2">
                 {[1, 2, 3, 4, 5].map((star) => (
-                    <svg key={star} className={`w-4 h-4 ${star <= Math.round(average) ? 'text-yellow-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20">
+                    <svg key={star} className={`w-4 h-4 ${star <= Math.round(average) ? 'text-amber-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20">
                         <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                     </svg>
                 ))}
             </div>
         </div>
 
-        <div className="space-y-3 flex-1">
+        <div className="space-y-4 flex-1">
             {details.map((d, idx) => (
                 <div key={idx}>
                     <div className="flex justify-between text-xs mb-1">
-                        <span className="text-gray-600 font-medium">{d.label}</span>
-                        <span className="font-bold text-gray-800">{d.value.toFixed(1)}</span>
+                        <span className="text-gray-500 font-medium">{d.label}</span>
+                        <span className="font-bold text-gray-700">{d.value.toFixed(1)}</span>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div className="w-full bg-gray-100 rounded-full h-2">
                         <div 
-                            className="h-1.5 rounded-full transition-all duration-500" 
+                            className="h-2 rounded-full transition-all duration-500" 
                             style={{ 
                                 width: `${(d.value / 5) * 100}%`,
-                                backgroundColor: d.value >= 4 ? '#4ade80' : d.value >= 2.5 ? '#facc15' : '#f87171'
+                                backgroundColor: d.value >= 4 ? '#10B981' : d.value >= 2.5 ? '#FBBF24' : '#F87171'
                             }}
                         ></div>
                     </div>
@@ -109,7 +108,7 @@ const RatingCard: React.FC<{
         </div>
 
         {summary && (
-            <div className="mt-5 pt-3 border-t border-gray-100 text-center">
+            <div className="mt-6 pt-4 border-t border-gray-100 text-center">
                 <p className="text-sm font-medium italic text-gray-500">"{summary}"</p>
             </div>
         )}
@@ -125,10 +124,10 @@ interface LocationOccupancy {
     endTime: string;
     color: string;
     capacity: number;
-    occupied: number; // Saturazione Complessiva
+    occupied: number;
     occupancyPercent: number;
-    locationAverage: number; // Saturazione Media Sede (Assoluta)
-    locationAveragePercent: number; // Saturazione Media Sede (%)
+    locationAverage: number;
+    locationAveragePercent: number;
 }
 
 interface DashboardProps {
@@ -139,27 +138,20 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'ratings'>('overview');
   const [loading, setLoading] = useState(true);
   
-  // Data States
   const [clientsData, setClientsData] = useState<any[]>([]);
   const [suppliersData, setSuppliersData] = useState<any[]>([]);
   const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
   const [manualLessonsData, setManualLessonsData] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
-  // Stats States
   const [clientCount, setClientCount] = useState(0);
   const [activeClientCount, setActiveClientCount] = useState(0);
   const [supplierCount, setSupplierCount] = useState(0);
   const [activeSupplierCount, setActiveSupplierCount] = useState(0);
   const [lessonsThisMonth, setLessonsThisMonth] = useState(0);
   
-  // Top 5 Tab State
   const [top5Tab, setTop5Tab] = useState<'clients' | 'suppliers'>('clients');
-  
-  // Weekly Calendar Data
   const [weekDays, setWeekDays] = useState<{date: Date, count: number, dayName: string}[]>([]);
-  
-  // Saturazione Aule - Anno Filter
   const [saturationYear, setSaturationYear] = useState<number>(new Date().getFullYear());
 
   const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
@@ -168,7 +160,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        
         const [clients, suppliers, enrollments, manualLessons, transactions, notifs] = await Promise.all([
           getClients(),
           getSuppliers(),
@@ -187,20 +178,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setClientCount(clients.length);
         setSupplierCount(suppliers.length);
 
-        // 1. Calcolo Clienti e Fornitori Attivi (Stato Corrente)
         const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
-        
         const activeClientIds = new Set(activeOrPendingEnrollments.map(e => e.clientId));
         setActiveClientCount(activeClientIds.size);
-
         const activeSupplierIds = new Set(activeOrPendingEnrollments.map(e => e.supplierId));
         setActiveSupplierCount(activeSupplierIds.size);
 
-        // 2. Calcolo Lezioni Erogate (Mese Corrente)
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
-        
         let lessonsCount = 0;
         enrollments.filter(e => e.status === EnrollmentStatus.Active).forEach(enr => {
             if(enr.appointments) {
@@ -212,10 +198,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 });
             }
         });
-        
         setLessonsThisMonth(lessonsCount);
 
-        // 3. Calendario Settimanale
+        // Weekly Calendar
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); 
@@ -228,9 +213,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         for(let i=0; i<7; i++) {
             const currentDay = new Date(startOfWeek);
             currentDay.setDate(startOfWeek.getDate() + i);
-            
             let dayLessonCount = 0;
-            
             activeOrPendingEnrollments.forEach(enr => {
                 if(enr.appointments) {
                     enr.appointments.forEach(app => {
@@ -240,18 +223,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     });
                 }
             });
-            
             manualLessons.forEach(ml => {
                 if(new Date(ml.date).toDateString() === currentDay.toDateString()) {
                     dayLessonCount++;
                 }
             });
-
-            daysData.push({
-                date: currentDay,
-                count: dayLessonCount,
-                dayName: dayNames[i]
-            });
+            daysData.push({ date: currentDay, count: dayLessonCount, dayName: dayNames[i] });
         }
         setWeekDays(daysData);
 
@@ -262,19 +239,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       }
     };
     fetchData();
-    
-    const handleDataUpdate = () => {
-        fetchData();
-    };
+    const handleDataUpdate = () => fetchData();
     window.addEventListener('EP_DataUpdated', handleDataUpdate);
     return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
   }, []);
 
-  // --- Saturation Logic (Reactive to Year) ---
   const locationOccupancy = useMemo(() => {
       const slotsMap: Record<string, LocationOccupancy> = {};
-
-      // 1. Inizializza Slot dai Fornitori (Skeleton)
       suppliersData.forEach(s => {
           s.locations.forEach((l: any) => {
               if(l.availability && l.availability.length > 0) {
@@ -299,22 +270,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           });
       });
 
-      // 2. Popola Occupazione (Filtra per Anno)
       const activeOrPending = allEnrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
-      
       activeOrPending.forEach(enr => {
           if(enr.appointments) {
-              // Set per evitare di contare lo stesso studente più volte nello stesso slot (es. 52 Lunedì)
               const processedSlotsForStudent = new Set<string>();
-
               enr.appointments.forEach(app => {
                   const appDate = new Date(app.date);
-                  // FILTRO FONDAMENTALE: Conta solo se la lezione è nell'anno selezionato
                   if (appDate.getFullYear() === saturationYear) {
                       const dayOfWeek = appDate.getDay();
                       const key = `${enr.locationId}-${dayOfWeek}-${app.startTime}`;
-                      
-                      // Conta solo una volta per studente per slot (Media settimanale)
                       if (!processedSlotsForStudent.has(key)) {
                           if (slotsMap[key]) {
                               slotsMap[key].occupied += 1;
@@ -326,7 +290,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           }
       });
 
-      // 3. Calcolo Medie per Sede
       const locationStats: Record<string, { totalOccupied: number, slotCount: number }> = {};
       Object.values(slotsMap).forEach(slot => {
           if (!locationStats[slot.locationName]) {
@@ -341,13 +304,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           const stats = locationStats[slot.locationName];
           const avg = stats && stats.slotCount > 0 ? stats.totalOccupied / stats.slotCount : 0;
           const avgPercent = slot.capacity > 0 ? Math.round((avg / slot.capacity) * 100) : 0;
-
-          return { 
-              ...slot, 
-              occupancyPercent: percent,
-              locationAverage: avg,
-              locationAveragePercent: avgPercent
-          };
+          return { ...slot, occupancyPercent: percent, locationAverage: avg, locationAveragePercent: avgPercent };
       });
 
       occupancyList.sort((a, b) => {
@@ -361,7 +318,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       return occupancyList;
   }, [allEnrollments, suppliersData, saturationYear]);
 
-  // Handler scroll to Alerts
   const scrollToAlerts = () => {
       const element = document.getElementById('alerts-section');
       if (element) {
@@ -369,30 +325,17 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       }
   };
 
-  // Genera anni disponibili per filtro (Corrente +/- 1)
   const availableYears = useMemo(() => {
       const cy = new Date().getFullYear();
       return [cy - 1, cy, cy + 1];
   }, []);
 
-  // --- Rating Calculations (Memoized) ---
   const ratings = useMemo(() => {
-      // (Codice Rating invariato...)
-      // Parents
-      let pCount = 0;
-      let pSums = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
-      
-      // Children
-      let cCount = 0;
-      let cSums = { learning: 0, behavior: 0, attendance: 0, hygiene: 0 };
-
-      // Suppliers
-      let sCount = 0;
-      let sSums = { responsiveness: 0, partnership: 0, negotiation: 0 };
-
-      // Locations
-      let lCount = 0;
-      let lSums = { cost: 0, distance: 0, parking: 0, availability: 0, safety: 0, environment: 0, distractions: 0, modifiability: 0, prestige: 0 };
+      // Simplification of logic for brevity, assumes data is correct
+      let pCount = 0; let pSums = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
+      let cCount = 0; let cSums = { learning: 0, behavior: 0, attendance: 0, hygiene: 0 };
+      let sCount = 0; let sSums = { responsiveness: 0, partnership: 0, negotiation: 0 };
+      let lCount = 0; let lSums = { cost: 0, distance: 0, parking: 0, availability: 0, safety: 0, environment: 0, distractions: 0, modifiability: 0, prestige: 0 };
 
       clientsData.forEach(client => {
           if (client.clientType === ClientType.Parent) {
@@ -404,7 +347,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                   pSums.churnRate += p.rating.churnRate;
                   pSums.distance += p.rating.distance;
               }
-              
               if (p.children) {
                   p.children.forEach(child => {
                       if (child.rating && (child.rating.learning + child.rating.behavior > 0)) {
@@ -449,57 +391,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       const sAvg = sCount > 0 ? (sSums.responsiveness + sSums.partnership + sSums.negotiation) / (sCount * 3) : 0;
       const lAvg = lCount > 0 ? Object.values(lSums).reduce((a, b) => a + b, 0) / (lCount * 9) : 0;
 
-      // Summaries
-      let pSummary = "";
-      if (pCount > 0) {
-          const avgComplaints = pSums.complaints / pCount;
-          const avgChurn = pSums.churnRate / pCount;
-          if (avgComplaints < 3) pSummary = "Genitori esigenti, gestire con cura.";
-          else if (avgChurn > 4) pSummary = "Clientela altamente fidelizzata.";
-          else pSummary = "Rapporto con i genitori stabile.";
-      }
-
-      let cSummary = "";
-      if (cCount > 0) {
-          const avgLearning = cSums.learning / cCount;
-          const avgAttendance = cSums.attendance / cCount;
-          const avgBehavior = cSums.behavior / cCount;
-          if (avgLearning > 3.5 && avgAttendance < 3) cSummary = "Bravi ma con troppe assenze.";
-          else if (avgBehavior < 3) cSummary = "Richiesta attenzione disciplinare.";
-          else if (avgLearning > 4) cSummary = "Gruppo allievi eccellente.";
-          else cSummary = "Classe con buon potenziale.";
-      }
-
-      let sSummary = "";
-      if (sCount > 0) {
-          const avgNegotiation = sSums.negotiation / sCount;
-          const avgResponse = sSums.responsiveness / sCount;
-          if (avgNegotiation < 2.5) sSummary = "Prezzi rigidi, poco trattabili.";
-          else if (avgResponse > 4) sSummary = "Partner strategici e reattivi.";
-          else sSummary = "Fornitori affidabili.";
-      }
-
-      let lSummary = "";
-      if (lCount > 0) {
-          const avgEnv = lSums.environment / lCount;
-          const avgCost = lSums.cost / lCount; 
-          if (avgEnv > 3.5 && avgCost < 2.5) lSummary = "Sedi belle ma costose.";
-          else if (avgCost > 4) lSummary = "Sedi molto economiche.";
-          else if (avgEnv < 3) lSummary = "Ambienti da migliorare.";
-          else lSummary = "Location adeguate alle attività.";
-      }
-
       return {
-          parents: { avg: pAvg, count: pCount, details: [ { label: 'Disponibilità variazioni', value: pCount ? pSums.availability / pCount : 0 }, { label: 'Atteggiamento', value: pCount ? pSums.complaints / pCount : 0 }, { label: 'Costanza Iscrizioni', value: pCount ? pSums.churnRate / pCount : 0 }, { label: 'Mobilità', value: pCount ? pSums.distance / pCount : 0 }, ], summary: pSummary },
-          children: { avg: cAvg, count: cCount, details: [ { label: 'Apprendimento', value: cCount ? cSums.learning / cCount : 0 }, { label: 'Condotta', value: cCount ? cSums.behavior / cCount : 0 }, { label: 'Assenze', value: cCount ? cSums.attendance / cCount : 0 }, { label: 'Igiene/Salute', value: cCount ? cSums.hygiene / cCount : 0 }, ], summary: cSummary },
-          suppliers: { avg: sAvg, count: sCount, details: [ { label: 'Reattività', value: sCount ? sSums.responsiveness / sCount : 0 }, { label: 'Partnership', value: sCount ? sSums.partnership / sCount : 0 }, { label: 'Flessibilità', value: sCount ? sSums.negotiation / sCount : 0 }, ], summary: sSummary },
-          locations: { avg: lAvg, count: lCount, details: [ { label: 'Economicità', value: lCount ? lSums.cost / lCount : 0 }, { label: 'Sicurezza (Norma)', value: lCount ? lSums.safety / lCount : 0 }, { label: 'Ambiente/Luce', value: lCount ? lSums.environment / lCount : 0 }, { label: 'Disponibilità Slot', value: lCount ? lSums.availability / lCount : 0 }, { label: 'Vicinanza', value: lCount ? lSums.distance / lCount : 0 }, ], summary: lSummary }
+          parents: { avg: pAvg, count: pCount, details: [ { label: 'Disponibilità', value: pCount ? pSums.availability / pCount : 0 }, { label: 'Atteggiamento', value: pCount ? pSums.complaints / pCount : 0 }, { label: 'Costanza', value: pCount ? pSums.churnRate / pCount : 0 }, { label: 'Mobilità', value: pCount ? pSums.distance / pCount : 0 }, ] },
+          children: { avg: cAvg, count: cCount, details: [ { label: 'Apprendimento', value: cCount ? cSums.learning / cCount : 0 }, { label: 'Condotta', value: cCount ? cSums.behavior / cCount : 0 }, { label: 'Assenze', value: cCount ? cSums.attendance / cCount : 0 }, { label: 'Igiene', value: cCount ? cSums.hygiene / cCount : 0 }, ] },
+          suppliers: { avg: sAvg, count: sCount, details: [ { label: 'Reattività', value: sCount ? sSums.responsiveness / sCount : 0 }, { label: 'Partnership', value: sCount ? sSums.partnership / sCount : 0 }, { label: 'Flessibilità', value: sCount ? sSums.negotiation / sCount : 0 }, ] },
+          locations: { avg: lAvg, count: lCount, details: [ { label: 'Economicità', value: lCount ? lSums.cost / lCount : 0 }, { label: 'Sicurezza', value: lCount ? lSums.safety / lCount : 0 }, { label: 'Ambiente', value: lCount ? lSums.environment / lCount : 0 }, { label: 'Slot', value: lCount ? lSums.availability / lCount : 0 }, { label: 'Vicinanza', value: lCount ? lSums.distance / lCount : 0 }, ] }
       };
   }, [clientsData, suppliersData]);
 
-  // --- Top 5 Calculation ---
   const topFiveData = useMemo(() => {
-      // (Codice invariato...)
       const parents = clientsData.filter(c => c.clientType === ClientType.Parent).map(c => { const p = c as ParentClient; const r = p.rating || { availability: 0, complaints: 0, churnRate: 0, distance: 0 }; const avg = (r.availability + r.complaints + r.churnRate + r.distance) / 4; return { id: p.id, name: `${p.firstName} ${p.lastName}`, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
       const suppliers = suppliersData.map(s => { const r = s.rating || { responsiveness: 0, partnership: 0, negotiation: 0 }; let fuelRatingSum = 0; let locCount = 0; if (s.locations && s.locations.length > 0) { s.locations.forEach((l: any) => { fuelRatingSum += calculateFuelRating(l.distance || 0); locCount++; }); } const avgFuelRating = locCount > 0 ? fuelRatingSum / locCount : 0; const divisor = locCount > 0 ? 4 : 3; const sum = r.responsiveness + r.partnership + r.negotiation + avgFuelRating; const avg = sum / divisor; return { id: s.id, name: s.companyName, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
       return { parents, suppliers };
@@ -516,23 +416,23 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Dashboard</h1>
-            <p className="mt-1 text-gray-500">Benvenuta, Ilaria! Ecco una panoramica.</p>
+            <h2 className="text-3xl font-bold text-gray-800 tracking-tight">Dashboard</h2>
+            <p className="mt-1 text-gray-500 font-medium">Benvenuta, Ilaria! Ecco una panoramica.</p>
           </div>
           
-          <div className="bg-white rounded-lg p-1 flex border border-gray-200 shadow-sm">
+          <div className="bg-white rounded-xl p-1.5 flex shadow-sm border border-gray-100">
               <button 
                 onClick={() => setActiveTab('overview')}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'overview' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-[#3C3C52] text-white shadow-md' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
               >
                 Panoramica
               </button>
               <button 
                 onClick={() => setActiveTab('ratings')}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${activeTab === 'ratings' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'ratings' ? 'bg-[#3C3C52] text-white shadow-md' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
               >
                 Qualità & Rating
               </button>
@@ -546,49 +446,29 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       ) : (
         <>
           {activeTab === 'overview' && (
-              <div className="animate-fade-in space-y-6">
-                {/* ROW 1: Premium Stat Cards */}
+              <div className="animate-fade-in space-y-8">
+                {/* ROW 1: Premium Stat Cards (Solid Blocks) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <StatCard 
-                        title="Clienti" 
+                        title="Totale Clienti" 
                         onClick={() => setCurrentPage && setCurrentPage('Enrollments')}
-                        subtext="Gestisci Iscrizioni"
-                        value={
-                            <div className="flex items-baseline gap-2">
-                                <span>{clientCount}</span>
-                                {activeClientCount > 0 && (
-                                    <span className="text-sm font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-lg">
-                                        {activeClientCount} Attivi
-                                    </span>
-                                )}
-                            </div>
-                        } 
+                        subtext={`${activeClientCount} Attivi`}
+                        value={clientCount} 
                         icon={<ClientsIcon />}
-                        colorClass="bg-blue-50 text-blue-600"
                     />
                     <StatCard 
-                        title="Lezioni (Mese)" 
+                        title="Lezioni Mese" 
                         value={lessonsThisMonth}
-                        subtext="Totale erogato questo mese"
+                        subtext="Erogate nel mese"
                         onClick={() => setCurrentPage && setCurrentPage('ActivityLog')}
                         icon={<ChecklistIcon />}
-                        colorClass="bg-emerald-50 text-emerald-600"
                     />
                     <StatCard 
                         title="Fornitori" 
-                        value={
-                            <div className="flex items-baseline gap-2">
-                                <span>{supplierCount}</span>
-                                {activeSupplierCount > 0 && (
-                                    <span className="text-sm font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-lg">
-                                        {activeSupplierCount} Attivi
-                                    </span>
-                                )}
-                            </div>
-                        } 
+                        value={supplierCount} 
+                        subtext={`${activeSupplierCount} Attivi`}
                         onClick={() => setCurrentPage && setCurrentPage('Suppliers')}
                         icon={<SuppliersIcon />}
-                        colorClass="bg-indigo-50 text-indigo-600"
                     />
                     <StatCard 
                         title="Azioni Richieste" 
@@ -596,7 +476,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         subtext={notifications.length > 0 ? "Richiedono attenzione" : "Tutto in ordine"}
                         onClick={scrollToAlerts}
                         icon={<ExclamationIcon />}
-                        colorClass={notifications.length > 0 ? "bg-amber-50 text-amber-600" : "bg-gray-50 text-gray-400"}
+                        isAlert={notifications.length > 0}
                     />
                 </div>
 
@@ -604,82 +484,73 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     
                     {/* COL 1: Calendario Settimanale */}
-                    <div className="md-card p-6 border-t-4 border-indigo-500">
-                        <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                            Questa Settimana
-                        </h2>
-                        <div className="flex justify-between items-end h-40 pb-2 px-2">
+                    <div className="md-card p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-gray-800">Attività Settimanale</h3>
+                            <button className="p-2 bg-gray-50 rounded-lg text-[#3C3C52] hover:bg-gray-100"><CalendarIcon /></button>
+                        </div>
+                        <div className="flex justify-between items-end h-48 px-2">
                             {weekDays.map((day, idx) => {
                                 const isToday = new Date().toDateString() === day.date.toDateString();
+                                const heightPercent = Math.max(15, Math.min((day.count / 8) * 100, 100));
                                 return (
-                                    <div key={idx} className="flex flex-col items-center space-y-2 w-full group cursor-default">
-                                        <div className={`text-[10px] font-bold uppercase tracking-wider ${isToday ? 'text-indigo-600' : 'text-gray-400'}`}>{day.dayName}</div>
-                                        <div className="relative w-full flex justify-center items-end h-28">
+                                    <div key={idx} className="flex flex-col items-center space-y-3 w-full group cursor-default">
+                                        <div className="relative w-full flex justify-center items-end h-32 bg-gray-50 rounded-xl overflow-hidden group-hover:bg-gray-100 transition-colors">
                                             <div 
-                                                className={`w-3 sm:w-4 rounded-t-full transition-all duration-500 ${isToday ? 'bg-indigo-500 shadow-lg shadow-indigo-200' : 'bg-indigo-100 group-hover:bg-indigo-200'}`}
-                                                style={{ height: `${Math.max(10, Math.min((day.count / 8) * 100, 100))}%` }}
+                                                className={`w-4 rounded-full transition-all duration-700 ease-out ${isToday ? 'bg-[#3C3C52] shadow-lg' : 'bg-gray-300'}`}
+                                                style={{ height: `${heightPercent}%`, marginBottom: '8px' }}
                                             ></div>
                                         </div>
-                                        <div className={`font-bold text-sm ${isToday ? 'text-indigo-700' : 'text-gray-600'}`}>{day.count}</div>
+                                        <div className={`text-xs font-bold ${isToday ? 'text-[#3C3C52]' : 'text-gray-400'}`}>{day.dayName}</div>
                                     </div>
                                 );
                             })}
                         </div>
                     </div>
 
-                    {/* COL 2: Saturazione Aule (UPDATED) */}
-                    <div className="md-card p-6 flex flex-col border-t-4 border-pink-500">
+                    {/* COL 2: Saturazione Aule */}
+                    <div className="md-card p-6 flex flex-col">
                         <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                                Saturazione Aule
-                            </h2>
-                            <div className="flex items-center gap-2">
+                            <h3 className="text-lg font-bold text-gray-800">Saturazione</h3>
+                            <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1">
                                 <select 
                                     value={saturationYear} 
                                     onChange={(e) => setSaturationYear(Number(e.target.value))} 
-                                    className="text-[10px] font-bold bg-white border border-gray-300 rounded px-2 py-1 outline-none cursor-pointer text-gray-700"
+                                    className="bg-transparent text-xs font-bold text-gray-600 outline-none cursor-pointer px-2"
                                 >
                                     {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>
-                                <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wide flex gap-2">
-                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-pink-500"></span> Reale</span>
-                                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300"></span> Media</span>
-                                </div>
                             </div>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto max-h-80 pr-2 space-y-5 custom-scrollbar">
+                        <div className="flex-1 overflow-y-auto max-h-80 pr-2 space-y-6 custom-scrollbar">
                             {locationOccupancy.map((slot, idx) => (
-                                <div key={idx} className="w-full group">
-                                    <div className="flex items-center mb-1.5 justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold text-white shadow-sm" style={{ backgroundColor: slot.color }}>
+                                <div key={idx} className="w-full">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold text-white shadow-md" style={{ backgroundColor: slot.color }}>
                                                 {slot.dayName}
                                             </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-bold text-gray-700">{slot.locationName}</span>
-                                                <span className="text-[10px] text-gray-400">{slot.startTime} - {slot.endTime}</span>
+                                            <div>
+                                                <p className="text-sm font-bold text-gray-800">{slot.locationName}</p>
+                                                <p className="text-xs text-gray-400 font-medium">{slot.startTime} - {slot.endTime}</p>
                                             </div>
                                         </div>
-                                        <div className="text-right">
-                                            <span className="block text-xs font-bold text-gray-700">{slot.occupied}/{slot.capacity}</span>
-                                        </div>
+                                        <span className="text-xs font-bold text-gray-800 bg-gray-50 px-2 py-1 rounded">{slot.occupied}/{slot.capacity}</span>
                                     </div>
                                     
-                                    {/* Dual Progress Bar Container */}
-                                    <div className="space-y-1">
-                                        {/* 1. Saturazione Complessiva (Reale per questo slot) */}
-                                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden flex">
+                                    <div className="space-y-1.5">
+                                        {/* Reale */}
+                                        <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden flex">
                                             <div 
                                                 className="h-full rounded-full transition-all duration-1000 ease-out" 
                                                 style={{ width: `${slot.occupancyPercent}%`, backgroundColor: slot.color }}
                                             ></div>
                                         </div>
-                                        
-                                        {/* 2. Saturazione Media Sede */}
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[9px] text-gray-400">Media: {slot.locationAverage.toFixed(1)}</span>
-                                            <div className="w-2/3 bg-gray-50 rounded-full h-1 overflow-hidden ml-2">
+                                        {/* Media */}
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-gray-400 font-bold w-8">AVG</span>
+                                            <div className="flex-1 bg-gray-50 rounded-full h-1.5 overflow-hidden">
                                                 <div 
                                                     className="h-full rounded-full bg-gray-300 transition-all duration-1000 ease-out" 
                                                     style={{ width: `${slot.locationAveragePercent}%` }}
@@ -691,38 +562,39 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                             ))}
                             {locationOccupancy.length === 0 && (
                                     <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                                        <p className="text-sm italic">Nessun dato di occupazione per il {saturationYear}.</p>
+                                        <p className="text-sm italic">Nessun dato di occupazione.</p>
                                     </div>
                             )}
                         </div>
                     </div>
 
                     {/* COL 3: Avvisi (Added ID for scrolling) */}
-                    <div id="alerts-section" className="md-card p-6 flex flex-col border-t-4 border-amber-500 scroll-mt-24">
-                        <h2 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
-                            Avvisi & Scadenze
-                        </h2>
-                        <div className="flex-grow overflow-y-auto max-h-80 custom-scrollbar">
+                    <div id="alerts-section" className="md-card p-6 flex flex-col scroll-mt-24">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-gray-800">Avvisi ({notifications.length})</h3>
+                            <button className="text-[#3C3C52] bg-gray-100 p-2 rounded-lg hover:bg-gray-200"><ClockIcon /></button>
+                        </div>
+                        <div className="flex-grow overflow-y-auto max-h-80 custom-scrollbar pr-1">
                             {notifications.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center">
-                                    <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mb-3">
-                                        <span className="text-2xl">✨</span>
+                                <div className="h-full flex flex-col items-center justify-center text-center">
+                                    <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4 text-3xl shadow-sm">
+                                        ✨
                                     </div>
-                                    <p className="text-sm font-medium text-green-800">Tutto in regola!</p>
-                                    <p className="text-xs text-green-600 mt-1">Nessuna scadenza imminente.</p>
+                                    <p className="text-sm font-bold text-gray-800">Tutto in regola!</p>
+                                    <p className="text-xs text-gray-400 mt-1">Goditi il caffè.</p>
                                 </div>
                             ) : (
                                 <ul className="space-y-3">
                                     {notifications.map((notif, index) => (
                                         <li 
                                             key={index} 
-                                            className="flex items-start space-x-3 p-3 rounded-xl bg-gray-50 hover:bg-white hover:shadow-md transition-all border border-gray-100 cursor-pointer group"
+                                            className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group"
                                             onClick={() => setCurrentPage && notif.linkPage && setCurrentPage(notif.linkPage as Page)}
                                         >
-                                            <div className="flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
+                                            <div className="flex-shrink-0 mt-1 p-2 bg-gray-50 rounded-xl group-hover:scale-110 transition-transform">
                                                 {getNotificationIcon(notif.type)}
                                             </div>
-                                            <div className="text-sm text-gray-700 leading-relaxed">
+                                            <div className="text-sm text-gray-600 leading-relaxed font-medium">
                                                 {notif.message}
                                             </div>
                                         </li>
@@ -736,8 +608,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           )}
 
           {activeTab === 'ratings' && (
-              // (Codice Tab Ratings invariato...)
-              <div className="animate-fade-in space-y-6">
+              <div className="animate-fade-in space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <RatingCard 
                         title="Genitori"
@@ -745,8 +616,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         count={ratings.parents.count}
                         icon={<ClientsIcon />}
                         details={ratings.parents.details}
-                        colorClass="bg-blue-50 text-blue-600"
-                        summary={ratings.parents.summary}
                     />
                     <RatingCard 
                         title="Allievi"
@@ -754,8 +623,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         count={ratings.children.count}
                         icon={<span className="text-2xl">🎓</span>}
                         details={ratings.children.details}
-                        colorClass="bg-emerald-50 text-emerald-600"
-                        summary={ratings.children.summary}
                     />
                     <RatingCard 
                         title="Fornitori"
@@ -763,8 +630,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         count={ratings.suppliers.count}
                         icon={<SuppliersIcon />}
                         details={ratings.suppliers.details}
-                        colorClass="bg-indigo-50 text-indigo-600"
-                        summary={ratings.suppliers.summary}
                     />
                     <RatingCard 
                         title="Sedi"
@@ -772,63 +637,53 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         count={ratings.locations.count}
                         icon={<span className="text-2xl">🏢</span>}
                         details={ratings.locations.details}
-                        colorClass="bg-pink-50 text-pink-600"
-                        summary={ratings.locations.summary}
                     />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                    <div className="md-card p-6 flex flex-col border-t-4 border-yellow-400 h-80">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                                🏆 Top 5
-                            </h2>
-                            <div className="flex bg-gray-100 p-0.5 rounded-lg">
+                    <div className="md-card p-6 flex flex-col h-96">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-bold text-gray-800">🏆 Top 5</h3>
+                            <div className="flex bg-gray-50 p-1 rounded-xl">
                                 <button 
                                     onClick={() => setTop5Tab('clients')} 
-                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${top5Tab === 'clients' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-400'}`}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${top5Tab === 'clients' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
                                 >
                                     CLIENTI
                                 </button>
                                 <button 
                                     onClick={() => setTop5Tab('suppliers')} 
-                                    className={`px-2 py-1 text-[10px] font-bold rounded-md transition-all ${top5Tab === 'suppliers' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-400'}`}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-lg transition-all ${top5Tab === 'suppliers' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-400'}`}
                                 >
                                     FORNITORI
                                 </button>
                             </div>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-                            <ul className="space-y-2">
+                        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+                            <ul className="space-y-3">
                                 {(top5Tab === 'clients' ? topFiveData.parents : topFiveData.suppliers).map((item, idx) => (
-                                    <li key={item.id} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <span className={`w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-yellow-100 text-yellow-700 ring-2 ring-yellow-200' : idx === 1 ? 'bg-gray-100 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-transparent text-gray-400'}`}>
+                                    <li key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-100 transition-all">
+                                        <div className="flex items-center gap-4 min-w-0">
+                                            <span className={`w-8 h-8 flex-shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${idx === 0 ? 'bg-amber-100 text-amber-700' : idx === 1 ? 'bg-gray-200 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-white text-gray-400 border border-gray-200'}`}>
                                                 {idx + 1}
                                             </span>
-                                            <span className="text-sm text-gray-700 font-medium truncate block" title={item.name}>
+                                            <span className="text-sm text-gray-800 font-bold truncate block" title={item.name}>
                                                 {item.name}
                                             </span>
                                         </div>
-                                        <div className="flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 rounded-md border border-yellow-100 shrink-0">
-                                            <span className="text-xs font-bold text-yellow-700">{item.score.toFixed(1)}</span>
-                                            <svg className="w-3 h-3 text-yellow-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                                        <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-lg border border-gray-100 shadow-sm shrink-0">
+                                            <span className="text-xs font-bold text-gray-800">{item.score.toFixed(1)}</span>
+                                            <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
                                         </div>
                                     </li>
                                 ))}
                                 {(top5Tab === 'clients' ? topFiveData.parents : topFiveData.suppliers).length === 0 && (
-                                    <li className="text-center text-gray-400 text-xs py-4 italic">
+                                    <li className="text-center text-gray-400 text-xs py-10 italic">
                                         Nessun dato di rating disponibile.
                                     </li>
                                 )}
                             </ul>
-                        </div>
-                    </div>
-
-                    <div className="flex items-end pb-2 md:col-span-2 h-full">
-                        <div className="text-xs text-gray-400 flex items-center gap-2">
-                            <span className="font-bold">Legenda:</span> 1 Stella = Pessimo / 5 Stelle = Ottimo
                         </div>
                     </div>
                 </div>
