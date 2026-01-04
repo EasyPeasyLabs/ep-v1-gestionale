@@ -33,6 +33,16 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
+// --- Helper Colors ---
+const getTextColorForBg = (bgColor: string) => {
+    if (!bgColor) return '#000';
+    const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
+    const r = parseInt(color.substring(0, 2), 16);
+    const g = parseInt(color.substring(2, 4), 16);
+    const b = parseInt(color.substring(4, 6), 16);
+    return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#000' : '#fff';
+};
+
 const getChildRating = (child: Child) => {
     if (!child.rating) return 0;
     const { learning, behavior, attendance, hygiene } = child.rating;
@@ -281,6 +291,7 @@ const Clients: React.FC = () => {
     const [showTrash, setShowTrash] = useState(false);
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'surname_asc' | 'surname_desc'>('surname_asc');
     const [nameFormat, setNameFormat] = useState<'first_last' | 'last_first'>('first_last');
+    const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list'); // New state for view mode
     
     // Extra Filters
     const [filterDay, setFilterDay] = useState<string>('');
@@ -319,7 +330,7 @@ const Clients: React.FC = () => {
     // Reset pagination when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, showTrash, filterDay, filterTime]);
+    }, [searchTerm, showTrash, filterDay, filterTime, viewMode]);
 
     const handleOpenModal = (client: Client | null = null) => {
         setEditingClient(client);
@@ -497,13 +508,54 @@ const Clients: React.FC = () => {
         return result;
     }, [clients, enrollments, showTrash, searchTerm, sortOrder, filterDay, filterTime]);
 
-    // Paginated Data
+    // NEW: Grouped Data Logic
+    const groupedClients = useMemo(() => {
+        const groups: Record<string, { id: string; name: string; color: string; clients: Client[] }> = {};
+        
+        // Setup Unassigned Group
+        groups['unassigned'] = { id: 'unassigned', name: 'Non Assegnati / Inattivi', color: '#6b7280', clients: [] };
+
+        filteredClients.forEach(client => {
+            // Find active enrollments
+            const activeEnrs = enrollments.filter(e => e.clientId === client.id && e.status === EnrollmentStatus.Active);
+
+            if (activeEnrs.length === 0) {
+                groups['unassigned'].clients.push(client);
+            } else {
+                // Handle multiple locations (add client to each group)
+                const addedToGroups = new Set<string>();
+                activeEnrs.forEach(enr => {
+                    const locId = (enr.locationId && enr.locationId !== 'unassigned') ? enr.locationId : 'unassigned';
+                    const locName = (enr.locationName && enr.locationName !== 'Sede Non Definita') ? enr.locationName : 'Non Assegnati / Inattivi';
+                    const locColor = (enr.locationColor && enr.locationId !== 'unassigned') ? enr.locationColor : '#6b7280';
+
+                    if (!groups[locId]) {
+                        groups[locId] = { id: locId, name: locName, color: locColor, clients: [] };
+                    }
+                    
+                    if (!addedToGroups.has(locId)) {
+                        groups[locId].clients.push(client);
+                        addedToGroups.add(locId);
+                    }
+                });
+            }
+        });
+
+        // Sort groups (unassigned last)
+        return Object.values(groups).sort((a,b) => {
+            if (a.id === 'unassigned') return 1;
+            if (b.id === 'unassigned') return -1;
+            return a.name.localeCompare(b.name);
+        });
+    }, [filteredClients, enrollments]);
+
+    // Paginated Data (only for list view)
     const paginatedClients = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
         return filteredClients.slice(start, start + itemsPerPage);
     }, [filteredClients, currentPage]);
 
-    // Helper to extract location colors for a client
+    // Helper to extract location colors for a client (for List View)
     const getClientLocationColors = (clientId: string) => {
         const activeEnrollments = enrollments.filter(e => e.clientId === clientId && e.status === EnrollmentStatus.Active);
         const colors = new Set<string>();
@@ -511,6 +563,95 @@ const Clients: React.FC = () => {
             if (e.locationColor) colors.add(e.locationColor);
         });
         return Array.from(colors);
+    };
+
+    // Card Renderer (Reused in both views)
+    const renderClientCard = (client: Client, compact = false) => {
+        const isParent = client.clientType === ClientType.Parent;
+        const parentClient = client as ParentClient;
+        const instClient = client as InstitutionalClient;
+        
+        const displayName = isParent 
+            ? (nameFormat === 'first_last' 
+                ? `${parentClient.firstName || ''} ${parentClient.lastName || ''}` 
+                : `${parentClient.lastName || ''} ${parentClient.firstName || ''}`)
+            : instClient.companyName || 'Senza Nome';
+            
+        const parentRatingAvg = isParent ? getParentRating(parentClient.rating) : 0;
+        const locationColors = getClientLocationColors(client.id);
+
+        return (
+            <div key={client.id} className={`md-card flex flex-col cursor-pointer hover:shadow-md transition-shadow relative overflow-hidden ${showTrash ? 'opacity-75' : ''} ${compact ? 'border-gray-200' : ''}`} onClick={() => !showTrash && handleOpenModal(client)}>
+                {/* Left Color Tab (Only in List View or if needed in Grouped for multi-loc) */}
+                {!compact && (
+                    <div className="absolute left-0 top-0 bottom-0 w-2 flex flex-col">
+                        {locationColors.length > 0 ? (
+                            locationColors.map((color, i) => (
+                                <div key={i} style={{ backgroundColor: color }} className="flex-1" title="Sede Attiva"></div>
+                            ))
+                        ) : (
+                            <div className="flex-1 bg-gray-200"></div>
+                        )}
+                    </div>
+                )}
+
+                <div className={`p-5 flex-1 flex flex-col ${!compact ? 'pl-6' : ''}`}>
+                    <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-lg font-bold text-gray-800 truncate pr-2 flex-1" title={displayName}>{displayName}</h3>
+                        <div className="flex flex-col items-end gap-1">
+                            <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${isParent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                                {isParent ? 'Genitore' : 'Ente'}
+                            </span>
+                            {isParent && Number(parentRatingAvg) > 0 && (
+                                <span className="text-[9px] font-bold bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 flex items-center">
+                                    {parentRatingAvg} <StarIcon filled={true} className="w-2.5 h-2.5 ml-0.5" />
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {isParent && parentClient.children && parentClient.children.length > 0 && (
+                        <div className="mb-3">
+                            <p className="text-xs text-gray-500 mb-1"><strong>Figli:</strong></p>
+                            <div className="flex flex-wrap gap-2">
+                                {parentClient.children.map(child => {
+                                    const cAvg = getChildRating(child);
+                                    return (
+                                        <span key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex items-center shadow-sm">
+                                            {child.name || 'Senza nome'}
+                                            {Number(cAvg) > 0 && (
+                                                <span className="ml-1.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
+                                                    {cAvg} <StarIcon filled={true} className="w-2 h-2 ml-0.5" />
+                                                </span>
+                                            )}
+                                        </span>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="text-sm text-gray-600 space-y-1 mt-auto">
+                        <p className="truncate">📧 {client.email}</p>
+                        <p className="truncate">📞 {client.phone}</p>
+                    </div>
+                </div>
+
+                <div className={`px-5 py-3 border-t border-gray-100 flex justify-end space-x-2 bg-gray-50/50 ${!compact ? 'ml-2' : ''}`}>
+                    {showTrash ? (
+                        <>
+                            <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'restore'); }} className="md-icon-btn text-green-600 hover:bg-green-50" title="Ripristina"><RestoreIcon /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'permanent'); }} className="md-icon-btn text-red-600 hover:bg-red-50" title="Elimina Definitivamente"><TrashIcon /></button>
+                        </>
+                    ) : (
+                        <>
+                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(client); }} className="md-icon-btn edit" aria-label={`Modifica ${displayName}`}><PencilIcon /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'delete'); }} className="md-icon-btn delete" aria-label={`Elimina ${displayName}`}><TrashIcon /></button>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -533,8 +674,16 @@ const Clients: React.FC = () => {
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
                     <input type="text" placeholder="Cerca Cliente, Figlio, Sede..." className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
-                {/* FIX MOBILE: Added flex-wrap to prevent shrinking inputs on small screens */}
                 <div className="flex gap-2 w-full lg:w-auto flex-wrap">
+                    {/* VIEW TOGGLE */}
+                    <button 
+                        onClick={() => setViewMode(prev => prev === 'list' ? 'grouped' : 'list')}
+                        className={`flex-1 lg:w-auto border rounded-md py-2 px-3 text-sm font-medium whitespace-nowrap shadow-sm min-w-[140px] flex items-center justify-center gap-2 ${viewMode === 'grouped' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                        title="Raggruppa per sede"
+                    >
+                        {viewMode === 'grouped' ? 'Vista Elenco' : 'Raggruppa per Sede'}
+                    </button>
+
                     <select 
                         value={filterDay}
                         onChange={(e) => setFilterDay(e.target.value)}
@@ -568,103 +717,50 @@ const Clients: React.FC = () => {
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {paginatedClients.map(client => {
-                        const isParent = client.clientType === ClientType.Parent;
-                        const parentClient = client as ParentClient;
-                        const instClient = client as InstitutionalClient;
-                        
-                        // Safe Checks for Display Name
-                        const displayName = isParent 
-                            ? (nameFormat === 'first_last' 
-                                ? `${parentClient.firstName || ''} ${parentClient.lastName || ''}` 
-                                : `${parentClient.lastName || ''} ${parentClient.firstName || ''}`)
-                            : instClient.companyName || 'Senza Nome';
-                            
-                        const parentRatingAvg = isParent ? getParentRating(parentClient.rating) : 0;
-                        
-                        const locationColors = getClientLocationColors(client.id);
-
-                        return (
-                            <div key={client.id} className={`md-card flex flex-col cursor-pointer hover:shadow-md transition-shadow relative overflow-hidden ${showTrash ? 'opacity-75' : ''}`} onClick={() => !showTrash && handleOpenModal(client)}>
-                                {/* Left Color Tab */}
-                                <div className="absolute left-0 top-0 bottom-0 w-2 flex flex-col">
-                                    {locationColors.length > 0 ? (
-                                        locationColors.map((color, i) => (
-                                            <div key={i} style={{ backgroundColor: color }} className="flex-1" title="Sede Attiva"></div>
-                                        ))
-                                    ) : (
-                                        <div className="flex-1 bg-gray-200"></div>
-                                    )}
-                                </div>
-
-                                <div className="p-5 pl-6 flex-1 flex flex-col">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <h3 className="text-lg font-bold text-gray-800 truncate pr-2 flex-1" title={displayName}>{displayName}</h3>
-                                        <div className="flex flex-col items-end gap-1">
-                                            <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${isParent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-                                                {isParent ? 'Genitore' : 'Ente'}
+                {viewMode === 'list' ? (
+                    // LIST VIEW
+                    <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {paginatedClients.map(client => renderClientCard(client))}
+                            {filteredClients.length === 0 && <div className="col-span-full text-center py-12 text-gray-500">Nessun cliente trovato.</div>}
+                        </div>
+                        <Pagination 
+                            currentPage={currentPage} 
+                            totalItems={filteredClients.length} 
+                            itemsPerPage={itemsPerPage} 
+                            onPageChange={setCurrentPage} 
+                        />
+                    </>
+                ) : (
+                    // GROUPED VIEW
+                    <div className="space-y-8 animate-fade-in">
+                        {groupedClients.map(group => {
+                            const textColor = getTextColorForBg(group.color);
+                            return (
+                                <div key={group.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                                    {/* Header Sede */}
+                                    <div className="px-6 py-3 flex justify-between items-center" style={{ backgroundColor: group.color, color: textColor }}>
+                                        <h3 className="text-lg font-bold flex items-center gap-2">
+                                            {group.name}
+                                            <span className="text-xs bg-white/20 border border-white/30 px-2 py-0.5 rounded-full backdrop-blur-sm">
+                                                {group.clients.length}
                                             </span>
-                                            {isParent && Number(parentRatingAvg) > 0 && (
-                                                <span className="text-[9px] font-bold bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded border border-yellow-200 flex items-center">
-                                                    {parentRatingAvg} <StarIcon filled={true} className="w-2.5 h-2.5 ml-0.5" />
-                                                </span>
-                                            )}
-                                        </div>
+                                        </h3>
                                     </div>
                                     
-                                    {isParent && parentClient.children && parentClient.children.length > 0 && (
-                                        <div className="mb-3">
-                                            <p className="text-xs text-gray-500 mb-1"><strong>Figli:</strong></p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {parentClient.children.map(child => {
-                                                    const cAvg = getChildRating(child);
-                                                    return (
-                                                        <span key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex items-center shadow-sm">
-                                                            {child.name || 'Senza nome'}
-                                                            {Number(cAvg) > 0 && (
-                                                                <span className="ml-1.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
-                                                                    {cAvg} <StarIcon filled={true} className="w-2 h-2 ml-0.5" />
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                    )
-                                                })}
-                                            </div>
+                                    {/* Grid Clienti */}
+                                    <div className="p-6 bg-gray-50/50">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                            {group.clients.map(client => renderClientCard(client, true))}
                                         </div>
-                                    )}
-                                    
-                                    <div className="text-sm text-gray-600 space-y-1 mt-auto">
-                                        <p className="truncate">📧 {client.email}</p>
-                                        <p className="truncate">📞 {client.phone}</p>
+                                        {group.clients.length === 0 && <p className="text-center text-gray-400 text-sm">Nessun cliente in questa sede.</p>}
                                     </div>
                                 </div>
-
-                                <div className="px-5 py-3 border-t border-gray-100 flex justify-end space-x-2 bg-gray-50/50 ml-2">
-                                    {showTrash ? (
-                                        <>
-                                            <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'restore'); }} className="md-icon-btn text-green-600 hover:bg-green-50" title="Ripristina"><RestoreIcon /></button>
-                                            <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'permanent'); }} className="md-icon-btn text-red-600 hover:bg-red-50" title="Elimina Definitivamente"><TrashIcon /></button>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <button onClick={(e) => { e.stopPropagation(); handleOpenModal(client); }} className="md-icon-btn edit" aria-label={`Modifica ${displayName}`}><PencilIcon /></button>
-                                            <button onClick={(e) => { e.stopPropagation(); handleActionClick(client.id, 'delete'); }} className="md-icon-btn delete" aria-label={`Elimina ${displayName}`}><TrashIcon /></button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {filteredClients.length === 0 && <div className="col-span-full text-center py-12 text-gray-500">Nessun cliente trovato.</div>}
-                </div>
-                
-                <Pagination 
-                    currentPage={currentPage} 
-                    totalItems={filteredClients.length} 
-                    itemsPerPage={itemsPerPage} 
-                    onPageChange={setCurrentPage} 
-                />
+                            );
+                        })}
+                        {groupedClients.length === 0 && <div className="text-center py-12 text-gray-500">Nessun cliente trovato.</div>}
+                    </div>
+                )}
                 </>
             )}
 
