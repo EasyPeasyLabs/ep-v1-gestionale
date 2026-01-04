@@ -18,6 +18,7 @@ import CalendarIcon from '../components/icons/CalendarIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import Pagination from '../components/Pagination';
 import ConfirmModal from '../components/ConfirmModal';
+import RichTextEditor from '../components/RichTextEditor';
 
 // --- Icons ---
 const ChatIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> );
@@ -35,6 +36,49 @@ const getTextColorForBg = (bgColor: string) => {
     const g = parseInt(color.substring(2, 4), 16);
     const b = parseInt(color.substring(4, 6), 16);
     return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#000' : '#fff';
+};
+
+// --- Helper HTML Converter ---
+const convertHtmlToWhatsApp = (html: string) => {
+    let text = html;
+    // Replace <br>, <div>, <p> with newlines
+    text = text.replace(/<br\s*\/?>/gi, '\n');
+    text = text.replace(/<\/div>/gi, '\n');
+    text = text.replace(/<\/p>/gi, '\n');
+    
+    // Bold
+    text = text.replace(/<b>(.*?)<\/b>/gi, '*$1*');
+    text = text.replace(/<strong>(.*?)<\/strong>/gi, '*$1*');
+    
+    // Italic
+    text = text.replace(/<i>(.*?)<\/i>/gi, '_$1_');
+    text = text.replace(/<em>(.*?)<\/em>/gi, '_$1_');
+    
+    // Lists
+    text = text.replace(/<li>/gi, '- ');
+    text = text.replace(/<\/li>/gi, '\n');
+    
+    // Strip all other tags
+    text = text.replace(/<[^>]+>/g, '');
+    
+    // Decode HTML entities (basic)
+    const txt = document.createElement("textarea");
+    txt.innerHTML = text;
+    return txt.value.trim();
+};
+
+const convertHtmlToPlainText = (html: string) => {
+    let text = html;
+    text = text.replace(/<br\s*\/?>/gi, '\n');
+    text = text.replace(/<\/div>/gi, '\n');
+    text = text.replace(/<\/p>/gi, '\n');
+    text = text.replace(/<li>/gi, '- ');
+    text = text.replace(/<\/li>/gi, '\n');
+    
+    const txt = document.createElement("textarea");
+    txt.innerHTML = text;
+    // Remove remaining tags
+    return txt.value.replace(/<[^>]+>/g, '').trim();
 };
 
 // --- Interface Context Data ---
@@ -100,24 +144,61 @@ const CommunicationModal: React.FC<{
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [selectedTemplateId, setSelectedTemplateId] = useState('');
 
+    // Dynamic Context for Placeholders (based on selection)
+    const [previewContext, setPreviewContext] = useState<CommunicationContext | null>(contextData || null);
+
     useEffect(() => {
         getCommunicationTemplates().then(setTemplates);
     }, []);
 
-    const replacePlaceholders = (text: string) => {
+    // Placeholder Logic Enhancement: Update context when selection changes
+    useEffect(() => {
+        if (recipientsType !== 'custom' && selectedIds.length > 0) {
+            // Find the first selected entity to use as preview data
+            const firstId = selectedIds[0];
+            let newContext: CommunicationContext = { date: new Date().toLocaleDateString('it-IT') };
+
+            if (recipientsType === 'clients') {
+                const c = clients.find(x => x.id === firstId);
+                if (c) {
+                    newContext.clientName = getClientName(c);
+                    if (c.clientType === ClientType.Parent && (c as ParentClient).children.length > 0) {
+                        newContext.childName = (c as ParentClient).children[0].name; // Pick first child as example
+                    }
+                }
+            } else {
+                const s = suppliers.find(x => x.id === firstId);
+                if (s) {
+                    newContext.supplierName = s.companyName;
+                    newContext.clientName = s.companyName; // Fallback for {{cliente}}
+                }
+            }
+            
+            // Merge with passed contextData if available (e.g. from alerts, which has priority on amount/desc)
+            if (contextData) {
+                newContext = { ...newContext, ...contextData };
+            }
+            
+            setPreviewContext(newContext);
+        } else if (recipientsType === 'custom') {
+            setPreviewContext(contextData || null);
+        }
+    }, [selectedIds, recipientsType, clients, suppliers, contextData]);
+
+    const replacePlaceholders = (text: string, ctx: CommunicationContext | null) => {
         let res = text;
         
-        if (contextData) {
-            if (contextData.clientName) res = res.replace(/{{cliente}}/g, contextData.clientName);
-            if (contextData.childName) res = res.replace(/{{bambino}}/g, contextData.childName);
-            if (contextData.supplierName) {
-                res = res.replace(/{{fornitore}}/g, contextData.supplierName);
-                res = res.replace(/{{cliente}}/g, contextData.supplierName); 
+        if (ctx) {
+            if (ctx.clientName) res = res.replace(/{{cliente}}/g, ctx.clientName);
+            if (ctx.childName) res = res.replace(/{{bambino}}/g, ctx.childName);
+            if (ctx.supplierName) {
+                res = res.replace(/{{fornitore}}/g, ctx.supplierName);
+                res = res.replace(/{{cliente}}/g, ctx.supplierName); 
             }
-            if (contextData.description) res = res.replace(/{{descrizione}}/g, contextData.description);
-            if (contextData.amount) res = res.replace(/{{importo}}/g, contextData.amount);
+            if (ctx.description) res = res.replace(/{{descrizione}}/g, ctx.description);
+            if (ctx.amount) res = res.replace(/{{importo}}/g, ctx.amount);
             
-            const dateStr = contextData.date || new Date().toLocaleDateString('it-IT');
+            const dateStr = ctx.date || new Date().toLocaleDateString('it-IT');
             res = res.replace(/{{data}}/g, dateStr);
         }
 
@@ -137,10 +218,12 @@ const CommunicationModal: React.FC<{
         setSelectedTemplateId(tmplId);
         const tmpl = templates.find(t => t.id === tmplId);
         if (tmpl) {
-            setSubject(replacePlaceholders(tmpl.subject));
+            setSubject(replacePlaceholders(tmpl.subject, previewContext));
             let combined = tmpl.body;
-            if (tmpl.signature) combined += `\n\n${tmpl.signature}`;
-            setMessage(replacePlaceholders(combined));
+            if (tmpl.signature) combined += `<br><br>${tmpl.signature}`;
+            // NOTE: We put placeholders in the editor directly. Replacement happens on send or we can preview it.
+            // Better to keep placeholders in editor so user sees them, but Replace for Subject immediately.
+            setMessage(combined); 
         }
     };
 
@@ -155,6 +238,23 @@ const CommunicationModal: React.FC<{
     const handleSend = async () => {
         const recipientsList: string[] = [];
         const targetPhones: string[] = []; 
+
+        // Preparazione testo finale (sostituzione placeholder basata sul contesto corrente/primo)
+        // Nota: Per invii massivi reali personalizzati, servirebbe un loop qui. 
+        // Per WhatsApp: Funziona (apre N tab). Per Email: Mailto apre 1 sola finestra.
+        
+        // 1. Risolvi il messaggio finale (con conversione HTML -> Plain/Markdown)
+        const rawHtmlMessage = replacePlaceholders(message, previewContext);
+        
+        let finalMessage = "";
+        if (channel === 'whatsapp') {
+            finalMessage = convertHtmlToWhatsApp(rawHtmlMessage);
+        } else {
+            // Mailto doesn't support HTML body. We must convert to text.
+            finalMessage = convertHtmlToPlainText(rawHtmlMessage);
+        }
+
+        const finalSubject = replacePlaceholders(subject, previewContext);
 
         if (recipientsType === 'custom') {
             recipientsList.push(customRecipient);
@@ -183,7 +283,7 @@ const CommunicationModal: React.FC<{
         if (channel === 'whatsapp') {
             if (targetPhones.length === 0) return alert("Nessun numero trovato.");
 
-            const encodedMsg = encodeURIComponent(`*${subject}*\n\n${message}`);
+            const encodedMsg = encodeURIComponent(`*${finalSubject}*\n\n${finalMessage}`);
             
             // Loop per apertura tab (Browser permettendo)
             targetPhones.forEach(rawPhone => {
@@ -196,15 +296,15 @@ const CommunicationModal: React.FC<{
 
         } else {
             const bcc = recipientsType === 'custom' ? customRecipient : ''; 
-            const mailto = `mailto:?bcc=${bcc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+            const mailto = `mailto:?bcc=${bcc}&subject=${encodeURIComponent(finalSubject)}&body=${encodeURIComponent(finalMessage)}`;
             window.location.href = mailto;
         }
 
         await logCommunication({
             date: new Date().toISOString(),
             channel,
-            subject,
-            message,
+            subject: finalSubject,
+            message: finalMessage, // Log plain text version
             recipients: recipientsList,
             recipientCount: recipientsList.length,
             type: 'manual'
@@ -273,11 +373,20 @@ const CommunicationModal: React.FC<{
                     <input type="text" value={subject} onChange={e => setSubject(e.target.value)} className="md-input" placeholder=" " />
                     <label className="md-input-label">Oggetto / Titolo</label>
                 </div>
-                <div className="md-input-group">
-                    <textarea rows={5} value={message} onChange={e => setMessage(e.target.value)} className="md-input" placeholder="Scrivi il messaggio..." />
+                
+                {/* Rich Text Editor Replaces Textarea */}
+                <div>
+                    <RichTextEditor 
+                        label="Messaggio"
+                        value={message} 
+                        onChange={setMessage} 
+                        placeholder="Scrivi il messaggio..." 
+                        className="min-h-[200px]"
+                    />
                 </div>
+
                 {selectedIds.length > 1 && (
-                    <p className="text-xs text-orange-500 italic">Attenzione: inviando a più destinatari, i placeholder specifici (es. nome bambino) nel testo potrebbero non essere risolti correttamente se diversi per ognuno. Si consiglia un messaggio generico.</p>
+                    <p className="text-xs text-orange-500 italic">Attenzione: inviando a più destinatari via Email, si aprirà un'unica finestra. I placeholder verranno sostituiti con i dati del PRIMO destinatario per anteprima. Per invii massivi personalizzati reali, usare WhatsApp (apre tab multipli).</p>
                 )}
             </div>
 
@@ -853,7 +962,7 @@ const CRM: React.FC = () => {
                                         </div>
                                     </div>
                                     <h4 className="font-bold text-sm text-gray-800">{log.subject}</h4>
-                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">{log.message}</p>
+                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2 whitespace-pre-wrap">{log.message}</p>
                                     <div className="mt-2 text-xs text-indigo-600 font-medium">Inviato a: {log.recipients.length > 3 ? `${log.recipients.length} destinatari` : log.recipients.join(', ')}</div>
                                 </div>
                             ))}
