@@ -15,6 +15,7 @@ import FullScreenSpinner from './components/FullScreenSpinner';
 import Calendar from './pages/Calendar';
 import CRM from './pages/CRM';
 import Enrollments from './pages/Enrollments';
+import EnrollmentArchive from './pages/EnrollmentArchive'; // Import
 import Attendance from './pages/Attendance';
 import AttendanceArchive from './pages/AttendanceArchive';
 import Activities from './pages/Activities';
@@ -134,6 +135,8 @@ const App: React.FC = () => {
                     return <Dashboard setCurrentPage={handleNavigation} />;
                   case 'Enrollments':
                     return <Enrollments initialParams={pageParams} />;
+                  case 'EnrollmentArchive':
+                    return <EnrollmentArchive />;
                   case 'Attendance':
                     return <Attendance />;
                   case 'AttendanceArchive':

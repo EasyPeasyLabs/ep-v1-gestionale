@@ -12,6 +12,7 @@ import ChecklistIcon from './icons/ChecklistIcon';
 import ClipboardIcon from './icons/ClipboardIcon';
 import BookOpenIcon from './icons/BookOpenIcon';
 import ChevronDownIcon from './icons/ChevronDownIcon';
+import ArchiveIcon from './icons/ArchiveIcon'; // New Icon
 import { getCompanyInfo } from '../services/settingsService';
 
 // Nuova icona Pallone da Calcio per Attività
@@ -92,6 +93,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },
     { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
+    { page: 'EnrollmentArchive', label: 'Archivio Iscrizioni', icon: <ArchiveIcon /> }, // NEW ITEM
     { 
         label: 'Registro Elettronico', 
         icon: <BookOpenIcon />,
