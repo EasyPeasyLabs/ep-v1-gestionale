@@ -14,7 +14,7 @@ Ho già creato:
 
 ## Stato di Avanzamento (Roadmap)
 
-Di seguito lo stato corrente delle funzionalità implementate al **30 Dicembre 2025**:
+Di seguito lo stato corrente delle funzionalità implementate al **2 Gennaio 2026**:
 
 ### Core Features (Completate)
 - [x] **Autenticazione**: Login Admin via Firebase Auth.
@@ -22,6 +22,7 @@ Di seguito lo stato corrente delle funzionalità implementate al **30 Dicembre 2
 - [x] **Gestione Clienti**: CRUD completo, anagrafica Genitori/Enti, gestione Figli.
 - [x] **Gestione Fornitori**: CRUD completo, gestione Sedi multiple con slot orari.
 - [x] **Iscrizioni**: Workflow iscrizione guidato, generazione automatica lezioni, gestione pagamenti (Acconto/Saldo).
+- [x] **Archivio Iscrizioni**: Storico completo con timeline, filtri per anno e vista calendario copertura.
 - [x] **Iscrizioni Adulti**: Supporto per corsi destinati ai genitori/adulti con listini dedicati (Prefissi K/A).
 - [x] **Calendario**: Vista mensile, drag & drop (desktop), gestione lezioni extra.
 - [x] **Finanza (SIGILLATO)**: 

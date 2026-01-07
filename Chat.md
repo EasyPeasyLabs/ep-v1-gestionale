@@ -56,6 +56,14 @@ Questo file contiene lo storico delle interazioni significative per la tracciabi
 - Fornite spiegazioni dettagliate su TWA, PWABuilder, Bubblewrap e firma APK con Android Studio.
 - Aggiornamento file `Contesto.md`, `Architettura.md` e `Chat.md`.
 
-## Sessioni Precedenti
+## Sessione del 2 Gennaio 2026
 
-(Log archiviato...)
+### Richiesta 16
+**Prompt:** Creazione pagina "Archivio Iscrizioni" nella sidebar. Focus su storico date "dal... al...", visualizzazione a card e calendario copertura.
+**Azione:**
+- Aggiornamento `types.ts`, `Sidebar.tsx`, `App.tsx` per il routing.
+- Creazione `pages/EnrollmentArchive.tsx`:
+    - **Timeline View**: Lista card raggruppate per studente con periodo validità e importi.
+    - **Coverage View**: Gantt chart annuale per visualizzare la copertura temporale delle iscrizioni.
+    - **Filtri**: Anno (essenziale per storico), Sede, Ricerca.
+- Creazione icona `ArchiveIcon`.
