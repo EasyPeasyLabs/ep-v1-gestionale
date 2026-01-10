@@ -10,6 +10,7 @@ interface LocationDetailModalProps {
         revenue: number, 
         costs: number, 
         costPerLesson?: { value: number, min: number, max: number, avg: number }, 
+        costPerStudentPerLesson?: number, // NEW
         costPerStudent?: number, 
         breakdown?: { rent: number, logistics: number, overhead: number } 
     };
@@ -40,6 +41,7 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
 
     // Costo Assoluto
     const costPerLesson = data.costPerLesson ? data.costPerLesson.value : 0;
+    const costPerStudentPerLesson = data.costPerStudentPerLesson || 0;
     const costPerStudent = data.costPerStudent || 0;
     
     useEffect(() => {
@@ -114,12 +116,12 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                         {isProfitable ? (
                             <h4 className="text-xl font-bold text-green-600">
                                 Ottimo Lavoro! <br/>
-                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. Gli incassi coprono affitto, logistica e spese generali.</span>
+                                <span className="text-gray-600 text-base font-normal">Questa sede si ripaga da sola. I corsi coprono affitto, benzina e le spese comuni.</span>
                             </h4>
                         ) : (
                             <h4 className="text-xl font-bold text-red-600">
                                 Attenzione: Costi Alti <br/>
-                                <span className="text-gray-600 text-base font-normal">Gli incassi non coprono le spese. Stai usando risorse di altre sedi.</span>
+                                <span className="text-gray-600 text-base font-normal">Gli incassi non coprono tutte le spese. Stai usando risorse di altre sedi per tenerla aperta.</span>
                             </h4>
                         )}
                     </div>
@@ -137,14 +139,14 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                         </div>
                         
                         <div className="space-y-3">
-                            <h5 className="text-xs font-bold text-gray-400 uppercase border-b pb-1 mb-2">Dettaglio Costi</h5>
+                            <h5 className="text-xs font-bold text-gray-400 uppercase border-b pb-1 mb-2">Dove vanno i soldi?</h5>
                             
                             <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🏠</span>
                                     <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Operazioni Dirette</span>
-                                        <InfoTooltip text="Costi Operativi allocati (es. Nolo, Materiali specifici)." />
+                                        <span className="text-xs font-bold text-gray-600">Costi Diretti (Sede)</span>
+                                        <InfoTooltip text="Spese operative (Affitto, Materiali, Attrezzature) attribuite specificamente a questa sede." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.rent.toFixed(2)}€</span>
@@ -154,8 +156,8 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🚗</span>
                                     <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Logistica (Weighted)</span>
-                                        <InfoTooltip text="Costi Logistica globali ripartiti per Viaggi." />
+                                        <span className="text-xs font-bold text-gray-600">Benzina (Stimata)</span>
+                                        <InfoTooltip text="Calcolato sui Km reali: (Costo Totale Auto / Km Totali) x Km per arrivare qui." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.logistics.toFixed(2)}€</span>
@@ -165,8 +167,8 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">📊</span>
                                     <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Generali (Overhead)</span>
-                                        <InfoTooltip text="Costi Generali + Operazioni non allocate ripartiti per Studenti." />
+                                        <span className="text-xs font-bold text-gray-600">Spese Condivise</span>
+                                        <InfoTooltip text="Commercialista, tasse, software. Ripartite in base al fatturato: chi guadagna di più, paga di più." />
                                     </div>
                                 </div>
                                 <span className="font-bold text-gray-800">{bd.overhead.toFixed(2)}€</span>
@@ -188,32 +190,34 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Per ogni <strong>10€</strong> incassati, ne spendi <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> per mantenere la sede.
+                                    Per ogni <strong>10€</strong> che incassi, ne devi spendere <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> solo per mantenere aperta la sede.
                                 </span>
                             </li>
                             <li className="flex gap-2">
                                 <span className="font-bold text-indigo-600">•</span>
                                 <span>
-                                    Ti restano in tasca <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato affitto, viaggi e spese generali.
+                                    Ti restano in tasca puliti <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato tutto (affitto, viaggi, tasse).
                                 </span>
                             </li>
                             {costPerLesson > 0 && (
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
                                     <span className="font-bold text-red-500">•</span>
                                     <span>
-                                        Il "Costo Assoluto Studente a Lezione" è di <strong>{costPerLesson.toFixed(2)}€</strong>.
+                                        Il "Costo Apri-Porta" è di <strong>{costPerLesson.toFixed(2)}€</strong>.
                                         <br/><span className="text-xs text-gray-400 italic font-normal">
-                                            Stress Test: (Uscite Totali Aziendali / Viaggi Sede / Iscritti Sede).
+                                            Significa che ogni volta che vai a fare lezione, ti costa questa cifra (Nolo + Viaggio), indipendentemente da quanti bambini vengono.
                                         </span>
                                     </span>
                                 </li>
                             )}
-                            {costPerStudent > 0 && (
+                            {costPerStudentPerLesson > 0 && (
                                 <li className="flex gap-2 border-t border-slate-200 pt-2 mt-2">
-                                    <span className="font-bold text-red-500">•</span>
+                                    <span className="font-bold text-blue-500">•</span>
                                     <span>
-                                        Il "Costo Operativo per Studente" è di <strong>{costPerStudent.toFixed(2)}€</strong>.
-                                        <br/><span className="text-xs text-gray-400 italic font-normal">Costi Sede (Diretti) + Overhead ripartito.</span>
+                                        Ogni studente attivo ti costa <strong>{costPerStudentPerLesson.toFixed(2)}€</strong> per ogni lezione che frequenta.
+                                        <br/><span className="text-xs text-gray-400 italic font-normal">
+                                            (Costo Apri-Porta / Numero Studenti Attivi).
+                                        </span>
                                     </span>
                                 </li>
                             )}

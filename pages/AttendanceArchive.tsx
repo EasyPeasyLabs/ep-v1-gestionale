@@ -111,6 +111,7 @@ const AttendanceArchive: React.FC = () => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [filterLocation, setFilterLocation] = useState('');
     
     // Modal State
     const [modalConfig, setModalConfig] = useState<{isOpen: boolean, enrollmentId: string, childName: string, currentLocationName: string} | null>(null);
@@ -166,6 +167,13 @@ const AttendanceArchive: React.FC = () => {
         fetchArchive();
     }, []);
 
+    // Unique Locations for Filter
+    const uniqueLocations = useMemo(() => {
+        const locs = new Set<string>();
+        suppliers.forEach(s => s.locations.forEach(l => locs.add(l.name)));
+        return Array.from(locs).sort();
+    }, [suppliers]);
+
     // Logic for Updating Location
     const handleUpdateLocation = async (enrollmentId: string, newLocationId: string, newLocationName: string, newLocationColor: string, fromDate: string) => {
         try {
@@ -213,14 +221,16 @@ const AttendanceArchive: React.FC = () => {
     // Reset pagination
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, filterLocation]);
 
     const filteredItems = useMemo(() => {
-        return items.filter(item => 
-            item.childName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            item.locationName.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-    }, [items, searchTerm]);
+        return items.filter(item => {
+            const matchesSearch = item.childName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                  item.locationName.toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesLocation = filterLocation === '' || item.locationName === filterLocation;
+            return matchesSearch && matchesLocation;
+        });
+    }, [items, searchTerm, filterLocation]);
 
     const paginatedItems = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
@@ -234,16 +244,28 @@ const AttendanceArchive: React.FC = () => {
                 <p className="mt-1 text-gray-500">Storico degli slot consumati e loro valore.</p>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 mb-6">
-                <div className="relative max-w-md">
+            <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row gap-3">
+                <div className="relative flex-1">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
                     <input 
                         type="text" 
                         className="block w-full bg-gray-50 border border-gray-300 rounded-lg py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="Cerca bambino o sede..."
+                        placeholder="Cerca bambino..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                     />
+                </div>
+                <div className="w-full md:w-64">
+                    <select 
+                        value={filterLocation} 
+                        onChange={(e) => setFilterLocation(e.target.value)} 
+                        className="block w-full bg-gray-50 border border-gray-300 rounded-lg py-2 px-3 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    >
+                        <option value="">Tutte le Sedi</option>
+                        {uniqueLocations.map(loc => (
+                            <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 

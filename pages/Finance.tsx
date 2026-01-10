@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice } from '../services/financeService';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue } from '../types';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -112,9 +112,14 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         revenue: number, 
         costs: number, 
         costPerLesson: { value: number, min: number, max: number, avg: number }, 
+        costPerStudentPerLesson: number, // NEW
         costPerStudent: number, 
         breakdown: { rent: number, logistics: number, overhead: number } 
     } | null>(null);
+
+    // --- INTEGRITY CHECK STATE ---
+    const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([]);
+    const [isFixWizardOpen, setIsFixWizardOpen] = useState(false);
 
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -131,10 +136,26 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [t, i, q, e, s, c, ml, info] = await Promise.all([
-                getTransactions(), getInvoices(), getQuotes(), getAllEnrollments(), getSuppliers(), getClients(), getLessons(), getCompanyInfo()
+            const [t, i, q, e, s, c, ml, info, issues] = await Promise.all([
+                getTransactions(), 
+                getInvoices(), 
+                getQuotes(), 
+                getAllEnrollments(), 
+                getSuppliers(), 
+                getClients(), 
+                getLessons(), 
+                getCompanyInfo(),
+                runFinancialHealthCheck() // New Diagnostic
             ]);
-            setTransactions(t); setInvoices(i); setQuotes(q); setEnrollments(e); setSuppliers(s); setClients(c); setManualLessons(ml); setCompanyInfo(info);
+            setTransactions(t); 
+            setInvoices(i); 
+            setQuotes(q); 
+            setEnrollments(e); 
+            setSuppliers(s); 
+            setClients(c); 
+            setManualLessons(ml); 
+            setCompanyInfo(info);
+            setIntegrityIssues(issues);
         } finally { setLoading(false); }
     }, []);
 
@@ -164,6 +185,44 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             } finally {
                 setLoading(false);
             }
+        }
+    };
+
+    // --- NUOVA LOGICA FULL SYNC (Riconciliazione) ---
+    const handleFullSync = async () => {
+        setLoading(true);
+        try {
+            const resultMsg = await reconcileTransactions();
+            await fetchData();
+            alert(resultMsg);
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante la sincronizzazione globale.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // --- FIX WIZARD HANDLER ---
+    const handleFixIssue = async (issue: IntegrityIssue) => {
+        setLoading(true);
+        try {
+            await fixIntegrityIssue(issue);
+            // Refresh list
+            const remainingIssues = await runFinancialHealthCheck();
+            setIntegrityIssues(remainingIssues);
+            
+            // Re-fetch standard data to update UI
+            await fetchData();
+            
+            if (remainingIssues.length === 0) {
+                setIsFixWizardOpen(false);
+                alert("Ottimo! Tutte le anomalie sono state risolte.");
+            }
+        } catch (e: any) {
+            alert("Errore durante la correzione automatica: " + e.message);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -277,84 +336,47 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     }, [stats]);
 
     const roiSedi = useMemo(() => {
-        // --- 1. CONFIGURAZIONE & DATI BASE ---
+        // --- CONTROLLO DI GESTIONE ENTERPRISE ---
+        // Algoritmo: Full Costing con Driver specifici per Logistica e Overhead.
         const targetYear = controllingYear;
         
-        // Entrate Totali (Solo Income reale, no capital)
-        const totalGlobalRevenue = transactions.filter(t => 
-            !t.isDeleted && 
-            t.type === TransactionType.Income && 
-            t.category !== TransactionCategory.Capitale &&
-            new Date(t.date).getFullYear() === targetYear
-        ).reduce((sum, t) => sum + t.amount, 0);
-
-        // Uscite Totali (qualsiasi natura, usate per KPI stress test)
-        const totalGlobalOutflows = transactions.filter(t => 
-            !t.isDeleted && 
-            t.type === TransactionType.Expense && 
-            new Date(t.date).getFullYear() === targetYear
-        ).reduce((sum, t) => sum + t.amount, 0);
-
-        const data: Record<string, any> = {};
-        
-        // Inizializza Sedi
-        suppliers.flatMap(s => s.locations).forEach(l => {
-            data[l.id] = { 
-                name: l.name, 
-                color: l.color, 
-                revenue: 0, 
-                costs: 0,
-                costPerLesson: { value: 0, min: 0, max: 0, avg: 0 },
-                costPerStudent: 0,
-                studentBasedCosts: 0,
-                breakdown: { rent: 0, logistics: 0, overhead: 0 }
-            };
-        });
-
-        // --- 2. FILTRO TRANSAZIONI & AGGREGAZIONE CATEGORIE ---
-        // Recuperiamo tutte le uscite dell'anno target
-        const yearExpenses = transactions.filter(t => 
-            !t.isDeleted && 
-            t.type === TransactionType.Expense &&
-            new Date(t.date).getFullYear() === targetYear
+        // 1. PREPARAZIONE DATI GREZZI
+        const yearTransactions = transactions.filter(t => 
+            !t.isDeleted && new Date(t.date).getFullYear() === targetYear
         );
 
-        // 3. "Costi Totali Logistici" (Famiglia Logistica)
-        const totalLogisticsCosts = yearExpenses
-            .filter(t => getMacroCategory(t.category) === 'Logistica')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        // 4. "Costi Totali Generali" (Famiglia Generali)
-        const totalGeneralCosts = yearExpenses
-            .filter(t => getMacroCategory(t.category) === 'Generali')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        // 5. "Costi Totali Operazioni" (Famiglia Operazioni)
-        // ATTENZIONE: Qui dividiamo in Allocati (Nolo diretto alla sede) e Non Allocati (Materiali condivisi)
-        const operationsTransactions = yearExpenses.filter(t => getMacroCategory(t.category) === 'Operazioni');
-        
-        const operationsAllocatedToLocation = operationsTransactions.filter(t => t.allocationId);
-        const operationsUnallocated = operationsTransactions.filter(t => !t.allocationId);
-        
-        const totalOperationsUnallocated = operationsUnallocated.reduce((sum, t) => sum + t.amount, 0);
-
-        // --- 6. METRICHE DI ATTIVITÀ PER RIPARTIZIONE ---
-        const locationStats: Record<string, { studentCount: number, uniqueTrips: number }> = {};
-        Object.keys(data).forEach(id => locationStats[id] = { studentCount: 0, uniqueTrips: 0 });
-
-        let totalUniqueTrips = 0;
-        let totalActiveStudents = 0;
-        let activeLocationsCount = 0;
-
-        // A. Studenti Reali
-        enrollments.forEach(enr => {
-            if ((enr.status === 'Active' || enr.status === 'Completed') && enr.locationId && locationStats[enr.locationId]) {
-                locationStats[enr.locationId].studentCount++;
-                totalActiveStudents++;
-            }
+        // Mappa ID Location -> Info Sede
+        const locationsMap = new Map<string, {name: string, color: string, distance: number}>();
+        suppliers.forEach(s => {
+            s.locations.forEach(l => locationsMap.set(l.id, { name: l.name, color: l.color, distance: l.distance || 0 }));
         });
 
-        // B. Aperture Uniche (Viaggi)
+        // 2. AGGREGAZIONE METRICHE OPERATIVE (DRIVERS)
+        // Calcoliamo i driver per l'allocazione: Viaggi (per Logistica) e Studenti (per Overhead)
+        const locStats: Record<string, { revenue: number, trips: number, students: number }> = {};
+        
+        // Init
+        locationsMap.forEach((_, id) => {
+            locStats[id] = { revenue: 0, trips: 0, students: 0 };
+        });
+
+        // A. Revenue Diretta per Sede
+        yearTransactions.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale).forEach(t => {
+            if (t.allocationId && locStats[t.allocationId]) {
+                locStats[t.allocationId].revenue += t.amount;
+            }
+        });
+        const totalGlobalRevenue = Object.values(locStats).reduce((acc, curr) => acc + curr.revenue, 0);
+
+        // B. Studenti Attivi per Sede
+        enrollments.forEach(enr => {
+            if ((enr.status === 'Active' || enr.status === 'Completed') && enr.locationId && locStats[enr.locationId]) {
+                locStats[enr.locationId].students++;
+            }
+        });
+        const totalActiveStudents = Object.values(locStats).reduce((acc, curr) => acc + curr.students, 0);
+
+        // C. Viaggi (Aperture) per Sede
         const tripKeys = new Set<string>();
         enrollments.forEach(enr => {
             if (enr.appointments) {
@@ -362,130 +384,119 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     const d = new Date(app.date);
                     if (d.getFullYear() === targetYear) {
                         const locId = app.locationId || enr.locationId;
-                        if (locId && locationStats[locId]) {
-                            const key = `${app.date.split('T')[0]}_${locId}`; // Un viaggio al giorno per sede
+                        if (locId && locStats[locId]) {
+                            const key = `${app.date.split('T')[0]}_${locId}`;
                             if (!tripKeys.has(key)) {
                                 tripKeys.add(key);
-                                locationStats[locId].uniqueTrips++;
-                                totalUniqueTrips++;
+                                locStats[locId].trips++;
                             }
                         }
                     }
                 });
             }
         });
-
-        // Manual Lessons Trips
+        // Aggiungi lezioni manuali
         manualLessons.forEach(ml => {
             const d = new Date(ml.date);
             if (d.getFullYear() === targetYear) {
-                // Find loc ID by Name (Approx)
-                const loc = suppliers.flatMap(s => s.locations).find(l => l.name === ml.locationName);
-                if (loc && locationStats[loc.id]) {
-                    const key = `${ml.date.split('T')[0]}_${loc.id}`;
+                // Find loc ID by Name approx
+                const locEntry = Array.from(locationsMap.entries()).find(([_, val]) => val.name === ml.locationName);
+                if (locEntry) {
+                    const [id] = locEntry;
+                    const key = `${ml.date.split('T')[0]}_${id}`;
                     if (!tripKeys.has(key)) {
                         tripKeys.add(key);
-                        locationStats[loc.id].uniqueTrips++;
-                        totalUniqueTrips++;
+                        locStats[id].trips++;
                     }
                 }
             }
         });
 
-        Object.values(locationStats).forEach(s => {
-            if (s.studentCount > 0 || s.uniqueTrips > 0) activeLocationsCount++;
-        });
-        if (activeLocationsCount === 0) activeLocationsCount = 1;
-
-        // --- 7. ALLOCAZIONE RICAVI (Diretta) ---
-        transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === targetYear && t.type === TransactionType.Income).forEach(t => {
-            if (t.allocationId && data[t.allocationId]) {
-                data[t.allocationId].revenue += t.amount;
-            }
-        });
-
-        // --- 8. CALCOLO E RIPARTIZIONE COSTI SECONDO NUOVE FORMULE ---
+        // 3. CALCOLO POOL DI COSTI INDIRETTI
+        const yearExpenses = yearTransactions.filter(t => t.type === TransactionType.Expense);
         
-        Object.keys(data).forEach(id => {
-            const stats = locationStats[id];
+        const costsByMacro = {
+            logistics: yearExpenses.filter(t => getMacroCategory(t.category) === 'Logistica').reduce((s, t) => s + t.amount, 0),
+            general: yearExpenses.filter(t => getMacroCategory(t.category) === 'Generali').reduce((s, t) => s + t.amount, 0),
+            operationsUnallocated: yearExpenses.filter(t => getMacroCategory(t.category) === 'Operazioni' && !t.allocationId).reduce((s, t) => s + t.amount, 0)
+        };
+
+        // 4. CALCOLO TASSI DI ALLOCAZIONE (RATES)
+        
+        // Driver Logistica: Km Totali Percorsi (Distanza Sede * Viaggi Sede)
+        let totalWeightedKm = 0;
+        locationsMap.forEach((info, id) => {
+            totalWeightedKm += (info.distance * locStats[id].trips);
+        });
+        // Costo per Km = Totale Logistica / Totale Km
+        const costPerKm = totalWeightedKm > 0 ? costsByMacro.logistics / totalWeightedKm : 0;
+
+        // Driver Overhead: Revenue Share (Capacità di spesa)
+        // Overhead Rate = (Generali + Op. Indirette) / Fatturato Totale
+        const totalOverheadPool = costsByMacro.general + costsByMacro.operationsUnallocated;
+        const overheadRateRevenueBased = totalGlobalRevenue > 0 ? totalOverheadPool / totalGlobalRevenue : 0;
+
+        // 5. COSTRUZIONE REPORT FINALE
+        const finalData = Array.from(locationsMap.entries()).map(([id, info]) => {
+            const stats = locStats[id];
             
-            // A. Costi Diretti (Allocati) - Es. Nolo Sede specifico
-            // Somma delle transazioni "Operazioni" con allocationId = id
-            const directOpsCost = operationsAllocatedToLocation
-                .filter(t => t.allocationId === id)
-                .reduce((sum, t) => sum + t.amount, 0);
-            
-            data[id].breakdown.rent = directOpsCost; // Lo chiamiamo 'rent' per compatibilità UI ma include tutto ciò che è diretto
-            data[id].costs += directOpsCost;
+            // A. Costi Diretti (Specifici Sede)
+            const directCosts = yearExpenses
+                .filter(t => t.allocationId === id && getMacroCategory(t.category) === 'Operazioni')
+                .reduce((s, t) => s + t.amount, 0);
 
-            // B. "Costo Logistica Sede" (Formula 8)
-            // Totale Logistica / Aperture Uniche Sede (Se > 0)
-            // Se la sede non ha aperture, non gli attribuiamo logistica variabile (ha senso?)
-            // La formula richiesta è: "Costi Totali Logistica" / "Numero aperture uniche della sede"
-            // INTERPRETAZIONE: Questo sembrerebbe un costo UNITARIO per viaggio.
-            // Ma per il ROI della sede, dobbiamo sommare il costo totale attribuito.
-            // Probabilmente intende: Ripartizione proporzionale ai viaggi?
-            // "Costo Logistica Sede" = (Costi Totali Logistica / Totale Viaggi Globali) * Viaggi Sede
-            // Se interpretiamo letteralmente la richiesta "Costi Totali / Aperture Sede", verrebbe un numero enorme.
-            // Assumeremo Ripartizione Proporzionale ai Viaggi.
-            const logisticsShare = totalUniqueTrips > 0 
-                ? (totalLogisticsCosts / totalUniqueTrips) * stats.uniqueTrips
-                : 0;
-            
-            data[id].breakdown.logistics = logisticsShare;
-            data[id].costs += logisticsShare;
+            // B. Costi Logistica Allocati (Km-Based)
+            const kmTraveled = info.distance * stats.trips;
+            const allocatedLogistics = kmTraveled * costPerKm;
 
-            // C. "Costo Studenti Sede" (Formula 9)
-            // (Costi Totali Operazioni NON Allocati + Generali) / Studenti Totali * Studenti Sede?
-            // La richiesta dice: "Costi Totali Operazioni" / "Numero iscrizioni sede".
-            // Anche qui, interpretiamo come ripartizione proporzionale del "non allocato".
-            // Totale Operazioni = (Diretto gia sommato) + (Indiretto da ripartire).
-            // Ripartiamo i Generali + Operazioni Indirette in base agli studenti.
-            const overheadPool = totalGeneralCosts + totalOperationsUnallocated;
-            const overheadShare = totalActiveStudents > 0
-                ? (overheadPool / totalActiveStudents) * stats.studentCount
-                : 0;
+            // C. Costi Overhead Allocati (Revenue-Based)
+            // "Chi fattura di più contribuisce di più alla struttura"
+            const allocatedOverhead = stats.revenue * overheadRateRevenueBased;
 
-            data[id].breakdown.overhead = overheadShare;
-            data[id].costs += overheadShare;
-            
-            // Student Based Costs (per visualizzazione)
-            data[id].studentBasedCosts = overheadShare + directOpsCost; // Approx
+            const totalAllocatedCosts = directCosts + allocatedLogistics + allocatedOverhead;
 
-            // --- KPI CALCOLATI ---
-
-            // "Costo Studenti Sede" (Formula 9 - Interpretazione Unitaria)
-            // Costo Totale Operazioni (Attribuzione) / Iscritti Sede
-            // Qui usiamo la quota parte attribuita
-            data[id].costPerStudent = stats.studentCount > 0 
-                ? (directOpsCost + overheadShare) / stats.studentCount
+            // KPI: Costo Industriale Lezione (Break-Even)
+            // (Costi Diretti + Logistica) / Numero Lezioni (Viaggi)
+            // Questo dice: quanto costa aprire la porta per una lezione.
+            const industrialCostPerLesson = stats.trips > 0 
+                ? (directCosts + allocatedLogistics) / stats.trips
                 : 0;
 
-            // "Costo assoluto Studente a Lezione" (Formula 10)
-            // "Uscite Totali" / Aperture Sede / Iscrizioni Sede
-            // Attenzione: Uscite Totali è GLOBAL o LOCAL? "Uscite Totali" (Globali) diviso i fattori locali sarebbe un indice di pressione.
-            // Se usiamo i costi attribuiti alla sede (data[id].costs), è il costo reale.
-            // La richiesta dice "Uscite Totali" (definito come somma di tutte le transazioni negative).
-            // Usiamo il Costo Totale Attribuito alla Sede per coerenza ROI.
-            const costPerStudentPerLesson = (stats.uniqueTrips > 0 && stats.studentCount > 0)
-                ? data[id].costs / stats.uniqueTrips / stats.studentCount
+            // KPI: Costo per Studente a Lezione (NEW)
+            // Divide il costo industriale per il numero di studenti attivi
+            const costPerStudentPerLesson = stats.students > 0 
+                ? industrialCostPerLesson / stats.students 
                 : 0;
 
-            // Vettoriale per UI
-            // Per il "Costo Singola Lezione" (compatibilità UI precedente), usiamo la formula vettoriale [(C/S/V)*2]
-            // Oppure usiamo il nuovo "Costo assoluto Studente a Lezione"?
-            // Usiamo la nuova formula 10 come valore principale.
-            data[id].costPerLesson = {
-                value: costPerStudentPerLesson,
-                min: costPerStudentPerLesson * 0.9,
-                max: costPerStudentPerLesson * 1.1,
-                avg: costPerStudentPerLesson
+            // KPI: Costo per Studente Totale
+            const costPerStudent = stats.students > 0 ? totalAllocatedCosts / stats.students : 0;
+
+            return {
+                name: info.name,
+                color: info.color,
+                revenue: stats.revenue,
+                costs: totalAllocatedCosts,
+                studentBasedCosts: allocatedOverhead, // Quota struttura
+                costPerStudent: costPerStudent,
+                costPerLesson: {
+                    value: industrialCostPerLesson,
+                    min: industrialCostPerLesson * 0.9,
+                    max: industrialCostPerLesson * 1.1,
+                    avg: industrialCostPerLesson
+                },
+                costPerStudentPerLesson, // NEW Field
+                breakdown: {
+                    rent: directCosts,
+                    logistics: allocatedLogistics,
+                    overhead: allocatedOverhead
+                },
+                globalRevenue: totalGlobalRevenue
             };
-            
-            data[id].globalRevenue = totalGlobalRevenue;
         });
 
-        return Object.values(data).sort((a,b) => b.revenue - a.revenue);
+        // Filtra sedi inattive (senza ricavi ne costi)
+        return finalData.filter(d => d.revenue > 0 || d.costs > 0).sort((a,b) => b.revenue - a.revenue);
+
     }, [suppliers, transactions, enrollments, manualLessons, controllingYear]); 
 
     const handlePrint = async (doc: Invoice | Quote) => {
@@ -549,11 +560,16 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 data.status = DocumentStatus.SealedSDI;
             }
             let invoiceId = editingInvoice.id;
+            
+            // Variabile per catturare il numero fattura generato (se nuova)
+            let finalInvoiceNumber = data.invoiceNumber;
+
             if (invoiceId) {
                 await updateInvoice(invoiceId, data);
             } else {
                 const res = await addInvoice(data);
                 invoiceId = res.id;
+                finalInvoiceNumber = res.invoiceNumber;
             }
             if (!editingInvoice.id && data.status !== DocumentStatus.Draft && !data.isGhost && data.totalAmount > 0) {
                 let autoAllocationId = null;
@@ -571,7 +587,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 }
                 const newTransaction: TransactionInput = {
                     date: data.issueDate,
-                    description: `Incasso Fattura ${data.invoiceNumber || 'N/D'} - ${data.clientName}`,
+                    // UPDATED: Use 'incasso' lowercase and ensure Rif+Soggetto
+                    description: `incasso fattura n. ${finalInvoiceNumber || 'N/D'} - ${data.clientName}`,
                     amount: data.totalAmount,
                     type: TransactionType.Income,
                     category: TransactionCategory.Vendite,
@@ -668,6 +685,26 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // --- RENDER ---
     return (
         <div className="animate-fade-in pb-20">
+            
+            {/* FISCAL DOCTOR DIAGNOSTIC BANNER */}
+            {integrityIssues.length > 0 && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-sm flex flex-col md:flex-row justify-between items-center animate-slide-up">
+                    <div className="flex items-center gap-3 mb-3 md:mb-0">
+                        <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl shadow-sm">🩺</div>
+                        <div>
+                            <h4 className="text-sm font-bold text-amber-900 uppercase tracking-wide">Fiscal Doctor: Rilevate {integrityIssues.length} Anomalie</h4>
+                            <p className="text-xs text-amber-700">Ci sono disallineamenti tra Iscrizioni, Fatture e Transazioni.</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => setIsFixWizardOpen(true)}
+                        className="md-btn md-btn-sm bg-amber-600 text-white hover:bg-amber-700 shadow-md font-bold px-4"
+                    >
+                        Risolvi Anomalie
+                    </button>
+                </div>
+            )}
+
             {/* HEADER */}
             <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
                 <div>
@@ -676,7 +713,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
                     <button onClick={handleSyncRents} className="md-btn md-btn-flat bg-white border border-indigo-200 text-indigo-700 shadow-sm font-bold flex items-center gap-1 hover:bg-indigo-50 flex-shrink-0"><RefreshIcon /> Sync Noli</button>
-                    <button onClick={() => fetchData()} className="md-btn md-btn-flat bg-white border shadow-sm flex-shrink-0"><RefreshIcon /> Sync</button>
+                    <button onClick={handleFullSync} className="md-btn md-btn-flat bg-white border shadow-sm flex-shrink-0"><RefreshIcon /> Sync</button>
                     <button 
                         onClick={() => {
                             if (activeTab === 'quotes') {
@@ -830,6 +867,62 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                         <div className="flex justify-end gap-3">
                             <button onClick={() => setIsSealModalOpen(false)} className="md-btn md-btn-flat">Esci</button>
                             <button onClick={handleSeal} disabled={!sdiId} className="md-btn md-btn-raised md-btn-primary">Finalizza Documento</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* --- FIX WIZARD MODAL --- */}
+            {isFixWizardOpen && (
+                <Modal onClose={() => setIsFixWizardOpen(false)} size="lg">
+                    <div className="flex flex-col h-[80vh]">
+                        <div className="p-6 border-b bg-amber-50 flex justify-between items-center">
+                            <div>
+                                <h3 className="text-xl font-bold text-amber-900">Fiscal Doctor</h3>
+                                <p className="text-sm text-amber-700">Risoluzione guidata delle anomalie finanziarie.</p>
+                            </div>
+                            <span className="text-2xl font-black text-amber-500">🩺</span>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {integrityIssues.map((issue, idx) => (
+                                <div key={idx} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="flex items-center gap-2">
+                                            {issue.type === 'missing_invoice' 
+                                                ? <span className="bg-red-100 text-red-700 text-[10px] uppercase px-2 py-1 rounded font-bold">Manca Fattura</span>
+                                                : <span className="bg-orange-100 text-orange-700 text-[10px] uppercase px-2 py-1 rounded font-bold">Manca Transazione</span>
+                                            }
+                                            <span className="text-xs font-mono text-gray-400">{new Date(issue.date).toLocaleDateString()}</span>
+                                        </div>
+                                        <span className="font-black text-lg text-slate-800">{issue.amount.toFixed(2)}€</span>
+                                    </div>
+                                    <h4 className="font-bold text-gray-800 mb-1">{issue.description}</h4>
+                                    <p className="text-sm text-gray-500 mb-4">Soggetto: {issue.entityName}</p>
+                                    
+                                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-3 text-xs text-gray-600">
+                                        <strong>Soluzione Proposta:</strong><br/>
+                                        {issue.type === 'missing_invoice' 
+                                            ? `Generazione automatica Fattura Pagata per ${issue.entityName}.` 
+                                            : `Creazione automatica Transazione in entrata collegata alla fattura.`
+                                        }
+                                    </div>
+
+                                    <button 
+                                        onClick={() => handleFixIssue(issue)}
+                                        className="w-full md-btn md-btn-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm font-bold"
+                                    >
+                                        Risolvi Ora
+                                    </button>
+                                </div>
+                            ))}
+                            {integrityIssues.length === 0 && (
+                                <div className="text-center py-10 text-gray-400 italic">
+                                    Nessuna anomalia rilevata. Ottimo lavoro!
+                                </div>
+                            )}
+                        </div>
+                        <div className="p-4 border-t bg-gray-50 flex justify-end">
+                            <button onClick={() => setIsFixWizardOpen(false)} className="md-btn md-btn-flat">Chiudi</button>
                         </div>
                     </div>
                 </Modal>

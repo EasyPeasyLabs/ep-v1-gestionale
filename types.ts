@@ -95,6 +95,18 @@ export enum CheckCategory {
     Other = 'Other'
 }
 
+export interface IntegrityIssue {
+    id: string;
+    type: 'missing_invoice' | 'missing_transaction';
+    severity: 'high' | 'medium';
+    description: string;
+    entityId: string; // ID dell'entità sorgente (es. Iscrizione o Fattura)
+    entityName: string; // Nome leggibile (es. Mario Rossi)
+    amount: number;
+    date: string;
+    details?: any; // Dati tecnici per il fix automatico
+}
+
 export interface Note {
     id: string;
     date: string;

@@ -1,9 +1,10 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch, getDoc } from 'firebase/firestore';
-import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment } from '../types';
-import { getAllEnrollments } from './enrollmentService';
+import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment, IntegrityIssue, EnrollmentStatus } from '../types';
+import { getAllEnrollments, getActiveLocationForClient } from './enrollmentService';
 import { getSuppliers } from './supplierService';
+import { getClients } from './parentService';
 import { checkFiscalLock } from './fiscalYearService';
 
 // --- Transactions ---
@@ -183,6 +184,250 @@ export const markInvoicesAsPaid = async (invoiceIds: string[]): Promise<void> =>
     }
 };
 
+// --- RICONCILIAZIONE (SYNC) TRANSAZIONI ---
+export const reconcileTransactions = async (): Promise<string> => {
+    // 1. Recupera tutti i dati attuali
+    const [allTransactions, allInvoices] = await Promise.all([
+        getTransactions(), 
+        getInvoices() // Restituisce fatture non cancellate (!isDeleted)
+    ]);
+
+    const invoiceMap = new Map(allInvoices.map(i => [i.id, i]));
+    
+    const updates: { ref: any, data: any }[] = [];
+    let updatedCount = 0;
+    let orphansCount = 0;
+
+    for (const t of allTransactions) {
+        // Analizza solo transazioni collegate a documenti
+        if (!t.relatedDocumentId) continue;
+
+        // Escludi transazioni auto-generate come affitti, se usano ID speciali
+        if (t.relatedDocumentId.startsWith('AUTO-RENT')) continue;
+
+        const invoice = invoiceMap.get(t.relatedDocumentId);
+
+        if (invoice) {
+            // CASO A: Documento trovato -> Verifica allineamento
+            // Formato richiesto: "incasso fattura n. [NUMERO] - [CLIENTE]"
+            // Preleva Rif/ID (invoiceNumber) e Soggetto (clientName)
+            const invoiceNum = invoice.invoiceNumber || 'N/D';
+            const expectedDesc = `incasso fattura n. ${invoiceNum} - ${invoice.clientName}`;
+            
+            // Logica di confronto: Normalizza stringhe per evitare falsi positivi su spazi
+            const currentDesc = (t.description || '').trim();
+            const targetDesc = expectedDesc.trim();
+            
+            // Se la descrizione è diversa o il nome cliente non coincide
+            if (currentDesc !== targetDesc || t.clientName !== invoice.clientName) {
+                const docRef = doc(db, 'transactions', t.id);
+                updates.push({ 
+                    ref: docRef, 
+                    data: { 
+                        description: targetDesc,
+                        clientName: invoice.clientName // Allinea anche il nome cliente denormalizzato
+                    } 
+                });
+                updatedCount++;
+            }
+        } else {
+            // CASO C: Documento non trovato (Orfana)
+            // Se non è già marcata come orfana, marcala
+            if (!t.description.startsWith("⚠️ ORFANA")) {
+                const docRef = doc(db, 'transactions', t.id);
+                const orphanDesc = `⚠️ ORFANA - Doc Mancante (ID: ${t.relatedDocumentId})`;
+                updates.push({ 
+                    ref: docRef, 
+                    data: { description: orphanDesc } 
+                });
+                orphansCount++;
+            }
+        }
+    }
+
+    // Batch updates (Chunking 450 per sicurezza)
+    if (updates.length > 0) {
+        const chunkSize = 450;
+        for (let i = 0; i < updates.length; i += chunkSize) {
+            const chunk = updates.slice(i, i + chunkSize);
+            const batch = writeBatch(db);
+            chunk.forEach(u => batch.update(u.ref, u.data));
+            await batch.commit();
+        }
+    }
+
+    return `Riconciliazione retroattiva completata.\n• Aggiornate: ${updatedCount}\n• Marcate Orfane: ${orphansCount}`;
+};
+
+// --- FISCAL HEALTH CHECK (Diagnostica) ---
+export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
+    // 1. Fetch All Relevant Data
+    const [enrollments, invoices, transactions, clients] = await Promise.all([
+        getAllEnrollments(),
+        getInvoices(),
+        getTransactions(),
+        getClients()
+    ]);
+
+    const issues: IntegrityIssue[] = [];
+
+    // Map clients for easy name lookup
+    const clientMap = new Map<string, string>();
+    clients.forEach(c => {
+        const name = c.clientType === 'parent' 
+            ? `${(c as any).firstName} ${(c as any).lastName}` 
+            : (c as any).companyName;
+        clientMap.set(c.id, name);
+    });
+
+    // MAPS for quick lookup
+    // Invoice -> Transaction
+    const invToTransMap = new Map<string, Transaction>();
+    transactions.forEach(t => {
+        if(t.relatedDocumentId) invToTransMap.set(t.relatedDocumentId, t);
+    });
+
+    // Enrollment -> Invoices
+    const enrToInvMap = new Map<string, Invoice[]>();
+    invoices.forEach(i => {
+        // Cerca fatture che menzionano il nome del bambino nell'oggetto (euristica)
+        // O idealmente avremmo un campo enrollmentId sulla fattura (TODO futuro).
+        // Per ora usiamo l'euristica della descrizione o controllo incrociato con clientId.
+        // Ma un cliente può avere più figli.
+        // Soluzione: Le fatture generate da Enrollment hanno il childName nella descrizione item.
+    });
+
+    // 2. CHECK 1: ISCRIZIONI ATTIVE SENZA FATTURA
+    // Regola: Se Status = Active, deve esistere una fattura (anche bozza) o transazione per quel bambino/importo.
+    enrollments.forEach(enr => {
+        if (enr.status === EnrollmentStatus.Active) {
+            // Cerca fatture per questo cliente che contengano il nome del bambino
+            const relatedInvoices = invoices.filter(inv => 
+                inv.clientId === enr.clientId && 
+                !inv.isDeleted &&
+                !inv.isGhost && // Escludiamo le ghost (pro-forma)
+                inv.items.some(item => item.description.includes(enr.childName))
+            );
+
+            if (relatedInvoices.length === 0) {
+                // Caso Speciale: Iscrizione senza fattura. Potrebbe essere un errore o pagamento in nero (che non gestiamo).
+                // Segnaliamo come anomalia.
+                issues.push({
+                    id: `miss-inv-${enr.id}`,
+                    type: 'missing_invoice',
+                    severity: 'high',
+                    description: `Iscrizione Attiva senza Fattura: ${enr.childName}`,
+                    entityId: enr.id,
+                    entityName: enr.childName,
+                    amount: enr.price || 0,
+                    date: enr.startDate,
+                    details: { enrollment: enr, clientName: clientMap.get(enr.clientId) }
+                });
+            }
+        }
+    });
+
+    // 3. CHECK 2: FATTURE PAGATE SENZA TRANSAZIONE
+    invoices.forEach(inv => {
+        if (inv.status === DocumentStatus.Paid && !inv.isDeleted && !inv.isGhost) {
+            const hasTransaction = invToTransMap.has(inv.id);
+            if (!hasTransaction) {
+                issues.push({
+                    id: `miss-trans-${inv.id}`,
+                    type: 'missing_transaction',
+                    severity: 'medium', // Medium perché il fisco è ok (fattura c'è), ma la cassa no.
+                    description: `Fattura Pagata senza Movimento di Cassa: ${inv.invoiceNumber}`,
+                    entityId: inv.id,
+                    entityName: inv.clientName,
+                    amount: inv.totalAmount,
+                    date: inv.issueDate,
+                    details: { invoice: inv }
+                });
+            }
+        }
+    });
+
+    return issues;
+};
+
+// --- AUTO FIXER ---
+export const fixIntegrityIssue = async (issue: IntegrityIssue): Promise<void> => {
+    if (issue.type === 'missing_invoice') {
+        const enr = issue.details.enrollment as Enrollment;
+        const clientName = issue.details.clientName || 'Cliente';
+        
+        // Crea Fattura
+        const invoiceInput: InvoiceInput = {
+            invoiceNumber: '', // Auto-gen
+            issueDate: new Date().toISOString(), // Data odierna per il fix
+            dueDate: new Date().toISOString(),
+            clientId: enr.clientId,
+            clientName: clientName,
+            items: [{
+                description: `Pagamento Iscrizione: ${enr.childName} - ${enr.subscriptionName}`,
+                quantity: 1,
+                price: enr.price || 0,
+                notes: 'Generata da controllo integrità'
+            }],
+            totalAmount: enr.price || 0,
+            status: DocumentStatus.Paid, // Assumiamo pagata se l'iscrizione è attiva
+            paymentMethod: PaymentMethod.BankTransfer,
+            hasStampDuty: (enr.price || 0) > 77.47,
+            isGhost: false,
+            isDeleted: false
+        };
+        
+        // Nota: addInvoice controlla il lock fiscale. Se l'anno è chiuso, lancerà errore.
+        const res = await addInvoice(invoiceInput);
+        
+        // Crea Transazione Contestuale (per evitare di creare un nuovo buco "missing transaction")
+        const transInput: TransactionInput = {
+            date: new Date().toISOString(),
+            description: `incasso fattura n. ${res.invoiceNumber} - ${clientName}`,
+            amount: enr.price || 0,
+            type: TransactionType.Income,
+            category: TransactionCategory.Vendite,
+            paymentMethod: PaymentMethod.BankTransfer,
+            status: TransactionStatus.Completed,
+            relatedDocumentId: res.id,
+            allocationType: enr.locationId !== 'unassigned' ? 'location' : 'general',
+            allocationId: enr.locationId !== 'unassigned' ? enr.locationId : undefined,
+            allocationName: enr.locationName,
+            isDeleted: false
+        };
+        await addTransaction(transInput);
+
+    } else if (issue.type === 'missing_transaction') {
+        const inv = issue.details.invoice as Invoice;
+        
+        // Tenta di trovare location intelligente
+        let allocId: string | undefined = undefined;
+        let allocName: string | undefined = undefined;
+        if (inv.clientId) {
+            const loc = await getActiveLocationForClient(inv.clientId);
+            if (loc) { allocId = loc.id; allocName = loc.name; }
+        }
+
+        const transInput: TransactionInput = {
+            date: inv.issueDate, // Usa la data della fattura
+            description: `incasso fattura n. ${inv.invoiceNumber} - ${inv.clientName}`,
+            amount: inv.totalAmount,
+            type: TransactionType.Income,
+            category: TransactionCategory.Vendite,
+            paymentMethod: inv.paymentMethod,
+            status: TransactionStatus.Completed,
+            relatedDocumentId: inv.id,
+            clientName: inv.clientName,
+            allocationType: allocId ? 'location' : 'general',
+            allocationId: allocId,
+            allocationName: allocName,
+            isDeleted: false
+        };
+        
+        await addTransaction(transInput);
+    }
+};
+
 // --- Quotes ---
 export const getQuotes = async (): Promise<Quote[]> => {
     const q = query(collection(db, 'quotes'));
@@ -267,19 +512,26 @@ export const getNextDocumentNumber = async (collectionName: 'invoices' | 'quotes
 
         const numStr = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
         if (numStr && numStr.includes(prefix)) {
-            // Robust parsing: split by hyphen, find the numeric part
-            // Example: FT-001-2024 or FT-1-2024
+            // Robust parsing: split by hyphen. 
+            // Target Format: PREFIX-YEAR-NUMBER (e.g. FT-2025-057)
             const parts = numStr.split('-'); 
-            if (parts.length > 1) {
-                // Assuming format PREFIX-NUMBER-YEAR
-                const n = parseInt(parts[1], 10);
-                if (!isNaN(n) && n > maxNum) maxNum = n;
+            
+            // Check based on format
+            if (parts.length >= 3) {
+                // Strict check: part[1] must be the Year.
+                // This filters out buggy invoices like FT-2026-2025 (where 2026 != 2025)
+                // And accepts correct invoices like FT-2025-057 (where 2025 == 2025)
+                if (parts[1] === String(year)) {
+                    const n = parseInt(parts[2], 10);
+                    if (!isNaN(n) && n > maxNum) maxNum = n;
+                }
             }
         }
     });
 
     const nextNum = maxNum + 1;
-    return `${prefix}-${String(nextNum).padStart(pad, '0')}-${year}`;
+    // Assemble as PREFIX-YEAR-NUMBER
+    return `${prefix}-${year}-${String(nextNum).padStart(pad, '0')}`;
 };
 
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {

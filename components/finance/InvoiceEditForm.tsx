@@ -315,7 +315,7 @@ const InvoiceEditForm: React.FC<{
                                 value={invoiceNumber} 
                                 onChange={e => setInvoiceNumber(e.target.value)} 
                                 placeholder="Automatico se vuoto" 
-                                className="w-full px-2 py-1.5 bg-white border border-slate-300 rounded text-xs font-mono text-slate-800 font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-indigo-200" 
+                                className="w-full px-3 py-2 bg-white border border-slate-300 rounded text-sm font-mono text-slate-800 font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-indigo-200" 
                             />
                         </div>
                     </div>
@@ -403,14 +403,20 @@ const InvoiceEditForm: React.FC<{
                             <textarea 
                                 value={notes} 
                                 onChange={e => setNotes(e.target.value)} 
-                                className="w-full p-3 bg-white border border-gray-200 rounded-xl text-xs text-slate-600 focus:ring-2 focus:ring-indigo-200 resize-none h-24"
+                                className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm text-slate-700 focus:ring-2 focus:ring-indigo-200 resize-none h-24"
                                 placeholder="IBAN, Scadenze..." 
                             />
                         </div>
                         
                         <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Codice SDI / PEC</label>
-                            <input type="text" value={sdiId} onChange={e => setSdiId(e.target.value)} placeholder="0000000" className="w-full bg-white border border-slate-200 rounded p-1.5 text-xs font-mono" />
+                            <input 
+                                type="text" 
+                                value={sdiId} 
+                                onChange={e => setSdiId(e.target.value)} 
+                                placeholder="0000000" 
+                                className="w-full bg-white border border-slate-200 rounded p-2 text-sm font-mono font-bold text-slate-700" 
+                            />
                             <p className="text-[9px] text-slate-400 mt-1 italic">Inserendo un valore qui, la fattura verrà salvata automaticamente come "Sigillata SDI".</p>
                         </div>
                     </div>

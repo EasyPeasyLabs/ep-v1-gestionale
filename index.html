@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -142,7 +141,7 @@
 
       .md-input-group {
         position: relative;
-        margin-bottom: 1rem;
+        margin-bottom: 1.5rem; /* Reduced spacing thanks to outlined labels */
       }
       
       .md-input {
@@ -174,25 +173,32 @@
         pointer-events: none;
         font-size: 0.95rem;
         font-weight: 500;
+        padding: 0 4px; /* Space for outline cut */
+        background-color: transparent;
+        border-radius: 4px;
       }
       
       .md-input:focus ~ .md-input-label,
       .md-input:not(:placeholder-shown) ~ .md-input-label {
-        top: -24px;
-        left: 4px;
+        top: -10px; /* Sits on the border */
+        left: 12px;
         font-size: 0.75rem;
         font-weight: 700;
         color: var(--md-text-primary);
+        background-color: #FFFFFF; /* Masks the border */
+        z-index: 10;
       }
       
       select.md-input ~ .md-input-label,
       input[type="date"].md-input ~ .md-input-label,
       input[type="time"].md-input ~ .md-input-label {
-        top: -24px;
-        left: 4px;
+        top: -10px;
+        left: 12px;
         font-size: 0.75rem;
         font-weight: 700;
         color: var(--md-text-primary);
+        background-color: #FFFFFF;
+        z-index: 10;
       }
 
       .md-btn {

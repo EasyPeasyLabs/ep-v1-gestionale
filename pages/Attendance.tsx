@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus } from '../types';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, resetAppointmentStatus, toggleAppointmentStatus, deleteAppointment } from '../services/enrollmentService';
+import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
 import ConfirmModal from '../components/ConfirmModal';
 import CalendarIcon from '../components/icons/CalendarIcon';
@@ -26,8 +27,12 @@ const getEndOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0
 const Attendance: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
+    
+    // Filters
+    const [filterLocation, setFilterLocation] = useState('');
     
     // UI state per menu "Gestisci" aperto
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -50,7 +55,13 @@ const Attendance: React.FC = () => {
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);
         try {
-            const enrollments = await getAllEnrollments();
+            const [enrollments, suppliersData] = await Promise.all([
+                getAllEnrollments(),
+                getSuppliers()
+            ]);
+            
+            setSuppliers(suppliersData);
+
             const items: AttendanceItem[] = [];
             
             // Calcola Range Date
@@ -125,6 +136,13 @@ const Attendance: React.FC = () => {
 
         return locationGroups;
     }, [attendanceItems]);
+
+    // Extract available locations for filter
+    const availableLocations = useMemo(() => {
+        const locs = new Set<string>();
+        suppliers.forEach(s => s.locations.forEach(l => locs.add(l.name)));
+        return Array.from(locs).sort();
+    }, [suppliers]);
 
     const handleNavigate = (direction: number) => {
         const newDate = new Date(currentDate);
@@ -277,15 +295,30 @@ const Attendance: React.FC = () => {
                 </div>
             </div>
 
-            {/* Navigazione Calendario */}
+            {/* Navigazione Calendario + Filtro Sede */}
             <div className="md-card p-4 mb-6 flex items-center justify-between bg-white border-l-4 border-indigo-500 shadow-sm">
                 <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&lt;</button>
                 
-                <div className="flex items-center gap-3">
-                    <CalendarIcon />
-                    <div className="text-center">
-                        <span className="block text-lg font-bold text-gray-800 capitalize">{getRangeLabel()}</span>
-                        {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
+                <div className="flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-3">
+                        <CalendarIcon />
+                        <div className="text-center">
+                            <span className="block text-lg font-bold text-gray-800 capitalize">{getRangeLabel()}</span>
+                            {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
+                        </div>
+                    </div>
+                    {/* Location Filter */}
+                    <div className="mt-1">
+                        <select 
+                            value={filterLocation} 
+                            onChange={(e) => setFilterLocation(e.target.value)} 
+                            className="bg-indigo-50 text-indigo-700 font-bold text-xs rounded-full px-3 py-1 border border-indigo-200 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer"
+                        >
+                            <option value="">Tutte le Sedi</option>
+                            {availableLocations.map(loc => (
+                                <option key={loc} value={loc}>{loc}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
@@ -297,14 +330,17 @@ const Attendance: React.FC = () => {
                     {Object.keys(groupedData).length === 0 && <div className="text-center py-12 text-gray-500 italic bg-gray-50 rounded-xl border border-dashed border-gray-300">Nessuna lezione in programma nel periodo selezionato.</div>}
                     
                     {Object.entries(groupedData).map(([locationName, datesMap]) => {
+                        // FILTER: Skip this group if filter is active and doesn't match
+                        if (filterLocation && locationName !== filterLocation) return null;
+
                         // Ordina le date
                         const sortedDates = Object.keys(datesMap).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
                         const firstItem = datesMap[sortedDates[0]][0];
 
                         return (
-                        <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-6">
+                        <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
                             {/* RECINTO HEADER */}
-                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-colors">
+                            <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-colors rounded-t-xl">
                                 <span className="w-4 h-4 rounded-full shadow-sm ring-2 ring-white" style={{ backgroundColor: firstItem?.locationColor || '#ccc' }}></span>
                                 <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locationName}</h2>
                                 <span className="text-xs bg-white border border-gray-300 text-gray-600 px-2 py-0.5 rounded-full font-mono">
@@ -360,7 +396,7 @@ const Attendance: React.FC = () => {
 
                                                                 {/* CRUD Dropdown Menu */}
                                                                 {isMenuOpen && (
-                                                                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-20 animate-fade-in-down" onClick={(e) => e.stopPropagation()}>
+                                                                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50 animate-fade-in-down" onClick={(e) => e.stopPropagation()}>
                                                                         <div className="py-1">
                                                                             <button 
                                                                                 onClick={() => handleModify(item)}

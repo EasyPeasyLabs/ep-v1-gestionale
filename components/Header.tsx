@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, signOut } from 'firebase/auth';
+import { type User, signOut } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { Page } from '../types';
 import { Notification } from '../types';

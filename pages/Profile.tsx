@@ -1,5 +1,6 @@
+
 import React from 'react';
-import { User } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 
 interface ProfileProps {
     user: User;

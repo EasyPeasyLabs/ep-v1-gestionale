@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from './firebase/config';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -49,8 +49,11 @@ const App: React.FC = () => {
   }, []);
 
   // Gestione Icona Dinamica PWA e Favicon basata sul logo aziendale
+  // FIX: Esegui solo se l'utente è autenticato per evitare errori di permessi Firestore sulla Login Page
   useEffect(() => {
       const updateAppIdentity = async () => {
+          if (!user) return; // Skip if not logged in
+
           try {
               const info = await getCompanyInfo();
               if (info && info.logoBase64) {
@@ -114,7 +117,7 @@ const App: React.FC = () => {
       // Ascolta aggiornamenti dalle impostazioni
       window.addEventListener('EP_DataUpdated', updateAppIdentity);
       return () => window.removeEventListener('EP_DataUpdated', updateAppIdentity);
-  }, []);
+  }, [user]);
 
   const handleNavigation = (page: Page, params?: any) => {
       console.log('[DEBUG 3] App: handleNavigation verso', page);
