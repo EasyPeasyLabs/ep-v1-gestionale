@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAllEnrollments, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
-import { cleanupEnrollmentFinancials } from '../services/financeService';
+import { cleanupEnrollmentFinancials, getInvoices } from '../services/financeService';
+import { processPayment } from '../services/paymentService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus, EnrollmentInput } from '../types';
+import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus, EnrollmentInput, Invoice, PaymentMethod, DocumentStatus } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -40,6 +41,7 @@ const EnrollmentArchive: React.FC = () => {
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
     // Filters
@@ -53,17 +55,43 @@ const EnrollmentArchive: React.FC = () => {
     const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null);
     const [terminateTarget, setTerminateTarget] = useState<Enrollment | null>(null);
 
+    // Payment Modal State
+    const [paymentModalState, setPaymentModalState] = useState<{
+        isOpen: boolean;
+        enrollment: Enrollment | null;
+        date: string;
+        method: PaymentMethod;
+        createInvoice: boolean;
+        isDeposit: boolean;
+        isBalance: boolean;
+        depositAmount: number;
+        ghostInvoiceId?: string;
+        totalPaid: number; 
+    }>({
+        isOpen: false,
+        enrollment: null,
+        date: new Date().toISOString().split('T')[0],
+        method: PaymentMethod.BankTransfer,
+        createInvoice: true,
+        isDeposit: false,
+        isBalance: false,
+        depositAmount: 0,
+        totalPaid: 0
+    });
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrData, cliData, supData] = await Promise.all([
+            const [enrData, cliData, supData, invData] = await Promise.all([
                 getAllEnrollments(),
                 getClients(),
-                getSuppliers()
+                getSuppliers(),
+                getInvoices()
             ]);
             setEnrollments(enrData);
             setClients(cliData);
             setSuppliers(supData);
+            setInvoices(invData);
         } catch (e) {
             console.error(e);
         } finally {
@@ -71,7 +99,7 @@ const EnrollmentArchive: React.FC = () => {
         }
     }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => { fetchData(); window.addEventListener('EP_DataUpdated', fetchData); return () => window.removeEventListener('EP_DataUpdated', fetchData); }, [fetchData]);
 
     const parentClients = useMemo(() => clients.filter(c => c.clientType === ClientType.Parent) as ParentClient[], [clients]);
 
@@ -143,6 +171,24 @@ const EnrollmentArchive: React.FC = () => {
 
         return Object.values(groups).sort((a,b) => a.studentName.localeCompare(b.studentName));
     }, [filteredEnrollments, clients]);
+
+    // Helper: Payment Status Calculation
+    const getPaymentStatus = (enr: Enrollment) => {
+        const childName = enr.childName.toLowerCase();
+        const relatedInvoices = invoices.filter(i => 
+            i.clientId === enr.clientId && 
+            !i.isDeleted && 
+            !i.isGhost && 
+            i.items.some(item => item.description.toLowerCase().includes(childName))
+        );
+        const totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+        const price = enr.price || 0;
+        // Tolleranza per arrotondamenti
+        const remaining = Math.max(0, price - totalPaid);
+        const isFullyPaid = remaining < 0.5 && price > 0;
+        
+        return { totalPaid, remaining, isFullyPaid };
+    };
 
     // Calendar Grid Logic
     const calendarGrid = useMemo(() => {
@@ -281,6 +327,73 @@ const EnrollmentArchive: React.FC = () => {
         }
     };
 
+    // Payment Logic
+    const handlePaymentRequest = (e: React.MouseEvent, enr: Enrollment) => {
+        e.stopPropagation();
+        
+        const status = getPaymentStatus(enr);
+        let ghostId = undefined;
+        let isBalanceMode = true;
+        let suggestedAmount = status.remaining;
+
+        // Check for Ghost Invoice
+        const childName = enr.childName.toLowerCase();
+        const ghostInvoice = invoices.find(i => 
+            i.clientId === enr.clientId && 
+            i.isGhost === true && 
+            i.status === DocumentStatus.Draft && 
+            !i.isDeleted && 
+            i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName))
+        );
+
+        if (ghostInvoice) ghostId = ghostInvoice.id;
+
+        setPaymentModalState({ 
+            isOpen: true, 
+            enrollment: enr, 
+            date: new Date().toISOString().split('T')[0], 
+            method: PaymentMethod.BankTransfer, 
+            createInvoice: true, 
+            isDeposit: false, 
+            isBalance: isBalanceMode, 
+            depositAmount: suggestedAmount, 
+            ghostInvoiceId: ghostId, 
+            totalPaid: status.totalPaid 
+        });
+    };
+
+    const executePaymentAction = async () => {
+        if (!paymentModalState.enrollment) return;
+        
+        setLoading(true);
+        const enr = paymentModalState.enrollment;
+        const fullPrice = enr.price || 0;
+        const actualAmount = Number(paymentModalState.depositAmount); 
+        const client = clients.find(c => c.id === enr.clientId);
+
+        const result = await processPayment(
+            enr, 
+            client, 
+            actualAmount, 
+            paymentModalState.date, 
+            paymentModalState.method, 
+            paymentModalState.createInvoice,
+            paymentModalState.isDeposit,
+            fullPrice,
+            paymentModalState.ghostInvoiceId
+        );
+
+        if (result.success) {
+            alert("Pagamento registrato con successo.");
+            await fetchData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } else {
+            alert("ERRORE: " + result.error); 
+        }
+        setLoading(false);
+        setPaymentModalState(prev => ({...prev, isOpen: false}));
+    };
+
     return (
         <div className="h-full flex flex-col">
             {/* Header */}
@@ -356,7 +469,11 @@ const EnrollmentArchive: React.FC = () => {
                                     </div>
                                     
                                     <div className="divide-y divide-gray-50">
-                                        {group.items.map(enr => (
+                                        {group.items.map(enr => {
+                                            const paymentInfo = getPaymentStatus(enr);
+                                            const isFullyPaid = paymentInfo.isFullyPaid;
+                                            
+                                            return (
                                             <div key={enr.id} className="p-4 hover:bg-gray-50 transition-colors flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                                                 {/* Date Block */}
                                                 <div className="flex flex-col items-center justify-center bg-indigo-50 text-indigo-800 rounded-lg p-2 min-w-[100px] border border-indigo-100">
@@ -387,20 +504,31 @@ const EnrollmentArchive: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                {/* Amount */}
+                                                {/* Amount & Status */}
                                                 <div className="text-right flex-shrink-0">
                                                     <span className="block text-lg font-black text-gray-700 font-mono">{enr.price?.toFixed(2)}€</span>
-                                                    <span className="text-[10px] text-gray-400 uppercase font-bold">Importo</span>
+                                                    {isFullyPaid ? (
+                                                        <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">SALDATO</span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">DA PAGARE</span>
+                                                    )}
                                                 </div>
 
                                                 {/* Actions */}
                                                 <div className="flex gap-1 md:flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-4 mt-2 md:mt-0">
+                                                    <button 
+                                                        onClick={(e) => handlePaymentRequest(e, enr)}
+                                                        className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                                                        title="Gestione Pagamenti / Saldo"
+                                                    >
+                                                        <span className="font-bold text-xs">€</span>
+                                                    </button>
                                                     <button onClick={() => handleEditRequest(enr)} className="md-icon-btn edit bg-white shadow-sm" title="Modifica"><PencilIcon /></button>
                                                     <button onClick={() => handleTerminateRequest(enr)} className="md-icon-btn text-amber-600 hover:bg-amber-50 bg-white shadow-sm" title="Termina/Annulla"><StopIcon /></button>
                                                     <button onClick={() => handleDeleteRequest(enr)} className="md-icon-btn delete bg-white shadow-sm" title="Elimina"><TrashIcon /></button>
                                                 </div>
                                             </div>
-                                        ))}
+                                        )})}
                                     </div>
                                 </div>
                             ))}
@@ -414,6 +542,8 @@ const EnrollmentArchive: React.FC = () => {
                 </div>
             )}
 
+            {/* MODALS */}
+            
             {isEditModalOpen && editingEnrollment && (
                 <Modal onClose={() => setIsEditModalOpen(false)} size="lg">
                     <EnrollmentForm 
@@ -423,6 +553,72 @@ const EnrollmentArchive: React.FC = () => {
                         onSave={handleSaveEnrollment} 
                         onCancel={() => setIsEditModalOpen(false)} 
                     />
+                </Modal>
+            )}
+
+            {paymentModalState.isOpen && paymentModalState.enrollment && (
+                <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
+                    <div className="p-6">
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento (Archivio)</h3>
+                        <p className="text-sm text-gray-500 mb-2">Pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.</p>
+                        
+                        <div className="bg-indigo-50 p-3 rounded mb-4 text-xs">
+                            <p>Prezzo Totale: <strong>{paymentModalState.enrollment.price}€</strong></p>
+                            <p>Già Versato: <strong>{paymentModalState.totalPaid.toFixed(2)}€</strong></p>
+                            <p className="text-indigo-700 font-bold">Rimanenza: {( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid ).toFixed(2)}€</p>
+                        </div>
+
+                        <div className="md-input-group mb-4">
+                            <input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" />
+                            <label className="md-input-label !top-0">Data Pagamento</label>
+                        </div>
+                        
+                        <div className="md-input-group mb-4">
+                            <select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">
+                                {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <label className="md-input-label !top-0">Metodo Pagamento</label>
+                        </div>
+
+                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
+                            <div className="flex gap-4">
+                                <label className="flex items-center cursor-pointer">
+                                    <input type="radio" name="paymentType" checked={paymentModalState.isDeposit} onChange={() => setPaymentModalState(prev => ({ ...prev, isDeposit: true, isBalance: false, depositAmount: 0 }))} className="h-4 w-4 text-indigo-600 rounded" />
+                                    <span className="ml-2 text-sm font-bold text-gray-700">In Acconto</span>
+                                </label>
+                                <label className="flex items-center cursor-pointer">
+                                    <input type="radio" name="paymentType" checked={paymentModalState.isBalance} onChange={() => setPaymentModalState(prev => ({ ...prev, isBalance: true, isDeposit: false, depositAmount: prev.enrollment ? Math.max(0, (prev.enrollment.price || 0) - prev.totalPaid) : 0 }))} className="h-4 w-4 text-green-600 rounded" />
+                                    <span className="ml-2 text-sm font-bold text-green-700">A Saldo / Tutto Subito</span>
+                                </label>
+                            </div>
+                            
+                            {(paymentModalState.isDeposit || paymentModalState.isBalance) && (
+                                <div className="animate-fade-in pl-2 pt-2">
+                                    <label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label>
+                                    <input type="number" value={paymentModalState.depositAmount} onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))} className="w-full p-2 border rounded text-sm font-bold text-right" placeholder={paymentModalState.isDeposit ? "Inserisci quota concordata..." : ""} />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mb-4">
+                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Generazione Documento</label>
+                            <div className="flex gap-4">
+                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${!paymentModalState.createInvoice ? 'bg-gray-100 border-gray-300 text-gray-600' : 'bg-white border-gray-200'}`}>
+                                    <input type="radio" name="invoiceGen" checked={!paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: false }))} className="hidden" />
+                                    🚫 Non crea fattura
+                                </label>
+                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${paymentModalState.createInvoice ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200'}`}>
+                                    <input type="radio" name="invoiceGen" checked={paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: true }))} className="hidden" />
+                                    📄 Crea fattura {paymentModalState.ghostInvoiceId ? '(Promuovi)' : ''}
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="mt-6 flex justify-end gap-2">
+                            <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                            <button onClick={executePaymentAction} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma Pagamento</button>
+                        </div>
+                    </div>
                 </Modal>
             )}
 
