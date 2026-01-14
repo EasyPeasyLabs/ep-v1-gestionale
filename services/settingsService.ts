@@ -1,11 +1,12 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, getDoc, setDoc } from 'firebase/firestore';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate } from '../types';
 
 const settingsDocRef = doc(db, 'settings', 'companyInfo');
 const subscriptionCollectionRef = collection(db, 'subscriptionTypes');
 const templateCollectionRef = collection(db, 'communicationTemplates');
+const contractTemplateCollectionRef = collection(db, 'contract_templates');
 const checksCollectionRef = collection(db, 'periodicChecks');
 const recoveryPolicyRef = doc(db, 'settings', 'recoveryPolicies');
 
@@ -17,7 +18,10 @@ const defaultCompanyInfo: CompanyInfo = {
     denomination: 'Easy Peasy Lab',
     name: 'Easy Peasy s.r.l.',
     vatNumber: '12345678901',
-    address: 'Via Roma 1, Milano',
+    address: 'Via Roma 1',
+    city: 'Milano',
+    province: 'MI',
+    zipCode: '20100',
     email: 'labeasypeasy@gmail.com',
     phone: '+39 3405234353',
     logoBase64: DEFAULT_LOGO_BASE64,
@@ -45,7 +49,10 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
                 paypal: data.paypal || '',
                 satispay: data.satispay || '',
                 googlePay: data.googlePay || '',
-                klarna: data.klarna || ''
+                klarna: data.klarna || '',
+                city: data.city || '',
+                province: data.province || '',
+                zipCode: data.zipCode || ''
             };
         } else {
             // Se non esiste, crealo con default
@@ -126,6 +133,93 @@ export const saveCommunicationTemplate = async (template: CommunicationTemplate)
 
 export const deleteCommunicationTemplate = async (id: string): Promise<void> => {
     const docRef = doc(db, 'communicationTemplates', id);
+    await deleteDoc(docRef);
+};
+
+// --- CONTRACT TEMPLATES ---
+const docToContractTemplate = (doc: QueryDocumentSnapshot<DocumentData>): ContractTemplate => {
+    return { ...doc.data(), id: doc.id } as ContractTemplate;
+};
+
+export const getContractTemplates = async (): Promise<ContractTemplate[]> => {
+    const snapshot = await getDocs(contractTemplateCollectionRef);
+    let templates = snapshot.docs.map(docToContractTemplate);
+
+    // Initial Seeding
+    if (templates.length === 0) {
+        const defaultNolo: Omit<ContractTemplate, 'id'> = {
+            title: "Contratto di Nolo Sede",
+            category: "Fornitori",
+            content: `
+<div style="text-align: center;"><strong>SCRITTURA PRIVATA DI CONCESSIONE IN USO DI SPAZI E ATTREZZATURE</strong></div>
+<br>
+<div><strong>TRA</strong></div>
+<br>
+<div>[Nome Fornitore], con sede in [Indirizzo Fornitore], C.F./P.IVA [C.F./P.IVA Fornitore], d'ora in avanti denominato "<strong>Concedente</strong>";</div>
+<br>
+<div><strong>E</strong></div>
+<br>
+<div>[Ragione Sociale Admin], con sede in [Indirizzo Admin], C.F./P.IVA [C.F./P.IVA Admin], d'ora in avanti denominato "<strong>Utilizzatore</strong>".</div>
+<br>
+<div><strong>1. OGGETTO DEL CONTRATTO</strong></div>
+<div>Il Concedente concede in uso:</div>
+<div>[ ] gratuito      [ ] oneroso</div>
+<div>all’Utilizzatore i locali ubicati presso [Nome Sede] siti in [Indirizzo Sede], unitamente alle attrezzature, impianti e spazi pertinenziali ivi presenti.</div>
+<br>
+<div><strong>2. DURATA E RECESSO</strong></div>
+<div>Il contratto ha decorrenza dal [Data inizio] e si rinnova tacitamente salvo cessazione concordata anche verbalmente tra le parti senza necessità di disdetta formale.</div>
+<br>
+<div><strong>3. CORRISPETTIVO E MODALITÀ DI PAGAMENTO</strong></div>
+<div>Qualora l'uso concordato sia oneroso, l'Utilizzatore si impegna a corrispondere al Concedente la somma di € [Importo Nolo] (IVA inclusa).</div>
+<div>Il pagamento sarà corrisposto (selezionare l'opzione concordata):</div>
+<div>[ ] in un'unica soluzione mensilmente entro il primo giorno successivo alla fine dell'ultimo utilizzo del mese di competenza</div>
+<div>ovvero</div>
+<div>[ ] periodicamente per la sola quota corrispondente a ciascun utilizzo, entro il primo giorno lavorativo successivo all'utilizzo.</div>
+<br>
+<div><strong>4. OBBLIGHI DELL’UTILIZZATORE E SICUREZZA</strong></div>
+<div>L’Utilizzatore dichiara di aver visionato i locali e le attrezzature e di averli trovati in buono stato e idonei all'uso pattuito.</div>
+<div>La manutenzione ordinaria è a carico dell'Utilizzatore.</div>
+<div>La manutenzione straordinaria è a carico del Concedente.</div>
+<br>
+<div><strong>5. RESPONSABILITÀ E ASSICURAZIONE</strong></div>
+<div>L'Utilizzatore è responsabile di ogni danno causato ai locali, agli impianti e attrezzature durante il periodo di utilizzo, ad eccezione di danni dipendenti o derivanti da eventi straordinari o da inerzia e/o inadempienza del Concedente.</div>
+<div>In ogni caso si attesta che il Concedente è dotato di apposita polizza assicurativa RC.</div>
+<br>
+<div><strong>6. DIVIETO DI CESSIONE E SUBLOCAZIONE</strong></div>
+<div>È fatto espresso divieto all'Utilizzatore di cedere il presente contratto o di sublocare, anche parzialmente, gli spazi e le attrezzature oggetto della scrittura senza consenso scritto del Concedente.</div>
+<br>
+<div><strong>7. FORO COMPETENTE</strong></div>
+<div>Per qualsiasi controversia sarà esclusivamente competente il Foro di Bari.</div>
+<br>
+<div>[Luogo],  lì [Data]</div>
+<br>
+<div>Il Concedente:</div>
+<br>
+<br>
+<div>L'Utilizzatore:</div>
+            `
+        };
+        const docRef = await addDoc(contractTemplateCollectionRef, defaultNolo);
+        templates = [{ ...defaultNolo, id: docRef.id }];
+    }
+    
+    return templates;
+};
+
+export const saveContractTemplate = async (template: ContractTemplate): Promise<void> => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id, ...dataToSave } = template;
+
+    if (id) {
+        const docRef = doc(db, 'contract_templates', id);
+        await setDoc(docRef, dataToSave, { merge: true });
+    } else {
+        await addDoc(contractTemplateCollectionRef, dataToSave);
+    }
+};
+
+export const deleteContractTemplate = async (id: string): Promise<void> => {
+    const docRef = doc(db, 'contract_templates', id);
     await deleteDoc(docRef);
 };
 

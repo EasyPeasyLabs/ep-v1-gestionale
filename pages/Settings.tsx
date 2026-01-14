@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies } from '../services/settingsService';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate } from '../types';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import { requestNotificationPermission } from '../services/fcmService';
@@ -17,6 +17,7 @@ import UploadIcon from '../components/icons/UploadIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import BellIcon from '../components/icons/BellIcon';
 import RichTextEditor from '../components/RichTextEditor';
+import { PLACEHOLDERS_LEGEND } from '../utils/contractUtils';
 
 // --- HELPER PURA PER PARSING NOME ---
 const parseSubscriptionName = (fullName: string | undefined) => {
@@ -205,6 +206,75 @@ const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: Comm
     ); 
 };
 
+// --- CONTRACT FORM ---
+const ContractTemplateForm: React.FC<{ template: ContractTemplate; onSave: (t: ContractTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => {
+    const [title, setTitle] = useState(template.title || '');
+    const [category, setCategory] = useState(template.category || 'Fornitori');
+    const [content, setContent] = useState(template.content || '');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ ...template, title, category, content });
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-800">{template.id ? 'Modifica Contratto' : 'Nuovo Contratto'}</h2>
+            </div>
+            
+            {/* Layout a due colonne per editor e legenda */}
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 flex flex-col lg:flex-row gap-6">
+                
+                {/* Colonna Editor */}
+                <div className="flex-1 space-y-4">
+                    <div className="md-input-group">
+                        <input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input" placeholder=" " />
+                        <label className="md-input-label">Titolo Contratto</label>
+                    </div>
+                    <div className="md-input-group">
+                        <input type="text" value={category} onChange={e => setCategory(e.target.value)} className="md-input" placeholder=" " />
+                        <label className="md-input-label">Categoria (es. Fornitori, Clienti)</label>
+                    </div>
+                    
+                    <div>
+                        <RichTextEditor 
+                            label="Testo del Contratto" 
+                            value={content} 
+                            onChange={setContent} 
+                            placeholder="Inserisci il testo legale..." 
+                            className="min-h-[400px]"
+                        />
+                    </div>
+                </div>
+
+                {/* Colonna Legenda Placeholder */}
+                <div className="w-full lg:w-64 bg-indigo-50 border border-indigo-100 rounded-lg p-4 h-fit">
+                    <h4 className="font-bold text-xs text-indigo-800 uppercase mb-3 border-b border-indigo-200 pb-2">Placeholder Disponibili</h4>
+                    <p className="text-[10px] text-indigo-600 mb-4">
+                        Copia e incolla questi codici nel testo. Verranno sostituiti automaticamente con i dati reali in fase di stampa.
+                    </p>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
+                        {PLACEHOLDERS_LEGEND.map((ph, i) => (
+                            <div key={i} className="group cursor-pointer hover:bg-white p-1 rounded transition-colors" onClick={() => navigator.clipboard.writeText(ph.code)}>
+                                <code className="block text-[10px] font-bold text-slate-700 bg-white border border-slate-200 px-1 py-0.5 rounded w-fit mb-0.5 group-hover:border-indigo-300 group-hover:text-indigo-700">
+                                    {ph.code}
+                                </code>
+                                <span className="text-[10px] text-slate-500 leading-tight block">{ph.desc}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+            </div>
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Contratto</button>
+            </div>
+        </form>
+    );
+};
+
 const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); const [subCategory, setSubCategory] = useState(check?.subCategory || ''); const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); const [startTime, setStartTime] = useState(check?.startTime || '09:00'); const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); const [note, setNote] = useState(check?.note || ''); const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; const toggleDay = (day: number) => { setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; if (check?.id) onSave({ ...data, id: check.id }); else onSave(data); }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> <div className="p-6 pb-2 border-b"> <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> </div> <div className="flex-1 overflow-y-auto p-6 space-y-4"> <div className="md-input-group"> <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)} </select> <label className="md-input-label">Categoria</label> </div> <div className="md-input-group"> <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> <label className="md-input-label">Dettaglio (es. Commercialista)</label> </div> <div> <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> <div className="flex flex-wrap gap-2"> {daysMap.map((d, i) => ( <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > {d} </button> ))} </div> </div> <div className="md-input-group"> <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> <label className="md-input-label !top-0">Orario Notifica</label> </div> <div className="flex items-center gap-2 mt-2"> <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> <label className="text-sm text-gray-700">Abilita Notifica Push</label> </div> <div className="md-input-group"> <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> <label className="md-input-label">Nota / Messaggio</label> </div> </div> <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> </div> </form> ); };
 
 // --- MAIN SETTINGS COMPONENT ---
@@ -213,6 +283,7 @@ const Settings: React.FC = () => {
     const [info, setInfo] = useState<CompanyInfo | null>(null);
     const [subscriptions, setSubscriptions] = useState<SubscriptionType[]>([]);
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
+    const [contractTemplates, setContractTemplates] = useState<ContractTemplate[]>([]);
     const [checks, setChecks] = useState<PeriodicCheck[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [recoveryPolicies, setRecoveryPolicies] = useState<Record<string, 'allowed' | 'forbidden'>>({});
@@ -229,6 +300,10 @@ const Settings: React.FC = () => {
     const [editingTemplate, setEditingTemplate] = useState<CommunicationTemplate | null>(null);
     const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
 
+    const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+    const [editingContract, setEditingContract] = useState<ContractTemplate | null>(null);
+    const [contractToDelete, setContractToDelete] = useState<string | null>(null);
+
     const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
     const [editingCheck, setEditingCheck] = useState<PeriodicCheck | null>(null);
 
@@ -244,13 +319,14 @@ const Settings: React.FC = () => {
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [companyData, subsData, templatesData, checksData, supsData, recData] = await Promise.all([
+            const [companyData, subsData, templatesData, checksData, supsData, recData, contractData] = await Promise.all([
                 getCompanyInfo(), 
                 getSubscriptionTypes(),
                 getCommunicationTemplates(),
                 getPeriodicChecks(),
                 getSuppliers(),
-                getRecoveryPolicies()
+                getRecoveryPolicies(),
+                getContractTemplates()
             ]);
             setInfo(companyData); 
             setSubscriptions(subsData);
@@ -258,6 +334,7 @@ const Settings: React.FC = () => {
             setChecks(checksData);
             setSuppliers(supsData);
             setRecoveryPolicies(recData);
+            setContractTemplates(contractData);
             
             const savedTheme = getSavedTheme();
             setPrimaryColor(savedTheme.primary);
@@ -286,6 +363,16 @@ const Settings: React.FC = () => {
     const handleSaveTemplate = async (t: CommunicationTemplate) => { await saveCommunicationTemplate(t); setIsTemplateModalOpen(false); setEditingTemplate(null); fetchAllData(); };
     const handleDeleteTemplateClick = (id: string) => { setTemplateToDelete(id); };
     const handleConfirmDeleteTemplate = async () => { if(templateToDelete) { await deleteCommunicationTemplate(templateToDelete); fetchAllData(); setTemplateToDelete(null); } };
+
+    // Contracts CRUD
+    const handleCreateContract = () => {
+        setEditingContract({ id: '', title: '', content: '', category: 'Fornitori' });
+        setIsContractModalOpen(true);
+    };
+    const handleOpenContractModal = (t: ContractTemplate) => { setEditingContract(t); setIsContractModalOpen(true); };
+    const handleSaveContract = async (t: ContractTemplate) => { await saveContractTemplate(t); setIsContractModalOpen(false); setEditingContract(null); fetchAllData(); };
+    const handleDeleteContractClick = (id: string) => { setContractToDelete(id); };
+    const handleConfirmDeleteContract = async () => { if(contractToDelete) { await deleteContractTemplate(contractToDelete); fetchAllData(); setContractToDelete(null); } };
 
     const handleSaveCheck = async (c: PeriodicCheckInput | PeriodicCheck) => { if ('id' in c) await updatePeriodicCheck(c.id, c); else await addPeriodicCheck(c); setIsCheckModalOpen(false); setEditingCheck(null); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); };
     const handleDeleteCheck = async (id: string) => { if(confirm("Eliminare questo controllo periodico?")) { await deletePeriodicCheck(id); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } };
@@ -385,7 +472,15 @@ const Settings: React.FC = () => {
                             <div className="md-input-group"><input id="infoDenom" type="text" value={info.denomination || ''} onChange={(e) => handleInfoChange('denomination', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoDenom" className="md-input-label">Denominazione</label></div>
                             <div className="md-input-group"><input id="infoName" type="text" value={info.name || ''} onChange={(e) => handleInfoChange('name', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoName" className="md-input-label">Ragione Sociale</label></div>
                             <div className="md-input-group"><input id="infoVat" type="text" value={info.vatNumber || ''} onChange={(e) => handleInfoChange('vatNumber', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoVat" className="md-input-label">P.IVA / C.F.</label></div>
+                            
+                            {/* INDIRIZZO COMPLETO */}
                             <div className="md-input-group"><input id="infoAddress" type="text" value={info.address || ''} onChange={(e) => handleInfoChange('address', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoAddress" className="md-input-label">Indirizzo Sede</label></div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="md-input-group col-span-2"><input id="infoCity" type="text" value={info.city || ''} onChange={(e) => handleInfoChange('city', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoCity" className="md-input-label">Città</label></div>
+                                <div className="md-input-group"><input id="infoProvince" type="text" value={info.province || ''} onChange={(e) => handleInfoChange('province', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoProvince" className="md-input-label">Prov (es. MI)</label></div>
+                            </div>
+                            <div className="md-input-group"><input id="infoZip" type="text" value={info.zipCode || ''} onChange={(e) => handleInfoChange('zipCode', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoZip" className="md-input-label">CAP</label></div>
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="md-input-group"><input id="infoEmail" type="email" value={info.email || ''} onChange={(e) => handleInfoChange('email', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoEmail" className="md-input-label">Email</label></div>
                                 <div className="md-input-group"><input id="infoPhone" type="tel" value={info.phone || ''} onChange={(e) => handleInfoChange('phone', e.target.value)} className="md-input" placeholder=" "/><label htmlFor="infoPhone" className="md-input-label">Telefono</label></div>
@@ -491,7 +586,29 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Politica Recuperi (New Card) */}
+                {/* Modelli Contrattuali */}
+                <div className="md-card p-6 bg-white border-l-4 border-slate-500">
+                    <div className="flex justify-between items-center border-b pb-3 mb-3">
+                        <h2 className="text-lg font-semibold">Modelli Contrattuali</h2>
+                        <button onClick={handleCreateContract} className="md-btn md-btn-sm md-btn-primary"><PlusIcon /> Nuovo</button>
+                    </div>
+                    <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
+                        {contractTemplates.map(t => (
+                            <div key={t.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-slate-50 rounded border border-slate-200 gap-3">
+                                <div>
+                                    <p className="font-medium text-sm text-slate-800">{t.title}</p>
+                                    <p className="text-xs text-slate-500 font-bold uppercase">{t.category || 'Generale'}</p>
+                                </div>
+                                <div className="flex gap-1 self-end sm:self-auto">
+                                    <button onClick={() => handleOpenContractModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteContractClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Politica Recuperi */}
                 <div className="md-card p-6 border-l-4 border-orange-500">
                     <h2 className="text-lg font-semibold border-b pb-3 mb-4">Politica Recuperi</h2>
                     <p className="text-xs text-gray-500 mb-4">Definisci se le lezioni perse possono essere recuperate per ciascuna sede (recinto).</p>
@@ -614,10 +731,12 @@ const Settings: React.FC = () => {
 
         {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
+        {isContractModalOpen && editingContract && <Modal onClose={() => setIsContractModalOpen(false)} size="lg"><ContractTemplateForm template={editingContract} onSave={handleSaveContract} onCancel={() => setIsContractModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
         
         <ConfirmModal isOpen={!!subToDelete} onClose={() => setSubToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Abbonamento" message="Sei sicuro?" isDangerous={true} />
         <ConfirmModal isOpen={!!templateToDelete} onClose={() => setTemplateToDelete(null)} onConfirm={handleConfirmDeleteTemplate} title="Elimina Template" message="Sei sicuro di voler eliminare questo template?" isDangerous={true} />
+        <ConfirmModal isOpen={!!contractToDelete} onClose={() => setContractToDelete(null)} onConfirm={handleConfirmDeleteContract} title="Elimina Contratto" message="Sei sicuro di voler eliminare questo contratto?" isDangerous={true} />
     </div>
   );
 };

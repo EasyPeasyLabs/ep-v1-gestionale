@@ -1,11 +1,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note } from '../types';
+import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note, ContractTemplate, CompanyInfo } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
+import { getContractTemplates, getCompanyInfo } from '../services/settingsService';
+import { compileContractTemplate } from '../utils/contractUtils';
+import { jsPDF } from 'jspdf';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import RestoreIcon from '../components/icons/RestoreIcon';
+import PrinterIcon from '../components/icons/PrinterIcon';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -20,6 +24,159 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
 const calculateFuelRating = (distance: number) => { if (distance <= 5) return 5; if (distance <= 15) return 4; if (distance <= 30) return 3; if (distance <= 60) return 2; return 1; };
 const getAverageRating = (rating?: SupplierRating) => { if (!rating) return 0; const sum = (rating.responsiveness || 0) + (rating.partnership || 0) + (rating.negotiation || 0); return sum > 0 ? (sum / 3).toFixed(1) : 0; };
 const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+
+// --- CONTRACT GENERATOR MODAL ---
+const ContractGeneratorModal: React.FC<{
+    supplier: Supplier;
+    onClose: () => void;
+}> = ({ supplier, onClose }) => {
+    const [templates, setTemplates] = useState<ContractTemplate[]>([]);
+    const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+    
+    const [selectedTemplateId, setSelectedTemplateId] = useState('');
+    const [selectedLocationId, setSelectedLocationId] = useState('');
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [loading, setLoading] = useState(true);
+    const [generating, setGenerating] = useState(false);
+
+    useEffect(() => {
+        const load = async () => {
+            try {
+                const [tpls, info] = await Promise.all([getContractTemplates(), getCompanyInfo()]);
+                setTemplates(tpls);
+                setCompanyInfo(info);
+                if (tpls.length > 0) setSelectedTemplateId(tpls[0].id);
+                // Pre-select first location if any
+                if (supplier.locations && supplier.locations.length > 0) setSelectedLocationId(supplier.locations[0].id);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, [supplier]);
+
+    const handleGeneratePDF = async () => {
+        if (!selectedTemplateId || !companyInfo) return;
+        setGenerating(true);
+
+        try {
+            const template = templates.find(t => t.id === selectedTemplateId);
+            if (!template) return;
+
+            const location = supplier.locations.find(l => l.id === selectedLocationId);
+            
+            // 1. Compila il template
+            const compiledHtml = compileContractTemplate(template.content, supplier, companyInfo, location, { startDate });
+
+            // 2. Genera PDF usando jsPDF
+            const doc = new jsPDF({
+                unit: 'pt',
+                format: 'a4'
+            });
+
+            // Container temporaneo per rendering HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = compiledHtml;
+            tempDiv.style.width = '550px'; // Fit A4 width approx (595pt) minus margins
+            tempDiv.style.padding = '20px';
+            tempDiv.style.fontFamily = 'Helvetica, sans-serif';
+            tempDiv.style.fontSize = '11pt';
+            tempDiv.style.lineHeight = '1.5';
+            document.body.appendChild(tempDiv);
+
+            await doc.html(tempDiv, {
+                callback: function (doc) {
+                    doc.save(`Contratto_${supplier.companyName.replace(/\s+/g, '_')}_${location?.name || 'Gen'}.pdf`);
+                    document.body.removeChild(tempDiv);
+                    setGenerating(false);
+                    onClose();
+                },
+                x: 40,
+                y: 40,
+                width: 520, // Max width for content
+                windowWidth: 650 // Virtual window width to render CSS correctly
+            });
+
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante la generazione del PDF.");
+            setGenerating(false);
+        }
+    };
+
+    if (loading) return <div className="p-10 flex justify-center"><Spinner /></div>;
+
+    const currentTemplate = templates.find(t => t.id === selectedTemplateId);
+    const location = supplier.locations.find(l => l.id === selectedLocationId);
+    
+    // Anteprima live
+    const previewHtml = currentTemplate && companyInfo 
+        ? compileContractTemplate(currentTemplate.content, supplier, companyInfo, location, { startDate }) 
+        : '<p>Seleziona un template...</p>';
+
+    return (
+        <Modal onClose={onClose} size="xl">
+            <div className="flex flex-col h-[90vh]">
+                <div className="p-6 border-b bg-slate-50 flex-shrink-0">
+                    <h3 className="text-xl font-bold text-slate-800">Genera Contratto: {supplier.companyName}</h3>
+                </div>
+                
+                <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                    {/* Sidebar Controlli */}
+                    <div className="w-full md:w-1/3 p-6 border-r border-gray-200 overflow-y-auto bg-gray-50">
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">1. Scegli Modello</label>
+                                <select 
+                                    value={selectedTemplateId} 
+                                    onChange={e => setSelectedTemplateId(e.target.value)} 
+                                    className="md-input bg-white"
+                                >
+                                    {templates.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">2. Scegli Sede (Opzionale)</label>
+                                <select 
+                                    value={selectedLocationId} 
+                                    onChange={e => setSelectedLocationId(e.target.value)} 
+                                    className="md-input bg-white"
+                                >
+                                    <option value="">Nessuna / Generale</option>
+                                    {supplier.locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                                <p className="text-[10px] text-gray-400 mt-1">Necessario se il contratto cita "Nome Sede" o "Importo Nolo".</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1">3. Data Decorrenza</label>
+                                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="md-input bg-white" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Anteprima */}
+                    <div className="w-full md:w-2/3 p-8 bg-gray-100 overflow-y-auto custom-scrollbar">
+                        <div className="bg-white shadow-lg p-10 min-h-[800px] w-full max-w-[21cm] mx-auto text-sm leading-relaxed text-justify">
+                            <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-white flex justify-end gap-3 flex-shrink-0">
+                    <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
+                    <button onClick={handleGeneratePDF} disabled={generating || !selectedTemplateId} className="md-btn md-btn-raised md-btn-primary flex items-center gap-2">
+                        {generating ? <Spinner /> : <PrinterIcon />}
+                        Scarica PDF
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
 
 // --- LOCATION FORM (Nested) ---
 const LocationForm: React.FC<{ 
@@ -258,6 +415,9 @@ const Suppliers: React.FC = () => {
     const [showTrash, setShowTrash] = useState(false);
     const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
     
+    // CONTRACT GENERATOR STATE
+    const [contractModalSupplier, setContractModalSupplier] = useState<Supplier | null>(null);
+
     // Sort State
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'day_asc'>('day_asc');
 
@@ -408,18 +568,31 @@ const Suppliers: React.FC = () => {
                                     </ul>
                                 </div>
                             </div>
-                            <div className="mt-4 pt-4 border-t flex justify-end space-x-2">
-                                {showTrash ? (
-                                    <>
-                                        <button onClick={() => restoreSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn"><RestoreIcon /></button>
-                                        <button onClick={() => permanentDeleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit"><PencilIcon /></button>
-                                        <button onClick={() => deleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button>
-                                    </>
+                            <div className="mt-4 pt-4 border-t flex justify-between items-center space-x-2">
+                                {/* Contract Generation Button */}
+                                {!showTrash && (
+                                    <button 
+                                        onClick={() => setContractModalSupplier(supplier)} 
+                                        className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1 font-bold"
+                                        title="Genera Contratto PDF"
+                                    >
+                                        <PrinterIcon /> Contratto
+                                    </button>
                                 )}
+
+                                <div className="flex gap-1 ml-auto">
+                                    {showTrash ? (
+                                        <>
+                                            <button onClick={() => restoreSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn"><RestoreIcon /></button>
+                                            <button onClick={() => permanentDeleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit"><PencilIcon /></button>
+                                            <button onClick={() => deleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     );
@@ -436,6 +609,13 @@ const Suppliers: React.FC = () => {
             )}
             
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="2xl"><SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={() => setIsModalOpen(false)} /></Modal>}
+            
+            {contractModalSupplier && (
+                <ContractGeneratorModal 
+                    supplier={contractModalSupplier} 
+                    onClose={() => setContractModalSupplier(null)} 
+                />
+            )}
 
             <ConfirmModal 
                 isOpen={isDeleteAllModalOpen}

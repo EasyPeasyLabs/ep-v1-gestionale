@@ -121,7 +121,19 @@ export const generateDocumentPDF = async (
         // Baseline a 25.
         docPdf.setFontSize(8);
         docPdf.setTextColor(...grayColor);
-        docPdf.text(`${companyInfo.address} - P.IVA: ${companyInfo.vatNumber}`, col2X, row1Y + 15);
+        
+        let fullAddress = companyInfo.address;
+        if (companyInfo.city || companyInfo.zipCode || companyInfo.province) {
+            const zip = companyInfo.zipCode ? `${companyInfo.zipCode} ` : '';
+            const prov = companyInfo.province ? ` (${companyInfo.province})` : '';
+            const city = companyInfo.city || '';
+            // If address doesn't contain city info already, append it
+            if (!fullAddress.includes(city)) {
+                fullAddress = `${fullAddress}, ${zip}${city}${prov}`;
+            }
+        }
+
+        docPdf.text(`${fullAddress} - P.IVA: ${companyInfo.vatNumber}`, col2X, row1Y + 15);
         
         // 4. Contatti (Allineati col bordo basso del logo)
         // Baseline a 30 (row1Y + logoSize).

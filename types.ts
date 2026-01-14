@@ -380,6 +380,9 @@ export interface CompanyInfo {
     name: string;
     vatNumber: string;
     address: string;
+    city?: string;
+    province?: string;
+    zipCode?: string;
     email: string;
     phone: string;
     logoBase64: string;
@@ -422,6 +425,13 @@ export interface CommunicationTemplate {
     subject: string;
     body: string;
     signature: string;
+}
+
+export interface ContractTemplate {
+    id: string;
+    title: string;
+    content: string;
+    category?: string;
 }
 
 export interface PeriodicCheck {
