@@ -202,8 +202,9 @@ export const reconcileTransactions = async (): Promise<string> => {
         // Analizza solo transazioni collegate a documenti
         if (!t.relatedDocumentId) continue;
 
-        // Escludi transazioni auto-generate come affitti, se usano ID speciali
+        // Escludi transazioni auto-generate come affitti o incassi diretti ENR
         if (t.relatedDocumentId.startsWith('AUTO-RENT')) continue;
+        if (t.relatedDocumentId.startsWith('ENR-')) continue; 
 
         const invoice = invoiceMap.get(t.relatedDocumentId);
 
@@ -287,17 +288,7 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
         if(t.relatedDocumentId) invToTransMap.set(t.relatedDocumentId, t);
     });
 
-    // Enrollment -> Invoices
-    const enrToInvMap = new Map<string, Invoice[]>();
-    invoices.forEach(i => {
-        // Cerca fatture che menzionano il nome del bambino nell'oggetto (euristica)
-        // O idealmente avremmo un campo enrollmentId sulla fattura (TODO futuro).
-        // Per ora usiamo l'euristica della descrizione o controllo incrociato con clientId.
-        // Ma un cliente può avere più figli.
-        // Soluzione: Le fatture generate da Enrollment hanno il childName nella descrizione item.
-    });
-
-    // 2. CHECK 1: ISCRIZIONI ATTIVE SENZA FATTURA
+    // 2. CHECK 1: ISCRIZIONI ATTIVE SENZA FATTURA (O TRANSAZIONE DIRETTA)
     // Regola: Se Status = Active, deve esistere una fattura (anche bozza) o transazione per quel bambino/importo.
     enrollments.forEach(enr => {
         if (enr.status === EnrollmentStatus.Active) {
@@ -309,14 +300,17 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
                 inv.items.some(item => item.description.includes(enr.childName))
             );
 
-            if (relatedInvoices.length === 0) {
-                // Caso Speciale: Iscrizione senza fattura. Potrebbe essere un errore o pagamento in nero (che non gestiamo).
-                // Segnaliamo come anomalia.
+            // Cerca transazioni dirette (senza fattura) collegate tramite Synthetic ID
+            const syntheticId = `ENR-${enr.id}`;
+            const relatedDirectTrans = transactions.some(t => t.relatedDocumentId === syntheticId && !t.isDeleted);
+
+            if (relatedInvoices.length === 0 && !relatedDirectTrans) {
+                // Caso Speciale: Iscrizione senza fattura e senza transazione cassa.
                 issues.push({
                     id: `miss-inv-${enr.id}`,
                     type: 'missing_invoice',
                     severity: 'high',
-                    description: `Iscrizione Attiva senza Fattura: ${enr.childName}`,
+                    description: `Iscrizione Attiva senza Fattura o Incasso: ${enr.childName}`,
                     entityId: enr.id,
                     entityName: enr.childName,
                     amount: enr.price || 0,
@@ -351,51 +345,71 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
 };
 
 // --- AUTO FIXER ---
-export const fixIntegrityIssue = async (issue: IntegrityIssue): Promise<void> => {
+export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' = 'invoice'): Promise<void> => {
     if (issue.type === 'missing_invoice') {
         const enr = issue.details.enrollment as Enrollment;
         const clientName = issue.details.clientName || 'Cliente';
         
-        // Crea Fattura
-        const invoiceInput: InvoiceInput = {
-            invoiceNumber: '', // Auto-gen
-            issueDate: new Date().toISOString(), // Data odierna per il fix
-            dueDate: new Date().toISOString(),
-            clientId: enr.clientId,
-            clientName: clientName,
-            items: [{
-                description: `Pagamento Iscrizione: ${enr.childName} - ${enr.subscriptionName}`,
-                quantity: 1,
-                price: enr.price || 0,
-                notes: 'Generata da controllo integrità'
-            }],
-            totalAmount: enr.price || 0,
-            status: DocumentStatus.Paid, // Assumiamo pagata se l'iscrizione è attiva
-            paymentMethod: PaymentMethod.BankTransfer,
-            hasStampDuty: (enr.price || 0) > 77.47,
-            isGhost: false,
-            isDeleted: false
-        };
+        if (strategy === 'invoice') {
+            // Crea Fattura
+            const invoiceInput: InvoiceInput = {
+                invoiceNumber: '', // Auto-gen
+                issueDate: new Date().toISOString(), // Data odierna per il fix
+                dueDate: new Date().toISOString(),
+                clientId: enr.clientId,
+                clientName: clientName,
+                items: [{
+                    description: `Pagamento Iscrizione: ${enr.childName} - ${enr.subscriptionName}`,
+                    quantity: 1,
+                    price: enr.price || 0,
+                    notes: 'Generata da controllo integrità'
+                }],
+                totalAmount: enr.price || 0,
+                status: DocumentStatus.Paid, // Assumiamo pagata se l'iscrizione è attiva
+                paymentMethod: PaymentMethod.BankTransfer,
+                hasStampDuty: (enr.price || 0) > 77.47,
+                isGhost: false,
+                isDeleted: false
+            };
+            
+            // Nota: addInvoice controlla il lock fiscale. Se l'anno è chiuso, lancerà errore.
+            const res = await addInvoice(invoiceInput);
+            
+            // Crea Transazione Contestuale (per evitare di creare un nuovo buco "missing transaction")
+            const transInput: TransactionInput = {
+                date: new Date().toISOString(),
+                description: `incasso fattura n. ${res.invoiceNumber} - ${clientName}`,
+                amount: enr.price || 0,
+                type: TransactionType.Income,
+                category: TransactionCategory.Vendite,
+                paymentMethod: PaymentMethod.BankTransfer,
+                status: TransactionStatus.Completed,
+                relatedDocumentId: res.id,
+                allocationType: enr.locationId !== 'unassigned' ? 'location' : 'general',
+                allocationId: enr.locationId !== 'unassigned' ? enr.locationId : undefined,
+                allocationName: enr.locationName,
+                isDeleted: false
+            };
+            await addTransaction(transInput);
         
-        // Nota: addInvoice controlla il lock fiscale. Se l'anno è chiuso, lancerà errore.
-        const res = await addInvoice(invoiceInput);
-        
-        // Crea Transazione Contestuale (per evitare di creare un nuovo buco "missing transaction")
-        const transInput: TransactionInput = {
-            date: new Date().toISOString(),
-            description: `incasso fattura n. ${res.invoiceNumber} - ${clientName}`,
-            amount: enr.price || 0,
-            type: TransactionType.Income,
-            category: TransactionCategory.Vendite,
-            paymentMethod: PaymentMethod.BankTransfer,
-            status: TransactionStatus.Completed,
-            relatedDocumentId: res.id,
-            allocationType: enr.locationId !== 'unassigned' ? 'location' : 'general',
-            allocationId: enr.locationId !== 'unassigned' ? enr.locationId : undefined,
-            allocationName: enr.locationName,
-            isDeleted: false
-        };
-        await addTransaction(transInput);
+        } else if (strategy === 'cash') {
+            // Crea Solo Transazione Diretta (No Fattura)
+            const transInput: TransactionInput = {
+                date: new Date().toISOString(),
+                description: `Incasso Iscrizione (No Doc) - ${enr.childName} - ${enr.subscriptionName}`,
+                amount: enr.price || 0,
+                type: TransactionType.Income,
+                category: TransactionCategory.Vendite,
+                paymentMethod: PaymentMethod.Cash, 
+                status: TransactionStatus.Completed,
+                relatedDocumentId: `ENR-${enr.id}`, // Link sintetico
+                allocationType: enr.locationId !== 'unassigned' ? 'location' : 'general',
+                allocationId: enr.locationId !== 'unassigned' ? enr.locationId : undefined,
+                allocationName: enr.locationName,
+                isDeleted: false
+            };
+            await addTransaction(transInput);
+        }
 
     } else if (issue.type === 'missing_transaction') {
         const inv = issue.details.invoice as Invoice;

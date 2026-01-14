@@ -130,15 +130,27 @@ export const processPayment = async (
                 // Conversione in Plain Object per sicurezza estrema (rimuove eventuali undefined nascosti)
                 transaction.set(newInvRef, JSON.parse(JSON.stringify(newInvoiceData)));
                 invoiceIdForTransaction = newInvRef.id;
+            } else {
+                // NEW: Se NON creo fattura, uso un ID sintetico per collegare la transazione all'iscrizione
+                // Questo permette al Fiscal Doctor di trovare la copertura finanziaria
+                invoiceIdForTransaction = `ENR-${enrollment.id}`;
             }
 
             // B. Creazione Transazione
             if (cleanAmount > 0) {
                 const transRef = doc(collection(db, 'transactions'));
                 
+                // Determina descrizione
+                let transDesc = '';
+                if (createInvoice || ghostInvoiceIdToPromote) {
+                    transDesc = `Incasso ${nextRealInvoiceNumber} - ${safeChildName}`;
+                } else {
+                    transDesc = `Incasso Iscrizione (No Doc) - ${safeChildName} - ${safeSubName}`;
+                }
+
                 const transactionData: any = {
                     date: paymentDate,
-                    description: `Incasso ${nextRealInvoiceNumber || 'Iscrizione'} - ${safeChildName}`,
+                    description: transDesc,
                     amount: cleanAmount,
                     type: TransactionType.Income,
                     category: TransactionCategory.Vendite,

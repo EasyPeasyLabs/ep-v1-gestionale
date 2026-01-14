@@ -1,13 +1,20 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { getAllEnrollments } from '../services/enrollmentService';
+import { getAllEnrollments, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
+import { cleanupEnrollmentFinancials } from '../services/financeService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus } from '../types';
+import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus, EnrollmentInput } from '../types';
 import Spinner from '../components/Spinner';
+import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
+import EnrollmentForm from '../components/EnrollmentForm';
 import SearchIcon from '../components/icons/SearchIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import ChecklistIcon from '../components/icons/ChecklistIcon';
+import PencilIcon from '../components/icons/PencilIcon';
+import TrashIcon from '../components/icons/TrashIcon';
+import StopIcon from '../components/icons/StopIcon';
 
 // Helpers
 const getClientName = (c?: Client) => {
@@ -40,6 +47,12 @@ const EnrollmentArchive: React.FC = () => {
     const [filterYear, setFilterYear] = useState<number>(new Date().getFullYear());
     const [filterLocation, setFilterLocation] = useState('');
 
+    // Actions State
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
+    const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null);
+    const [terminateTarget, setTerminateTarget] = useState<Enrollment | null>(null);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -59,6 +72,8 @@ const EnrollmentArchive: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    const parentClients = useMemo(() => clients.filter(c => c.clientType === ClientType.Parent) as ParentClient[], [clients]);
 
     const availableYears = useMemo(() => {
         const years = new Set<number>();
@@ -184,13 +199,14 @@ const EnrollmentArchive: React.FC = () => {
                                 return (
                                     <div 
                                         key={enr.id}
-                                        className={`absolute h-4 top-2 rounded shadow-sm border-l-2 ${getStatusColor(enr.status)} opacity-80 hover:opacity-100 hover:z-10 transition-all`}
+                                        className={`absolute h-4 top-2 rounded shadow-sm border-l-2 ${getStatusColor(enr.status)} opacity-80 hover:opacity-100 hover:z-10 transition-all cursor-pointer`}
                                         style={{ 
                                             left: `${leftPercent}%`, 
                                             width: `${widthPercent}%`,
                                             backgroundColor: enr.locationColor || '#ccc' 
                                         }}
                                         title={`${enr.subscriptionName} | ${enr.locationName} (${new Date(enr.startDate).toLocaleDateString()} - ${new Date(enr.endDate).toLocaleDateString()})`}
+                                        onClick={() => handleEditRequest(enr)}
                                     ></div>
                                 );
                             })}
@@ -200,6 +216,70 @@ const EnrollmentArchive: React.FC = () => {
             </div>
         );
     }, [viewMode, groupedData, filterYear]);
+
+    // --- Action Handlers ---
+
+    const handleEditRequest = (enr: Enrollment) => {
+        setEditingEnrollment(enr);
+        setIsEditModalOpen(true);
+    };
+
+    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => {
+        setLoading(true);
+        try {
+            for (const enrollmentData of enrollmentsData) {
+                if ('id' in enrollmentData) {
+                    await updateEnrollment((enrollmentData as any).id, enrollmentData);
+                }
+            }
+            setIsEditModalOpen(false);
+            setEditingEnrollment(undefined);
+            await fetchData();
+        } catch (err) {
+            console.error("Save error:", err);
+            alert("Errore salvataggio.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteRequest = (enr: Enrollment) => {
+        setDeleteTarget(enr);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteTarget) return;
+        setLoading(true);
+        try {
+            // Clean financials & delete
+            await cleanupEnrollmentFinancials(deleteTarget);
+            await deleteEnrollment(deleteTarget.id);
+            await fetchData();
+        } catch (err) {
+            alert("Errore eliminazione.");
+        } finally {
+            setLoading(false);
+            setDeleteTarget(null);
+        }
+    };
+
+    const handleTerminateRequest = (enr: Enrollment) => {
+        setTerminateTarget(enr);
+    };
+
+    const handleConfirmTerminate = async () => {
+        if (!terminateTarget) return;
+        setLoading(true);
+        try {
+            await updateEnrollment(terminateTarget.id, { status: EnrollmentStatus.Expired });
+            await fetchData();
+        } catch (err) {
+            alert("Errore aggiornamento stato.");
+        } finally {
+            setLoading(false);
+            setTerminateTarget(null);
+        }
+    };
 
     return (
         <div className="h-full flex flex-col">
@@ -291,7 +371,7 @@ const EnrollmentArchive: React.FC = () => {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <h4 className="font-bold text-gray-800 text-sm">{enr.subscriptionName}</h4>
-                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${enr.status === 'Active' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${enr.status === 'Active' ? 'bg-green-100 text-green-700 border-green-200' : enr.status === 'Completed' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                                                             {enr.status === 'Active' ? 'Attivo' : enr.status === 'Completed' ? 'Completato' : enr.status === 'Expired' ? 'Scaduto' : 'In Attesa'}
                                                         </span>
                                                     </div>
@@ -312,6 +392,13 @@ const EnrollmentArchive: React.FC = () => {
                                                     <span className="block text-lg font-black text-gray-700 font-mono">{enr.price?.toFixed(2)}€</span>
                                                     <span className="text-[10px] text-gray-400 uppercase font-bold">Importo</span>
                                                 </div>
+
+                                                {/* Actions */}
+                                                <div className="flex gap-1 md:flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-4 mt-2 md:mt-0">
+                                                    <button onClick={() => handleEditRequest(enr)} className="md-icon-btn edit bg-white shadow-sm" title="Modifica"><PencilIcon /></button>
+                                                    <button onClick={() => handleTerminateRequest(enr)} className="md-icon-btn text-amber-600 hover:bg-amber-50 bg-white shadow-sm" title="Termina/Annulla"><StopIcon /></button>
+                                                    <button onClick={() => handleDeleteRequest(enr)} className="md-icon-btn delete bg-white shadow-sm" title="Elimina"><TrashIcon /></button>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -326,6 +413,36 @@ const EnrollmentArchive: React.FC = () => {
                     )}
                 </div>
             )}
+
+            {isEditModalOpen && editingEnrollment && (
+                <Modal onClose={() => setIsEditModalOpen(false)} size="lg">
+                    <EnrollmentForm 
+                        parents={parentClients} 
+                        initialParent={parentClients.find(p => p.id === editingEnrollment.clientId)} 
+                        existingEnrollment={editingEnrollment} 
+                        onSave={handleSaveEnrollment} 
+                        onCancel={() => setIsEditModalOpen(false)} 
+                    />
+                </Modal>
+            )}
+
+            <ConfirmModal 
+                isOpen={!!deleteTarget}
+                onClose={() => setDeleteTarget(null)}
+                onConfirm={handleConfirmDelete}
+                title="Elimina Iscrizione Storica"
+                message="Sei sicuro di voler eliminare questa iscrizione dall'archivio? Questa azione cancellerà anche tutti i dati finanziari e le lezioni associate. È irreversibile."
+                isDangerous={true}
+            />
+
+            <ConfirmModal 
+                isOpen={!!terminateTarget}
+                onClose={() => setTerminateTarget(null)}
+                onConfirm={handleConfirmTerminate}
+                title="Annulla/Termina Iscrizione"
+                message="Vuoi segnare questa iscrizione come 'Scaduta/Ritirata'? Questo non cancella i dati, ma aggiorna lo stato per indicare che non è stata completata regolarmente."
+                confirmText="Sì, Termina"
+            />
         </div>
     );
 };

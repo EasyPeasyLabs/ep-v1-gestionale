@@ -204,10 +204,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     };
 
     // --- FIX WIZARD HANDLER ---
-    const handleFixIssue = async (issue: IntegrityIssue) => {
+    const handleFixIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' = 'invoice') => {
         setLoading(true);
         try {
-            await fixIntegrityIssue(issue);
+            await fixIntegrityIssue(issue, strategy);
             // Refresh list
             const remainingIssues = await runFinancialHealthCheck();
             setIntegrityIssues(remainingIssues);
@@ -889,7 +889,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="flex items-center gap-2">
                                             {issue.type === 'missing_invoice' 
-                                                ? <span className="bg-red-100 text-red-700 text-[10px] uppercase px-2 py-1 rounded font-bold">Manca Fattura</span>
+                                                ? <span className="bg-red-100 text-red-700 text-[10px] uppercase px-2 py-1 rounded font-bold">Manca Copertura</span>
                                                 : <span className="bg-orange-100 text-orange-700 text-[10px] uppercase px-2 py-1 rounded font-bold">Manca Transazione</span>
                                             }
                                             <span className="text-xs font-mono text-gray-400">{new Date(issue.date).toLocaleDateString()}</span>
@@ -902,17 +902,36 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                                     <div className="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-3 text-xs text-gray-600">
                                         <strong>Soluzione Proposta:</strong><br/>
                                         {issue.type === 'missing_invoice' 
-                                            ? `Generazione automatica Fattura Pagata per ${issue.entityName}.` 
+                                            ? `Scegli se generare una Fattura formale o registrare un incasso diretto (senza documento).` 
                                             : `Creazione automatica Transazione in entrata collegata alla fattura.`
                                         }
                                     </div>
 
-                                    <button 
-                                        onClick={() => handleFixIssue(issue)}
-                                        className="w-full md-btn md-btn-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm font-bold"
-                                    >
-                                        Risolvi Ora
-                                    </button>
+                                    <div className="flex gap-2">
+                                        {issue.type === 'missing_invoice' ? (
+                                            <>
+                                                <button 
+                                                    onClick={() => handleFixIssue(issue, 'invoice')}
+                                                    className="flex-1 md-btn md-btn-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm font-bold"
+                                                >
+                                                    Genera Fattura
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleFixIssue(issue, 'cash')}
+                                                    className="flex-1 md-btn md-btn-sm bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 shadow-sm font-bold"
+                                                >
+                                                    Registra Incasso Diretto
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <button 
+                                                onClick={() => handleFixIssue(issue)}
+                                                className="w-full md-btn md-btn-sm bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm font-bold"
+                                            >
+                                                Risolvi Ora
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                             {integrityIssues.length === 0 && (
