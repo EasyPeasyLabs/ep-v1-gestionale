@@ -34,6 +34,7 @@ const LocationForm: React.FC<{
     const [rentalCost, setRentalCost] = useState(location.rentalCost || 0);
     const [distance, setDistance] = useState(location.distance || 0);
     const [color, setColor] = useState(location.color || '#3b82f6');
+    const [closedAt, setClosedAt] = useState(location.closedAt || '');
     
     // Availability Slots
     const [slots, setSlots] = useState<AvailabilitySlot[]>(location.availability || []);
@@ -53,7 +54,7 @@ const LocationForm: React.FC<{
     const handleSubmit = () => {
         onSave({ 
             ...location, 
-            name, address, city, capacity, rentalCost, distance, color, availability: slots 
+            name, address, city, capacity, rentalCost, distance, color, closedAt, availability: slots 
         });
     };
 
@@ -72,6 +73,15 @@ const LocationForm: React.FC<{
                 <div><label className="text-[10px] text-gray-500">Costo Nolo (€)</label><input type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
                 <div><label className="text-[10px] text-gray-500">Distanza (km)</label><input type="number" value={distance} onChange={e => setDistance(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
                 <div><label className="text-[10px] text-gray-500">Colore Calendario</label><input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-full h-7 border rounded cursor-pointer"/></div>
+            </div>
+
+            {/* Closed At */}
+            <div className="mb-4">
+                <div className="md-input-group">
+                    <input type="date" value={closedAt} onChange={e => setClosedAt(e.target.value)} className="md-input text-sm" placeholder=" " />
+                    <label className="md-input-label text-xs">Data Chiusura (Opzionale: Blocca Noli)</label>
+                </div>
+                {closedAt && <p className="text-[10px] text-red-500 mt-1">⚠️ Sede dismessa dal {new Date(closedAt).toLocaleDateString()}. Non verranno generati costi futuri.</p>}
             </div>
 
             {/* Slots */}
@@ -192,11 +202,12 @@ const SupplierForm: React.FC<{
 
                     <div className="space-y-2 mt-2">
                         {locations.map(loc => (
-                            <div key={loc.id} className="bg-white border rounded p-3 flex justify-between items-center hover:shadow-sm transition-shadow">
+                            <div key={loc.id} className={`bg-white border rounded p-3 flex justify-between items-center hover:shadow-sm transition-shadow ${loc.closedAt ? 'border-l-4 border-l-red-400 bg-red-50/20' : ''}`}>
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="w-3 h-3 rounded-full" style={{backgroundColor: loc.color}}></span>
                                         <span className="font-bold text-sm text-gray-800">{loc.name}</span>
+                                        {loc.closedAt && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">Chiusa</span>}
                                     </div>
                                     <p className="text-xs text-gray-500">{loc.address}, {loc.city}</p>
                                     <div className="flex gap-1 mt-1">
@@ -380,7 +391,7 @@ const Suppliers: React.FC = () => {
                                     <h4 className="font-semibold text-xs text-gray-500 uppercase">Sedi & Slot</h4>
                                     <ul className="text-xs mt-2 space-y-1">
                                     {supplier.locations.map(loc => (
-                                        <li key={loc.id} className="flex justify-between items-center bg-gray-50 p-1 rounded">
+                                        <li key={loc.id} className={`flex justify-between items-center p-1 rounded ${loc.closedAt ? 'bg-red-50 text-red-500 line-through' : 'bg-gray-50'}`}>
                                             <div className="flex items-center gap-2">
                                                 <span className="w-2 h-2 rounded-full" style={{ backgroundColor: loc.color }}></span>
                                                 <span className="truncate max-w-[120px]">{loc.name}</span>

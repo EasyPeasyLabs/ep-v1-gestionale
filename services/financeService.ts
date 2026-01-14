@@ -605,19 +605,24 @@ export const syncRentExpenses = async (): Promise<string> => {
     
     // 2. Map Locations to Suppliers for cost info
     const locationCostMap = new Map<string, { cost: number, supplierName: string }>();
-    suppliers.forEach(s => {
-        s.locations.forEach(l => {
-            locationCostMap.set(l.id, { cost: l.rentalCost || 0, supplierName: s.companyName });
-        });
-    });
-
-    // 3. Calculate Rent per Location per Month
     
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const startOfMonth = new Date(currentYear, currentMonth, 1).toISOString();
     const endOfMonth = new Date(currentYear, currentMonth + 1, 0).toISOString();
 
+    suppliers.forEach(s => {
+        s.locations.forEach(l => {
+            // Check if closedAt exists and is before current month
+            const isClosed = l.closedAt && new Date(l.closedAt) < new Date(startOfMonth);
+            if (!isClosed) {
+                locationCostMap.set(l.id, { cost: l.rentalCost || 0, supplierName: s.companyName });
+            }
+        });
+    });
+
+    // 3. Calculate Rent per Location per Month
+    
     // Check existing rent transactions for this month
     const q = query(transactionCollectionRef, 
         where("category", "==", TransactionCategory.Nolo),

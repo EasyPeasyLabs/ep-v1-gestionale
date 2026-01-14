@@ -203,6 +203,7 @@ export interface Location {
     notesHistory: Note[];
     tags: string[];
     rating: LocationRating;
+    closedAt?: string; // Data di chiusura/dismissione (ISO String YYYY-MM-DD)
 }
 
 export type LocationInput = Omit<Location, 'id'>;

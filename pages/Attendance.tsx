@@ -337,6 +337,13 @@ const Attendance: React.FC = () => {
                         const sortedDates = Object.keys(datesMap).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
                         const firstItem = datesMap[sortedDates[0]][0];
 
+                        // LOGICA CONTEGGIO LEZIONI (Non studenti)
+                        const totalLessonsCount = Object.values(datesMap).reduce((acc, itemsOnDate) => {
+                            // Conta gli slot unici (startTime) per ogni giornata
+                            const uniqueTimes = new Set(itemsOnDate.map(i => i.startTime));
+                            return acc + uniqueTimes.size;
+                        }, 0);
+
                         return (
                         <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
                             {/* RECINTO HEADER */}
@@ -344,7 +351,7 @@ const Attendance: React.FC = () => {
                                 <span className="w-4 h-4 rounded-full shadow-sm ring-2 ring-white" style={{ backgroundColor: firstItem?.locationColor || '#ccc' }}></span>
                                 <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locationName}</h2>
                                 <span className="text-xs bg-white border border-gray-300 text-gray-600 px-2 py-0.5 rounded-full font-mono">
-                                    {Object.values(datesMap).reduce((acc, curr) => acc + curr.length, 0)} lez.
+                                    {totalLessonsCount} lez.
                                 </span>
                             </div>
 

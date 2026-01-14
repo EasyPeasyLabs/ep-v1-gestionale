@@ -30,6 +30,13 @@ interface EnrollmentsProps {
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
+// Icona Spostamento
+const ArrowRightStartOnRectangleIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+  </svg>
+);
+
 // --- Modal Recupero ---
 const RecoveryModal: React.FC<{
     enrollment: Enrollment;
@@ -132,7 +139,7 @@ const RecoveryModal: React.FC<{
     );
 };
 
-// --- Modal Assegnazione Massiva ---
+// --- Modal Assegnazione Massiva (DA ASSEGNARE -> SEDE) ---
 const BulkAssignModal: React.FC<{
     targetLocationName: string;
     targetLocationId: string;
@@ -258,6 +265,214 @@ const BulkAssignModal: React.FC<{
     );
 };
 
+// --- Modal Cambio Sede (MOVE WIZARD) ---
+const BulkMoveModal: React.FC<{
+    sourceLocationId: string;
+    sourceLocationName: string;
+    enrollments: Enrollment[]; // Allievi nella sede sorgente
+    suppliers: Supplier[];
+    onClose: () => void;
+    onConfirm: (selectedIds: string[], targetLocationId: string, startDate: string, slotInfo?: {day: number, start: string, end: string}) => void;
+}> = ({ sourceLocationId, sourceLocationName, enrollments, suppliers, onClose, onConfirm }) => {
+    
+    // 1. Group by student to avoid duplicates
+    const groupedStudents = useMemo(() => {
+        const groups: Record<string, { 
+            childName: string, 
+            childId: string,
+            totalLessonsRemaining: number,
+            enrollmentIds: string[]
+        }> = {};
+
+        enrollments.forEach(enr => {
+            const key = enr.childId; // Grouping by child ID
+            if (!groups[key]) {
+                groups[key] = {
+                    childName: enr.childName,
+                    childId: enr.childId,
+                    totalLessonsRemaining: 0,
+                    enrollmentIds: []
+                };
+            }
+            groups[key].totalLessonsRemaining += enr.lessonsRemaining;
+            groups[key].enrollmentIds.push(enr.id);
+        });
+
+        return Object.values(groups).sort((a,b) => a.childName.localeCompare(b.childName));
+    }, [enrollments]);
+
+    // Selection stores EnrollmentIDs
+    const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<string[]>(enrollments.map(e => e.id)); // Default ALL checked
+    
+    const [targetLocationId, setTargetLocationId] = useState('');
+    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
+
+    // Filter available locations (exclude source)
+    const availableLocations = useMemo(() => {
+        const locs: {id: string, name: string}[] = [];
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                if (l.id !== sourceLocationId) {
+                    locs.push({ id: l.id, name: l.name });
+                }
+            });
+        });
+        return locs.sort((a,b) => a.name.localeCompare(b.name));
+    }, [suppliers, sourceLocationId]);
+
+    // Target Slots
+    const targetSlots = useMemo(() => {
+        if (!targetLocationId) return [];
+        for (const s of suppliers) {
+            const loc = s.locations.find(l => l.id === targetLocationId);
+            if (loc) return loc.availability || [];
+        }
+        return [];
+    }, [targetLocationId, suppliers]);
+
+    const toggleGroupSelection = (enrollmentIds: string[]) => {
+        const allSelected = enrollmentIds.every(id => selectedEnrollmentIds.includes(id));
+        
+        if (allSelected) {
+            // Deselect all
+            setSelectedEnrollmentIds(prev => prev.filter(id => !enrollmentIds.includes(id)));
+        } else {
+            // Select all (adding missing ones)
+            setSelectedEnrollmentIds(prev => {
+                const newIds = [...prev];
+                enrollmentIds.forEach(id => {
+                    if (!newIds.includes(id)) newIds.push(id);
+                });
+                return newIds;
+            });
+        }
+    };
+
+    const isGroupSelected = (enrollmentIds: string[]) => enrollmentIds.every(id => selectedEnrollmentIds.includes(id));
+
+    const handleConfirm = () => {
+        if (!targetLocationId) return alert("Seleziona una sede di destinazione.");
+        if (selectedEnrollmentIds.length === 0) return alert("Seleziona almeno un allievo da spostare.");
+        if (!startDate) return alert("Seleziona una data di decorrenza.");
+
+        let slotInfo = undefined;
+        if (selectedSlotIndex !== null) {
+            const slot = targetSlots[selectedSlotIndex];
+            slotInfo = { day: slot.dayOfWeek, start: slot.startTime, end: slot.endTime };
+        }
+
+        onConfirm(selectedEnrollmentIds, targetLocationId, startDate, slotInfo);
+    };
+
+    return (
+        <Modal onClose={onClose} size="lg">
+            <div className="flex flex-col h-full max-h-[90vh]">
+                <div className="p-6 border-b bg-amber-50 flex-shrink-0">
+                    <h3 className="text-xl font-bold text-amber-900">Sposta da {sourceLocationName}</h3>
+                    <p className="text-sm text-amber-700">Wizard per il cambio sede massivo (es. chiusura sede).</p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* 1. Selezione Allievi (Grouped) */}
+                    <div className="max-h-40 overflow-y-auto border rounded bg-gray-50 p-2">
+                        <div className="flex justify-between items-center mb-2 px-1">
+                            <span className="text-xs font-bold text-gray-500 uppercase">Selezionati: {groupedStudents.filter(g => isGroupSelected(g.enrollmentIds)).length} studenti</span>
+                            <button onClick={() => setSelectedEnrollmentIds(enrollments.map(e => e.id))} className="text-[10px] text-indigo-600 underline">Seleziona Tutti</button>
+                        </div>
+                        {groupedStudents.map(student => (
+                            <label key={student.childId} className="flex items-center gap-2 text-sm p-1.5 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0">
+                                <input 
+                                    type="checkbox" 
+                                    checked={isGroupSelected(student.enrollmentIds)} 
+                                    onChange={() => toggleGroupSelection(student.enrollmentIds)}
+                                    className="rounded text-amber-600 focus:ring-amber-500"
+                                />
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-gray-800">{student.childName}</span>
+                                    <span className="text-xs text-gray-500 bg-white px-1.5 rounded border border-gray-200">
+                                        {student.totalLessonsRemaining} lez. residui
+                                    </span>
+                                </div>
+                            </label>
+                        ))}
+                        {groupedStudents.length === 0 && <p className="text-center text-xs text-gray-400 py-4">Nessun allievo attivo in questa sede.</p>}
+                    </div>
+
+                    {/* 2. Target Location */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-1">Nuova Sede di Destinazione</label>
+                        <select 
+                            value={targetLocationId} 
+                            onChange={e => { setTargetLocationId(e.target.value); setSelectedSlotIndex(null); }} 
+                            className="md-input bg-white"
+                        >
+                            <option value="">Seleziona...</option>
+                            {availableLocations.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* 3. Start Date */}
+                    <div>
+                        <div className="md-input-group">
+                            <input 
+                                type="date" 
+                                value={startDate} 
+                                onChange={e => setStartDate(e.target.value)} 
+                                className="md-input"
+                            />
+                            <label className="md-input-label !top-0">Data di Decorrenza (Start Date)</label>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1 italic leading-relaxed">
+                            Inserisci il giorno immediatamente successivo alla chiusura della vecchia sede. 
+                            (Esempio: La sede chiude il 31 Gennaio. Inserisci "1 Febbraio").
+                        </p>
+                    </div>
+
+                    {/* 4. Slot (Optional) */}
+                    <div>
+                        <label className="block text-sm font-bold text-gray-700 mb-2">Nuovo Orario (Opzionale)</label>
+                        {targetSlots.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                <button 
+                                    onClick={() => setSelectedSlotIndex(null)}
+                                    className={`px-3 py-2 rounded-lg border text-xs font-bold transition-all ${selectedSlotIndex === null ? 'bg-gray-800 text-white border-gray-800 shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                                >
+                                    MANTIENI ORARIO ATTUALE
+                                </button>
+                                {targetSlots.map((slot, idx) => (
+                                    <button 
+                                        key={idx} 
+                                        onClick={() => setSelectedSlotIndex(idx)}
+                                        className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all ${selectedSlotIndex === idx ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                    >
+                                        {daysOfWeekMap[slot.dayOfWeek].substring(0, 3)} {slot.startTime}-{slot.endTime}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-gray-400">Seleziona una sede per vedere gli orari disponibili.</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-2 italic leading-relaxed">
+                            Se lo lasci vuoto ("Mantieni orario attuale"), il sistema cercherà di preservare l'orario originale (es. 16:00). 
+                            Se selezioni uno slot, forzerai il cambio orario per tutti gli allievi selezionati.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
+                    <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                    <button onClick={handleConfirm} disabled={!targetLocationId || selectedEnrollmentIds.length === 0} className="md-btn md-btn-raised md-btn-primary">
+                        Conferma Spostamento
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
+
 
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Data States
@@ -328,6 +543,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         locationId: string;
         locationName: string;
         locationColor: string;
+    } | null>(null);
+
+    // Bulk Move State
+    const [bulkMoveState, setBulkMoveState] = useState<{
+        isOpen: boolean;
+        sourceLocationId: string;
+        sourceLocationName: string;
+        enrollments: Enrollment[];
     } | null>(null);
 
     // Drag and Drop State
@@ -443,6 +666,45 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         } catch (e) {
             console.error(e);
             alert("Errore durante l'assegnazione massiva.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBulkMoveConfirm = async (selectedIds: string[], targetLocationId: string, startDate: string, slotInfo?: {day: number, start: string, end: string}) => {
+        if (!bulkMoveState) return;
+        setBulkMoveState(null);
+        setLoading(true);
+
+        try {
+            // Get Target Location Details
+            let newLocName = '';
+            let newLocColor = '';
+            for (const s of suppliers) {
+                const loc = s.locations.find(l => l.id === targetLocationId);
+                if (loc) {
+                    newLocName = loc.name;
+                    newLocColor = loc.color;
+                    break;
+                }
+            }
+
+            await bulkUpdateLocation(
+                selectedIds,
+                startDate,
+                targetLocationId,
+                newLocName,
+                newLocColor,
+                slotInfo?.start, // If undefined, service preserves existing time
+                slotInfo?.end
+            );
+
+            await fetchData();
+            alert(`Spostamento completato per ${selectedIds.length} allievi.`);
+
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante lo spostamento.");
         } finally {
             setLoading(false);
         }
@@ -645,6 +907,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Unassigned enrollments for bulk selection
     const unassignedEnrollments = useMemo(() => enrollments.filter(e => e.locationId === 'unassigned' && (e.status === EnrollmentStatus.Pending || e.status === EnrollmentStatus.Active)), [enrollments]);
 
+    // Helper: Collect all enrollments in a location group
+    const getEnrollmentsInLocation = (locationId: string) => {
+        return enrollments.filter(e => e.locationId === locationId && (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending));
+    };
+
     return (
         <div>
             {/* --- HEADER --- */}
@@ -693,20 +960,37 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                     {locGroup.locationId === 'unassigned' && <span className="text-xs bg-gray-600 text-white px-2 py-0.5 rounded">Trascina nei recinti</span>}
                                 </div>
                                 
-                                {/* Bulk Assignment Trigger */}
-                                {locGroup.locationId !== 'unassigned' && (
-                                    <button 
-                                        onClick={() => setBulkAssignState({
-                                            isOpen: true,
-                                            locationId: locGroup.locationId,
-                                            locationName: locGroup.locationName,
-                                            locationColor: locGroup.locationColor
-                                        })}
-                                        className="text-xs bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
-                                    >
-                                        <UserPlusIcon /> Assegna Allievi
-                                    </button>
-                                )}
+                                <div className="flex items-center gap-2">
+                                    {/* Bulk Assignment Trigger */}
+                                    {locGroup.locationId !== 'unassigned' && (
+                                        <button 
+                                            onClick={() => setBulkAssignState({
+                                                isOpen: true,
+                                                locationId: locGroup.locationId,
+                                                locationName: locGroup.locationName,
+                                                locationColor: locGroup.locationColor
+                                            })}
+                                            className="text-xs bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
+                                        >
+                                            <UserPlusIcon /> Assegna Allievi
+                                        </button>
+                                    )}
+
+                                    {/* Bulk Move (Cambio Sede) Trigger */}
+                                    {locGroup.locationId !== 'unassigned' && (
+                                        <button 
+                                            onClick={() => setBulkMoveState({
+                                                isOpen: true,
+                                                sourceLocationId: locGroup.locationId,
+                                                sourceLocationName: locGroup.locationName,
+                                                enrollments: getEnrollmentsInLocation(locGroup.locationId)
+                                            })}
+                                            className="text-xs bg-white border border-amber-200 text-amber-700 hover:bg-amber-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
+                                        >
+                                            <ArrowRightStartOnRectangleIcon /> Cambio Sede
+                                        </button>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="p-6 space-y-6">
@@ -883,6 +1167,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     unassignedEnrollments={unassignedEnrollments}
                     onClose={() => setBulkAssignState(null)}
                     onConfirm={handleBulkAssignConfirm}
+                />
+            )}
+
+            {/* BULK MOVE MODAL */}
+            {bulkMoveState && (
+                <BulkMoveModal 
+                    sourceLocationId={bulkMoveState.sourceLocationId}
+                    sourceLocationName={bulkMoveState.sourceLocationName}
+                    enrollments={bulkMoveState.enrollments}
+                    suppliers={suppliers}
+                    onClose={() => setBulkMoveState(null)}
+                    onConfirm={handleBulkMoveConfirm}
                 />
             )}
 
