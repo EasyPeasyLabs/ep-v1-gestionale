@@ -271,44 +271,65 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       return { totalCensus, activeCount, enthusiasticCount };
   }, [clientsData, allEnrollments, suppliersData]);
 
-  // --- 2. METRICHE LEZIONI MESE ---
+  // --- 2. METRICHE LEZIONI MESE (LOGICA SLOT ORARI) ---
   const lessonsMetrics = useMemo(() => {
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
       
-      let total = 0;
-      let done = 0;
-      let upcoming = 0;
+      // Sets per tracciare gli Slot Unici (Standard)
+      const uniqueSlots = new Set<string>();
+      const doneSlots = new Set<string>();
 
-      const checkLesson = (dateStr: string, status?: string) => {
-          const d = new Date(dateStr);
-          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-              total++;
-              // Erogate: Se data passata (now) OPPURE stato 'Present' (indipendentemente dall'ora)
-              if (d < now || status === 'Present') {
-                  done++;
-              } else {
-                  upcoming++;
-              }
-          }
-      };
-
-      // From Enrollments
+      // 1. Processa Iscrizioni (Lezioni Standard)
       allEnrollments.forEach(enr => {
           if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
               if (enr.appointments) {
-                  enr.appointments.forEach(app => checkLesson(app.date, app.status));
+                  enr.appointments.forEach(app => {
+                      const d = new Date(app.date);
+                      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+                          // Chiave univoca per lo slot: Data + Ora + Sede
+                          // Questo raggruppa 5 bambini della stessa ora in 1 sola "Lezione"
+                          const slotKey = `${app.date}_${app.startTime}_${app.locationId}`;
+                          
+                          uniqueSlots.add(slotKey);
+
+                          // Logica "Fatto": Se passato OPPURE se marcato Presente
+                          if (d < now || app.status === 'Present') {
+                              doneSlots.add(slotKey);
+                          }
+                      }
+                  });
               }
           }
       });
 
-      // From Manual Lessons
+      // 2. Processa Lezioni Extra (Manuali)
+      let extraTotal = 0;
+      let extraDone = 0;
+
       manualLessonsData.forEach(ml => {
-          checkLesson(ml.date, 'Scheduled'); 
+          const d = new Date(ml.date);
+          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+              extraTotal++;
+              // Lezioni manuali sono "Fatte" se passate
+              if (d < now) {
+                  extraDone++;
+              }
+          }
       });
 
-      return { total, done, upcoming };
+      // Totali Combinati
+      const totalCount = uniqueSlots.size + extraTotal;
+      const doneCount = doneSlots.size + extraDone;
+      const upcomingCount = totalCount - doneCount;
+
+      return { 
+          total: totalCount, 
+          done: doneCount, 
+          upcoming: upcomingCount,
+          breakdown: { standard: uniqueSlots.size, extra: extraTotal }
+      };
   }, [allEnrollments, manualLessonsData]);
 
   // --- 3. METRICHE FORNITORI ---
@@ -577,7 +598,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         }
                     />
 
-                    {/* CARD 2: LESSONS */}
+                    {/* CARD 2: LESSONS (SLOT BASED) */}
                     <StatCard 
                         title="Lezioni Mese" 
                         value={lessonsMetrics.total}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note, ContractTemplate, CompanyInfo } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
@@ -469,7 +468,7 @@ const LocationForm: React.FC<{
                     <input type="time" value={newSlotEnd} onChange={e => setNewSlotEnd(e.target.value)} className="text-xs border rounded p-1"/>
                     <button type="button" onClick={handleAddSlot} className="md-btn md-btn-sm md-btn-green px-2 py-0 h-7">+</button>
                 </div>
-                <div className="flex flex-wrap gap-2">{slots.map((s, i) => (<span key={i} className="inline-flex items-center px-2 py-1 rounded bg-white border border-gray-300 text-[10px] font-medium text-gray-700">{daysMap[s.dayOfWeek]} {s.startTime}-{s.endTime}<button onClick={() => removeSlot(i)} className="ml-1 text-red-500 hover:text-red-700 font-bold">×</button></span>))}</div>
+                <div className="flex flex-wrap gap-2">{slots.map((s, i) => (<span key={i} className="inline-flex items-center px-2 py-1 rounded bg-white border border-gray-300 text-[10px] font-medium text-gray-700">{daysMap[s.dayOfWeek]} {s.startTime}-{s.endTime}<button type="button" onClick={() => removeSlot(i)} className="ml-1 text-red-500 hover:text-red-700 font-bold">×</button></span>))}</div>
             </div>
             <div className="flex justify-end gap-2 mt-4"><button onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button><button onClick={handleSubmit} className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva Sede</button></div>
         </div>
