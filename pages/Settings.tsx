@@ -452,8 +452,9 @@ const Settings: React.FC = () => {
         <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Configura i dati aziendali, i listini e il planner operativo.</p>
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8 pb-10">
-            {/* Colonna Sinistra (Dati Aziendali) ... */}
+            {/* Colonna Sinistra: 1 e 2 */}
             <div className="space-y-8">
+                {/* 1. Dati Aziendali & Logo */}
                 <div className="md-card p-6">
                     <h2 className="text-lg font-semibold border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>Dati Aziendali & Logo</h2>
                     {info && (
@@ -524,19 +525,8 @@ const Settings: React.FC = () => {
                         </div>
                     )}
                 </div>
-                <div className="md-card p-6">
-                    <h2 className="text-lg font-semibold border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>Personalizzazione Tema</h2>
-                    <div className="grid grid-cols-1 gap-4">
-                        <div><label className="block text-sm font-medium mb-1">Colore Primario</label><div className="flex items-center gap-3"><input type="color" value={primaryColor} onChange={(e) => handleColorChange(e.target.value, bgColor)} className="h-10 w-20 rounded border cursor-pointer"/><span className="text-xs text-gray-500">{primaryColor}</span></div></div>
-                        <div><label className="block text-sm font-medium mb-1">Colore Sfondo</label><div className="flex items-center gap-3"><input type="color" value={bgColor} onChange={(e) => handleColorChange(primaryColor, e.target.value)} className="h-10 w-20 rounded border cursor-pointer"/><span className="text-xs text-gray-500">{bgColor}</span></div></div>
-                        <button onClick={handleResetTheme} className="md-btn md-btn-flat md-btn-sm text-gray-500 mt-2 self-start">Ripristina Default</button>
-                    </div>
-                </div>
-            </div>
 
-            {/* Colonna Destra */}
-            <div className="space-y-8">
-                {/* Abbonamenti */}
+                {/* 2. Abbonamenti */}
                 <div className="md-card p-6">
                     <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
                         <h2 className="text-lg font-semibold">Abbonamenti</h2>
@@ -585,30 +575,11 @@ const Settings: React.FC = () => {
                         })}
                     </div>
                 </div>
+            </div>
 
-                {/* Modelli Contrattuali */}
-                <div className="md-card p-6 bg-white border-l-4 border-slate-500">
-                    <div className="flex justify-between items-center border-b pb-3 mb-3">
-                        <h2 className="text-lg font-semibold">Modelli Contrattuali</h2>
-                        <button onClick={handleCreateContract} className="md-btn md-btn-sm md-btn-primary"><PlusIcon /> Nuovo</button>
-                    </div>
-                    <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
-                        {contractTemplates.map(t => (
-                            <div key={t.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-slate-50 rounded border border-slate-200 gap-3">
-                                <div>
-                                    <p className="font-medium text-sm text-slate-800">{t.title}</p>
-                                    <p className="text-xs text-slate-500 font-bold uppercase">{t.category || 'Generale'}</p>
-                                </div>
-                                <div className="flex gap-1 self-end sm:self-auto">
-                                    <button onClick={() => handleOpenContractModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
-                                    <button onClick={() => handleDeleteContractClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Politica Recuperi */}
+            {/* Colonna Destra: 3, 4, 5, 6, 7 */}
+            <div className="space-y-8">
+                {/* 3. Politica Recuperi */}
                 <div className="md-card p-6 border-l-4 border-orange-500">
                     <h2 className="text-lg font-semibold border-b pb-3 mb-4">Politica Recuperi</h2>
                     <p className="text-xs text-gray-500 mb-4">Definisci se le lezioni perse possono essere recuperate per ciascuna sede (recinto).</p>
@@ -644,7 +615,51 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Planner & Controlli */}
+                {/* 4. Modelli Contrattuali */}
+                <div className="md-card p-6 bg-white border-l-4 border-slate-500">
+                    <div className="flex justify-between items-center border-b pb-3 mb-3">
+                        <h2 className="text-lg font-semibold">Modelli Contrattuali</h2>
+                        <button onClick={handleCreateContract} className="md-btn md-btn-sm md-btn-primary"><PlusIcon /> Nuovo</button>
+                    </div>
+                    <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
+                        {contractTemplates.map(t => (
+                            <div key={t.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-slate-50 rounded border border-slate-200 gap-3">
+                                <div>
+                                    <p className="font-medium text-sm text-slate-800">{t.title}</p>
+                                    <p className="text-xs text-slate-500 font-bold uppercase">{t.category || 'Generale'}</p>
+                                </div>
+                                <div className="flex gap-1 self-end sm:self-auto">
+                                    <button onClick={() => handleOpenContractModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteContractClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 5. Template Comunicazioni */}
+                <div className="md-card p-6">
+                    <div className="flex justify-between items-center border-b pb-3 mb-3">
+                        <h2 className="text-lg font-semibold">Template Comunicazioni</h2>
+                        <button onClick={handleCreateTemplate} className="md-btn md-btn-sm md-btn-raised md-btn-primary"><PlusIcon /> Nuovo</button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                        {templates.map(t => (
+                            <div key={t.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-50 rounded border border-gray-100 gap-3">
+                                <div>
+                                    <p className="font-medium text-sm">{t.label}</p>
+                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">{t.subject}</p>
+                                </div>
+                                <div className="flex gap-1 self-end sm:self-auto">
+                                    <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                    <button onClick={() => handleDeleteTemplateClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 6. Planner & Controlli */}
                 <div className="md-card p-6 bg-white border-l-4 border-indigo-500">
                     <div className="flex justify-between items-center border-b pb-3 mb-3">
                         <div>
@@ -705,25 +720,13 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Template Comunicazioni */}
+                {/* 7. Personalizzazione Tema */}
                 <div className="md-card p-6">
-                    <div className="flex justify-between items-center border-b pb-3 mb-3">
-                        <h2 className="text-lg font-semibold">Template Comunicazioni</h2>
-                        <button onClick={handleCreateTemplate} className="md-btn md-btn-sm md-btn-raised md-btn-primary"><PlusIcon /> Nuovo</button>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                        {templates.map(t => (
-                            <div key={t.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 bg-gray-50 rounded border border-gray-100 gap-3">
-                                <div>
-                                    <p className="font-medium text-sm">{t.label}</p>
-                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">{t.subject}</p>
-                                </div>
-                                <div className="flex gap-1 self-end sm:self-auto">
-                                    <button onClick={() => handleOpenTemplateModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
-                                    <button onClick={() => handleDeleteTemplateClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
-                                </div>
-                            </div>
-                        ))}
+                    <h2 className="text-lg font-semibold border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>Personalizzazione Tema</h2>
+                    <div className="grid grid-cols-1 gap-4">
+                        <div><label className="block text-sm font-medium mb-1">Colore Primario</label><div className="flex items-center gap-3"><input type="color" value={primaryColor} onChange={(e) => handleColorChange(e.target.value, bgColor)} className="h-10 w-20 rounded border cursor-pointer"/><span className="text-xs text-gray-500">{primaryColor}</span></div></div>
+                        <div><label className="block text-sm font-medium mb-1">Colore Sfondo</label><div className="flex items-center gap-3"><input type="color" value={bgColor} onChange={(e) => handleColorChange(primaryColor, e.target.value)} className="h-10 w-20 rounded border cursor-pointer"/><span className="text-xs text-gray-500">{bgColor}</span></div></div>
+                        <button onClick={handleResetTheme} className="md-btn md-btn-flat md-btn-sm text-gray-500 mt-2 self-start">Ripristina Default</button>
                     </div>
                 </div>
             </div>

@@ -21,6 +21,8 @@ interface CalendarCluster {
     locationColor: string;
     count: number; // Numero studenti (se manuale)
     isManual?: boolean; 
+    isClosed?: boolean; // NEW: Indicates site is decommissioned on this date
+    closedAtDate?: string; // Stored for the alert
     title?: string;
     description?: string; 
     childNames?: string; 
@@ -58,12 +60,18 @@ const Calendar: React.FC = () => {
 
             const clusterMap = new Map<string, CalendarCluster>();
 
-            // 0. Costruiamo una Mappa di Disponibilità per Sede
-            const locationAvailabilityMap = new Map<string, Set<number>>();
+            // 0. Mappa di Disponibilità e Chiusura per Sede
+            // Key: locationName (trimmed), Value: { allowedDays: Set, closedAt: string }
+            const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
             supps.forEach(s => {
                 s.locations.forEach(l => {
                     const days = new Set<number>(l.availability?.map(a => a.dayOfWeek) || []);
-                    if (l.name) locationAvailabilityMap.set(l.name.trim(), days);
+                    if (l.name) {
+                        locationConfigMap.set(l.name.trim(), { 
+                            days, 
+                            closedAt: l.closedAt 
+                        });
+                    }
                 });
             });
 
@@ -77,10 +85,29 @@ const Calendar: React.FC = () => {
                         const locName = (app.locationName || enr.locationName || 'N/D').trim();
                         const locColor = app.locationColor || enr.locationColor || '#ccc';
                         
-                        // Check availability
-                        const allowedDays = locationAvailabilityMap.get(locName);
-                        if (allowedDays && !allowedDays.has(dayOfWeek)) {
-                            return; 
+                        // Check Site Status (Closed/Availability)
+                        const config = locationConfigMap.get(locName);
+                        let isClosed = false;
+                        let closedAtVal = '';
+
+                        if (config) {
+                            // Check if site is closed on this specific date
+                            if (config.closedAt) {
+                                const closingDate = new Date(config.closedAt);
+                                closingDate.setHours(0,0,0,0);
+                                const currentLessonDate = new Date(app.date);
+                                currentLessonDate.setHours(0,0,0,0);
+                                
+                                if (currentLessonDate >= closingDate) {
+                                    isClosed = true;
+                                    closedAtVal = config.closedAt;
+                                }
+                            }
+
+                            // If not closed, check standard availability (skip if day not allowed, except if it's already a present/absent record)
+                            if (!isClosed && app.status === 'Scheduled' && !config.days.has(dayOfWeek)) {
+                                return; 
+                            }
                         }
 
                         const key = `${dateKey}_${app.startTime}_${locName}`;
@@ -93,13 +120,20 @@ const Calendar: React.FC = () => {
                                 endTime: app.endTime,
                                 locationName: locName,
                                 locationColor: locColor,
-                                count: 0 // Will increment per student
+                                isClosed,
+                                closedAtDate: closedAtVal,
+                                count: 0 
                             });
                         }
 
                         const cluster = clusterMap.get(key);
                         if (cluster) {
                             cluster.count++;
+                            // Se un allievo nel cluster è in una sede chiusa, il cluster eredita lo stato
+                            if (isClosed) {
+                                cluster.isClosed = true;
+                                cluster.closedAtDate = closedAtVal;
+                            }
                         }
                     });
                 }
@@ -110,6 +144,18 @@ const Calendar: React.FC = () => {
                 const dateKey = ml.date.split('T')[0];
                 const key = ml.id; 
                 
+                const config = locationConfigMap.get(ml.locationName.trim());
+                let isClosed = false;
+                let closedAtVal = '';
+                if (config?.closedAt) {
+                    const closingDate = new Date(config.closedAt);
+                    const lessonDate = new Date(ml.date);
+                    if (lessonDate >= closingDate) {
+                        isClosed = true;
+                        closedAtVal = config.closedAt;
+                    }
+                }
+
                 // Generazione stringa nomi
                 let displayNames = '';
                 let attendeeCount = 0;
@@ -133,6 +179,8 @@ const Calendar: React.FC = () => {
                     locationColor: ml.locationColor || '#94a3b8',
                     count: attendeeCount, 
                     isManual: true,
+                    isClosed,
+                    closedAtDate: closedAtVal,
                     title: 'EXTRA',
                     description: ml.description,
                     childNames: displayNames
@@ -276,30 +324,39 @@ const Calendar: React.FC = () => {
                                          const textColor = getTextColorForBg(event.locationColor);
                                          const locPrefix = event.locationName.substring(0, 3).toUpperCase();
                                          const isManual = event.isManual;
+                                         const isClosed = event.isClosed;
                                          
                                          return (
                                              <div 
                                                 key={event.id}
-                                                onClick={() => isManual && handleEditManual(event.id)}
-                                                className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center ${isManual ? 'cursor-pointer hover:opacity-80 ring-1 ring-black/10' : ''}`}
+                                                onClick={(e) => {
+                                                    if (isClosed) {
+                                                        e.stopPropagation();
+                                                        alert(`⚠️ SEDE DISMESSA\n\nQuesta sede ("${event.locationName}") è stata chiusa in data ${new Date(event.closedAtDate!).toLocaleDateString('it-IT')}.\n\nL'allievo o il gruppo visualizzato in questo slot è rimasto "orfano". È necessario spostare l'iscrizione presso un'altra sede attiva per riprendere le modifiche e le attività.`);
+                                                        return;
+                                                    }
+                                                    isManual && handleEditManual(event.id);
+                                                }}
+                                                className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center transition-all ${isManual && !isClosed ? 'cursor-pointer hover:opacity-80 ring-1 ring-black/10' : ''} ${isClosed ? 'grayscale-ghost bg-zebra cursor-help' : ''}`}
                                                 style={{ backgroundColor: event.locationColor, color: textColor }}
-                                                title={isManual ? `${event.description || 'Extra'} - ${event.childNames || ''}` : `${event.count} Allievi`}
+                                                title={isClosed ? "Sede Dismessa - Sola Lettura" : (isManual ? `${event.description || 'Extra'} - ${event.childNames || ''}` : `${event.count} Allievi`)}
                                              >
                                                  {/* Label */}
-                                                 <span className="truncate mr-1 flex-1">
+                                                 <span className="truncate mr-1 flex-1 flex items-center gap-1">
+                                                     {isClosed && <span className="text-[9px]">🚫</span>}
                                                      {isManual ? (
-                                                         <span className="flex items-center gap-1">
+                                                         <span className="flex items-center gap-1 truncate">
                                                              <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">EXT</span>
                                                              <span className="truncate">
                                                                  {event.childNames ? event.childNames : (event.description || 'Evento')}
                                                              </span>
                                                          </span>
                                                      ) : (
-                                                         <>{locPrefix} {event.startTime}</>
+                                                         <span className="truncate">{locPrefix} {event.startTime}</span>
                                                      )}
                                                  </span>
-                                                 {/* Counter (Solo Manuale o Nascosto per lezioni standard per evitare confusione) */}
-                                                 {isManual && event.count > 1 && (
+                                                 {/* Counter */}
+                                                 {!isClosed && isManual && event.count > 1 && (
                                                      <span className="bg-white/30 px-1 rounded text-[9px] min-w-[1.2em] text-center flex-shrink-0" title="Partecipanti">
                                                          {event.count}
                                                      </span>

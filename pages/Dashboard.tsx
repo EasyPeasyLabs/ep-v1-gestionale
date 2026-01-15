@@ -28,11 +28,12 @@ const calculateFuelRating = (distance: number) => {
 const StatCard: React.FC<{ 
     title: string; 
     value: string | React.ReactNode; 
-    subtext?: string; 
+    valueLabel?: string; // New: Label next to main value
+    subtext?: React.ReactNode; 
     onClick?: () => void;
     icon: React.ReactNode;
     isAlert?: boolean;
-}> = ({ title, value, subtext, onClick, icon, isAlert }) => (
+}> = ({ title, value, valueLabel, subtext, onClick, icon, isAlert }) => (
   <div 
     className={`md-card p-5 flex items-center gap-5 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`} 
     onClick={onClick}
@@ -45,11 +46,14 @@ const StatCard: React.FC<{
     
     <div className="flex-1 min-w-0 z-10">
         <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{title}</p>
-        <div className="text-3xl font-black text-gray-900 mt-0.5 truncate">{value}</div>
+        <div className="flex items-baseline gap-2 mt-0.5">
+            <span className="text-3xl font-black text-gray-900 truncate">{value}</span>
+            {valueLabel && <span className="text-xs font-bold text-gray-400 italic">{valueLabel}</span>}
+        </div>
         {subtext && (
-            <p className={`text-xs mt-1 font-bold ${isAlert ? 'text-amber-600' : 'text-gray-400'}`}>
+            <div className={`text-xs mt-1 font-bold ${isAlert ? 'text-amber-600' : 'text-gray-400'}`}>
                 {subtext}
-            </p>
+            </div>
         )}
     </div>
   </div>
@@ -144,12 +148,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [manualLessonsData, setManualLessonsData] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
-  const [clientCount, setClientCount] = useState(0);
-  const [activeClientCount, setActiveClientCount] = useState(0);
-  const [supplierCount, setSupplierCount] = useState(0);
-  const [activeSupplierCount, setActiveSupplierCount] = useState(0);
-  const [lessonsThisMonth, setLessonsThisMonth] = useState(0);
-  
   const [top5Tab, setTop5Tab] = useState<'clients' | 'suppliers'>('clients');
   const [weekDays, setWeekDays] = useState<{date: Date, count: number, dayName: string}[]>([]);
   const [saturationYear, setSaturationYear] = useState<number>(new Date().getFullYear());
@@ -175,37 +173,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setManualLessonsData(manualLessons);
         setNotifications(notifs);
 
-        setClientCount(clients.length);
-        setSupplierCount(suppliers.length);
-
-        const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
-        const activeClientIds = new Set(activeOrPendingEnrollments.map(e => e.clientId));
-        setActiveClientCount(activeClientIds.size);
-        const activeSupplierIds = new Set(activeOrPendingEnrollments.map(e => e.supplierId));
-        setActiveSupplierCount(activeSupplierIds.size);
-
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        let lessonsCount = 0;
-        enrollments.filter(e => e.status === EnrollmentStatus.Active).forEach(enr => {
-            if(enr.appointments) {
-                enr.appointments.forEach(app => {
-                    const d = new Date(app.date);
-                    if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                        lessonsCount++;
-                    }
-                });
-            }
-        });
-        setLessonsThisMonth(lessonsCount);
-
         // Weekly Calendar
+        const now = new Date();
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
         const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); 
         startOfWeek.setDate(diff);
         startOfWeek.setHours(0,0,0,0);
+
+        const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
 
         const daysData = [];
         const dayNames = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -243,6 +219,132 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     window.addEventListener('EP_DataUpdated', handleDataUpdate);
     return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
   }, []);
+
+  // --- 1. METRICHE CLIENTI ---
+  const advancedMetrics = useMemo(() => {
+      const totalCensus = clientsData.length;
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      
+      const locationClosureMap = new Map<string, Date | null>();
+      suppliersData.forEach(s => {
+          s.locations.forEach((l: any) => {
+              if (l.closedAt) locationClosureMap.set(l.id, new Date(l.closedAt));
+              else locationClosureMap.set(l.id, null);
+          });
+      });
+
+      const activeClientIds = new Set<string>();
+      allEnrollments.forEach(enr => {
+          const isValidStatus = enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending;
+          const hasSlots = enr.lessonsRemaining > 0;
+          
+          if (isValidStatus && hasSlots) {
+              let isLocValid = true;
+              if (enr.locationId && enr.locationId !== 'unassigned') {
+                  const closure = locationClosureMap.get(enr.locationId);
+                  if (closure && closure <= today) isLocValid = false;
+              }
+              if (isLocValid) activeClientIds.add(enr.clientId);
+          }
+      });
+      const activeCount = activeClientIds.size;
+
+      const enrollmentsByClient: Record<string, Enrollment[]> = {};
+      allEnrollments.forEach(enr => {
+          if (!enrollmentsByClient[enr.clientId]) enrollmentsByClient[enr.clientId] = [];
+          enrollmentsByClient[enr.clientId].push(enr);
+      });
+
+      let enthusiasticCount = 0;
+      Object.values(enrollmentsByClient).forEach(list => {
+          if (list.length > 1) { 
+              const totalDays = list.reduce((acc, curr) => {
+                  const start = new Date(curr.startDate).getTime();
+                  const end = new Date(curr.endDate).getTime();
+                  return acc + ((end - start) / (1000 * 60 * 60 * 24));
+              }, 0);
+              if (totalDays >= 90) enthusiasticCount++;
+          }
+      });
+
+      return { totalCensus, activeCount, enthusiasticCount };
+  }, [clientsData, allEnrollments, suppliersData]);
+
+  // --- 2. METRICHE LEZIONI MESE ---
+  const lessonsMetrics = useMemo(() => {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+      
+      let total = 0;
+      let done = 0;
+      let upcoming = 0;
+
+      const checkLesson = (dateStr: string, status?: string) => {
+          const d = new Date(dateStr);
+          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+              total++;
+              // Erogate: Se data passata (now) OPPURE stato 'Present' (indipendentemente dall'ora)
+              if (d < now || status === 'Present') {
+                  done++;
+              } else {
+                  upcoming++;
+              }
+          }
+      };
+
+      // From Enrollments
+      allEnrollments.forEach(enr => {
+          if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
+              if (enr.appointments) {
+                  enr.appointments.forEach(app => checkLesson(app.date, app.status));
+              }
+          }
+      });
+
+      // From Manual Lessons
+      manualLessonsData.forEach(ml => {
+          checkLesson(ml.date, 'Scheduled'); 
+      });
+
+      return { total, done, upcoming };
+  }, [allEnrollments, manualLessonsData]);
+
+  // --- 3. METRICHE FORNITORI ---
+  const supplierMetrics = useMemo(() => {
+      const totalCensus = suppliersData.length;
+      
+      // Filtra esclusione "Simona Puddu"
+      const relevantSuppliers = suppliersData.filter(s => !s.companyName.toLowerCase().includes('simona puddu'));
+      
+      let activeCount = 0;
+      let closedCount = 0;
+      const now = new Date();
+
+      relevantSuppliers.forEach(s => {
+          if (!s.locations || s.locations.length === 0) {
+              // Consideriamo chiuso se non ha sedi o sono tutte chiuse
+              closedCount++;
+              return;
+          }
+
+          // Un fornitore è attivo se ha ALMENO una sede aperta
+          const hasActiveLocation = s.locations.some((l: any) => {
+              if (!l.closedAt) return true; // Aperta
+              const closeDate = new Date(l.closedAt);
+              return closeDate > now; // Chiusura futura -> Aperta oggi
+          });
+
+          if (hasActiveLocation) {
+              activeCount++;
+          } else {
+              closedCount++;
+          }
+      });
+
+      return { totalCensus, activeCount, closedCount };
+  }, [suppliersData]);
 
   const locationOccupancy = useMemo(() => {
       const slotsMap: Record<string, LocationOccupancy> = {};
@@ -449,27 +551,83 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
               <div className="animate-fade-in space-y-8">
                 {/* ROW 1: Premium Stat Cards (Solid Blocks) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    
+                    {/* CARD 1: CLIENTS */}
                     <StatCard 
-                        title="Totale Clienti" 
-                        onClick={() => setCurrentPage && setCurrentPage('Enrollments')}
-                        subtext={`${activeClientCount} Attivi`}
-                        value={clientCount} 
+                        title="Clienti & Community" 
+                        onClick={() => setCurrentPage && setCurrentPage('Clients')}
+                        value={advancedMetrics.totalCensus} 
+                        valueLabel="(Censiti)"
                         icon={<ClientsIcon />}
+                        subtext={
+                            <div className="flex flex-col gap-1 mt-2">
+                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600">
+                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+                                    </span>
+                                    <strong>{advancedMetrics.activeCount}</strong> Attivi (Attualmente iscritti)
+                                </div>
+                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-purple-100 text-purple-600">
+                                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+                                    </span>
+                                    <strong>{advancedMetrics.enthusiasticCount}</strong> Entusiasti (Fedelissimi)
+                                </div>
+                            </div>
+                        }
                     />
+
+                    {/* CARD 2: LESSONS */}
                     <StatCard 
                         title="Lezioni Mese" 
-                        value={lessonsThisMonth}
-                        subtext="Erogate nel mese"
+                        value={lessonsMetrics.total}
+                        valueLabel="(tot. mese)"
                         onClick={() => setCurrentPage && setCurrentPage('ActivityLog')}
                         icon={<ChecklistIcon />}
+                        subtext={
+                            <div className="flex flex-col gap-1 mt-2">
+                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600 font-bold text-[10px]">
+                                        ✓
+                                    </span>
+                                    <strong>{lessonsMetrics.done}</strong> Fatte (già svolte)
+                                </div>
+                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 text-gray-600">
+                                        <ClockIcon />
+                                    </span>
+                                    <strong>{lessonsMetrics.upcoming}</strong> Da fare (mancanti)
+                                </div>
+                            </div>
+                        }
                     />
+
+                    {/* CARD 3: SUPPLIERS */}
                     <StatCard 
                         title="Fornitori" 
-                        value={supplierCount} 
-                        subtext={`${activeSupplierCount} Attivi`}
+                        value={supplierMetrics.totalCensus} 
+                        valueLabel="(censiti)"
                         onClick={() => setCurrentPage && setCurrentPage('Suppliers')}
                         icon={<SuppliersIcon />}
+                        subtext={
+                            <div className="flex flex-col gap-1 mt-2">
+                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600">
+                                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                    </span>
+                                    <strong>{supplierMetrics.activeCount}</strong> Attivi (sedi attive)
+                                </div>
+                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600">
+                                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                    </span>
+                                    <strong>{supplierMetrics.closedCount}</strong> Chiusi (sedi chiuse)
+                                </div>
+                            </div>
+                        }
                     />
+
+                    {/* CARD 4: ALERTS */}
                     <StatCard 
                         title="Azioni Richieste" 
                         value={notifications.length}
