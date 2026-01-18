@@ -1,5 +1,5 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+// Added EnrollmentInput to the imports to fix the error in handleSaveEnrollment
 import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
@@ -455,7 +455,7 @@ const BulkMoveModal: React.FC<{
                                     <button 
                                         key={idx} 
                                         onClick={() => setSelectedSlotIndex(idx)}
-                                        className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all ${selectedSlotIndex === idx ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                                        className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all ${selectedSlotIndex === idx ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                                     >
                                         {daysOfWeekMap[slot.dayOfWeek].substring(0, 3)} {slot.startTime}-{slot.endTime}
                                     </button>
@@ -483,7 +483,7 @@ const BulkMoveModal: React.FC<{
 };
 
 
-const Enrollments: React.FC = () => {
+const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Data States
     const [allClients, setAllClients] = useState<Client[]>([]); // Store ALL clients
     const [parentClients, setParentClients] = useState<ParentClient[]>([]); // For Dropdown
@@ -494,7 +494,7 @@ const Enrollments: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     
     // Filter States
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
     const [sortOrder, setSortOrder] = useState<'az' | 'za'>('az');
     
     // Dropdown Filters
@@ -596,6 +596,7 @@ const Enrollments: React.FC = () => {
 
     const handleNewEnrollment = () => { setSelectedClient(null); setEditingEnrollment(undefined); setIsModalOpen(true); }
     const handleEditClick = (e: React.MouseEvent, client: ParentClient | undefined, enrollment: Enrollment) => { e.stopPropagation(); if (!client) return; setSelectedClient(client); setEditingEnrollment(enrollment); setIsModalOpen(true); };
+    // Fixed EnrollmentInput by adding it to imports from types
     const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { setLoading(true); try { for (const enrollmentData of enrollmentsData) { if ('id' in enrollmentData) { await updateEnrollment((enrollmentData as any).id, enrollmentData); } else { await addEnrollment(enrollmentData); } } setIsModalOpen(false); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Save error:", err); setError("Errore salvataggio."); setLoading(false); } };
 
     // --- Actions ---

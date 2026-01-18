@@ -289,7 +289,7 @@ const FixWizard: React.FC<{
                                         </div>
                                         <div className="flex flex-col items-end">
                                             <span className="text-xl font-black text-slate-800">{(issue.amount ?? 0).toFixed(2)}€</span>
-                                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-tight flex-1">
+                                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest font-mono leading-tight flex-1">
                                                 Gap Rilevato
                                             </span>
                                         </div>
@@ -806,7 +806,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="lg"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onSync={handleExecuteSync} /></Modal>}
             {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="lg"><FixWizard issues={integrityIssues} onFix={handleWizardFix} onClose={() => setIsFixWizardOpen(false)} /></Modal>}
             {isTransactionModalOpen && <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg"><TransactionForm transaction={editingTransaction} suppliers={suppliers} onSave={handleSaveTransaction} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
-            {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {}} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
+            {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {} as Invoice} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
             {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="lg"><QuoteForm quote={editingQuote} clients={clients} onSave={handleSaveQuote} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
             {selectedLocationROI && <LocationDetailModal data={selectedLocationROI} onClose={() => setSelectedLocationROI(null)} />}
             <ConfirmModal isOpen={!!transactionToDelete} onClose={() => setTransactionToDelete(null)} onConfirm={confirmDelete} title="Elimina" message="Sei sicuro?" isDangerous={true} />
