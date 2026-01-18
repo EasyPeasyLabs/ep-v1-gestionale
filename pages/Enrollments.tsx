@@ -483,7 +483,7 @@ const BulkMoveModal: React.FC<{
 };
 
 
-const Enrollments: React.FC = () => {
+const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     // Data States
     const [allClients, setAllClients] = useState<Client[]>([]); // Store ALL clients
     const [parentClients, setParentClients] = useState<ParentClient[]>([]); // For Dropdown
