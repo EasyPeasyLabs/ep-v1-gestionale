@@ -1,11 +1,10 @@
-
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch, getDoc } from 'firebase/firestore';
-import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment, IntegrityIssue, EnrollmentStatus } from '../types';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch, runTransaction, getDoc } from 'firebase/firestore';
+import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment, IntegrityIssue, IntegrityIssueSuggestion, EnrollmentStatus, FiscalYear, ClientType, ParentClient, InstitutionalClient } from '../types';
 import { getAllEnrollments, getActiveLocationForClient } from './enrollmentService';
 import { getSuppliers } from './supplierService';
 import { getClients } from './parentService';
-import { checkFiscalLock } from './fiscalYearService';
+import { checkFiscalLock, getFiscalYears } from './fiscalYearService';
 
 // --- Transactions ---
 const transactionCollectionRef = collection(db, 'transactions');
@@ -26,9 +25,7 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 };
 
 export const addTransaction = async (transaction: TransactionInput): Promise<string> => {
-    // GUARDIA FISCALE
     await checkFiscalLock(transaction.date);
-
     const dataToSave = {
         ...transaction,
         status: transaction.status || TransactionStatus.Completed,
@@ -39,7 +36,6 @@ export const addTransaction = async (transaction: TransactionInput): Promise<str
 };
 
 export const updateTransaction = async (id: string, transaction: Partial<TransactionInput>): Promise<void> => {
-    // Per update, dobbiamo controllare sia la vecchia data (se esiste) che la nuova
     const docRef = doc(db, 'transactions', id);
     const snap = await getDoc(docRef);
     if(snap.exists()) {
@@ -48,24 +44,15 @@ export const updateTransaction = async (id: string, transaction: Partial<Transac
     if (transaction.date) {
         await checkFiscalLock(transaction.date);
     }
-
     await updateDoc(docRef, transaction);
 };
 
 export const deleteTransaction = async (id: string): Promise<void> => {
     const transactionDoc = doc(db, 'transactions', id);
-    const snap = await getDoc(transactionDoc);
-    if(snap.exists()) {
-        await checkFiscalLock(snap.data().date);
-    }
     await updateDoc(transactionDoc, { isDeleted: true });
 };
 
-// ... (restoreTransaction, permanentDeleteTransaction seguono la stessa logica di deleteTransaction)
-
 export const deleteTransactionByRelatedId = async (relatedId: string): Promise<void> => {
-    // Questa è un'operazione batch interna (es. cancellazione fattura), 
-    // assumiamo che il controllo venga fatto a monte sull'entità padre (Fattura)
     const q = query(transactionCollectionRef, where("relatedDocumentId", "==", relatedId));
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
@@ -76,9 +63,6 @@ export const deleteTransactionByRelatedId = async (relatedId: string): Promise<v
 };
 
 export const deleteAutoRentTransactions = async (locationId: string): Promise<void> => {
-    // Auto-rent è processo interno, potrebbe aver bisogno di check ma spesso ricalcola il corrente.
-    // Per sicurezza, meglio non bloccare il sync globale, ma loggare se fallisce su anni chiusi.
-    // Qui lasciamo libero per ora o implementiamo logica granulare nel sync.
     const q = query(transactionCollectionRef, 
         where("allocationId", "==", locationId),
         where("category", "==", TransactionCategory.Nolo),
@@ -109,19 +93,15 @@ export const getInvoices = async (): Promise<Invoice[]> => {
 };
 
 export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, invoiceNumber: string}> => {
-    // GUARDIA FISCALE
     await checkFiscalLock(invoice.issueDate);
-
     let invoiceNumber = invoice.invoiceNumber;
     if (!invoiceNumber) {
         if (invoice.isGhost) {
             invoiceNumber = await getNextGhostInvoiceNumber();
         } else {
-            // Generazione automatica basata sulla progressione nell'anno di emissione
             invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, invoice.issueDate);
         }
     }
-
     const docRef = await addDoc(invoiceCollectionRef, { ...invoice, invoiceNumber, isDeleted: false });
     return { id: docRef.id, invoiceNumber };
 };
@@ -129,23 +109,10 @@ export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, in
 export const updateInvoice = async (id: string, invoice: Partial<InvoiceInput>): Promise<void> => {
     const docRef = doc(db, 'invoices', id);
     const snap = await getDoc(docRef);
-    
     if(snap.exists()) {
         const currentData = snap.data();
         await checkFiscalLock(currentData.issueDate);
-        
-        // PROTEZIONE SIGILLO SDI:
-        // Se la fattura è già sigillata (SealedSDI), non permettere cambi di stato impliciti 
-        // a meno che non sia una modifica manuale esplicita dall'Admin (che passa da qui).
-        // Tuttavia, scripts automatici non dovrebbero chiamare updateInvoice su Sealed.
-        // Questo check è di sicurezza aggiuntiva.
-        if (currentData.status === DocumentStatus.SealedSDI && invoice.status && invoice.status !== DocumentStatus.SealedSDI) {
-             // L'admin può sbloccare (es. riportare a Draft), ma logghiamo l'evento o permettiamo.
-             // La richiesta dice "non possono improvvisamente passare ad un altro stato".
-             // Qui stiamo nel contesto di un update esplicito (dal form), quindi è permesso.
-        }
     }
-    
     if (invoice.issueDate) {
         await checkFiscalLock(invoice.issueDate);
     }
@@ -157,7 +124,6 @@ export const deleteInvoice = async (id: string): Promise<void> => {
     const snap = await getDoc(docRef);
     if(snap.exists()) {
         await checkFiscalLock(snap.data().issueDate);
-        // Blocco cancellazione se sigillata
         if (snap.data().status === DocumentStatus.SealedSDI) {
             throw new Error("IMPOSSIBILE ELIMINARE: La fattura è sigillata SDI.");
         }
@@ -165,88 +131,92 @@ export const deleteInvoice = async (id: string): Promise<void> => {
     await updateDoc(docRef, { isDeleted: true });
 };
 
-// --- Funzione Batch per segnare come pagate ---
 export const markInvoicesAsPaid = async (invoiceIds: string[]): Promise<void> => {
     if (invoiceIds.length === 0) return;
-    
-    // Firestore batch limit is 500. We chunk the array.
     const chunkSize = 450; 
     for (let i = 0; i < invoiceIds.length; i += chunkSize) {
         const chunk = invoiceIds.slice(i, i + chunkSize);
         const batch = writeBatch(db);
-        
         chunk.forEach(id => {
             const docRef = doc(db, 'invoices', id);
             batch.update(docRef, { status: DocumentStatus.Paid });
         });
-
         await batch.commit();
     }
 };
 
-// --- RICONCILIAZIONE (SYNC) TRANSAZIONI ---
+// --- RICONCILIAZIONE POTENZIATA (AI-Like Scan) ---
 export const reconcileTransactions = async (): Promise<string> => {
-    // 1. Recupera tutti i dati attuali
     const [allTransactions, allInvoices] = await Promise.all([
         getTransactions(), 
-        getInvoices() // Restituisce fatture non cancellate (!isDeleted)
+        getInvoices()
     ]);
-
     const invoiceMap = new Map(allInvoices.map(i => [i.id, i]));
+    const invoiceNumberMap = new Map(allInvoices.map(i => [i.invoiceNumber, i]));
     
     const updates: { ref: any, data: any }[] = [];
     let updatedCount = 0;
+    let autoLinkedCount = 0;
     let orphansCount = 0;
 
+    // Pattern regex per trovare numeri fattura tipo FT-2025-010 o FT2025010
+    const invoiceRegex = /FT[-]?\d{4}[-]?\d{3,}/i;
+
     for (const t of allTransactions) {
-        // Analizza solo transazioni collegate a documenti
-        if (!t.relatedDocumentId) continue;
+        if (t.isDeleted) continue;
+        if (t.relatedDocumentId?.startsWith('AUTO-RENT')) continue;
+        if (t.relatedDocumentId?.startsWith('ENR-')) continue; 
 
-        // Escludi transazioni auto-generate come affitti o incassi diretti ENR
-        if (t.relatedDocumentId.startsWith('AUTO-RENT')) continue;
-        if (t.relatedDocumentId.startsWith('ENR-')) continue; 
-
-        const invoice = invoiceMap.get(t.relatedDocumentId);
-
-        if (invoice) {
-            // CASO A: Documento trovato -> Verifica allineamento
-            // Formato richiesto: "incasso fattura n. [NUMERO] - [CLIENTE]"
-            // Preleva Rif/ID (invoiceNumber) e Soggetto (clientName)
-            const invoiceNum = invoice.invoiceNumber || 'N/D';
-            const expectedDesc = `incasso fattura n. ${invoiceNum} - ${invoice.clientName}`;
-            
-            // Logica di confronto: Normalizza stringhe per evitare falsi positivi su spazi
-            const currentDesc = (t.description || '').trim();
-            const targetDesc = expectedDesc.trim();
-            
-            // Se la descrizione è diversa o il nome cliente non coincide
-            if (currentDesc !== targetDesc || t.clientName !== invoice.clientName) {
-                const docRef = doc(db, 'transactions', t.id);
-                updates.push({ 
-                    ref: docRef, 
-                    data: { 
-                        description: targetDesc,
-                        clientName: invoice.clientName // Allinea anche il nome cliente denormalizzato
-                    } 
-                });
-                updatedCount++;
+        // CASO 1: Già collegata -> Aggiorna metadati se necessario
+        if (t.relatedDocumentId) {
+            const invoice = invoiceMap.get(t.relatedDocumentId);
+            if (invoice) {
+                const invoiceNum = invoice.invoiceNumber || 'N/D';
+                const expectedDesc = `incasso fattura n. ${invoiceNum} - ${invoice.clientName}`;
+                const currentDesc = (t.description || '').trim();
+                const targetDesc = expectedDesc.trim();
+                if (currentDesc !== targetDesc || t.clientName !== invoice.clientName) {
+                    const docRef = doc(db, 'transactions', t.id);
+                    updates.push({ ref: docRef, data: { description: targetDesc, clientName: invoice.clientName } });
+                    updatedCount++;
+                }
+            } else {
+                if (!t.description.startsWith("⚠️ ORFANA")) {
+                    const docRef = doc(db, 'transactions', t.id);
+                    const orphanDesc = `⚠️ ORFANA - Doc Mancante (ID: ${t.relatedDocumentId})`;
+                    updates.push({ ref: docRef, data: { description: orphanDesc } });
+                    orphansCount++;
+                }
             }
-        } else {
-            // CASO C: Documento non trovato (Orfana)
-            // Se non è già marcata come orfana, marcala
-            if (!t.description.startsWith("⚠️ ORFANA")) {
-                const docRef = doc(db, 'transactions', t.id);
-                const orphanDesc = `⚠️ ORFANA - Doc Mancante (ID: ${t.relatedDocumentId})`;
-                updates.push({ 
-                    ref: docRef, 
-                    data: { description: orphanDesc } 
-                });
-                orphansCount++;
+        } 
+        // CASO 2: Orfana -> Prova a scoprire il legame tramite testo
+        else if (t.type === TransactionType.Income) {
+            const match = t.description.match(invoiceRegex);
+            if (match) {
+                let foundInvoiceNum = match[0].toUpperCase();
+                // Normalizza se mancano i trattini (es FT2025010 -> FT-2025-010)
+                if (!foundInvoiceNum.includes('-')) {
+                    foundInvoiceNum = `FT-${foundInvoiceNum.substring(2,6)}-${foundInvoiceNum.substring(6)}`;
+                }
+
+                const linkedInv = invoiceNumberMap.get(foundInvoiceNum);
+                // Verifica importo (tolleranza 2€ per bolli virtuali o piccoli arrotondamenti)
+                if (linkedInv && Math.abs(Number(linkedInv.totalAmount) - Number(t.amount)) <= 2.01) {
+                    const docRef = doc(db, 'transactions', t.id);
+                    updates.push({ 
+                        ref: docRef, 
+                        data: { 
+                            relatedDocumentId: linkedInv.id,
+                            relatedEnrollmentId: linkedInv.relatedEnrollmentId || null,
+                            clientName: linkedInv.clientName 
+                        } 
+                    });
+                    autoLinkedCount++;
+                }
             }
         }
     }
 
-    // Batch updates (Chunking 450 per sicurezza)
     if (updates.length > 0) {
         const chunkSize = 450;
         for (let i = 0; i < updates.length; i += chunkSize) {
@@ -256,85 +226,178 @@ export const reconcileTransactions = async (): Promise<string> => {
             await batch.commit();
         }
     }
-
-    return `Riconciliazione retroattiva completata.\n• Aggiornate: ${updatedCount}\n• Marcate Orfane: ${orphansCount}`;
+    return `Riconciliazione completata.\n• Aggiornate: ${updatedCount}\n• Auto-collegate: ${autoLinkedCount}\n• Orfane: ${orphansCount}`;
 };
 
-// --- FISCAL HEALTH CHECK (Diagnostica) ---
+// --- HELPER: Subset Sum Algorithm (Cluster Matching con Fuzzy logic e Deduplicazione) ---
+function findCandidateClusters(invoices: Invoice[], target: number, maxGap: number = 35): IntegrityIssueSuggestion[] {
+    const results: IntegrityIssueSuggestion[] = [];
+    
+    const uniqueContentMap = new Map<string, Invoice>();
+    invoices.forEach(inv => {
+        const key = `${inv.invoiceNumber}|${inv.issueDate}|${Number(inv.totalAmount).toFixed(2)}`;
+        if (!uniqueContentMap.has(key)) {
+            uniqueContentMap.set(key, inv);
+        }
+    });
+
+    const uniqueInvoices = Array.from(uniqueContentMap.values());
+    const len = uniqueInvoices.length;
+    const limit = Math.min(len, 12); 
+
+    for (let i = 1; i < (1 << limit); i++) {
+        const subset: Invoice[] = [];
+        let sum = 0;
+        for (let j = 0; j < limit; j++) {
+            if ((i >> j) & 1) {
+                subset.push(uniqueInvoices[j]);
+                sum += Number(Number(uniqueInvoices[j].totalAmount).toFixed(2));
+            }
+        }
+        
+        const gap = Number((target - sum).toFixed(2));
+        const absGap = Math.abs(gap);
+
+        if (absGap < 0.05) {
+            results.push({ invoices: subset, isPerfect: true, gap: 0 });
+        } 
+        else if (gap > 0 && (gap <= maxGap || sum >= target * 0.8)) {
+            results.push({ invoices: subset, isPerfect: false, gap: gap });
+        }
+    }
+
+    const finalResults: IntegrityIssueSuggestion[] = [];
+    const seenCombos = new Set<string>();
+
+    results.sort((a,b) => (a.isPerfect === b.isPerfect) ? (a.gap - b.gap) : (a.isPerfect ? -1 : 1))
+    .forEach(res => {
+        const comboKey = res.invoices.map(inv => inv.id).sort().join('|');
+        if (!seenCombos.has(comboKey)) {
+            finalResults.push(res);
+            seenCombos.add(comboKey);
+        }
+    });
+
+    return finalResults;
+}
+
 export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
-    // 1. Fetch All Relevant Data
-    const [enrollments, invoices, transactions, clients] = await Promise.all([
+    const [enrollments, invoices, transactions, clients, fiscalYears] = await Promise.all([
         getAllEnrollments(),
         getInvoices(),
         getTransactions(),
-        getClients()
+        getClients(),
+        getFiscalYears()
     ]);
 
+    const closedYears = new Set(fiscalYears.filter(y => y.status === 'CLOSED').map(y => y.year));
     const issues: IntegrityIssue[] = [];
 
-    // Map clients for easy name lookup
     const clientMap = new Map<string, string>();
     clients.forEach(c => {
-        const name = c.clientType === 'parent' 
-            ? `${(c as any).firstName} ${(c as any).lastName}` 
-            : (c as any).companyName;
-        clientMap.set(c.id, name);
+        const name = c.clientType === ClientType.Parent 
+            ? `${(c as ParentClient).lastName || ''} ${(c as ParentClient).firstName || ''}` 
+            : (c as InstitutionalClient).companyName;
+        clientMap.set(c.id, name.trim());
     });
 
-    // MAPS for quick lookup
-    // Invoice -> Transaction
-    const invToTransMap = new Map<string, Transaction>();
-    transactions.forEach(t => {
-        if(t.relatedDocumentId) invToTransMap.set(t.relatedDocumentId, t);
-    });
+    const activeInvoices = invoices.filter(i => !i.isDeleted);
+    const activeTransactions = transactions.filter(t => !t.isDeleted && t.type === TransactionType.Income);
 
-    // 2. CHECK 1: ISCRIZIONI ATTIVE SENZA FATTURA (O TRANSAZIONE DIRETTA)
-    // Regola: Se Status = Active, deve esistere una fattura (anche bozza) o transazione per quel bambino/importo.
+    // 1. VERIFICA COPERTURA FISCALE (Fatture mancanti per Iscrizioni)
     enrollments.forEach(enr => {
-        if (enr.status === EnrollmentStatus.Active) {
-            // Cerca fatture per questo cliente che contengano il nome del bambino
-            const relatedInvoices = invoices.filter(inv => 
-                inv.clientId === enr.clientId && 
-                !inv.isDeleted &&
-                !inv.isGhost && // Escludiamo le ghost (pro-forma)
-                inv.items.some(item => item.description.includes(enr.childName))
-            );
+        const startYear = new Date(enr.startDate).getFullYear();
+        if (closedYears.has(startYear)) return;
 
-            // Cerca transazioni dirette (senza fattura) collegate tramite Synthetic ID
-            const syntheticId = `ENR-${enr.id}`;
-            const relatedDirectTrans = transactions.some(t => t.relatedDocumentId === syntheticId && !t.isDeleted);
+        if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
+            const linkedDocs = activeInvoices.filter(inv => inv.relatedEnrollmentId === enr.id);
+            const totalCoveredAmount = Number(linkedDocs.reduce((sum, inv) => sum + Number(Number(inv.totalAmount).toFixed(2)), 0).toFixed(2));
+            const linkedCash = activeTransactions.filter(t => t.relatedEnrollmentId === enr.id || t.relatedDocumentId === `ENR-${enr.id}`);
+            const cashAmount = Number(linkedCash.reduce((sum, t) => sum + Number(Number(t.amount).toFixed(2)), 0).toFixed(2));
+            const adjustment = Number(Number(enr.adjustmentAmount || 0).toFixed(2));
+            const totalDetectedCoverage = Number((Math.max(totalCoveredAmount, cashAmount) + adjustment).toFixed(2));
+            const enrollmentPrice = Number(Number(enr.price || 0).toFixed(2));
+            const missingAmount = Number((enrollmentPrice - totalDetectedCoverage).toFixed(2));
 
-            if (relatedInvoices.length === 0 && !relatedDirectTrans) {
-                // Caso Speciale: Iscrizione senza fattura e senza transazione cassa.
+            if (missingAmount > 0.1) {
+                const enrStart = new Date(enr.startDate);
+                const enrEnd = new Date(enr.endDate);
+                const bufferDays = 45 * 24 * 60 * 60 * 1000; 
+                
+                const clientOrphans = activeInvoices.filter(inv => 
+                    !inv.relatedEnrollmentId && 
+                    inv.clientId === enr.clientId &&
+                    new Date(inv.issueDate).getTime() >= enrStart.getTime() - bufferDays &&
+                    new Date(inv.issueDate).getTime() <= enrEnd.getTime() + bufferDays
+                );
+
+                const suggestions = findCandidateClusters(clientOrphans, Number((enrollmentPrice - adjustment).toFixed(2)));
+
                 issues.push({
                     id: `miss-inv-${enr.id}`,
                     type: 'missing_invoice',
                     severity: 'high',
-                    description: `Iscrizione Attiva senza Fattura o Incasso: ${enr.childName}`,
+                    description: `Scoperto Fiscale: ${enr.childName}`,
                     entityId: enr.id,
                     entityName: enr.childName,
-                    amount: enr.price || 0,
+                    parentName: clientMap.get(enr.clientId) || 'Genitore N/D',
+                    subscriptionName: enr.subscriptionName,
+                    amount: missingAmount,
                     date: enr.startDate,
+                    endDate: enr.endDate,
+                    lessonsTotal: enr.lessonsTotal,
+                    createdAt: enr.createdAt || enr.startDate,
+                    paymentMethod: enr.preferredPaymentMethod || PaymentMethod.BankTransfer,
+                    suggestions: suggestions.length > 0 ? suggestions : undefined,
                     details: { enrollment: enr, clientName: clientMap.get(enr.clientId) }
                 });
             }
         }
     });
 
-    // 3. CHECK 2: FATTURE PAGATE SENZA TRANSAZIONE
-    invoices.forEach(inv => {
-        if (inv.status === DocumentStatus.Paid && !inv.isDeleted && !inv.isGhost) {
-            const hasTransaction = invToTransMap.has(inv.id);
+    // 2. VERIFICA CASSA (Transazioni mancanti per Fatture)
+    activeInvoices.filter(i => !i.isGhost && !i.isDeleted).forEach(inv => {
+        const invYear = new Date(inv.issueDate).getFullYear();
+        if (closedYears.has(invYear)) return;
+
+        if (inv.status === DocumentStatus.Paid || inv.status === DocumentStatus.SealedSDI) {
+            const hasTransaction = activeTransactions.some(t => t.relatedDocumentId === inv.id);
             if (!hasTransaction) {
+                const linkedEnr = enrollments.find(e => e.id === inv.relatedEnrollmentId);
+
+                // --- NUOVA LOGICA: RICERCA TRANSAZIONI ORFANE COMPATIBILI ---
+                // Cerchiamo nel registro transazioni entrate che non sono collegate a nulla 
+                // e che hanno l'importo della fattura (tolleranza 2€ per bolli) e che 
+                // nominano il numero fattura o il cliente nella descrizione.
+                const orphanTransactions = activeTransactions.filter(t => 
+                    !t.relatedDocumentId && 
+                    Math.abs(Number(t.amount) - Number(inv.totalAmount)) <= 2.01 &&
+                    (t.description.includes(inv.invoiceNumber) || t.clientName === inv.clientName)
+                );
+
+                // Mappiamo le transazioni orfane come suggerimenti
+                const suggestions: IntegrityIssueSuggestion[] = orphanTransactions.map(t => ({
+                    invoices: [inv], // In questo caso è l'inverso: mettiamo la fattura target
+                    isPerfect: Math.abs(Number(t.amount) - Number(inv.totalAmount)) < 0.1,
+                    gap: Number((Number(inv.totalAmount) - Number(t.amount)).toFixed(2)),
+                    // Passiamo i dati della transazione nei dettagli per il fix
+                    transactionDetails: t 
+                }));
+
                 issues.push({
                     id: `miss-trans-${inv.id}`,
                     type: 'missing_transaction',
-                    severity: 'medium', // Medium perché il fisco è ok (fattura c'è), ma la cassa no.
-                    description: `Fattura Pagata senza Movimento di Cassa: ${inv.invoiceNumber}`,
+                    severity: 'medium',
+                    description: `Fattura senza Cassa: ${inv.invoiceNumber}`,
                     entityId: inv.id,
-                    entityName: inv.clientName,
-                    amount: inv.totalAmount,
+                    entityName: linkedEnr?.childName || 'Soggetto N/D',
+                    parentName: inv.clientName,
+                    subscriptionName: linkedEnr?.subscriptionName || 'Documento Orfano',
+                    amount: Number(inv.totalAmount) || 0,
                     date: inv.issueDate,
+                    paymentMethod: inv.paymentMethod,
+                    createdAt: inv.issueDate, 
+                    suggestions: suggestions.length > 0 ? (suggestions as any) : undefined,
                     details: { invoice: inv }
                 });
             }
@@ -344,65 +407,170 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
     return issues;
 };
 
-// --- AUTO FIXER ---
-export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' = 'invoice'): Promise<void> => {
+// --- FUNZIONE ATOMICA OTTIMIZZATA: RICONCILIAZIONE SMART (Supporto Abbuoni) ---
+export const linkInvoicesToEnrollment = async (invoiceIds: string[], enrollmentId: string, adjustment?: { amount: number, notes: string }): Promise<void> => {
+    const [enrSnap, allTransactions] = await Promise.all([
+        getDoc(doc(db, 'enrollments', enrollmentId)),
+        getTransactions()
+    ]);
+
+    if (!enrSnap.exists()) throw new Error("Iscrizione non trovata.");
+    const enrData = enrSnap.data() as Enrollment;
+
+    const batch = writeBatch(db);
+
+    for (const invId of invoiceIds) {
+        const invoiceRef = doc(db, 'invoices', invId);
+        batch.update(invoiceRef, { relatedEnrollmentId: enrollmentId });
+
+        const relatedTrans = allTransactions.filter(t => t.relatedDocumentId === invId && !t.isDeleted);
+        relatedTrans.forEach(t => {
+            const transRef = doc(db, 'transactions', t.id);
+            batch.update(transRef, {
+                relatedEnrollmentId: enrollmentId,
+                allocationId: enrData.locationId !== 'unassigned' ? enrData.locationId : t.allocationId,
+                allocationName: enrData.locationName !== 'Sede Non Definita' ? enrData.locationName : t.allocationName
+            });
+        });
+    }
+
+    const enrollmentUpdates: Partial<Enrollment> = {};
+    if (adjustment && adjustment.amount > 0) {
+        enrollmentUpdates.adjustmentAmount = Number((Number(enrData.adjustmentAmount || 0) + Number(adjustment.amount)).toFixed(2));
+        enrollmentUpdates.adjustmentNotes = (enrData.adjustmentNotes ? enrData.adjustmentNotes + " | " : "") + adjustment.notes;
+    }
+
+    if (enrData.status === EnrollmentStatus.Pending) {
+        enrollmentUpdates.status = EnrollmentStatus.Active;
+    }
+
+    if (Object.keys(enrollmentUpdates).length > 0) {
+        batch.update(enrSnap.ref, enrollmentUpdates);
+    }
+
+    await batch.commit();
+};
+
+export interface InvoiceGap {
+    number: number;
+    year: number;
+    recommended: boolean;
+    prevDate?: string;
+    nextDate?: string;
+}
+
+export const getInvoiceNumberGaps = async (targetYear: number): Promise<InvoiceGap[]> => {
+    const allInvoices = await getInvoices();
+    const yearInvoices = allInvoices
+        .filter(i => !i.isDeleted && !i.isGhost && new Date(i.issueDate).getFullYear() === targetYear)
+        .sort((a,b) => new Date(a.issueDate).getTime() - new Date(b.issueDate).getTime());
+
+    const numbersData = yearInvoices.map(inv => {
+        const parts = inv.invoiceNumber.split('-');
+        const n = parseInt(parts[parts.length - 1], 10);
+        return { n, date: inv.issueDate };
+    }).filter(x => !isNaN(x.n)).sort((a,b) => a.n - b.n);
+
+    const gaps: InvoiceGap[] = [];
+    if (numbersData.length === 0) return gaps;
+
+    for (let i = 0; i < numbersData.length - 1; i++) {
+        if (numbersData[i+1].n !== numbersData[i].n + 1) {
+            for (let m = numbersData[i].n + 1; m < numbersData[i+1].n; m++) {
+                gaps.push({
+                    number: m,
+                    year: targetYear,
+                    recommended: false,
+                    prevDate: numbersData[i].date,
+                    nextDate: numbersData[i+1].date
+                });
+            }
+        }
+    }
+    if (numbersData[0].n > 1) {
+        for (let m = 1; m < numbersData[0].n; m++) {
+            gaps.push({ number: m, year: targetYear, recommended: false, nextDate: numbersData[0].date });
+        }
+    }
+    return gaps;
+};
+
+export const isInvoiceNumberTaken = async (year: number, num: number): Promise<boolean> => {
+    const all = await getInvoices();
+    const targetSuffix = String(num).padStart(3, '0');
+    const targetPrefix = `FT-${year}`;
+    return all.some(i => !i.isDeleted && i.invoiceNumber.startsWith(targetPrefix) && i.invoiceNumber.endsWith(targetSuffix));
+};
+
+export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' = 'invoice', manualInvoiceNumber?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string): Promise<void> => {
+    
+    // --- NUOVA LOGICA: COLLEGAMENTO TRANSAZIONE ORFANA ---
+    if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
+        const inv = issue.details.invoice as Invoice;
+        const transRef = doc(db, 'transactions', targetTransactionId);
+        await updateDoc(transRef, {
+            relatedDocumentId: inv.id,
+            relatedEnrollmentId: inv.relatedEnrollmentId || null,
+            clientName: inv.clientName
+        });
+        return;
+    }
+
+    if (strategy === 'link' && targetInvoiceIds && targetInvoiceIds.length > 0) {
+        await linkInvoicesToEnrollment(targetInvoiceIds, issue.entityId, adjustment);
+        return;
+    }
+
     if (issue.type === 'missing_invoice') {
         const enr = issue.details.enrollment as Enrollment;
         const clientName = issue.details.clientName || 'Cliente';
-        
+        const finalAmount = Number(issue.amount) || 0; 
+        const competenceDate = enr.startDate;
+
         if (strategy === 'invoice') {
-            // Crea Fattura
             const invoiceInput: InvoiceInput = {
-                invoiceNumber: '', // Auto-gen
-                issueDate: new Date().toISOString(), // Data odierna per il fix
-                dueDate: new Date().toISOString(),
+                invoiceNumber: manualInvoiceNumber || '',
+                issueDate: competenceDate,
+                dueDate: competenceDate,
                 clientId: enr.clientId,
                 clientName: clientName,
-                items: [{
-                    description: `Pagamento Iscrizione: ${enr.childName} - ${enr.subscriptionName}`,
-                    quantity: 1,
-                    price: enr.price || 0,
-                    notes: 'Generata da controllo integrità'
-                }],
-                totalAmount: enr.price || 0,
-                status: DocumentStatus.Paid, // Assumiamo pagata se l'iscrizione è attiva
-                paymentMethod: PaymentMethod.BankTransfer,
-                hasStampDuty: (enr.price || 0) > 77.47,
+                relatedEnrollmentId: enr.id,
+                items: [{ description: `Pagamento Iscrizione: ${enr.childName}`, quantity: 1, price: finalAmount }],
+                totalAmount: finalAmount,
+                status: DocumentStatus.Paid,
+                paymentMethod: enr.preferredPaymentMethod || PaymentMethod.BankTransfer,
+                hasStampDuty: finalAmount > 77.47,
                 isGhost: false,
                 isDeleted: false
             };
-            
-            // Nota: addInvoice controlla il lock fiscale. Se l'anno è chiuso, lancerà errore.
             const res = await addInvoice(invoiceInput);
-            
-            // Crea Transazione Contestuale (per evitare di creare un nuovo buco "missing transaction")
             const transInput: TransactionInput = {
-                date: new Date().toISOString(),
+                date: competenceDate,
                 description: `incasso fattura n. ${res.invoiceNumber} - ${clientName}`,
-                amount: enr.price || 0,
+                amount: finalAmount,
                 type: TransactionType.Income,
                 category: TransactionCategory.Vendite,
-                paymentMethod: PaymentMethod.BankTransfer,
+                paymentMethod: invoiceInput.paymentMethod,
                 status: TransactionStatus.Completed,
                 relatedDocumentId: res.id,
+                relatedEnrollmentId: enr.id,
                 allocationType: enr.locationId !== 'unassigned' ? 'location' : 'general',
                 allocationId: enr.locationId !== 'unassigned' ? enr.locationId : undefined,
                 allocationName: enr.locationName,
                 isDeleted: false
             };
             await addTransaction(transInput);
-        
         } else if (strategy === 'cash') {
-            // Crea Solo Transazione Diretta (No Fattura)
             const transInput: TransactionInput = {
-                date: new Date().toISOString(),
-                description: `Incasso Iscrizione (No Doc) - ${enr.childName} - ${enr.subscriptionName}`,
-                amount: enr.price || 0,
+                date: competenceDate,
+                description: `Incasso Iscrizione (No Doc) - ${enr.childName}`,
+                amount: finalAmount,
                 type: TransactionType.Income,
                 category: TransactionCategory.Vendite,
                 paymentMethod: PaymentMethod.Cash, 
                 status: TransactionStatus.Completed,
-                relatedDocumentId: `ENR-${enr.id}`, // Link sintetico
+                relatedDocumentId: `ENR-${enr.id}`,
+                relatedEnrollmentId: enr.id,
                 allocationType: enr.locationId !== 'unassigned' ? 'location' : 'general',
                 allocationId: enr.locationId !== 'unassigned' ? enr.locationId : undefined,
                 allocationName: enr.locationName,
@@ -410,39 +578,34 @@ export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoic
             };
             await addTransaction(transInput);
         }
-
     } else if (issue.type === 'missing_transaction') {
         const inv = issue.details.invoice as Invoice;
-        
-        // Tenta di trovare location intelligente
         let allocId: string | undefined = undefined;
         let allocName: string | undefined = undefined;
         if (inv.clientId) {
             const loc = await getActiveLocationForClient(inv.clientId);
             if (loc) { allocId = loc.id; allocName = loc.name; }
         }
-
         const transInput: TransactionInput = {
-            date: inv.issueDate, // Usa la data della fattura
+            date: inv.issueDate,
             description: `incasso fattura n. ${inv.invoiceNumber} - ${inv.clientName}`,
-            amount: inv.totalAmount,
+            amount: Number(inv.totalAmount) || 0,
             type: TransactionType.Income,
             category: TransactionCategory.Vendite,
             paymentMethod: inv.paymentMethod,
             status: TransactionStatus.Completed,
             relatedDocumentId: inv.id,
+            relatedEnrollmentId: inv.relatedEnrollmentId,
             clientName: inv.clientName,
             allocationType: allocId ? 'location' : 'general',
             allocationId: allocId,
             allocationName: allocName,
             isDeleted: false
         };
-        
         await addTransaction(transInput);
     }
 };
 
-// --- Quotes ---
 export const getQuotes = async (): Promise<Quote[]> => {
     const q = query(collection(db, 'quotes'));
     const snapshot = await getDocs(q);
@@ -468,73 +631,32 @@ export const permanentDeleteQuote = async (id: string) => {
 };
 
 export const convertQuoteToInvoice = async (quoteId: string) => {
-    // 1. Get Quote
     const quoteRef = doc(db, 'quotes', quoteId);
     const quoteSnap = await getDoc(quoteRef);
     if (!quoteSnap.exists()) throw new Error("Preventivo non trovato");
-    
     const quote = quoteSnap.data() as Quote;
-    
-    // 2. Create Invoice
     const today = new Date().toISOString();
-    await checkFiscalLock(today);
-
-    // Convert items (QuoteItems to DocumentItems) - assuming same structure
-    const invoiceInput: InvoiceInput = {
-        invoiceNumber: '', // generated
-        issueDate: today,
-        dueDate: today,
-        clientId: quote.clientId,
-        clientName: quote.clientName,
-        items: quote.items,
-        totalAmount: quote.totalAmount,
-        status: DocumentStatus.Draft,
-        paymentMethod: PaymentMethod.BankTransfer,
-        hasStampDuty: quote.totalAmount > 77.47,
-        isGhost: false,
-        isDeleted: false,
-        relatedQuoteNumber: quote.quoteNumber
-    };
-
+    const invoiceInput: InvoiceInput = { invoiceNumber: '', issueDate: today, dueDate: today, clientId: quote.clientId, clientName: quote.clientName, items: quote.items, totalAmount: quote.totalAmount, status: DocumentStatus.Draft, paymentMethod: PaymentMethod.BankTransfer, hasStampDuty: quote.totalAmount > 77.47, isGhost: false, isDeleted: false, relatedQuoteNumber: quote.quoteNumber };
     const newInvoice = await addInvoice(invoiceInput);
-    
-    // 3. Mark Quote as Completed/Converted if status exists, otherwise delete or keep as history
-    // We update status to show it was converted
     await updateDoc(quoteRef, { status: DocumentStatus.Sent }); 
-
     return newInvoice.id;
 };
 
-// --- Helpers & Utilities ---
-
 export const getNextDocumentNumber = async (collectionName: 'invoices' | 'quotes', prefix: string, pad: number, dateStr: string): Promise<string> => {
-    // Determine year from date
     const year = new Date(dateStr).getFullYear();
     const startOfYear = new Date(year, 0, 1).toISOString();
     const endOfYear = new Date(year, 11, 31, 23, 59, 59).toISOString();
-
     const colRef = collection(db, collectionName);
-    // Query documents for this year to find max number
     const q = query(colRef, where("issueDate", ">=", startOfYear), where("issueDate", "<=", endOfYear));
     const snapshot = await getDocs(q);
-    
     let maxNum = 0;
     snapshot.docs.forEach(doc => {
         const data = doc.data();
-        // Check filtering ghosts for invoices
         if (collectionName === 'invoices' && data.isGhost) return;
-
         const numStr = collectionName === 'invoices' ? data.invoiceNumber : data.quoteNumber;
         if (numStr && numStr.includes(prefix)) {
-            // Robust parsing: split by hyphen. 
-            // Target Format: PREFIX-YEAR-NUMBER (e.g. FT-2025-057)
             const parts = numStr.split('-'); 
-            
-            // Check based on format
             if (parts.length >= 3) {
-                // Strict check: part[1] must be the Year.
-                // This filters out buggy invoices like FT-2026-2025 (where 2026 != 2025)
-                // And accepts correct invoices like FT-2025-057 (where 2025 == 2025)
                 if (parts[1] === String(year)) {
                     const n = parseInt(parts[2], 10);
                     if (!isNaN(n) && n > maxNum) maxNum = n;
@@ -542,185 +664,72 @@ export const getNextDocumentNumber = async (collectionName: 'invoices' | 'quotes
             }
         }
     });
-
     const nextNum = maxNum + 1;
-    // Assemble as PREFIX-YEAR-NUMBER
     return `${prefix}-${year}-${String(nextNum).padStart(pad, '0')}`;
 };
 
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {
-    // Ghost invoices don't strictly need sequential numbers per year like fiscal ones, but good for tracking
-    // Using a timestamp based approach as established: PRO-xxx-1234
     return `PRO-xxx-${Date.now().toString().slice(-4)}`; 
 };
 
 export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promise<void> => {
-    // 1. Find and delete related transactions (by description or metadata if linked)
-    // Currently we link by description text mostly, or allocationId if it matches location.
-    // Better strategy: Search transactions where description contains child name AND is related to enrollment.
-    // Given the loose coupling, we will search for transactions with specific pattern in description.
-    
-    const childName = enrollment.childName;
-    if (!childName) return;
-
-    // Search transactions
-    const qTrans = query(transactionCollectionRef, 
-        where("category", "==", TransactionCategory.Vendite),
-        where("isDeleted", "==", false)
-    );
-    
-    const snapshot = await getDocs(qTrans);
+    const enrId = enrollment.id;
+    if (!enrId) return;
     const batch = writeBatch(db);
     let count = 0;
-
-    snapshot.docs.forEach(doc => {
-        const t = doc.data() as Transaction;
-        // Simple heuristic matching
-        if (t.description.includes(childName)) {
-            batch.update(doc.ref, { isDeleted: true });
-            count++;
-        }
-    });
-
-    // Also mark invoices as deleted
-    const qInv = query(invoiceCollectionRef, where("isDeleted", "==", false));
-    const snapInv = await getDocs(qInv);
-    snapInv.docs.forEach(doc => {
-        const inv = doc.data() as Invoice;
-        // Check items description
-        const isRelated = inv.items.some(item => item.description.includes(childName));
-        if (isRelated || (inv.clientName && inv.clientName.includes(childName))) { // Fallback
-             batch.update(doc.ref, { isDeleted: true });
-             count++;
-        }
-    });
-
+    const qTransById = query(transactionCollectionRef, where("relatedEnrollmentId", "==", enrId), where("isDeleted", "==", false));
+    const transSnapById = await getDocs(qTransById);
+    transSnapById.docs.forEach(doc => { batch.update(doc.ref, { isDeleted: true }); count++; });
+    const qInvById = query(invoiceCollectionRef, where("relatedEnrollmentId", "==", enrId), where("isDeleted", "==", false));
+    const invSnapById = await getDocs(qInvById);
+    invSnapById.docs.forEach(doc => { batch.update(doc.ref, { isDeleted: true }); count++; });
     if (count > 0) await batch.commit();
 };
 
 export const syncRentExpenses = async (): Promise<string> => {
-    // 1. Get all active enrollments with location assigned
     const enrollments = await getAllEnrollments();
     const suppliers = await getSuppliers();
-    
-    // 2. Map Locations to Suppliers for cost info
     const locationCostMap = new Map<string, { cost: number, supplierName: string }>();
-    
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const startOfMonth = new Date(currentYear, currentMonth, 1).toISOString();
     const endOfMonth = new Date(currentYear, currentMonth + 1, 0).toISOString();
-
-    suppliers.forEach(s => {
-        s.locations.forEach(l => {
-            // Check if closedAt exists and is before current month
-            const isClosed = l.closedAt && new Date(l.closedAt) < new Date(startOfMonth);
-            if (!isClosed) {
-                locationCostMap.set(l.id, { cost: l.rentalCost || 0, supplierName: s.companyName });
-            }
-        });
-    });
-
-    // 3. Calculate Rent per Location per Month
-    
-    // Check existing rent transactions for this month
-    const q = query(transactionCollectionRef, 
-        where("category", "==", TransactionCategory.Nolo),
-        where("date", ">=", startOfMonth),
-        where("date", "<=", endOfMonth),
-        where("isDeleted", "==", false)
-    );
+    suppliers.forEach(s => { s.locations.forEach(l => { const isClosed = l.closedAt && new Date(l.closedAt) < new Date(startOfMonth); if (!isClosed) { locationCostMap.set(l.id, { cost: l.rentalCost || 0, supplierName: s.companyName }); } }); });
+    const q = query(transactionCollectionRef, where("category", "==", TransactionCategory.Nolo), where("date", ">=", startOfMonth), where("date", "<=", endOfMonth), where("isDeleted", "==", false));
     const existingRents = await getDocs(q);
     const paidLocationIds = new Set<string>();
-    existingRents.docs.forEach(d => {
-        const t = d.data() as Transaction;
-        if (t.allocationId) paidLocationIds.add(t.allocationId);
-    });
-
-    // Identify occupied locations
+    existingRents.docs.forEach(d => { const t = d.data() as Transaction; if (t.allocationId) paidLocationIds.add(t.allocationId); });
     const occupiedLocationIds = new Set<string>();
-    enrollments.forEach(e => {
-        if (e.status === 'Active' && e.locationId && e.locationId !== 'unassigned') {
-            occupiedLocationIds.add(e.locationId);
-        }
-    });
-
+    enrollments.forEach(e => { if (e.status === 'Active' && e.locationId && e.locationId !== 'unassigned') { occupiedLocationIds.add(e.locationId); } });
     const batch = writeBatch(db);
     let createdCount = 0;
-
     occupiedLocationIds.forEach(locId => {
         if (!paidLocationIds.has(locId)) {
             const costInfo = locationCostMap.get(locId);
             if (costInfo && costInfo.cost > 0) {
-                // Create Transaction
                 const newRef = doc(transactionCollectionRef);
-                const t: TransactionInput = {
-                    date: new Date().toISOString(), // Today
-                    description: `Affitto Sede: ${costInfo.supplierName} (Auto-Gen)`,
-                    amount: costInfo.cost,
-                    type: TransactionType.Expense,
-                    category: TransactionCategory.Nolo,
-                    paymentMethod: PaymentMethod.BankTransfer,
-                    status: TransactionStatus.Pending, // Pending review
-                    allocationType: 'location',
-                    allocationId: locId,
-                    allocationName: '', // Fill if possible, but map key is ID
-                    isDeleted: false
-                };
-                // Find location Name
-                suppliers.forEach(s => {
-                    const l = s.locations.find(loc => loc.id === locId);
-                    if (l) t.allocationName = l.name;
-                });
-
+                const t: TransactionInput = { date: new Date().toISOString(), description: `Affitto Sede: ${costInfo.supplierName} (Auto-Gen)`, amount: costInfo.cost, type: TransactionType.Expense, category: TransactionCategory.Nolo, paymentMethod: PaymentMethod.BankTransfer, status: TransactionStatus.Completed, allocationType: 'location', allocationId: locId, allocationName: '', isDeleted: false };
+                suppliers.forEach(s => { const l = s.locations.find(loc => loc.id === locId); if (l) t.allocationName = l.name; });
                 batch.set(newRef, { ...t, relatedDocumentId: 'AUTO-RENT' });
                 createdCount++;
             }
         }
     });
-
-    if (createdCount > 0) {
-        await batch.commit();
-        return `Generati ${createdCount} movimenti di affitto per il mese corrente.`;
-    } else {
-        return "Nessun nuovo movimento di affitto necessario.";
-    }
+    if (createdCount > 0) { await batch.commit(); return `Generati ${createdCount} movimenti affitto.`; } else { return "Nessun nuovo movimento necessario."; }
 };
 
 export const checkAndSetOverdueInvoices = async () => {
-    // FIX: Rimosso filtro complesso che richiedeva Index.
-    // Scarichiamo solo gli attivi e filtriamo in memoria.
-    const q = query(invoiceCollectionRef, 
-        where("isDeleted", "==", false)
-    );
-    
+    const q = query(invoiceCollectionRef, where("isDeleted", "==", false));
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     const today = new Date();
     let updates = 0;
-
     snapshot.docs.forEach(docSnap => {
         const inv = docSnap.data() as Invoice;
-        
-        // PROTEZIONE CRITICA: Se la fattura è Sigillata (SealedSDI), è intoccabile dagli automatismi.
-        // Non può diventare "Overdue" automaticamente perché è uno stato fiscale definitivo.
-        // Lo stato Overdue si applica ai pagamenti, ma SealedSDI ha priorità semantica di immutabilità.
-        if (inv.status === DocumentStatus.SealedSDI) return;
-
-        // Filtro logico Client-side
-        if (inv.status === DocumentStatus.Paid) return; 
-        if (inv.status === DocumentStatus.Overdue) return; 
-        if (inv.status === DocumentStatus.Draft) return;
-
+        if (inv.status === DocumentStatus.SealedSDI || inv.status === DocumentStatus.Paid || inv.status === DocumentStatus.Overdue || inv.status === DocumentStatus.Draft) return;
         const dueDate = new Date(inv.dueDate);
-        // Resetta l'ora della scadenza per confronto equo (fine giornata)
         dueDate.setHours(23, 59, 59, 999);
-        
-        if (dueDate < today) {
-            batch.update(docSnap.ref, { status: DocumentStatus.Overdue });
-            updates++;
-        }
+        if (dueDate < today) { batch.update(docSnap.ref, { status: DocumentStatus.Overdue }); updates++; }
     });
-
     if (updates > 0) await batch.commit();
 };

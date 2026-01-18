@@ -1,4 +1,3 @@
-
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives';
 
 export enum ClientType {
@@ -95,15 +94,28 @@ export enum CheckCategory {
     Other = 'Other'
 }
 
+export interface IntegrityIssueSuggestion {
+    invoices: Invoice[];
+    isPerfect: boolean;
+    gap: number;
+}
+
 export interface IntegrityIssue {
     id: string;
     type: 'missing_invoice' | 'missing_transaction';
     severity: 'high' | 'medium';
     description: string;
     entityId: string; // ID dell'entità sorgente (es. Iscrizione o Fattura)
-    entityName: string; // Nome leggibile (es. Mario Rossi)
+    entityName: string; // Nome bambino
+    parentName?: string; // Nome genitore
+    subscriptionName?: string; // Nome pacchetto
     amount: number;
-    date: string;
+    date: string; // Data inizio iscrizione o data fattura
+    endDate?: string;
+    lessonsTotal?: number;
+    paymentMethod?: string;
+    createdAt?: string;
+    suggestions?: IntegrityIssueSuggestion[]; // UPDATED: Supporto per Fuzzy/Cluster Match
     details?: any; // Dati tecnici per il fix automatico
 }
 
@@ -247,6 +259,7 @@ export interface Transaction {
     allocationId?: string;
     allocationName?: string;
     relatedDocumentId?: string;
+    relatedEnrollmentId?: string; // NEW
     clientName?: string;
     isDeleted: boolean;
 }
@@ -280,6 +293,7 @@ export interface Invoice {
     notes?: string;
     isDeleted: boolean;
     relatedQuoteNumber?: string;
+    relatedEnrollmentId?: string; // NEW
     globalDiscount?: number;
     globalDiscountType?: 'percent' | 'amount';
     promotionHistory?: {
@@ -348,6 +362,11 @@ export interface Enrollment {
     startDate: string;
     endDate: string;
     status: EnrollmentStatus;
+    isEarlyClosure?: boolean; // NEW: Track early terminations
+    createdAt?: string; // NEW: Tracciabilità creazione
+    preferredPaymentMethod?: PaymentMethod; // NEW: Tracciabilità metodo previsto
+    adjustmentAmount?: number; // NEW: Gestione abbuoni fiscali
+    adjustmentNotes?: string; // NEW: Nota tecnica abbuono
 }
 
 export type EnrollmentInput = Omit<Enrollment, 'id'>;

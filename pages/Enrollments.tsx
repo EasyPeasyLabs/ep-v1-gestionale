@@ -30,6 +30,16 @@ interface EnrollmentsProps {
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
+// Helper per contrasto colore testo (Enterprise Grade)
+const getTextColorForBg = (bgColor: string) => {
+    if (!bgColor || bgColor === 'unassigned') return '#1f2937';
+    const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
+    const r = parseInt(color.substring(0, 2), 16);
+    const g = parseInt(color.substring(2, 4), 16);
+    const b = parseInt(color.substring(4, 6), 16);
+    return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#1f2937' : '#ffffff';
+};
+
 // Icona Spostamento
 const ArrowRightStartOnRectangleIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -97,7 +107,7 @@ const RecoveryModal: React.FC<{
                 <p className="text-sm text-gray-500 mb-4">Programma il recupero per <strong>{enrollment.childName}</strong>.</p>
                 <div className="space-y-4">
                     <div>
-                        <label className="block text-xs text-gray-500 mb-1">Presso Sede (Recinto)</label>
+                        <label className="block text-xs font-bold text-gray-500 mb-1">Presso Sede (Recinto)</label>
                         <select 
                             value={selectedLocationId} 
                             onChange={(e) => setSelectedLocationId(e.target.value)} 
@@ -144,7 +154,7 @@ const BulkAssignModal: React.FC<{
     targetLocationName: string;
     targetLocationId: string;
     targetLocationColor: string;
-    suppliers: Supplier[]; // Necessario per trovare gli slot della location
+    suppliers: Supplier[]; 
     unassignedEnrollments: Enrollment[];
     onClose: () => void;
     onConfirm: (selectedIds: string[], slotInfo: {day: number, start: string, end: string}) => void;
@@ -255,7 +265,6 @@ const BulkAssignModal: React.FC<{
 
                 <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
                     <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                    {/* FIX: Check for null explicitly as index 0 is falsy */}
                     <button onClick={handleConfirm} disabled={selectedSlotIndex === null || selectedEnrollmentIds.length === 0} className="md-btn md-btn-raised md-btn-primary">
                         Conferma Assegnazione
                     </button>
@@ -474,7 +483,7 @@ const BulkMoveModal: React.FC<{
 };
 
 
-const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
+const Enrollments: React.FC = () => {
     // Data States
     const [allClients, setAllClients] = useState<Client[]>([]); // Store ALL clients
     const [parentClients, setParentClients] = useState<ParentClient[]>([]); // For Dropdown
@@ -761,9 +770,23 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         try {
             const invoices = await getInvoices();
             const childName = enr.childName.toLowerCase();
-            const relatedInvoices = invoices.filter(i => i.clientId === enr.clientId && !i.isDeleted && !i.isGhost && (i.items.some(item => item.description.toLowerCase().includes(childName))));
+            
+            // NEW: ISOLATION FIX - Filter invoices by enrollment ID tag
+            const relatedInvoices = invoices.filter(i => 
+                i.relatedEnrollmentId === enr.id && 
+                !i.isDeleted && 
+                !i.isGhost
+            );
+            
             totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-            const ghostInvoice = invoices.find(i => i.clientId === enr.clientId && i.isGhost === true && i.status === DocumentStatus.Draft && !i.isDeleted && i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName)));
+            
+            // NEW: ISOLATION FIX - Search for ghost (pro-forma) linked to this enrollment
+            const ghostInvoice = invoices.find(i => 
+                i.relatedEnrollmentId === enr.id && 
+                i.isGhost === true && 
+                i.status === DocumentStatus.Draft && 
+                !i.isDeleted
+            );
 
             if (totalPaid > 0) {
                 isBalanceMode = true;
@@ -872,22 +895,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         return result;
     }, [enrollments, allClients, searchTerm, filterLocation, filterAge, filterDay, filterTime, sortOrder]);
 
-    // --- Grouping Logic (Recinti) ---
+    // --- Exclusive Grouping Logic (Recinti) ---
     const groupedEnrollments = useMemo(() => {
         const groups: Record<string, { locationId: string; locationName: string; locationColor: string; days: Record<number, { dayName: string; slots: Record<string, { timeRange: string; start: string; end: string; items: Enrollment[]; }> }> }> = {};
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                const locKey = l.name;
-                groups[locKey] = { locationId: l.id, locationName: l.name, locationColor: l.color || '#ccc', days: {} };
-                if (l.availability) {
-                    l.availability.forEach(slot => {
-                        if (!groups[locKey].days[slot.dayOfWeek]) groups[locKey].days[slot.dayOfWeek] = { dayName: daysOfWeekMap[slot.dayOfWeek], slots: {} };
-                        const timeKey = `${slot.startTime} - ${slot.endTime}`;
-                        if (!groups[locKey].days[slot.dayOfWeek].slots[timeKey]) groups[locKey].days[slot.dayOfWeek].slots[timeKey] = { timeRange: timeKey, start: slot.startTime, end: slot.endTime, items: [] };
-                    });
-                }
-            });
-        });
+        
+        // Costruzione dinamica basata SOLO sugli allievi filtrati
         filteredEnrollments.forEach(enr => {
             const locName = enr.locationName || 'Sede Non Definita';
             const locId = enr.locationId || 'unassigned';
@@ -895,14 +907,43 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             const appData = getFirstAppointmentData(enr);
             const timeKey = locId === 'unassigned' ? 'Da Assegnare' : (appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D');
             const dayIdx = locId === 'unassigned' ? 99 : appData.dayIndex; 
-            if (!groups[locName]) groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
-            if (!groups[locName].days[dayIdx]) groups[locName].days[dayIdx] = { dayName: locId === 'unassigned' ? 'In Attesa' : appData.dayName, slots: {} };
-            if (!groups[locName].days[dayIdx].slots[timeKey]) groups[locName].days[dayIdx].slots[timeKey] = { timeRange: timeKey, start: appData.startTime, end: appData.endTime, items: [] };
+            
+            // 1. Check/Create Location
+            if (!groups[locName]) {
+                groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
+            }
+            
+            // 2. Check/Create Day
+            if (!groups[locName].days[dayIdx]) {
+                groups[locName].days[dayIdx] = { dayName: locId === 'unassigned' ? 'In Attesa' : appData.dayName, slots: {} };
+            }
+            
+            // 3. Check/Create Slot
+            if (!groups[locName].days[dayIdx].slots[timeKey]) {
+                groups[locName].days[dayIdx].slots[timeKey] = { timeRange: timeKey, start: appData.startTime, end: appData.endTime, items: [] };
+            }
+            
             groups[locName].days[dayIdx].slots[timeKey].items.push(enr);
         });
-        const sortedGroups = Object.values(groups).sort((a,b) => { if (a.locationId === 'unassigned') return -1; if (b.locationId === 'unassigned') return 1; return a.locationName.localeCompare(b.locationName); });
-        return sortedGroups.map(loc => ({ ...loc, days: Object.entries(loc.days).sort(([idxA], [idxB]) => Number(idxA) - Number(idxB)).map(([idx, day]) => ({ dayIndex: Number(idx), ...day, slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange)) })) }));
-    }, [filteredEnrollments, suppliers]);
+
+        // Ordinamento finale
+        const sortedGroups = Object.values(groups).sort((a,b) => { 
+            if (a.locationId === 'unassigned') return -1; 
+            if (b.locationId === 'unassigned') return 1; 
+            return a.locationName.localeCompare(b.locationName); 
+        });
+
+        return sortedGroups.map(loc => ({ 
+            ...loc, 
+            days: Object.entries(loc.days)
+                .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB))
+                .map(([idx, day]) => ({ 
+                    dayIndex: Number(idx), 
+                    ...day, 
+                    slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange)) 
+                })) 
+        }));
+    }, [filteredEnrollments]); // Dipende solo dai dati filtrati per garantire l'esclusione
 
     // Unassigned enrollments for bulk selection
     const unassignedEnrollments = useMemo(() => enrollments.filter(e => e.locationId === 'unassigned' && (e.status === EnrollmentStatus.Pending || e.status === EnrollmentStatus.Active)), [enrollments]);
@@ -949,15 +990,27 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <div className="space-y-8 pb-10">
-                    {groupedEnrollments.length === 0 && <p className="text-center text-gray-500 italic py-10">Nessuna iscrizione trovata.</p>}
+                    {groupedEnrollments.length === 0 && (
+                        <div className="text-center py-16 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
+                             <p className="text-gray-400 italic">Nessun recinto corrisponde ai criteri di ricerca selezionati.</p>
+                        </div>
+                    )}
 
-                    {groupedEnrollments.map((locGroup, locIdx) => (
-                        <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className={`px-6 py-3 border-b border-gray-200 flex items-center justify-between gap-3 ${locGroup.locationId === 'unassigned' ? 'bg-gray-200' : 'bg-gray-50'}`}>
+                    {groupedEnrollments.map((locGroup, locIdx) => {
+                        const headerTextColor = getTextColorForBg(locGroup.locationColor);
+                        const isSpecialHeader = locGroup.locationId === 'unassigned';
+
+                        return (
+                        <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
+                            {/* RECINTO HEADER - DINAMICO */}
+                            <div 
+                                className="px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors"
+                                style={{ backgroundColor: isSpecialHeader ? '#e5e7eb' : locGroup.locationColor, color: isSpecialHeader ? '#1f2937' : headerTextColor }}
+                            >
                                 <div className="flex items-center gap-3">
-                                    <div className="w-4 h-4 rounded-full border border-gray-300 shadow-sm" style={{ backgroundColor: locGroup.locationColor }}></div>
-                                    <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locGroup.locationName}</h2>
-                                    {locGroup.locationId === 'unassigned' && <span className="text-xs bg-gray-600 text-white px-2 py-0.5 rounded">Trascina nei recinti</span>}
+                                    {!isSpecialHeader && <div className="w-4 h-4 rounded-full border border-white/30 shadow-sm bg-white/20 backdrop-blur-sm"></div>}
+                                    <h2 className="text-lg font-black uppercase tracking-widest">{locGroup.locationName}</h2>
+                                    {isSpecialHeader && <span className="text-[10px] bg-slate-800 text-white px-2 py-1 rounded font-bold uppercase tracking-tighter">Trascina nei recinti</span>}
                                 </div>
                                 
                                 <div className="flex items-center gap-2">
@@ -970,9 +1023,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                 locationName: locGroup.locationName,
                                                 locationColor: locGroup.locationColor
                                             })}
-                                            className="text-xs bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
+                                            className="text-[10px] bg-white/20 border border-white/30 hover:bg-white/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all backdrop-blur-sm"
+                                            style={{ color: 'inherit' }}
                                         >
-                                            <UserPlusIcon /> Assegna Allievi
+                                            <UserPlusIcon /> <span className="uppercase">Assegna Allievi</span>
                                         </button>
                                     )}
 
@@ -985,9 +1039,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                 sourceLocationName: locGroup.locationName,
                                                 enrollments: getEnrollmentsInLocation(locGroup.locationId)
                                             })}
-                                            className="text-xs bg-white border border-amber-200 text-amber-700 hover:bg-amber-50 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all"
+                                            className="text-[10px] bg-white/20 border border-white/30 hover:bg-white/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all backdrop-blur-sm"
+                                            style={{ color: 'inherit' }}
                                         >
-                                            <ArrowRightStartOnRectangleIcon /> Cambio Sede
+                                            <ArrowRightStartOnRectangleIcon /> <span className="uppercase">Cambio Sede</span>
                                         </button>
                                     )}
                                 </div>
@@ -1032,7 +1087,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 ))}
                             </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
             )}
 

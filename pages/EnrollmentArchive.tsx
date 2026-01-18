@@ -174,12 +174,11 @@ const EnrollmentArchive: React.FC = () => {
 
     // Helper: Payment Status Calculation
     const getPaymentStatus = (enr: Enrollment) => {
-        const childName = enr.childName.toLowerCase();
+        // NEW: ISOLATION FIX - Filter invoices by enrollment ID tag
         const relatedInvoices = invoices.filter(i => 
-            i.clientId === enr.clientId && 
+            i.relatedEnrollmentId === enr.id && 
             !i.isDeleted && 
-            !i.isGhost && 
-            i.items.some(item => item.description.toLowerCase().includes(childName))
+            !i.isGhost
         );
         const totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
         const price = enr.price || 0;
@@ -336,14 +335,12 @@ const EnrollmentArchive: React.FC = () => {
         let isBalanceMode = true;
         let suggestedAmount = status.remaining;
 
-        // Check for Ghost Invoice
-        const childName = enr.childName.toLowerCase();
+        // NEW: ISOLATION FIX - Search for ghost (pro-forma) linked to this enrollment
         const ghostInvoice = invoices.find(i => 
-            i.clientId === enr.clientId && 
+            i.relatedEnrollmentId === enr.id && 
             i.isGhost === true && 
             i.status === DocumentStatus.Draft && 
-            !i.isDeleted && 
-            i.items.some(item => item.description.toLowerCase().includes('saldo') && item.description.toLowerCase().includes(childName))
+            !i.isDeleted
         );
 
         if (ghostInvoice) ghostId = ghostInvoice.id;
@@ -515,7 +512,7 @@ const EnrollmentArchive: React.FC = () => {
                                                 </div>
 
                                                 {/* Actions */}
-                                                <div className="flex gap-1 md:flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-4 mt-2 md:mt-0">
+                                                <div className="flex gap-1 md:flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-4 mt-2 md-mt-0">
                                                     <button 
                                                         onClick={(e) => handlePaymentRequest(e, enr)}
                                                         className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}

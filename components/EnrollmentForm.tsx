@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ParentClient, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Appointment, Enrollment } from '../types';
+import { ParentClient, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Appointment, Enrollment, PaymentMethod } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import Spinner from './Spinner';
@@ -27,6 +27,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
     const [subscriptionTypeId, setSubscriptionTypeId] = useState(existingEnrollment?.subscriptionTypeId || '');
     const [startDateInput, setStartDateInput] = useState(existingEnrollment ? existingEnrollment.startDate.split('T')[0] : new Date().toISOString().split('T')[0]); 
     
+    // NEW: Manual End Date Management
+    const [endDateInput, setEndDateInput] = useState(existingEnrollment ? existingEnrollment.endDate.split('T')[0] : '');
+    const [isEndDateManual, setIsEndDateManual] = useState(false);
+    
+    // NEW: Payment Method Preference
+    const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
+
     // UI State
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
 
@@ -52,6 +59,24 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             return isAdultEnrollment ? isAdultName : !isAdultName;
         });
     }, [subscriptionTypes, isAdultEnrollment]);
+
+    // Pre-calcolo della data finale naturale (quella che dovrebbe essere)
+    const naturalEndDate = useMemo(() => {
+        const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+        if (!selectedSub || !startDateInput) return '';
+        
+        const startObj = new Date(startDateInput);
+        const endDateObj = new Date(startObj);
+        endDateObj.setDate(endDateObj.getDate() + (selectedSub.durationInDays || 0));
+        return endDateObj.toISOString().split('T')[0];
+    }, [subscriptionTypeId, startDateInput, subscriptionTypes]);
+
+    // Automazione Data Fine: se non manuale, segui la naturale
+    useEffect(() => {
+        if (!isEndDateManual && naturalEndDate) {
+            setEndDateInput(naturalEndDate);
+        }
+    }, [naturalEndDate, isEndDateManual]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -90,7 +115,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
         });
     };
 
-    // --- FILTER LOGIC ---
+    // Check if it's an early closure
+    const isShortened = useMemo(() => {
+        if (!endDateInput || !naturalEndDate) return false;
+        return new Date(endDateInput) < new Date(naturalEndDate);
+    }, [endDateInput, naturalEndDate]);
 
     const filteredParents = useMemo(() => {
         let result = parents.filter(p => {
@@ -144,20 +173,17 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
             if(!target) return;
 
             const startObj = new Date(startDateInput);
-            const endDateObj = new Date(startObj);
-            endDateObj.setDate(endDateObj.getDate() + (selectedSub.durationInDays || 0));
-            const endDate = endDateObj.toISOString();
+            const endObj = new Date(endDateInput);
 
             const newEnrollment: EnrollmentInput = {
                 clientId: selectedParentId,
-                childId: target.id, // Se adulto, childId = clientId
-                childName: target.name, // Se adulto, nome genitore
+                childId: target.id, 
+                childName: target.name, 
                 isAdult: isAdultEnrollment,
                 subscriptionTypeId,
                 subscriptionName: selectedSub.name,
                 price: selectedSub.price,
                 
-                // Placeholder per "Da Assegnare"
                 supplierId: 'unassigned',
                 supplierName: '',
                 locationId: 'unassigned',
@@ -169,8 +195,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                 lessonsTotal: selectedSub.lessons,
                 lessonsRemaining: selectedSub.lessons,
                 startDate: startObj.toISOString(),
-                endDate: endDate,
+                endDate: endObj.toISOString(),
                 status: existingEnrollment ? existingEnrollment.status : EnrollmentStatus.Pending, 
+                isEarlyClosure: isShortened,
+                preferredPaymentMethod: preferredPaymentMethod
             };
             
             if (existingEnrollment) {
@@ -193,6 +221,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
 
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
 
+    const currentSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full w-full overflow-hidden">
             <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
@@ -200,12 +230,24 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                     {existingEnrollment ? 'Modifica Iscrizione' : 'Nuova Iscrizione'}
                 </h2>
                 <p className="text-sm text-gray-500">
-                    Crea il cartellino. Assegnerai la sede trascinandolo nel calendario.
+                    Gestione cartellino e validità temporale.
                 </p>
             </div>
             
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
                 
+                {/* BANNER CHIUSURA ANTICIPATA */}
+                {isShortened && (
+                    <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-sm animate-fade-in flex gap-3">
+                        <span className="text-xl">⚠️</span>
+                        <div className="text-xs text-amber-800 leading-relaxed">
+                            <p className="font-bold uppercase mb-1">Protocollo Chiusura Anticipata Attivo</p>
+                            Stai accorciando la validità temporale rispetto alla durata standard del pacchetto.
+                            <br/>• L'incasso di <strong>{currentSub?.price || 0}€</strong> rimarrà acquisito in Finanza e non verrà modificato.
+                        </div>
+                    </div>
+                )}
+
                 {/* 1. SELEZIONE GENITORE */}
                 <div className="space-y-2">
                     {!existingEnrollment && (
@@ -220,16 +262,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                                     onChange={e => setParentSearchTerm(e.target.value)}
                                 />
                             </div>
-                            <select 
-                                value={parentSort}
-                                onChange={(e) => setParentSort(e.target.value as any)}
-                                className="text-xs border-gray-300 rounded py-1 pl-2 pr-6 bg-white"
-                            >
-                                <option value="surname_asc">Cognome (A-Z)</option>
-                                <option value="surname_desc">Cognome (Z-A)</option>
-                                <option value="name_asc">Nome (A-Z)</option>
-                                <option value="name_desc">Nome (Z-A)</option>
-                            </select>
                         </div>
                     )}
 
@@ -251,7 +283,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                     </div>
                 </div>
 
-                {/* 1.5 TOGGLE CHI SI ISCRIVE */}
+                {/* CHI SI ISCRIVE */}
                 {!existingEnrollment && (
                     <div className="flex gap-4 p-3 bg-gray-50 rounded border border-gray-200">
                         <span className="text-xs font-bold text-gray-700 self-center">Chi si iscrive?</span>
@@ -278,7 +310,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                     </div>
                 )}
 
-                {/* 2. SELEZIONE FIGLI (Multipla) - Solo se non è Adulto */}
+                {/* SELEZIONE FIGLI */}
                 {!isAdultEnrollment && (
                     <div className={`md-input-group relative transition-opacity duration-200 ${!selectedParentId ? 'opacity-50 pointer-events-none' : ''}`}>
                         <label className="block text-xs text-gray-500 absolute top-0 left-0">2. Figli (Seleziona uno o più)</label>
@@ -314,19 +346,34 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                                         </div>
                                     </label>
                                 ))}
-                                {currentParent?.children.length === 0 && (
-                                    <div className="px-4 py-2 text-sm text-gray-500 italic">Nessun figlio disponibile. Aggiungili nell'anagrafica clienti.</div>
-                                )}
                             </div>
-                        )}
-                        {isChildDropdownOpen && !existingEnrollment && (
-                            <div className="fixed inset-0 z-10" onClick={() => setIsChildDropdownOpen(false)}></div>
                         )}
                     </div>
                 )}
 
+                {/* PACCHETTO */}
+                <div className="md-input-group">
+                    <select id="sub-type" value={subscriptionTypeId} onChange={e => setSubscriptionTypeId(e.target.value)} required className="md-input font-bold">
+                        <option value="" disabled>Seleziona pacchetto...</option>
+                        {availableSubscriptions.map(sub => (
+                            <option key={sub.id} value={sub.id}>
+                                {sub.name} ({sub.lessons} lez. - {sub.price}€)
+                            </option>
+                        ))}
+                    </select>
+                    <label htmlFor="sub-type" className="md-input-label !top-0 !text-xs !text-gray-500">3. Pacchetto ({isAdultEnrollment ? 'Adulti' : 'Bambini'})</label>
+                </div>
+
+                {/* METODO PREVISTO */}
+                <div className="md-input-group">
+                    <select value={preferredPaymentMethod} onChange={e => setPreferredPaymentMethod(e.target.value as PaymentMethod)} className="md-input">
+                        {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <label className="md-input-label !top-0 !text-xs">4. Metodo di Pagamento Previsto</label>
+                </div>
+
+                {/* DATE VALIDITÀ */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* 3. DATA INIZIO */}
                     <div className="md-input-group">
                         <input 
                             id="startDate" 
@@ -336,30 +383,32 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ parents, initialParent,
                             required 
                             className="md-input" 
                         />
-                        <label htmlFor="startDate" className="md-input-label !top-0 !text-xs !text-gray-500">3. Data Inizio Validità</label>
+                        <label htmlFor="startDate" className="md-input-label !top-0 !text-xs !text-gray-500">5. Data Inizio</label>
                     </div>
 
-                    {/* 4. PACCHETTO */}
-                    <div className="md-input-group">
-                        <select id="sub-type" value={subscriptionTypeId} onChange={e => setSubscriptionTypeId(e.target.value)} required className="md-input">
-                            <option value="" disabled>Seleziona pacchetto...</option>
-                            {availableSubscriptions.map(sub => (
-                                <option key={sub.id} value={sub.id}>
-                                    {sub.name} ({sub.lessons} lez. - {sub.price}€)
-                                </option>
-                            ))}
-                        </select>
-                        <label htmlFor="sub-type" className="md-input-label !top-0 !text-xs !text-gray-500">4. Pacchetto ({isAdultEnrollment ? 'Adulti' : 'Bambini'})</label>
+                    <div className="space-y-1">
+                        <div className="md-input-group">
+                            <input 
+                                id="endDate" 
+                                type="date" 
+                                value={endDateInput} 
+                                onChange={e => { setEndDateInput(e.target.value); setIsEndDateManual(true); }} 
+                                required 
+                                disabled={!isEndDateManual}
+                                className={`md-input ${isEndDateManual ? 'border-indigo-500 bg-white ring-2 ring-indigo-50' : 'bg-gray-50 text-gray-400'}`} 
+                            />
+                            <label htmlFor="endDate" className="md-input-label !top-0 !text-xs !text-gray-500">6. Data Fine {isEndDateManual ? '(Manuale)' : '(Calcolata)'}</label>
+                        </div>
+                        <div className="flex justify-end">
+                            <button 
+                                type="button" 
+                                onClick={() => setIsEndDateManual(!isEndDateManual)}
+                                className={`text-[10px] font-bold uppercase transition-colors px-2 py-0.5 rounded ${isEndDateManual ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400 hover:text-indigo-600'}`}
+                            >
+                                {isEndDateManual ? '🔒 Blocca (Auto)' : '🔓 Sblocca (Modifica)'}
+                            </button>
+                        </div>
                     </div>
-                </div>
-                
-                <div className="bg-gray-50 p-4 rounded-md mt-4 border border-dashed border-gray-300 text-center">
-                    <p className="text-sm text-gray-600 font-medium">
-                        Cartellino "Da Assegnare"
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                        Il fornitore, la sede e gli orari verranno definiti quando sposterai il cartellino nel recinto desiderato.
-                    </p>
                 </div>
             </div>
 

@@ -54,6 +54,21 @@ export const getNotifications = async (): Promise<Notification[]> => {
             });
         }
 
+        // NEW: CHIUSURA ANTICIPATA ALERT
+        if (enr.isEarlyClosure) {
+            notifications.push({
+                id: `enr-early-closure-${enr.id}`,
+                type: 'action_required',
+                message: `Chiusura Anticipata: ${enr.childName}. Ricorda: il pagamento è acquisito. Per rimborsi emetti Nota di Credito manuale.`,
+                clientId: enr.clientId,
+                date: new Date().toISOString(),
+                linkPage: 'EnrollmentArchive', // Likely already in archive
+                filterContext: {
+                    searchTerm: enr.childName
+                }
+            });
+        }
+
         // Iscrizioni ACTIVE (Scadenze e Lezioni in esaurimento)
         if (enr.status === EnrollmentStatus.Active) {
             const endDate = new Date(enr.endDate);
@@ -104,8 +119,6 @@ export const getNotifications = async (): Promise<Notification[]> => {
         if (inv.isDeleted) return; 
 
         // Notifica Saldo (Fattura Fantasma in scadenza o scaduta)
-        // La regola è: avviso visibile solo dopo 30 giorni dal pagamento dell'acconto.
-        // Siccome creiamo la Ghost Invoice al momento dell'acconto, controlliamo issueDate.
         if (inv.isGhost && inv.status === DocumentStatus.Draft) {
             const createdDate = new Date(inv.issueDate);
             const daysSinceCreation = Math.floor((today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));

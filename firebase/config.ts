@@ -6,11 +6,6 @@ import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
 
 // Configurazione Firebase
-// Tenta di leggere da variabili d'ambiente (Vite).
-// Se non presenti (es. ambiente di sviluppo locale senza .env o problemi di build),
-// utilizza i valori di fallback per garantire l'avvio.
-
-// Safe access: previene crash se import.meta.env non è definito
 const env = (import.meta as any).env || {};
 
 const firebaseConfig = {
@@ -22,18 +17,15 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID || "1:332612800443:web:d5d434d38a78020dd57e9e"
 };
 
-// Fallback check per evitare crash bianchi se le env non sono settate e i fallback falliscono
 if (!firebaseConfig.apiKey) {
-    console.error("ERRORE CRITICO: Configurazione Firebase mancante. Verifica le variabili d'ambiente (.env) o la configurazione di Vite.");
+    console.error("ERRORE CRITICO: Configurazione Firebase mancante.");
 }
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Abilitiamo la persistenza offline con la nuova API.
-// Reintroduciamo experimentalForceLongPolling: true perché l'ambiente attuale sembra bloccare i WebSockets,
-// causando il timeout "Backend didn't respond within 10 seconds".
-// Aggiungiamo ignoreUndefinedProperties: true per compatibilità con i tipi opzionali TS.
+// Ottimizzazione per AI Studio: experimentalForceLongPolling previene i timeout dei WebSockets
+// ignoreUndefinedProperties previene errori durante il salvataggio di oggetti parziali
 export const db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
     experimentalForceLongPolling: true,

@@ -94,6 +94,7 @@ export const processPayment = async (
                     paymentMethod: method,
                     issueDate: paymentDate,
                     totalAmount: cleanAmount,
+                    relatedEnrollmentId: enrollment.id, // Ensure tag
                     promotionHistory: {
                         originalGhostNumber: ghostSnapData.invoiceNumber || 'N/D',
                         promotedAt: new Date().toISOString()
@@ -115,6 +116,7 @@ export const processPayment = async (
                     dueDate: paymentDate,
                     status: DocumentStatus.PendingSDI,
                     paymentMethod: method,
+                    relatedEnrollmentId: enrollment.id, // CRITICAL: ISOLATION TAG
                     items: [{ 
                         description: desc, 
                         quantity: 1, 
@@ -159,6 +161,7 @@ export const processPayment = async (
                     allocationType: 'location',
                     allocationId: safeLocationId,
                     allocationName: safeLocationName,
+                    relatedEnrollmentId: enrollment.id, // CRITICAL: ISOLATION TAG
                     isDeleted: false
                 };
 
@@ -212,6 +215,7 @@ const createRemainingGhostInvoice = async (enrollment: Enrollment, clientName: s
             dueDate: enrollment.endDate || new Date(date).toISOString(),
             status: DocumentStatus.Draft,
             paymentMethod: PaymentMethod.BankTransfer,
+            relatedEnrollmentId: enrollment.id, // CRITICAL: ISOLATION TAG
             items: [{ 
                 description: desc, 
                 quantity: 1, 

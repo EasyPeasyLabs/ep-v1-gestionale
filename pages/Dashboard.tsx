@@ -24,34 +24,39 @@ const calculateFuelRating = (distance: number) => {
     return 1;
 };
 
-// --- NEW STAT CARD (SOLID BLOCK STYLE) ---
+// --- NEW STAT CARD (VERTICAL STACK STYLE) ---
 const StatCard: React.FC<{ 
     title: string; 
     value: string | React.ReactNode; 
-    valueLabel?: string; // New: Label next to main value
+    valueLabel?: string; 
     subtext?: React.ReactNode; 
     onClick?: () => void;
     icon: React.ReactNode;
     isAlert?: boolean;
 }> = ({ title, value, valueLabel, subtext, onClick, icon, isAlert }) => (
   <div 
-    className={`md-card p-5 flex items-center gap-5 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`} 
+    className={`md-card p-5 flex flex-col gap-4 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`} 
     onClick={onClick}
   >
-    {/* Block Icon: Solid dark or AMBER background for contrast */}
-    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0 transition-transform group-hover:scale-105 shadow-sm
-        ${isAlert ? 'bg-amber-400 text-gray-900' : 'bg-[#3C3C52] text-white'}`}>
-        {icon}
+    {/* Header: Icon + Title on the same line */}
+    <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 transition-transform group-hover:scale-110 shadow-sm
+            ${isAlert ? 'bg-amber-400 text-gray-900' : 'bg-[#3C3C52] text-white'}`}>
+            {icon}
+        </div>
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight flex-1">
+            {title}
+        </p>
     </div>
     
-    <div className="flex-1 min-w-0 z-10">
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{title}</p>
-        <div className="flex items-baseline gap-2 mt-0.5">
-            <span className="text-3xl font-black text-gray-900 truncate">{value}</span>
-            {valueLabel && <span className="text-xs font-bold text-gray-400 italic">{valueLabel}</span>}
+    {/* Data Area: Full width below header */}
+    <div className="flex-1 min-w-0 z-10 flex flex-col justify-center">
+        <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-3xl font-black text-gray-900 leading-none">{value}</span>
+            {valueLabel && <span className="text-[10px] font-bold text-gray-400 italic">{valueLabel}</span>}
         </div>
         {subtext && (
-            <div className={`text-xs mt-1 font-bold ${isAlert ? 'text-amber-600' : 'text-gray-400'}`}>
+            <div className={`text-[11px] mt-2 font-bold leading-snug border-t border-gray-50 pt-2 ${isAlert ? 'text-amber-600' : 'text-gray-500'}`}>
                 {subtext}
             </div>
         )}
@@ -570,7 +575,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         <>
           {activeTab === 'overview' && (
               <div className="animate-fade-in space-y-8">
-                {/* ROW 1: Premium Stat Cards (Solid Blocks) */}
+                {/* ROW 1: Premium Stat Cards (Vertical Stack Style) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     
                     {/* CARD 1: CLIENTS */}
@@ -581,18 +586,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         valueLabel="(Censiti)"
                         icon={<ClientsIcon />}
                         subtext={
-                            <div className="flex flex-col gap-1 mt-2">
-                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
                                     <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600">
                                         <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
                                     </span>
-                                    <strong>{advancedMetrics.activeCount}</strong> Attivi (Attualmente iscritti)
+                                    <span><strong>{advancedMetrics.activeCount}</strong> Attivi (Iscritti)</span>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
+                                <div className="flex items-center gap-2">
                                     <span className="flex items-center justify-center w-4 h-4 rounded-full bg-purple-100 text-purple-600">
                                         <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
                                     </span>
-                                    <strong>{advancedMetrics.enthusiasticCount}</strong> Entusiasti (Fedelissimi)
+                                    <span><strong>{advancedMetrics.enthusiasticCount}</strong> Entusiasti</span>
                                 </div>
                             </div>
                         }
@@ -606,18 +611,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         onClick={() => setCurrentPage && setCurrentPage('ActivityLog')}
                         icon={<ChecklistIcon />}
                         subtext={
-                            <div className="flex flex-col gap-1 mt-2">
-                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
-                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600 font-bold text-[10px]">
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600 font-bold text-[8px]">
                                         ✓
                                     </span>
-                                    <strong>{lessonsMetrics.done}</strong> Fatte (già svolte)
+                                    <span><strong>{lessonsMetrics.done}</strong> Fatte (svolte)</span>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
-                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 text-gray-600">
+                                <div className="flex items-center gap-2">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 text-gray-400">
                                         <ClockIcon />
                                     </span>
-                                    <strong>{lessonsMetrics.upcoming}</strong> Da fare (mancanti)
+                                    <span><strong>{lessonsMetrics.upcoming}</strong> Da fare</span>
                                 </div>
                             </div>
                         }
@@ -631,18 +636,18 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         onClick={() => setCurrentPage && setCurrentPage('Suppliers')}
                         icon={<SuppliersIcon />}
                         subtext={
-                            <div className="flex flex-col gap-1 mt-2">
-                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
-                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600">
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center gap-2">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-green-100">
                                         <div className="w-2 h-2 rounded-full bg-green-500"></div>
                                     </span>
-                                    <strong>{supplierMetrics.activeCount}</strong> Attivi (sedi attive)
+                                    <span><strong>{supplierMetrics.activeCount}</strong> Sedi attive</span>
                                 </div>
-                                <div className="flex items-center gap-2 text-xs font-medium text-gray-600">
-                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-red-100 text-red-600">
+                                <div className="flex items-center gap-2">
+                                    <span className="flex items-center justify-center w-4 h-4 rounded-full bg-red-100">
                                         <div className="w-2 h-2 rounded-full bg-red-500"></div>
                                     </span>
-                                    <strong>{supplierMetrics.closedCount}</strong> Chiusi (sedi chiuse)
+                                    <span><strong>{supplierMetrics.closedCount}</strong> Sedi chiuse</span>
                                 </div>
                             </div>
                         }
@@ -652,7 +657,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     <StatCard 
                         title="Azioni Richieste" 
                         value={notifications.length}
-                        subtext={notifications.length > 0 ? "Richiedono attenzione" : "Tutto in ordine"}
+                        subtext={notifications.length > 0 ? "Richiedono attenzione immediata" : "Tutto in perfetto ordine"}
                         onClick={scrollToAlerts}
                         icon={<ExclamationIcon />}
                         isAlert={notifications.length > 0}
