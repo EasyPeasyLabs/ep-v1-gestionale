@@ -36,6 +36,63 @@ interface FinanceProps {
     onNavigate?: (page: Page, params?: any) => void;
 }
 
+// --- RENT SYNC SELECTOR MODAL ---
+const RentSyncModal: React.FC<{
+    onClose: () => void;
+    onSync: (month: number, year: number) => Promise<void>;
+}> = ({ onClose, onSync }) => {
+    const now = new Date();
+    const [month, setMonth] = useState(now.getMonth());
+    const [year, setYear] = useState(now.getFullYear());
+    const [loading, setLoading] = useState(false);
+
+    const months = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+    const years = useMemo(() => {
+        const list = [];
+        for (let y = now.getFullYear(); y >= 2025; y--) list.push(y);
+        return list;
+    }, [now]);
+
+    const handleSync = async () => {
+        setLoading(true);
+        try {
+            await onSync(month, year);
+            onClose();
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-6">
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Sincronizzazione Noli Sede</h3>
+            <p className="text-sm text-slate-500 mb-6">Seleziona il periodo di competenza da sanare. Il sistema genererà transazioni di uscita solo se rileva presenze reali ('Present') nel mese scelto.</p>
+            
+            <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Mese</label>
+                    <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="w-full md-input bg-slate-50">
+                        {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Anno</label>
+                    <select value={year} onChange={e => setYear(parseInt(e.target.value))} className="w-full md-input bg-slate-50">
+                        {years.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+                <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                <button onClick={handleSync} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">
+                    {loading ? <Spinner /> : 'Avvia Sincronizzazione'}
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // --- FISCAL DOCTOR WIZARD (UI ENTERPRISE) ---
 const FixWizard: React.FC<{
     issues: IntegrityIssue[];
@@ -199,7 +256,7 @@ const FixWizard: React.FC<{
                 </div>
                 <span className="text-2xl">🩺</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
                 {step === 'list' ? (
                     <div className="space-y-4">
                         {issues.length === 0 ? (
@@ -272,7 +329,7 @@ const FixWizard: React.FC<{
                                             </p>
                                             <div className="space-y-3">
                                                 {issue.suggestions.map((suggestion, gIdx) => {
-                                                    // --- LOGICA MISSING TRANSACTION (Suggerimenti Transazioni) ---
+                                                    // --- CASO MISSING TRANSACTION (Suggerimenti Transazioni) ---
                                                     if (issue.type === 'missing_transaction' && (suggestion as any).transactionDetails) {
                                                         const t = (suggestion as any).transactionDetails as Transaction;
                                                         const comboKey = t.id;
@@ -302,7 +359,7 @@ const FixWizard: React.FC<{
                                                         );
                                                     }
 
-                                                    // --- LOGICA MISSING INVOICE (Suggerimenti Fatture) ---
+                                                    // --- CASO MISSING INVOICE (Suggerimenti Fatture) ---
                                                     const invGroup = suggestion.invoices;
                                                     const isCluster = invGroup.length > 1;
                                                     const isPerfect = suggestion.isPerfect;
@@ -467,6 +524,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [selectedLocationROI, setSelectedLocationROI] = useState<any | null>(null);
     const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([]);
     const [isFixWizardOpen, setIsFixWizardOpen] = useState(false);
+    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
     const [isTransactionModalOpen, setIsTransactionModalOpen] = useState(false);
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
     const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
@@ -560,33 +618,129 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }; 
     }, [stats]);
 
+    // --- REFACTORING ROI SEDI (CONTROLLING) ---
     const roiSedi = useMemo(() => {
-        const locationsMap = new Map(); suppliers.forEach(s => s.locations.forEach(l => locationsMap.set(l.id, { name: l.name, color: l.color, distance: l.distance || 0, rentalCost: l.rentalCost || 0 })));
-        const locStats: Record<string, any> = {}; locationsMap.forEach((_, id) => locStats[id] = { revenue: 0, trips: 0, students: 0 });
-        transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === controllingYear && t.type === TransactionType.Income).forEach(t => { if (t.allocationId && locStats[t.allocationId]) locStats[t.allocationId].revenue += (Number(t.amount) || 0); });
-        enrollments.forEach(enr => { if ((enr.status === 'Active' || enr.status === 'Completed') && enr.locationId && locStats[enr.locationId]) locStats[enr.locationId].students++; });
-        
-        const totalRev = stats.revenue || 1;
-        const totalOverhead = transactions.filter(t => !t.isDeleted && !t.allocationId && t.type === TransactionType.Expense).reduce((a,c) => a + (Number(c.amount) || 0), 0);
+        // 1. Definisci Categorie Logistiche (A. Logistica)
+        const logisticCats = [
+            TransactionCategory.RCA,
+            TransactionCategory.BolloAuto,
+            TransactionCategory.ManutenzioneAuto,
+            TransactionCategory.ConsumoAuto,
+            TransactionCategory.Carburante,
+            TransactionCategory.Parcheggio,
+            TransactionCategory.Sanzioni,
+            TransactionCategory.BigliettoViaggio
+        ];
 
-        return Array.from(locationsMap.entries()).map(([id, info]) => {
-            const rev = locStats[id].revenue;
-            const overheadQuota = (rev / totalRev) * totalOverhead;
-            const rentCost = info.rentalCost; 
-            const logisticsCost = 0; 
-            
-            return { 
-                name: info.name, color: info.color, 
-                revenue: rev, 
-                costs: rentCost + logisticsCost + overheadQuota, 
-                studentBasedCosts: overheadQuota, 
-                costPerStudent: rev > 0 ? (rentCost + logisticsCost + overheadQuota) / (locStats[id].students || 1) : 0, 
-                costPerLesson: { value: 0, min: 0, max: 0, avg: 0 }, 
-                costPerStudentPerLesson: 0, 
-                breakdown: { rent: rentCost, logistics: logisticsCost, overhead: overheadQuota } 
-            };
+        // 2. Filtra Transazioni dell'anno selezionato
+        const yearTrans = transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === controllingYear);
+        
+        // 3. Calcola Costo Totale Logistica (TCO) dell'anno
+        const totalYearLogisticsCost = yearTrans
+            .filter(t => t.type === TransactionType.Expense && logisticCats.includes(t.category))
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+
+        // 4. Prepara Mappa Sedi
+        const locationsMap = new Map<string, { id: string, name: string, color: string, distance: number }>();
+        suppliers.forEach(s => s.locations.forEach(l => locationsMap.set(l.id, { id: l.id, name: l.name, color: l.color, distance: l.distance || 0 })));
+
+        // 5. Conta Lezioni e KM per sede
+        const locStats: Record<string, { revenue: number, rent: number, lessonCount: number, km: number }> = {};
+        locationsMap.forEach((_, id) => locStats[id] = { revenue: 0, rent: 0, lessonCount: 0, km: 0 });
+
+        let totalYearKm = 0;
+
+        // Conteggio da Iscrizioni (Cartellini)
+        enrollments.forEach(enr => {
+            if (enr.locationId && locStats[enr.locationId]) {
+                const yearApps = (enr.appointments || []).filter(app => 
+                    new Date(app.date).getFullYear() === controllingYear && app.status === 'Present'
+                );
+                locStats[enr.locationId].lessonCount += yearApps.length;
+            }
         });
-    }, [suppliers, transactions, enrollments, manualLessons, controllingYear, stats.revenue]);
+
+        // Conteggio da Lezioni Manuali (Extra)
+        manualLessons.forEach(ml => {
+            const date = new Date(ml.date);
+            if (date.getFullYear() === controllingYear) {
+                // Cerchiamo la location per nome se ID non disponibile
+                const foundLoc = Array.from(locationsMap.values()).find(l => l.name === ml.locationName);
+                if (foundLoc && locStats[foundLoc.id]) {
+                    locStats[foundLoc.id].lessonCount += 1;
+                }
+            }
+        });
+
+        // Calcola KM e totale KM globale
+        locationsMap.forEach((info, id) => {
+            const stats = locStats[id];
+            stats.km = stats.lessonCount * (info.distance * 2); // Andata e ritorno
+            totalYearKm += stats.km;
+        });
+
+        // 6. Calcola Costo per KM (CPK)
+        const cpk = totalYearLogisticsCost / (totalYearKm || 1);
+
+        // 7. Calcola Ricavi e Noli Reali (Transazionali)
+        yearTrans.forEach(t => {
+            if (!t.allocationId || !locStats[t.allocationId]) return;
+            if (t.type === TransactionType.Income) {
+                locStats[t.allocationId].revenue += (Number(t.amount) || 0);
+            } else if (t.category === TransactionCategory.Nolo) {
+                locStats[t.allocationId].rent += (Number(t.amount) || 0);
+            }
+        });
+
+        // 8. Calcola Overhead (Spese comuni senza sede)
+        const totalYearRevenueGlobal = yearTrans
+            .filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+
+        const totalYearOverhead = yearTrans
+            .filter(t => 
+                t.type === TransactionType.Expense && 
+                !t.allocationId && 
+                !logisticCats.includes(t.category) && 
+                t.category !== TransactionCategory.Nolo
+            )
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+
+        // 9. Assemblaggio Finale ROI
+        return Array.from(locationsMap.entries())
+            .map(([id, info]) => {
+                const stats = locStats[id];
+                const revenue = stats.revenue;
+                
+                // Ripartizione proporzionale Overhead
+                const overheadQuota = (revenue / (totalYearRevenueGlobal || 1)) * totalYearOverhead;
+                
+                // Calcolo Logistica Sede
+                const logisticsCost = stats.km * cpk;
+                
+                // Nolo: Usa il dato transazionale (stats.rent)
+                const rentCost = stats.rent;
+
+                return { 
+                    name: info.name, color: info.color, 
+                    revenue: revenue, 
+                    costs: rentCost + logisticsCost + overheadQuota, 
+                    studentBasedCosts: overheadQuota, 
+                    costPerStudent: revenue > 0 ? (rentCost + logisticsCost + overheadQuota) / (revenue / 25) : 0, // 25€ stima lezione
+                    costPerLesson: { 
+                        value: stats.lessonCount > 0 ? (rentCost + logisticsCost) / stats.lessonCount : 0, 
+                        min: 0, max: 0, avg: 0 
+                    }, 
+                    costPerStudentPerLesson: stats.lessonCount > 0 && revenue > 0 ? ((rentCost + logisticsCost) / stats.lessonCount) / (revenue / (stats.lessonCount * 25)) : 0,
+                    breakdown: { rent: rentCost, logistics: logisticsCost, overhead: overheadQuota },
+                    // Nuovi flag per il filtraggio card
+                    hasActivity: revenue > 0 || rentCost > 0 || stats.lessonCount > 0
+                };
+            })
+            // FILTRO INTEGRITA TEMPORALE: Mostra solo sedi con attività nell'anno
+            .filter(sede => sede.hasActivity);
+
+    }, [suppliers, transactions, enrollments, manualLessons, controllingYear]);
 
     const tabLabels: Record<string, string> = {
         overview: 'Panoramica',
@@ -609,8 +763,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     // Wrapper per gestire il refresh dopo il fix guidato
     const handleWizardFix = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string) => {
         await fixIntegrityIssue(issue, strategy, manualNum, targetInvoiceIds, adjustment, targetTransactionId);
-        // Forza il refresh silente per eliminare l'anomalia appena sanata (l'utente vedrà la successiva)
         await fetchData();
+    };
+
+    const handleExecuteSync = async (month: number, year: number) => {
+        setLoading(true);
+        const result = await syncRentExpenses(month, year);
+        alert(result);
+        await fetchData();
+        setLoading(false);
     };
 
     const confirmDelete = async () => { if (transactionToDelete) { setLoading(true); try { if (activeTab === 'transactions') await deleteTransaction(transactionToDelete); else if (activeTab === 'invoices' || activeTab === 'archive') await deleteInvoice(transactionToDelete); else if (activeTab === 'quotes') await deleteQuote(transactionToDelete); await fetchData(); } finally { setLoading(false) ; setTransactionToDelete(null); } } };
@@ -627,7 +788,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
                 <div><h1 className="text-3xl font-black text-slate-900">Finanza Enterprise</h1><p className="text-slate-500 font-medium">Strategia, CFO Dashboard e documentazione fiscale.</p></div>
                 <div className="flex gap-2">
-                    <button onClick={async () => { setLoading(true); await syncRentExpenses(); await fetchData(); setLoading(false); }} className="md-btn md-btn-flat bg-white border border-indigo-200"><RefreshIcon /> Noli</button>
+                    <button onClick={() => setIsSyncModalOpen(true)} className="md-btn md-btn-flat bg-white border border-indigo-200"><RefreshIcon /> Noli</button>
                     <button onClick={async () => { setLoading(true); await reconcileTransactions(); await fetchData(); setLoading(false); }} className="md-btn md-btn-flat bg-white border"><RefreshIcon /> Sync</button>
                     <button onClick={() => { if (activeTab === 'quotes') setIsQuoteModalOpen(true); else if (activeTab === 'invoices') setIsInvoiceModalOpen(true); else setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> {activeTab === 'quotes' ? 'Preventivo' : (activeTab === 'invoices' ? 'Fattura' : 'Voce')}</button>
                 </div>
@@ -642,9 +803,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {['transactions', 'invoices', 'archive', 'quotes'].includes(activeTab) && <FinanceListView activeTab={activeTab as any} transactions={transactions} invoices={invoices} quotes={quotes} suppliers={suppliers} filters={filters} setFilters={setFilters} onEdit={handleEditItem} onDelete={setTransactionToDelete} onPrint={handlePrint} onSeal={inv => updateInvoice(inv.id, {status: DocumentStatus.SealedSDI})} onWhatsApp={handleWhatsApp} onConvert={setQuoteToConvert} />}
                 </div>
             )}
+            {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="lg"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onSync={handleExecuteSync} /></Modal>}
             {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="lg"><FixWizard issues={integrityIssues} onFix={handleWizardFix} onClose={() => setIsFixWizardOpen(false)} /></Modal>}
             {isTransactionModalOpen && <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg"><TransactionForm transaction={editingTransaction} suppliers={suppliers} onSave={handleSaveTransaction} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
-            {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
+            {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {}} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
             {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="lg"><QuoteForm quote={editingQuote} clients={clients} onSave={handleSaveQuote} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
             {selectedLocationROI && <LocationDetailModal data={selectedLocationROI} onClose={() => setSelectedLocationROI(null)} />}
             <ConfirmModal isOpen={!!transactionToDelete} onClose={() => setTransactionToDelete(null)} onConfirm={confirmDelete} title="Elimina" message="Sei sicuro?" isDangerous={true} />

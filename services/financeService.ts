@@ -686,36 +686,104 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
     if (count > 0) await batch.commit();
 };
 
-export const syncRentExpenses = async (): Promise<string> => {
-    const enrollments = await getAllEnrollments();
-    const suppliers = await getSuppliers();
+// --- SYNC NOLI POTENZIATO (PRECISION MODE + SELECTIVE PERIOD) ---
+export const syncRentExpenses = async (targetMonth?: number, targetYear?: number): Promise<string> => {
+    const [enrollments, suppliers] = await Promise.all([
+        getAllEnrollments(),
+        getSuppliers()
+    ]);
+
     const locationCostMap = new Map<string, { cost: number, supplierName: string }>();
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    const startOfMonth = new Date(currentYear, currentMonth, 1).toISOString();
-    const endOfMonth = new Date(currentYear, currentMonth + 1, 0).toISOString();
-    suppliers.forEach(s => { s.locations.forEach(l => { const isClosed = l.closedAt && new Date(l.closedAt) < new Date(startOfMonth); if (!isClosed) { locationCostMap.set(l.id, { cost: l.rentalCost || 0, supplierName: s.companyName }); } }); });
-    const q = query(transactionCollectionRef, where("category", "==", TransactionCategory.Nolo), where("date", ">=", startOfMonth), where("date", "<=", endOfMonth), where("isDeleted", "==", false));
+    const now = new Date();
+    
+    // PRECISION FIX: Usa parametri passati o default a oggi
+    const month = targetMonth !== undefined ? targetMonth : now.getMonth();
+    const year = targetYear !== undefined ? targetYear : now.getFullYear();
+    
+    const startOfMonth = new Date(year, month, 1).toISOString();
+    const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    const competenceMonthLabel = `${String(month + 1).padStart(2, '0')}/${year}`;
+
+    // Mappa costi sede dai fornitori (escludendo sedi dismesse prima dell'inizio mese)
+    suppliers.forEach(s => { 
+        s.locations.forEach(l => { 
+            const isClosedAlready = l.closedAt && new Date(l.closedAt) < new Date(startOfMonth); 
+            if (!isClosedAlready) { 
+                locationCostMap.set(l.id, { cost: l.rentalCost || 0, supplierName: s.companyName }); 
+            } 
+        }); 
+    });
+
+    // Recupera noli già registrati per evitare duplicati nel periodo target
+    const q = query(transactionCollectionRef, 
+        where("category", "==", TransactionCategory.Nolo), 
+        where("date", ">=", startOfMonth), 
+        where("date", "<=", endOfMonth), 
+        where("isDeleted", "==", false)
+    );
     const existingRents = await getDocs(q);
     const paidLocationIds = new Set<string>();
-    existingRents.docs.forEach(d => { const t = d.data() as Transaction; if (t.allocationId) paidLocationIds.add(t.allocationId); });
+    existingRents.docs.forEach(d => { 
+        const t = d.data() as Transaction; 
+        if (t.allocationId) paidLocationIds.add(t.allocationId); 
+    });
+
+    // Identifica sedi REALMENTE occupate tramite presenze (Appointments 'Present') nel periodo target
     const occupiedLocationIds = new Set<string>();
-    enrollments.forEach(e => { if (e.status === 'Active' && e.locationId && e.locationId !== 'unassigned') { occupiedLocationIds.add(e.locationId); } });
+    enrollments.forEach(e => { 
+        if (e.appointments && e.locationId && e.locationId !== 'unassigned') {
+            const hasPresenceInPeriod = e.appointments.some(app => {
+                const appDate = new Date(app.date);
+                return app.status === 'Present' && 
+                       appDate >= new Date(startOfMonth) && 
+                       appDate <= new Date(endOfMonth);
+            });
+            if (hasPresenceInPeriod) {
+                occupiedLocationIds.add(e.locationId);
+            }
+        } 
+    });
+
     const batch = writeBatch(db);
     let createdCount = 0;
+
     occupiedLocationIds.forEach(locId => {
         if (!paidLocationIds.has(locId)) {
             const costInfo = locationCostMap.get(locId);
             if (costInfo && costInfo.cost > 0) {
                 const newRef = doc(transactionCollectionRef);
-                const t: TransactionInput = { date: new Date().toISOString(), description: `Affitto Sede: ${costInfo.supplierName} (Auto-Gen)`, amount: costInfo.cost, type: TransactionType.Expense, category: TransactionCategory.Nolo, paymentMethod: PaymentMethod.BankTransfer, status: TransactionStatus.Completed, allocationType: 'location', allocationId: locId, allocationName: '', isDeleted: false };
-                suppliers.forEach(s => { const l = s.locations.find(loc => loc.id === locId); if (l) t.allocationName = l.name; });
+                
+                const t: TransactionInput = { 
+                    date: endOfMonth, 
+                    description: `Affitto Sede: ${costInfo.supplierName} - ${competenceMonthLabel} (Auto-Gen)`, 
+                    amount: costInfo.cost, 
+                    type: TransactionType.Expense, 
+                    category: TransactionCategory.Nolo, 
+                    paymentMethod: PaymentMethod.BankTransfer, 
+                    status: TransactionStatus.Completed, 
+                    allocationType: 'location', 
+                    allocationId: locId, 
+                    allocationName: '', 
+                    isDeleted: false 
+                };
+                
+                suppliers.forEach(s => { 
+                    const l = s.locations.find(loc => loc.id === locId); 
+                    if (l) t.allocationName = l.name; 
+                });
+
                 batch.set(newRef, { ...t, relatedDocumentId: 'AUTO-RENT' });
                 createdCount++;
             }
         }
     });
-    if (createdCount > 0) { await batch.commit(); return `Generati ${createdCount} movimenti affitto.`; } else { return "Nessun nuovo movimento necessario."; }
+
+    if (createdCount > 0) { 
+        await batch.commit(); 
+        return `Generati ${createdCount} movimenti affitto per ${competenceMonthLabel}.`; 
+    } else { 
+        return `Nessun nuovo movimento necessario per ${competenceMonthLabel} (nessuna presenza 'Present' rilevata o noli già saldati).`; 
+    }
 };
 
 export const checkAndSetOverdueInvoices = async () => {

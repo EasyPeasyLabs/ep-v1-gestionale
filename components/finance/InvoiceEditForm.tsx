@@ -7,43 +7,43 @@ import TrashIcon from '../icons/TrashIcon';
 import SearchIcon from '../icons/SearchIcon';
 
 const InvoiceEditForm: React.FC<{
-    invoice: Invoice | null;
+    invoice: Invoice;
     clients?: Client[];
     companyInfo?: CompanyInfo | null; // NEW Prop
     onSave: (data: InvoiceInput) => void;
     onCancel: () => void;
 }> = ({ invoice, clients = [], companyInfo, onSave, onCancel }) => {
     // --- General Info ---
-    const [issueDate, setIssueDate] = useState(invoice?.issueDate ? invoice.issueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
-    const [dueDate, setDueDate] = useState(invoice?.dueDate ? invoice.dueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
-    const [paymentMethod, setPaymentMethod] = useState(invoice?.paymentMethod || PaymentMethod.BankTransfer);
-    const [invoiceNumber, setInvoiceNumber] = useState(invoice?.invoiceNumber || '');
-    const [status, setStatus] = useState<DocumentStatus>(invoice?.status || DocumentStatus.Draft);
-    const [sdiId, setSdiId] = useState(invoice?.sdiId || '');
-    const [notes, setNotes] = useState(invoice?.notes || '');
+    const [issueDate, setIssueDate] = useState(invoice.issueDate ? invoice.issueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [dueDate, setDueDate] = useState(invoice.dueDate ? invoice.dueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
+    const [paymentMethod, setPaymentMethod] = useState(invoice.paymentMethod || PaymentMethod.BankTransfer);
+    const [invoiceNumber, setInvoiceNumber] = useState(invoice.invoiceNumber || '');
+    const [status, setStatus] = useState<DocumentStatus>(invoice.status || DocumentStatus.Draft);
+    const [sdiId, setSdiId] = useState(invoice.sdiId || '');
+    const [notes, setNotes] = useState(invoice.notes || '');
 
     // --- Client Selection ---
-    const [clientId, setClientId] = useState(invoice?.clientId || '');
-    const [clientName, setClientName] = useState(invoice?.clientName || '');
+    const [clientId, setClientId] = useState(invoice.clientId || '');
+    const [clientName, setClientName] = useState(invoice.clientName || '');
     const [clientSearchTerm, setClientSearchTerm] = useState('');
     const [showClientDropdown, setShowClientDropdown] = useState(false);
 
     // --- Items & Totals ---
-    const [items, setItems] = useState<DocumentItem[]>(invoice?.items || []);
-    const [globalDiscount, setGlobalDiscount] = useState<number>(invoice?.globalDiscount || 0);
-    const [globalDiscountType, setGlobalDiscountType] = useState<'percent' | 'amount'>(invoice?.globalDiscountType || 'amount');
-    const [manualStampDuty, setManualStampDuty] = useState(invoice?.hasStampDuty);
+    const [items, setItems] = useState<DocumentItem[]>(invoice.items || []);
+    const [globalDiscount, setGlobalDiscount] = useState<number>(invoice.globalDiscount || 0);
+    const [globalDiscountType, setGlobalDiscountType] = useState<'percent' | 'amount'>(invoice.globalDiscountType || 'amount');
+    const [manualStampDuty, setManualStampDuty] = useState(invoice.hasStampDuty);
 
     // --- Automation: Pre-fill Notes with IBAN only (No Legal Footer) ---
     useEffect(() => {
-        if (!invoice?.id && !notes && companyInfo) {
+        if (!invoice.id && !notes && companyInfo) {
             // Solo dati bancari, niente footer legale (gestito dal PDF)
             const bankDetails = companyInfo.iban 
                 ? `Coordinate Bancarie:\nIBAN: ${companyInfo.iban}\nIntestato a: ${companyInfo.name}`
                 : "";
             setNotes(bankDetails);
         }
-    }, [invoice?.id, companyInfo]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [invoice.id, companyInfo]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // --- Computed: Client List for Dropdown ---
     const filteredClients = useMemo(() => {
@@ -143,8 +143,8 @@ const InvoiceEditForm: React.FC<{
             globalDiscount,
             globalDiscountType,
             notes,
-            isGhost: invoice?.isGhost || false,
-            isDeleted: invoice?.isDeleted || false
+            isGhost: invoice.isGhost,
+            isDeleted: invoice.isDeleted
         };
 
         // AUTOMAZIONE: Se SDI è presente, forza lo stato a SealedSDI
@@ -158,8 +158,7 @@ const InvoiceEditForm: React.FC<{
     const handlePreview = async () => {
         // Costruisci oggetto temporaneo
         const tempInvoice: Invoice = {
-            ...(invoice || {}),
-            id: invoice?.id || 'temp-preview',
+            ...invoice,
             invoiceNumber: invoiceNumber || 'BOZZA',
             issueDate: new Date(issueDate).toISOString(),
             dueDate: new Date(dueDate).toISOString(),
@@ -173,9 +172,7 @@ const InvoiceEditForm: React.FC<{
             globalDiscount,
             globalDiscountType,
             notes,
-            sdiId,
-            isGhost: invoice?.isGhost || false,
-            isDeleted: invoice?.isDeleted || false
+            sdiId
         };
 
         // Usa il flag 'true' per ottenere l'URL invece di scaricare
@@ -191,7 +188,7 @@ const InvoiceEditForm: React.FC<{
             <div className="px-8 py-5 bg-white border-b border-gray-200 flex justify-between items-center flex-shrink-0 shadow-sm z-20">
                 <div>
                     <h3 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
-                        {invoice?.id ? 'Modifica Fattura' : 'Nuova Fattura'}
+                        {invoice.id ? 'Modifica Fattura' : 'Nuova Fattura'}
                         {status === DocumentStatus.Draft && <span className="bg-gray-100 text-gray-500 text-[10px] uppercase px-2 py-0.5 rounded border">Bozza</span>}
                         {status === DocumentStatus.Paid && <span className="bg-green-100 text-green-700 text-[10px] uppercase px-2 py-0.5 rounded border border-green-200">Pagata</span>}
                     </h3>

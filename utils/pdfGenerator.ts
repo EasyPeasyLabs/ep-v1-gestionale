@@ -42,8 +42,9 @@ const loadImage = async (url: string): Promise<string> => {
 export const generateDocumentPDF = async (
     doc: Invoice | Quote,
     type: 'Fattura' | 'Preventivo',
-    companyInfo: CompanyInfo | null,
-    client: Client | undefined,
+    // FIX: Explicitly marked as optional with ? to resolve call site mismatches where only 2-3 args might be expected
+    companyInfo?: CompanyInfo | null,
+    client?: Client | undefined,
     previewMode: boolean = false // New Parameter
 ): Promise<string | void> => { // Returns string (URL) if previewMode is true
     const docPdf = new jsPDF();
