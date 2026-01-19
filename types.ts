@@ -98,6 +98,7 @@ export interface IntegrityIssueSuggestion {
     invoices: Invoice[];
     isPerfect: boolean;
     gap: number;
+    transactionDetails?: Transaction; // Supporto per transazioni orfane
 }
 
 export interface IntegrityIssue {

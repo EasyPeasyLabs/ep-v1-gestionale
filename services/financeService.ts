@@ -315,10 +315,13 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
             const linkedCash = activeTransactions.filter(t => t.relatedEnrollmentId === enr.id || t.relatedDocumentId === `ENR-${enr.id}`);
             const cashAmount = Number(linkedCash.reduce((sum, t) => sum + Number(Number(t.amount).toFixed(2)), 0).toFixed(2));
             const adjustment = Number(Number(enr.adjustmentAmount || 0).toFixed(2));
+            
+            // NEUTRALIZZAZIONE LOGICA: Sommiamo l'abbuono alla copertura rilevata
             const totalDetectedCoverage = Number((Math.max(totalCoveredAmount, cashAmount) + adjustment).toFixed(2));
             const enrollmentPrice = Number(Number(enr.price || 0).toFixed(2));
             const missingAmount = Number((enrollmentPrice - totalDetectedCoverage).toFixed(2));
 
+            // Se la differenza è trascurabile (< 0.10€), la posizione è sanata
             if (missingAmount > 0.1) {
                 const enrStart = new Date(enr.startDate);
                 const enrEnd = new Date(enr.endDate);
@@ -365,22 +368,16 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
             if (!hasTransaction) {
                 const linkedEnr = enrollments.find(e => e.id === inv.relatedEnrollmentId);
 
-                // --- NUOVA LOGICA: RICERCA TRANSAZIONI ORFANE COMPATIBILI ---
-                // Cerchiamo nel registro transazioni entrate che non sono collegate a nulla 
-                // e che hanno l'importo della fattura (tolleranza 2€ per bolli) e che 
-                // nominano il numero fattura o il cliente nella descrizione.
                 const orphanTransactions = activeTransactions.filter(t => 
                     !t.relatedDocumentId && 
                     Math.abs(Number(t.amount) - Number(inv.totalAmount)) <= 2.01 &&
                     (t.description.includes(inv.invoiceNumber) || t.clientName === inv.clientName)
                 );
 
-                // Mappiamo le transazioni orfane come suggerimenti
                 const suggestions: IntegrityIssueSuggestion[] = orphanTransactions.map(t => ({
-                    invoices: [inv], // In questo caso è l'inverso: mettiamo la fattura target
+                    invoices: [inv], 
                     isPerfect: Math.abs(Number(t.amount) - Number(inv.totalAmount)) < 0.1,
                     gap: Number((Number(inv.totalAmount) - Number(t.amount)).toFixed(2)),
-                    // Passiamo i dati della transazione nei dettagli per il fix
                     transactionDetails: t 
                 }));
 
@@ -405,6 +402,112 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
     });
 
     return issues;
+};
+
+// --- FUNZIONE ATOMICA: RICONCILIAZIONE SMART (Supporto Abbuoni e Documenti Orfani) ---
+export const linkFinancialsToEnrollment = async (
+    enrollmentId: string, 
+    invoiceIds: string[], 
+    transactionIds: string[], 
+    adjustment: { amount: number, notes: string }
+): Promise<void> => {
+    const enrRef = doc(db, 'enrollments', enrollmentId);
+    const enrSnap = await getDoc(enrRef);
+    if (!enrSnap.exists()) throw new Error("Iscrizione non trovata.");
+    const enrData = enrSnap.data() as Enrollment;
+
+    const batch = writeBatch(db);
+
+    // 1. Collega Fatture
+    for (const invId of invoiceIds) {
+        const invRef = doc(db, 'invoices', invId);
+        batch.update(invRef, { relatedEnrollmentId: enrollmentId });
+    }
+
+    // 2. Collega Transazioni
+    for (const trnId of transactionIds) {
+        const trnRef = doc(db, 'transactions', trnId);
+        batch.update(trnRef, { 
+            relatedEnrollmentId: enrollmentId,
+            allocationId: enrData.locationId !== 'unassigned' ? enrData.locationId : undefined,
+            allocationName: enrData.locationName !== 'Sede Non Definita' ? enrData.locationName : undefined
+        });
+    }
+
+    // 3. Aggiorna Iscrizione con Abbuono
+    const updates: Partial<Enrollment> = {
+        adjustmentAmount: Number(adjustment.amount.toFixed(2)),
+        adjustmentNotes: adjustment.notes
+    };
+
+    if (enrData.status === EnrollmentStatus.Pending) {
+        updates.status = EnrollmentStatus.Active;
+    }
+
+    batch.update(enrRef, updates);
+    await batch.commit();
+};
+
+export const getOrphanedFinancialsForClient = async (clientId: string) => {
+    const [allInvoices, allTransactions] = await Promise.all([
+        getInvoices(),
+        getTransactions()
+    ]);
+
+    const orphanInvoices = allInvoices.filter(i => 
+        !i.isDeleted && 
+        !i.isGhost && 
+        i.clientId === clientId && 
+        !i.relatedEnrollmentId
+    );
+
+    const orphanGhosts = allInvoices.filter(i =>
+        !i.isDeleted &&
+        i.isGhost &&
+        i.clientId === clientId &&
+        !i.relatedEnrollmentId
+    );
+
+    const orphanTransactions = allTransactions.filter(t => 
+        !t.isDeleted && 
+        t.type === TransactionType.Income &&
+        t.category !== TransactionCategory.Capitale &&
+        !t.relatedEnrollmentId &&
+        // Proviamo a matchare per nome cliente se disponibile, altrimenti resta orfana pura
+        (t.clientName?.toLowerCase().includes(clientId.toLowerCase()) || !t.clientName) 
+    );
+
+    return { orphanInvoices, orphanTransactions, orphanGhosts };
+};
+
+// --- FUNZIONE ATOMICA: GENERAZIONE GHOST SALDO ---
+export const createGhostInvoiceForEnrollment = async (enrollment: Enrollment, clientName: string, amount: number): Promise<void> => {
+    const ghostNumber = await getNextGhostInvoiceNumber();
+    const formattedEnrDate = new Date(enrollment.startDate).toLocaleDateString('it-IT');
+    const desc = `Saldo residuo Iscrizione di: ${enrollment.childName} del ${formattedEnrDate} per ${enrollment.subscriptionName} Sede: ${enrollment.locationName}`;
+
+    const ghostInvoice: InvoiceInput = {
+        clientId: enrollment.clientId,
+        clientName: clientName,
+        issueDate: new Date().toISOString(),
+        dueDate: enrollment.endDate,
+        status: DocumentStatus.Draft,
+        paymentMethod: PaymentMethod.BankTransfer,
+        relatedEnrollmentId: enrollment.id,
+        items: [{ 
+            description: desc, 
+            quantity: 1, 
+            price: amount, 
+            notes: "Documento pro-forma generato manualmente dal wizard di riconciliazione." 
+        }],
+        totalAmount: amount,
+        hasStampDuty: amount > 77.47,
+        isGhost: true,
+        invoiceNumber: ghostNumber,
+        isDeleted: false
+    };
+
+    await addDoc(invoiceCollectionRef, ghostInvoice);
 };
 
 // --- FUNZIONE ATOMICA OTTIMIZZATA: RICONCILIAZIONE SMART (Supporto Abbuoni) ---
@@ -636,7 +739,7 @@ export const convertQuoteToInvoice = async (quoteId: string) => {
     if (!quoteSnap.exists()) throw new Error("Preventivo non trovato");
     const quote = quoteSnap.data() as Quote;
     const today = new Date().toISOString();
-    const invoiceInput: InvoiceInput = { invoiceNumber: '', issueDate: today, dueDate: today, clientId: quote.clientId, clientName: quote.clientName, items: quote.items, totalAmount: quote.totalAmount, status: DocumentStatus.Draft, paymentMethod: PaymentMethod.BankTransfer, hasStampDuty: quote.totalAmount > 77.47, isGhost: false, isDeleted: false, relatedQuoteNumber: quote.quoteNumber };
+    const invoiceInput: InvoiceInput = { invoiceNumber: '', issueDate: today, dueDate: today, clientId: quote.clientId, clientName: quote.clientName, items: quote.items, totalAmount: quote.totalAmount, status: DocumentStatus.Paid, paymentMethod: PaymentMethod.BankTransfer, hasStampDuty: quote.totalAmount > 77.47, isGhost: false, isDeleted: false, relatedQuoteNumber: quote.quoteNumber };
     const newInvoice = await addInvoice(invoiceInput);
     await updateDoc(quoteRef, { status: DocumentStatus.Sent }); 
     return newInvoice.id;
