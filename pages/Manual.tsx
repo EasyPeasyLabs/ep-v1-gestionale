@@ -145,6 +145,7 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
     const [stepIdx, setStepIdx] = useState(0);
     const [isAutoPlaying, setIsAutoPlaying] = useState(true);
     
+    // CRITICAL FIX: Reset stepIdx when mission changes to prevent 'undefined' access
     useEffect(() => {
         setStepIdx(0);
     }, [mission.title]);
@@ -159,6 +160,7 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
 
     const currentStep = mission.steps[stepIdx];
 
+    // Safety return to avoid TypeError on handX
     if (!currentStep) return <div className="w-full aspect-video flex items-center justify-center bg-slate-900 rounded-[40px]"><Spinner /></div>;
 
     return (
@@ -182,6 +184,8 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
 
             <div className="flex-1 bg-slate-50 relative overflow-hidden">
                 <div className="absolute inset-0 bg-black/5 pointer-events-none z-10"></div>
+                
+                {/* SAFE ACCESS: CurrentStep is guaranteed by above check */}
                 <VirtualHand active={true} x={currentStep.handX} y={currentStep.handY} action={currentStep.action} />
 
                 <div className="p-8 h-full">
@@ -215,7 +219,8 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
     );
 };
 
-// --- MINI SCENARI ---
+// --- MINI SCENARI PER IL SIMULATORE ---
+
 const CalendarScenario: React.FC<{ step: number }> = ({ step }) => (
     <div className="bg-white rounded-2xl p-4 shadow-xl border h-full">
         <div className="flex justify-between items-center mb-4 px-2">

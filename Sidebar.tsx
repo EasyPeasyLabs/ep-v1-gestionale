@@ -1,18 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { Page } from '../types';
+import { Page } from './types';
 import type { User } from 'firebase/auth';
-import DashboardIcon from './icons/DashboardIcon';
-import ClientsIcon from './icons/ClientsIcon';
-import SuppliersIcon from './icons/SuppliersIcon';
-import SettingsIcon from './icons/SettingsIcon';
-import CalendarIcon from './icons/CalendarIcon';
-import CRMIcon from './icons/CRMIcon';
-import ChecklistIcon from './icons/ChecklistIcon';
-import ClipboardIcon from './icons/ClipboardIcon';
-import BookOpenIcon from './icons/BookOpenIcon';
-import ChevronDownIcon from './icons/ChevronDownIcon';
-import ArchiveIcon from './icons/ArchiveIcon'; 
-import { getCompanyInfo } from '../services/settingsService';
+import DashboardIcon from './components/icons/DashboardIcon';
+import ClientsIcon from './components/icons/ClientsIcon';
+import SuppliersIcon from './components/icons/SuppliersIcon';
+import SettingsIcon from './components/icons/SettingsIcon';
+import CalendarIcon from './components/icons/CalendarIcon';
+import CRMIcon from './components/icons/CRMIcon';
+import ChecklistIcon from './components/icons/ChecklistIcon';
+import ClipboardIcon from './components/icons/ClipboardIcon';
+import BookOpenIcon from './components/icons/BookOpenIcon';
+import ChevronDownIcon from './components/icons/ChevronDownIcon';
+import ArchiveIcon from './components/icons/ArchiveIcon'; 
+import { getCompanyInfo } from './services/settingsService';
 
 const SoccerBallIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
