@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-// Added EnrollmentInput to the imports to fix the error in handleSaveEnrollment
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client } from '../types';
+import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client, InstitutionalClient } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
@@ -21,16 +21,8 @@ import UserPlusIcon from '../components/icons/UserPlusIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
 
-interface EnrollmentsProps {
-    initialParams?: {
-        status?: 'all' | 'pending' | 'active';
-        searchTerm?: string;
-    };
-}
-
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// Helper per contrasto colore testo (Enterprise Grade)
 const getTextColorForBg = (bgColor: string) => {
     if (!bgColor || bgColor === 'unassigned') return '#1f2937';
     const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
@@ -40,1221 +32,155 @@ const getTextColorForBg = (bgColor: string) => {
     return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#1f2937' : '#ffffff';
 };
 
-// Icona Spostamento
-const ArrowRightStartOnRectangleIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-  </svg>
-);
-
-// --- Modal Recupero ---
-const RecoveryModal: React.FC<{
-    enrollment: Enrollment;
-    maxRecoverable: number;
-    suppliers: Supplier[];
-    onClose: () => void;
-    onConfirm: (date: string, time: string, endTime: string, count: number, locName: string, locColor: string) => void;
-}> = ({ enrollment, maxRecoverable, suppliers, onClose, onConfirm }) => {
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [count, setCount] = useState(1);
-    
-    // Default: Sede originale dell'iscrizione
-    const originalLocationId = enrollment.locationId;
-    const [selectedLocationId, setSelectedLocationId] = useState(originalLocationId);
-    
-    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
-    const [availableSlots, setAvailableSlots] = useState<{start: string, end: string, day: number}[]>([]);
-
-    const currentLocation = useMemo(() => {
-        for (const s of suppliers) {
-            const loc = s.locations.find(l => l.id === selectedLocationId);
-            if (loc) return loc;
-        }
-        return null;
-    }, [suppliers, selectedLocationId]);
-
-    const allLocations = useMemo(() => {
-        const locs: {id: string, name: string}[] = [];
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                locs.push({ id: l.id, name: l.name });
-            });
-        });
-        return locs.sort((a,b) => a.name.localeCompare(b.name));
-    }, [suppliers]);
-
-    useEffect(() => {
-        const dayOfWeek = new Date(date).getDay();
-        if (currentLocation && currentLocation.availability) {
-            const slots = currentLocation.availability.filter(s => s.dayOfWeek === dayOfWeek);
-            setAvailableSlots(slots.map(s => ({ start: s.startTime, end: s.endTime, day: s.dayOfWeek })));
-            setSelectedSlotIndex(null); 
-        } else {
-            setAvailableSlots([]);
-        }
-    }, [date, currentLocation]);
-
-    const handleConfirm = () => {
-        if (selectedSlotIndex === null || !currentLocation) return;
-        const slot = availableSlots[selectedSlotIndex];
-        onConfirm(date, slot.start, slot.end, count, currentLocation.name, currentLocation.color);
-    };
-
-    return (
-        <Modal onClose={onClose} size="md">
-            <div className="p-6">
-                <h3 className="text-lg font-bold text-gray-800 mb-2">Recupero Lezioni</h3>
-                <p className="text-sm text-gray-500 mb-4">Programma il recupero per <strong>{enrollment.childName}</strong>.</p>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 mb-1">Presso Sede (Recinto)</label>
-                        <select 
-                            value={selectedLocationId} 
-                            onChange={(e) => setSelectedLocationId(e.target.value)} 
-                            className="md-input bg-white"
-                        >
-                            {allLocations.map(l => (
-                                <option key={l.id} value={l.id}>{l.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="md-input-group">
-                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" />
-                        <label className="md-input-label !top-0">Data Inizio</label>
-                    </div>
-                    <div>
-                        <label className="block text-xs text-gray-500 mb-1">Seleziona Slot (Sede Selezionata)</label>
-                        {availableSlots.length > 0 ? (
-                            <div className="grid grid-cols-2 gap-2">
-                                {availableSlots.map((slot, idx) => (
-                                    <button key={idx} onClick={() => setSelectedSlotIndex(idx)} className={`p-2 border rounded text-sm ${selectedSlotIndex === idx ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'hover:bg-gray-50'}`}>
-                                        {slot.start} - {slot.end}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : <p className="text-xs text-red-500 italic">Nessuno slot disponibile per questo giorno in questa sede.</p>}
-                    </div>
-                    <div className="md-input-group">
-                        <input type="number" min="1" max={maxRecoverable} value={count} onChange={e => setCount(Math.min(maxRecoverable, Math.max(1, Number(e.target.value))))} className="md-input" />
-                        <label className="md-input-label !top-0">Numero Lezioni</label>
-                    </div>
-                </div>
-                <div className="mt-6 flex justify-end gap-2">
-                    <button onClick={onClose} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                    <button onClick={handleConfirm} disabled={selectedSlotIndex === null} className="md-btn md-btn-raised md-btn-primary md-btn-sm disabled:opacity-50">Conferma</button>
-                </div>
-            </div>
-        </Modal>
-    );
+const getClientName = (c?: Client) => {
+    if (!c) return 'Sconosciuto';
+    if (c.clientType === ClientType.Parent) {
+        const p = c as ParentClient;
+        return `${p.firstName || ''} ${p.lastName || ''}`.trim();
+    } else {
+        const i = c as InstitutionalClient;
+        return i.companyName || 'Ente Sconosciuto';
+    }
 };
 
-// --- Modal Assegnazione Massiva (DA ASSEGNARE -> SEDE) ---
-const BulkAssignModal: React.FC<{
-    targetLocationName: string;
-    targetLocationId: string;
-    targetLocationColor: string;
-    suppliers: Supplier[]; 
-    unassignedEnrollments: Enrollment[];
-    onClose: () => void;
-    onConfirm: (selectedIds: string[], slotInfo: {day: number, start: string, end: string}) => void;
-}> = ({ targetLocationName, targetLocationId, targetLocationColor, suppliers, unassignedEnrollments, onClose, onConfirm }) => {
-    
-    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
-    const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<string[]>([]);
-    const [searchTerm, setSearchTerm] = useState('');
-
-    // Trova la location e i suoi slot
-    const locationData = useMemo(() => {
-        for (const s of suppliers) {
-            const loc = s.locations.find(l => l.id === targetLocationId);
-            if (loc) return loc;
-        }
-        return null;
-    }, [suppliers, targetLocationId]);
-
-    const slots = locationData?.availability || [];
-
-    const filteredUnassigned = unassignedEnrollments.filter(e => 
-        e.childName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.subscriptionName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    const toggleSelection = (id: string) => {
-        setSelectedEnrollmentIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+// --- FIX: Added EnrollmentsProps interface to handle navigation parameters ---
+interface EnrollmentsProps {
+    initialParams?: {
+        status?: string;
+        searchTerm?: string;
     };
+}
 
-    const handleConfirm = () => {
-        if (selectedSlotIndex === null) return alert("Seleziona uno slot orario.");
-        if (selectedEnrollmentIds.length === 0) return alert("Seleziona almeno un allievo.");
-        
-        const slot = slots[selectedSlotIndex];
-        onConfirm(selectedEnrollmentIds, { day: slot.dayOfWeek, start: slot.startTime, end: slot.endTime });
-    };
-
-    return (
-        <Modal onClose={onClose} size="lg">
-            <div className="flex flex-col h-full max-h-[85vh]">
-                <div className="p-6 border-b bg-indigo-50 flex-shrink-0">
-                    <h3 className="text-xl font-bold text-indigo-900">Assegna a {targetLocationName}</h3>
-                    <p className="text-sm text-indigo-700">Seleziona uno slot orario e gli allievi da inserire.</p>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* 1. Selezione Slot */}
-                    <div>
-                        <h4 className="text-sm font-bold text-gray-700 mb-3 uppercase">1. Scegli Slot Orario</h4>
-                        {slots.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                {slots.map((slot, idx) => (
-                                    <button 
-                                        key={idx} 
-                                        onClick={() => setSelectedSlotIndex(idx)}
-                                        className={`px-3 py-2 rounded-lg border text-sm font-medium transition-all ${selectedSlotIndex === idx ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-                                    >
-                                        {daysOfWeekMap[slot.dayOfWeek].substring(0, 3)} {slot.startTime} - {slot.endTime}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-red-500 text-sm italic">Questa sede non ha orari configurati. Aggiungili in "Fornitori".</p>
-                        )}
-                    </div>
-
-                    {/* 2. Selezione Allievi */}
-                    <div className="flex-1 flex flex-col min-h-0">
-                        <div className="flex justify-between items-end mb-2">
-                            <h4 className="text-sm font-bold text-gray-700 uppercase">2. Seleziona Allievi ({selectedEnrollmentIds.length})</h4>
-                            <div className="relative w-48">
-                                <SearchIcon />
-                                <input 
-                                    type="text" 
-                                    placeholder="Cerca..." 
-                                    value={searchTerm} 
-                                    onChange={e => setSearchTerm(e.target.value)}
-                                    className="w-full pl-8 pr-2 py-1 text-xs border rounded bg-gray-50 focus:bg-white focus:ring-1 focus:ring-indigo-500"
-                                />
-                            </div>
-                        </div>
-                        
-                        <div className="border rounded-lg overflow-y-auto h-64 bg-gray-50 p-2 space-y-1">
-                            {filteredUnassigned.length === 0 ? (
-                                <p className="text-center text-gray-400 text-sm py-10">Nessun allievo da assegnare trovato.</p>
-                            ) : (
-                                filteredUnassigned.map(enr => (
-                                    <label key={enr.id} className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-lg hover:shadow-sm cursor-pointer transition-all">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={selectedEnrollmentIds.includes(enr.id)} 
-                                            onChange={() => toggleSelection(enr.id)} 
-                                            className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300"
-                                        />
-                                        <div className="flex-1">
-                                            <p className="font-bold text-sm text-gray-800">{enr.childName}</p>
-                                            <p className="text-xs text-gray-500">{enr.subscriptionName}</p>
-                                        </div>
-                                        <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                                            {enr.lessonsRemaining} lezioni
-                                        </span>
-                                    </label>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
-                    <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                    <button onClick={handleConfirm} disabled={selectedSlotIndex === null || selectedEnrollmentIds.length === 0} className="md-btn md-btn-raised md-btn-primary">
-                        Conferma Assegnazione
-                    </button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-// --- Modal Cambio Sede (MOVE WIZARD) ---
-const BulkMoveModal: React.FC<{
-    sourceLocationId: string;
-    sourceLocationName: string;
-    enrollments: Enrollment[]; // Allievi nella sede sorgente
-    suppliers: Supplier[];
-    onClose: () => void;
-    onConfirm: (selectedIds: string[], targetLocationId: string, startDate: string, slotInfo?: {day: number, start: string, end: string}) => void;
-}> = ({ sourceLocationId, sourceLocationName, enrollments, suppliers, onClose, onConfirm }) => {
-    
-    // 1. Group by student to avoid duplicates
-    const groupedStudents = useMemo(() => {
-        const groups: Record<string, { 
-            childName: string, 
-            childId: string,
-            totalLessonsRemaining: number,
-            enrollmentIds: string[]
-        }> = {};
-
-        enrollments.forEach(enr => {
-            const key = enr.childId; // Grouping by child ID
-            if (!groups[key]) {
-                groups[key] = {
-                    childName: enr.childName,
-                    childId: enr.childId,
-                    totalLessonsRemaining: 0,
-                    enrollmentIds: []
-                };
-            }
-            groups[key].totalLessonsRemaining += enr.lessonsRemaining;
-            groups[key].enrollmentIds.push(enr.id);
-        });
-
-        return Object.values(groups).sort((a,b) => a.childName.localeCompare(b.childName));
-    }, [enrollments]);
-
-    // Selection stores EnrollmentIDs
-    const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<string[]>(enrollments.map(e => e.id)); // Default ALL checked
-    
-    const [targetLocationId, setTargetLocationId] = useState('');
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
-
-    // Filter available locations (exclude source)
-    const availableLocations = useMemo(() => {
-        const locs: {id: string, name: string}[] = [];
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                if (l.id !== sourceLocationId) {
-                    locs.push({ id: l.id, name: l.name });
-                }
-            });
-        });
-        return locs.sort((a,b) => a.name.localeCompare(b.name));
-    }, [suppliers, sourceLocationId]);
-
-    // Target Slots
-    const targetSlots = useMemo(() => {
-        if (!targetLocationId) return [];
-        for (const s of suppliers) {
-            const loc = s.locations.find(l => l.id === targetLocationId);
-            if (loc) return loc.availability || [];
-        }
-        return [];
-    }, [targetLocationId, suppliers]);
-
-    const toggleGroupSelection = (enrollmentIds: string[]) => {
-        const allSelected = enrollmentIds.every(id => selectedEnrollmentIds.includes(id));
-        
-        if (allSelected) {
-            // Deselect all
-            setSelectedEnrollmentIds(prev => prev.filter(id => !enrollmentIds.includes(id)));
-        } else {
-            // Select all (adding missing ones)
-            setSelectedEnrollmentIds(prev => {
-                const newIds = [...prev];
-                enrollmentIds.forEach(id => {
-                    if (!newIds.includes(id)) newIds.push(id);
-                });
-                return newIds;
-            });
-        }
-    };
-
-    const isGroupSelected = (enrollmentIds: string[]) => enrollmentIds.every(id => selectedEnrollmentIds.includes(id));
-
-    const handleConfirm = () => {
-        if (!targetLocationId) return alert("Seleziona una sede di destinazione.");
-        if (selectedEnrollmentIds.length === 0) return alert("Seleziona almeno un allievo da spostare.");
-        if (!startDate) return alert("Seleziona una data di decorrenza.");
-
-        let slotInfo = undefined;
-        if (selectedSlotIndex !== null) {
-            const slot = targetSlots[selectedSlotIndex];
-            slotInfo = { day: slot.dayOfWeek, start: slot.startTime, end: slot.endTime };
-        }
-
-        onConfirm(selectedEnrollmentIds, targetLocationId, startDate, slotInfo);
-    };
-
-    return (
-        <Modal onClose={onClose} size="lg">
-            <div className="flex flex-col h-full max-h-[90vh]">
-                <div className="p-6 border-b bg-amber-50 flex-shrink-0">
-                    <h3 className="text-xl font-bold text-amber-900">Sposta da {sourceLocationName}</h3>
-                    <p className="text-sm text-amber-700">Wizard per il cambio sede massivo (es. chiusura sede).</p>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* 1. Selezione Allievi (Grouped) */}
-                    <div className="max-h-40 overflow-y-auto border rounded bg-gray-50 p-2">
-                        <div className="flex justify-between items-center mb-2 px-1">
-                            <span className="text-xs font-bold text-gray-500 uppercase">Selezionati: {groupedStudents.filter(g => isGroupSelected(g.enrollmentIds)).length} studenti</span>
-                            <button onClick={() => setSelectedEnrollmentIds(enrollments.map(e => e.id))} className="text-[10px] text-indigo-600 underline">Seleziona Tutti</button>
-                        </div>
-                        {groupedStudents.map(student => (
-                            <label key={student.childId} className="flex items-center gap-2 text-sm p-1.5 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0">
-                                <input 
-                                    type="checkbox" 
-                                    checked={isGroupSelected(student.enrollmentIds)} 
-                                    onChange={() => toggleGroupSelection(student.enrollmentIds)}
-                                    className="rounded text-amber-600 focus:ring-amber-500"
-                                />
-                                <div className="flex items-center gap-2">
-                                    <span className="font-medium text-gray-800">{student.childName}</span>
-                                    <span className="text-xs text-gray-500 bg-white px-1.5 rounded border border-gray-200">
-                                        {student.totalLessonsRemaining} lez. residui
-                                    </span>
-                                </div>
-                            </label>
-                        ))}
-                        {groupedStudents.length === 0 && <p className="text-center text-xs text-gray-400 py-4">Nessun allievo attivo in questa sede.</p>}
-                    </div>
-
-                    {/* 2. Target Location */}
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-1">Nuova Sede di Destinazione</label>
-                        <select 
-                            value={targetLocationId} 
-                            onChange={e => { setTargetLocationId(e.target.value); setSelectedSlotIndex(null); }} 
-                            className="md-input bg-white"
-                        >
-                            <option value="">Seleziona...</option>
-                            {availableLocations.map(l => (
-                                <option key={l.id} value={l.id}>{l.name}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    {/* 3. Start Date */}
-                    <div>
-                        <div className="md-input-group">
-                            <input 
-                                type="date" 
-                                value={startDate} 
-                                onChange={e => setStartDate(e.target.value)} 
-                                className="md-input"
-                            />
-                            <label className="md-input-label !top-0">Data di Decorrenza (Start Date)</label>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1 italic leading-relaxed">
-                            Inserisci il giorno immediatamente successivo alla chiusura della vecchia sede. 
-                            (Esempio: La sede chiude il 31 Gennaio. Inserisci "1 Febbraio").
-                        </p>
-                    </div>
-
-                    {/* 4. Slot (Optional) */}
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Nuovo Orario (Opzionale)</label>
-                        {targetSlots.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                <button 
-                                    onClick={() => setSelectedSlotIndex(null)}
-                                    className={`px-3 py-2 rounded-lg border text-xs font-bold transition-all ${selectedSlotIndex === null ? 'bg-gray-800 text-white border-gray-800 shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                                >
-                                    MANTIENI ORARIO ATTUALE
-                                </button>
-                                {targetSlots.map((slot, idx) => (
-                                    <button 
-                                        key={idx} 
-                                        onClick={() => setSelectedSlotIndex(idx)}
-                                        className={`px-3 py-2 rounded-lg border text-xs font-medium transition-all ${selectedSlotIndex === idx ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        {daysOfWeekMap[slot.dayOfWeek].substring(0, 3)} {slot.startTime}-{slot.endTime}
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="text-xs text-gray-400">Seleziona una sede per vedere gli orari disponibili.</p>
-                        )}
-                        <p className="text-xs text-gray-500 mt-2 italic leading-relaxed">
-                            Se lo lasci vuoto ("Mantieni orario attuale"), il sistema cercherà di preservare l'orario originale (es. 16:00). 
-                            Se selezioni uno slot, forzerai il cambio orario per tutti gli allievi selezionati.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="p-4 border-t bg-gray-50 flex justify-end gap-2 flex-shrink-0">
-                    <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                    <button onClick={handleConfirm} disabled={!targetLocationId || selectedEnrollmentIds.length === 0} className="md-btn md-btn-raised md-btn-primary">
-                        Conferma Spostamento
-                    </button>
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-
+// --- FIX: Updated component definition to accept EnrollmentsProps ---
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
-    // Data States
-    const [allClients, setAllClients] = useState<Client[]>([]); // Store ALL clients
-    const [parentClients, setParentClients] = useState<ParentClient[]>([]); // For Dropdown
-    
+    const [allClients, setAllClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    
-    // Filter States
+    // --- FIX: Initialized searchTerm with initialParams if provided ---
     const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
-    const [sortOrder, setSortOrder] = useState<'az' | 'za'>('az');
-    
-    // Dropdown Filters
     const [filterLocation, setFilterLocation] = useState<string>('');
-    const [filterDay, setFilterDay] = useState<string>('');
-    const [filterTime, setFilterTime] = useState<string>('');
-    const [filterAge, setFilterAge] = useState<string>('');
-
-    // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedClient, setSelectedClient] = useState<ParentClient | null>(null);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
-    const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-    
-    // Payment Modal State
-    const [paymentModalState, setPaymentModalState] = useState<{
-        isOpen: boolean;
-        enrollment: Enrollment | null;
-        date: string;
-        method: PaymentMethod;
-        createInvoice: boolean;
-        isDeposit: boolean;
-        isBalance: boolean;
-        depositAmount: number;
-        ghostInvoiceId?: string;
-        totalPaid: number; 
-    }>({
-        isOpen: false,
-        enrollment: null,
-        date: new Date().toISOString().split('T')[0],
-        method: PaymentMethod.BankTransfer,
-        createInvoice: true,
-        isDeposit: false,
-        isBalance: false,
-        depositAmount: 0,
-        totalPaid: 0
-    });
+    const [bulkAssignState, setBulkAssignState] = useState<{ isOpen: boolean; locationId: string; locationName: string; locationColor: string; } | null>(null);
 
-    const [recoveryModalState, setRecoveryModalState] = useState<{ isOpen: boolean; enrollment: Enrollment | null; maxRecoverable: number; }>({ isOpen: false, enrollment: null, maxRecoverable: 0 });
-    
-    const [deleteModalState, setDeleteModalState] = useState<{
-        isOpen: boolean;
-        enrollment: Enrollment | null;
-        scope: 'single' | 'all';
-    }>({
-        isOpen: false,
-        enrollment: null,
-        scope: 'single'
-    });
-
-    // Bulk Assignment State
-    const [bulkAssignState, setBulkAssignState] = useState<{
-        isOpen: boolean;
-        locationId: string;
-        locationName: string;
-        locationColor: string;
-    } | null>(null);
-
-    // Bulk Move State
-    const [bulkMoveState, setBulkMoveState] = useState<{
-        isOpen: boolean;
-        sourceLocationId: string;
-        sourceLocationName: string;
-        enrollments: Enrollment[];
-    } | null>(null);
-
-    // Drag and Drop State
-    const [draggedEnrollmentId, setDraggedEnrollmentId] = useState<string | null>(null);
-
-    // --- MOVE MODE STATE (Mobile Friendly) ---
-    const [isMoveMode, setIsMoveMode] = useState(false);
-    const [moveSourceId, setMoveSourceId] = useState<string | null>(null);
-
-    // Fetch Data
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const [clientsData, enrollmentsData, suppliersData] = await Promise.all([
-                getClients(),
-                getAllEnrollments(),
-                getSuppliers()
-            ]);
-            
-            setAllClients(clientsData); // Store ALL
-            setParentClients(clientsData.filter(c => c.clientType === ClientType.Parent) as ParentClient[]); // Filter for UI
-            
+            const [clientsData, enrollmentsData, suppliersData] = await Promise.all([ getClients(), getAllEnrollments(), getSuppliers() ]);
+            setAllClients(clientsData);
             setEnrollments(enrollmentsData);
             setSuppliers(suppliersData);
-            setError(null);
-        } catch (err) {
-            setError("Errore nel caricamento dati.");
-        } finally {
-            setLoading(false);
-        }
+        } catch (err) { console.error(err); } finally { setLoading(false); }
     }, []);
 
-    useEffect(() => { fetchData(); window.addEventListener('EP_DataUpdated', fetchData); return () => window.removeEventListener('EP_DataUpdated', fetchData); }, [fetchData]);
+    // --- FIX: Updated useEffect to react to initialParams changes (e.g. from notifications) ---
+    useEffect(() => { 
+        fetchData(); 
+        if (initialParams?.searchTerm) {
+            setSearchTerm(initialParams.searchTerm);
+        }
+    }, [fetchData, initialParams]);
 
-    const handleNewEnrollment = () => { setSelectedClient(null); setEditingEnrollment(undefined); setIsModalOpen(true); }
-    const handleEditClick = (e: React.MouseEvent, client: ParentClient | undefined, enrollment: Enrollment) => { e.stopPropagation(); if (!client) return; setSelectedClient(client); setEditingEnrollment(enrollment); setIsModalOpen(true); };
-    // Fixed EnrollmentInput by adding it to imports from types
-    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { setLoading(true); try { for (const enrollmentData of enrollmentsData) { if ('id' in enrollmentData) { await updateEnrollment((enrollmentData as any).id, enrollmentData); } else { await addEnrollment(enrollmentData); } } setIsModalOpen(false); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Save error:", err); setError("Errore salvataggio."); setLoading(false); } };
+    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { 
+        setLoading(true); 
+        try { 
+            for (const d of enrollmentsData) { if ('id' in d) await updateEnrollment((d as any).id, d); else await addEnrollment(d); } 
+            setIsModalOpen(false); await fetchData(); 
+        } finally { setLoading(false); } 
+    };
 
-    // --- Actions ---
-    const executePaymentAction = async (
-        enr: Enrollment, 
-        paymentDateStr: string, 
-        method: PaymentMethod, 
-        createInvoice: boolean, 
-        isDeposit: boolean, 
-        isBalance: boolean, 
-        depositAmount: number, 
-        ghostInvoiceId?: string
-    ) => {
+    const handleDragStart = (e: React.DragEvent, id: string) => { e.dataTransfer.setData("text/plain", id); };
+    const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+    const handleDrop = async (e: React.DragEvent, locId: string, locName: string, locColor: string, day: number, start: string, end: string) => {
+        e.preventDefault();
+        const id = e.dataTransfer.getData("text/plain");
+        if (!id) return;
+        const enr = enrollments.find(x => x.id === id);
+        if (!enr) return;
         setLoading(true);
-        const fullPrice = enr.price !== undefined ? enr.price : 0;
-        const actualAmount = Number(depositAmount); 
-        const client = allClients.find(c => c.id === enr.clientId);
-
-        const result = await processPayment(
-            enr, 
-            client, 
-            actualAmount, 
-            paymentDateStr, 
-            method, 
-            createInvoice,
-            isDeposit,
-            fullPrice,
-            ghostInvoiceId
-        );
-
-        if (result.success) {
-            alert("Pagamento registrato con successo.");
-            await fetchData();
-            window.dispatchEvent(new Event('EP_DataUpdated'));
-        } else {
-            alert("ERRORE: " + result.error); 
-            setError("Errore durante la registrazione del pagamento: " + result.error);
-        }
-        setLoading(false);
-    };
-
-    const handleBulkAssignConfirm = async (selectedIds: string[], slotInfo: {day: number, start: string, end: string}) => {
-        if (!bulkAssignState) return;
-        setBulkAssignState(null); // Close modal immediately
-        setLoading(true);
-
         try {
-            // Find Supplier Info
-            let supplierId = '';
-            let supplierName = '';
-            for(const s of suppliers) {
-                if (s.locations.some(l => l.id === bulkAssignState.locationId)) {
-                    supplierId = s.id;
-                    supplierName = s.companyName;
-                    break;
-                }
-            }
-
-            // Loop assignments
-            for (const enrId of selectedIds) {
-                await activateEnrollmentWithLocation(
-                    enrId,
-                    supplierId,
-                    supplierName,
-                    bulkAssignState.locationId,
-                    bulkAssignState.locationName,
-                    bulkAssignState.locationColor,
-                    slotInfo.day,
-                    slotInfo.start,
-                    slotInfo.end
-                );
-            }
-
-            await fetchData();
-            alert(`${selectedIds.length} allievi assegnati con successo a ${bulkAssignState.locationName}!`);
-
-        } catch (e) {
-            console.error(e);
-            alert("Errore durante l'assegnazione massiva.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleBulkMoveConfirm = async (selectedIds: string[], targetLocationId: string, startDate: string, slotInfo?: {day: number, start: string, end: string}) => {
-        if (!bulkMoveState) return;
-        setBulkMoveState(null);
-        setLoading(true);
-
-        try {
-            // Get Target Location Details
-            let newLocName = '';
-            let newLocColor = '';
-            for (const s of suppliers) {
-                const loc = s.locations.find(l => l.id === targetLocationId);
-                if (loc) {
-                    newLocName = loc.name;
-                    newLocColor = loc.color;
-                    break;
-                }
-            }
-
-            await bulkUpdateLocation(
-                selectedIds,
-                startDate,
-                targetLocationId,
-                newLocName,
-                newLocColor,
-                slotInfo?.start, // If undefined, service preserves existing time
-                slotInfo?.end
-            );
-
-            await fetchData();
-            alert(`Spostamento completato per ${selectedIds.length} allievi.`);
-
-        } catch (e) {
-            console.error(e);
-            alert("Errore durante lo spostamento.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const executeMove = async (enrollmentId: string, targetLocId: string, targetLocName: string, targetLocColor: string, targetDayIndex: number, targetStartTime: string, targetEndTime: string) => {
-        const original = enrollments.find(en => en.id === enrollmentId);
-        if (!original) return;
-        if (original.locationId === 'unassigned') {
-            if (window.confirm(`Assegnare ${original.childName} a ${targetLocName}?`)) {
-                setLoading(true);
-                try {
-                    let targetSupplierId = '';
-                    let targetSupplierName = '';
-                    suppliers.forEach(s => { const foundLoc = s.locations.find(l => l.id === targetLocId); if (foundLoc) { targetSupplierId = s.id; targetSupplierName = s.companyName; } });
-                    await activateEnrollmentWithLocation(enrollmentId, targetSupplierId, targetSupplierName, targetLocId, targetLocName, targetLocColor, targetDayIndex, targetStartTime, targetEndTime);
-                    await fetchData();
-                } catch (err) { alert("Errore assegnazione."); } finally { setLoading(false); setMoveSourceId(null); setIsMoveMode(false); }
-            }
-            return;
-        }
-        // Move existing
-        const today = new Date();
-        const todayDay = today.getDay();
-        let diff = targetDayIndex - todayDay;
-        if (diff < 0) diff += 7;
-        const nextDate = new Date(today);
-        nextDate.setDate(today.getDate() + diff);
-        const nextDateStr = nextDate.toISOString().split('T')[0];
-        if (window.confirm(`Spostare ${original.childName}?`)) {
-            setLoading(true);
-            try {
-                await bulkUpdateLocation([enrollmentId], nextDateStr, targetLocId, targetLocName, targetLocColor, targetStartTime, targetEndTime);
-                await fetchData();
-            } catch (err) { alert("Errore spostamento."); } finally { setLoading(false); setMoveSourceId(null); setIsMoveMode(false); }
-        }
-    };
-
-    const handleDragStart = (e: React.DragEvent, id: string) => { setDraggedEnrollmentId(id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", id); };
-    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
-    const handleDrop = (e: React.DragEvent, locId: string, locName: string, locColor: string, dayIdx: number, start: string, end: string) => { e.preventDefault(); const droppedId = draggedEnrollmentId; setDraggedEnrollmentId(null); if (droppedId) executeMove(droppedId, locId, locName, locColor, dayIdx, start, end); };
-    const handleCardClick = (e: React.MouseEvent, id: string) => { if (isMoveMode) { e.stopPropagation(); setMoveSourceId(prev => prev === id ? null : id); } };
-    const handleSlotClick = (locId: string, locName: string, locColor: string, dayIdx: number, start: string, end: string) => { if (isMoveMode && moveSourceId) executeMove(moveSourceId, locId, locName, locColor, dayIdx, start, end); };
-
-
-    const handlePaymentRequest = async (e: React.MouseEvent, enr: Enrollment) => {
-        e.stopPropagation();
-        
-        let isBalanceMode = false;
-        let ghostId = undefined;
-        let totalPaid = 0;
-        let suggestedAmount = enr.price || 0;
-
-        try {
-            const invoices = await getInvoices();
-            const childName = enr.childName.toLowerCase();
-            
-            // NEW: ISOLATION FIX - Filter invoices by enrollment ID tag
-            const relatedInvoices = invoices.filter(i => 
-                i.relatedEnrollmentId === enr.id && 
-                !i.isDeleted && 
-                !i.isGhost
-            );
-            
-            totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-            
-            // NEW: ISOLATION FIX - Search for ghost (pro-forma) linked to this enrollment
-            const ghostInvoice = invoices.find(i => 
-                i.relatedEnrollmentId === enr.id && 
-                i.isGhost === true && 
-                i.status === DocumentStatus.Draft && 
-                !i.isDeleted
-            );
-
-            if (totalPaid > 0) {
-                isBalanceMode = true;
-                suggestedAmount = Math.max(0, (enr.price || 0) - totalPaid);
-                if (ghostInvoice) ghostId = ghostInvoice.id;
+            if (enr.locationId === 'unassigned') {
+                let sId = '', sName = '';
+                suppliers.forEach(s => { if (s.locations.some(l => l.id === locId)) { sId = s.id; sName = s.companyName; } });
+                await activateEnrollmentWithLocation(id, sId, sName, locId, locName, locColor, day, start, end);
             } else {
-                isBalanceMode = true;
-                suggestedAmount = enr.price || 0;
+                await bulkUpdateLocation([id], new Date().toISOString(), locId, locName, locColor, start, end);
             }
-        } catch(e) { console.error("Error checking invoices", e); }
-
-        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, createInvoice: true, isDeposit: !isBalanceMode, isBalance: isBalanceMode, depositAmount: suggestedAmount, ghostInvoiceId: ghostId, totalPaid: totalPaid });
+            await fetchData();
+        } finally { setLoading(false); }
     };
 
-    const handleConfirmPayment = () => {
-        if (!paymentModalState.enrollment) return;
-        setPaymentModalState(prev => ({ ...prev, isOpen: false }));
-        executePaymentAction(
-            paymentModalState.enrollment,
-            paymentModalState.date,
-            paymentModalState.method,
-            paymentModalState.createInvoice,
-            paymentModalState.isDeposit,
-            paymentModalState.isBalance,
-            paymentModalState.depositAmount,
-            paymentModalState.ghostInvoiceId
-        );
-    };
-
-    const handleRecoveryRequest = (e: React.MouseEvent, enr: Enrollment, absentCount: number) => { e.stopPropagation(); setRecoveryModalState({ isOpen: true, enrollment: enr, maxRecoverable: absentCount }); };
-    const handleConfirmRecovery = async (date: string, startTime: string, endTime: string, count: number, locName: string, locColor: string) => { if (!recoveryModalState.enrollment) return; setRecoveryModalState(prev => ({ ...prev, isOpen: false })); setLoading(true); try { await addRecoveryLessons(recoveryModalState.enrollment.id, date, startTime, endTime, count, locName, locColor); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Recupero programmato con successo!"); } catch (err) { alert("Errore recupero."); } finally { setLoading(false); } };
-    
-    // --- DELETE HANDLERS ---
-    const handleDeleteRequest = (e: React.MouseEvent, enr: Enrollment) => { e.stopPropagation(); setDeleteModalState({ isOpen: true, enrollment: enr, scope: 'single' }); };
-    const handleConfirmDelete = async () => { if (!deleteModalState.enrollment) return; const target = deleteModalState.enrollment; const scope = deleteModalState.scope; setDeleteModalState(prev => ({...prev, isOpen: false})); setLoading(true); try { if (scope === 'single') { await cleanupEnrollmentFinancials(target); await deleteEnrollment(target.id); } else { const clientEnrollments = await getEnrollmentsForClient(target.clientId); for (const enr of clientEnrollments) { await cleanupEnrollmentFinancials(enr); await deleteEnrollment(enr.id); } } await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } catch (err) { console.error("Delete error:", err); alert("Errore durante l'eliminazione."); } finally { setLoading(false); } };
-    const handleConfirmDeleteAll = async () => { setIsDeleteAllModalOpen(false); setLoading(true); try { const allEnrollments = await getAllEnrollments(); for (const enr of allEnrollments) { await cleanupEnrollmentFinancials(enr); await deleteEnrollment(enr.id); } await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); alert("Tutte le iscrizioni e i dati correlati sono stati eliminati."); } catch (err) { console.error("Error deleting all:", err); alert("Errore durante l'eliminazione totale."); } finally { setLoading(false); } };
-
-    // --- IMPORT HANDLER ---
-    const handleImportEnrollments = async (file: File) => {
-        const result = await importEnrollmentsFromExcel(file);
-        fetchData();
-        return result;
-    };
-
-    // --- EXPORT HANDLER ---
-    const handleExport = () => {
-        exportEnrollmentsToExcel(enrollments, allClients);
-    };
-
-    // --- Helper per estrarre dati derivati ---
-    const getChildAge = (enrollment: Enrollment): string => {
-        const client = allClients.find(c => c.id === enrollment.clientId);
-        if (client && client.clientType === ClientType.Parent) {
-            const child = (client as ParentClient).children.find(c => c.id === enrollment.childId);
-            return child?.age || '';
-        }
-        return '';
-    };
-
-    const getFirstAppointmentData = (enrollment: Enrollment) => {
-        if (enrollment.appointments && enrollment.appointments.length > 0) {
-            const now = new Date();
-            const next = enrollment.appointments.find(a => new Date(a.date) >= now) || enrollment.appointments[0];
-            const date = new Date(next.date);
-            return { dayIndex: date.getDay(), dayName: daysOfWeekMap[date.getDay()], startTime: next.startTime, endTime: next.endTime };
-        }
-        return { dayIndex: 9, dayName: 'Da Definire', startTime: '', endTime: '' };
-    };
-
-    // --- Dynamic Options for Selects ---
-    const availableLocations = useMemo(() => Array.from(new Set(enrollments.map(e => e.locationName))).filter(l => l && l !== 'Sede Non Definita').sort(), [enrollments]);
-    const availableAges = useMemo(() => { const ages = new Set<string>(); enrollments.forEach(e => { const age = getChildAge(e); if(age) ages.add(age); }); return Array.from(ages).sort(); }, [enrollments, allClients]);
-    const availableTimes = useMemo(() => { const times = new Set<string>(); enrollments.forEach(e => { const d = getFirstAppointmentData(e); if(d.startTime) times.add(`${d.startTime} - ${d.endTime}`); }); return Array.from(times).sort(); }, [enrollments]);
-
-    // --- Filtering Logic ---
-    const filteredEnrollments = useMemo(() => {
-        const oneWeekAgo = new Date(); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7); oneWeekAgo.setHours(0, 0, 0, 0);
-        let result = enrollments.filter(enr => {
-            const isExhausted = enr.lessonsRemaining <= 0 || enr.status === EnrollmentStatus.Completed || enr.status === EnrollmentStatus.Expired;
-            if (isExhausted) {
-                let lastRelevantDate = new Date(enr.endDate); 
-                const presentApps = enr.appointments?.filter(a => a.status === 'Present');
-                if (presentApps && presentApps.length > 0) {
-                    const lastPres = presentApps.reduce((latest, current) => new Date(current.date) > new Date(latest.date) ? current : latest);
-                    lastRelevantDate = new Date(lastPres.date);
-                }
-                if (lastRelevantDate < oneWeekAgo) return false;
-            }
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
-                const client = allClients.find(c => c.id === enr.clientId);
-                let parentName = '';
-                if(client) parentName = client.clientType === ClientType.Parent ? `${(client as ParentClient).firstName} ${(client as ParentClient).lastName}` : (client as import('../types').InstitutionalClient).companyName;
-                const childAge = getChildAge(enr);
-                const appData = getFirstAppointmentData(enr);
-                const match = enr.childName.toLowerCase().includes(term) || parentName.toLowerCase().includes(term) || enr.locationName.toLowerCase().includes(term) || childAge.toLowerCase().includes(term) || appData.dayName.toLowerCase().includes(term) || appData.startTime.includes(term);
-                if (!match) return false;
-            }
-            if (filterLocation && enr.locationName !== filterLocation) return false;
-            if (filterAge && getChildAge(enr) !== filterAge) return false;
-            if (filterDay && getFirstAppointmentData(enr).dayName !== filterDay) return false;
-            if (filterTime) { const d = getFirstAppointmentData(enr); const timeStr = `${d.startTime} - ${d.endTime}`; if (timeStr !== filterTime) return false; }
+    const groupedEnrollments = useMemo(() => {
+        const groups: Record<string, any> = {};
+        const filtered = enrollments.filter(e => {
+            if (searchTerm && !e.childName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            if (filterLocation && e.locationName !== filterLocation) return false;
             return true;
         });
-        result.sort((a, b) => { const nameA = a.childName.toLowerCase(); const nameB = b.childName.toLowerCase(); return sortOrder === 'az' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA); });
-        return result;
-    }, [enrollments, allClients, searchTerm, filterLocation, filterAge, filterDay, filterTime, sortOrder]);
-
-    // --- Exclusive Grouping Logic (Recinti) ---
-    const groupedEnrollments = useMemo(() => {
-        const groups: Record<string, { locationId: string; locationName: string; locationColor: string; days: Record<number, { dayName: string; slots: Record<string, { timeRange: string; start: string; end: string; items: Enrollment[]; }> }> }> = {};
-        
-        // Costruzione dinamica basata SOLO sugli allievi filtrati
-        filteredEnrollments.forEach(enr => {
-            const locName = enr.locationName || 'Sede Non Definita';
-            const locId = enr.locationId || 'unassigned';
-            const locColor = enr.locationColor || '#e5e7eb';
-            const appData = getFirstAppointmentData(enr);
-            const timeKey = locId === 'unassigned' ? 'Da Assegnare' : (appData.startTime ? `${appData.startTime} - ${appData.endTime}` : 'Orario N/D');
-            const dayIdx = locId === 'unassigned' ? 99 : appData.dayIndex; 
-            
-            // 1. Check/Create Location
-            if (!groups[locName]) {
-                groups[locName] = { locationId: locId, locationName: locName, locationColor: locColor, days: {} };
-            }
-            
-            // 2. Check/Create Day
-            if (!groups[locName].days[dayIdx]) {
-                groups[locName].days[dayIdx] = { dayName: locId === 'unassigned' ? 'In Attesa' : appData.dayName, slots: {} };
-            }
-            
-            // 3. Check/Create Slot
-            if (!groups[locName].days[dayIdx].slots[timeKey]) {
-                groups[locName].days[dayIdx].slots[timeKey] = { timeRange: timeKey, start: appData.startTime, end: appData.endTime, items: [] };
-            }
-            
-            groups[locName].days[dayIdx].slots[timeKey].items.push(enr);
+        filtered.forEach(e => {
+            const lName = e.locationName || 'Sede Non Definita';
+            if (!groups[lName]) groups[lName] = { locationId: e.locationId, locationName: lName, locationColor: e.locationColor, days: {} };
+            const date = e.appointments?.[0]?.date ? new Date(e.appointments[0].date) : null;
+            const dIdx = date ? date.getDay() : 99;
+            const dName = date ? daysOfWeekMap[dIdx] : 'In Attesa';
+            if (!groups[lName].days[dIdx]) groups[lName].days[dIdx] = { dayName: dName, items: [] };
+            groups[lName].days[dIdx].items.push(e);
         });
-
-        // Ordinamento finale
-        const sortedGroups = Object.values(groups).sort((a,b) => { 
-            if (a.locationId === 'unassigned') return -1; 
-            if (b.locationId === 'unassigned') return 1; 
-            return a.locationName.localeCompare(b.locationName); 
-        });
-
-        return sortedGroups.map(loc => ({ 
-            ...loc, 
-            days: Object.entries(loc.days)
-                .sort(([idxA], [idxB]) => Number(idxA) - Number(idxB))
-                .map(([idx, day]) => ({ 
-                    dayIndex: Number(idx), 
-                    ...day, 
-                    slots: Object.values(day.slots).sort((a,b) => a.timeRange.localeCompare(b.timeRange)) 
-                })) 
-        }));
-    }, [filteredEnrollments]); // Dipende solo dai dati filtrati per garantire l'esclusione
-
-    // Unassigned enrollments for bulk selection
-    const unassignedEnrollments = useMemo(() => enrollments.filter(e => e.locationId === 'unassigned' && (e.status === EnrollmentStatus.Pending || e.status === EnrollmentStatus.Active)), [enrollments]);
-
-    // Helper: Collect all enrollments in a location group
-    const getEnrollmentsInLocation = (locationId: string) => {
-        return enrollments.filter(e => e.locationId === locationId && (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending));
-    };
+        return Object.values(groups).sort((a,b) => a.locationId === 'unassigned' ? -1 : 1);
+    }, [enrollments, searchTerm, filterLocation]);
 
     return (
-        <div>
-            {/* --- HEADER --- */}
-            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
-                <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-                    <div><h1 className="text-3xl font-bold">Iscrizioni</h1><p className="mt-1 text-gray-500">Gestione dei "recinti" e dotazione slot.</p></div>
-                    <button onClick={() => { setIsMoveMode(!isMoveMode); setMoveSourceId(null); }} className={`md-btn md-btn-sm md:hidden mt-2 ${isMoveMode ? 'bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-inner' : 'bg-white border text-gray-700 shadow-sm'}`}>{isMoveMode ? (<span className="flex items-center font-bold"><span className="animate-pulse mr-2">👆</span> Scegli...</span>) : (<span className="flex items-center">✋ Sposta</span>)}</button>
-                </div>
-                <div className="flex flex-col md:flex-row gap-2 flex-1 xl:max-w-4xl xl:justify-end">
-                    <div className="relative w-full md:w-64"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="block w-full bg-white border border-gray-300 rounded-lg py-2 pl-10 pr-3 text-sm focus:ring-indigo-500 focus:border-indigo-500 shadow-sm" placeholder="Cerca nome, sede, orario..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} /></div>
-                    <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
-                        <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]"><option value="">Tutte le Sedi</option>{availableLocations.map(l => <option key={l} value={l}>{l}</option>)}</select>
-                        <select value={filterDay} onChange={e => setFilterDay(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[100px]"><option value="">Tutti i Giorni</option>{daysOfWeekMap.map(d => <option key={d} value={d}>{d}</option>)}</select>
-                        <select value={filterTime} onChange={e => setFilterTime(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[90px]"><option value="">Tutti Orari</option>{availableTimes.map(t => <option key={t} value={t}>{t}</option>)}</select>
-                        <select value={filterAge} onChange={e => setFilterAge(e.target.value)} className="bg-white border border-gray-300 text-gray-700 text-xs rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2 min-w-[80px]"><option value="">Tutte Età</option>{availableAges.map(a => <option key={a} value={a}>{a}</option>)}</select>
-                        <button onClick={() => setSortOrder(prev => prev === 'az' ? 'za' : 'az')} className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold py-2 px-3 rounded-lg text-xs whitespace-nowrap shadow-sm">{sortOrder === 'az' ? 'A-Z' : 'Z-A'}</button>
-                    </div>
-                </div>
+        <div className="pb-20">
+            <div className="flex justify-between items-center mb-6">
+                <div><h1 className="text-3xl font-bold">Iscrizioni</h1><p className="text-gray-500">Gestione dei recinti operativi.</p></div>
+                <button onClick={() => { setEditingEnrollment(undefined); setIsModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova</button>
             </div>
 
-            {/* ACTION BAR (New Position) */}
-            <div className="flex justify-end gap-3 mb-6 border-b border-gray-100 pb-4">
-                <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold"><TrashIcon /> Elimina Tutto</button>
-                <button onClick={handleExport} className="md-btn md-btn-sm bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 flex items-center text-xs font-bold">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Export Excel
-                </button>
-                <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-sm bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 flex items-center text-xs font-bold"><UploadIcon /> Importa</button>
-                <button onClick={handleNewEnrollment} className="md-btn md-btn-raised md-btn-green whitespace-nowrap h-9 flex items-center"><PlusIcon /><span className="ml-2 hidden sm:inline">Nuova</span></button>
+            <div className="bg-white p-3 rounded-xl border mb-6 flex gap-4 items-center">
+                <div className="relative flex-1"><SearchIcon /><input type="text" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="md-input pl-10" /></div>
+                <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input w-48"><option value="">Tutte le Sedi</option>{Array.from(new Set(enrollments.map(e => e.locationName))).map(l => <option key={l} value={l}>{l}</option>)}</select>
             </div>
-            
-            {isMoveMode && <div className="bg-amber-50 text-amber-900 px-4 py-2 rounded-lg mb-4 text-sm border border-amber-200 shadow-sm md:hidden">{moveSourceId ? <span>Selezionato. <strong>Tocca uno slot orario</strong> per spostare.</span> : <span>Tocca un'iscrizione per selezionarla.</span>}</div>}
 
-            {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
-                <div className="space-y-8 pb-10">
-                    {groupedEnrollments.length === 0 && (
-                        <div className="text-center py-16 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200">
-                             <p className="text-gray-400 italic">Nessun recinto corrisponde ai criteri di ricerca selezionati.</p>
-                        </div>
-                    )}
-
-                    {groupedEnrollments.map((locGroup, locIdx) => {
-                        const headerTextColor = getTextColorForBg(locGroup.locationColor);
-                        const isSpecialHeader = locGroup.locationId === 'unassigned';
-
-                        return (
-                        <div key={locIdx} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-fade-in">
-                            {/* RECINTO HEADER - DINAMICO */}
-                            <div 
-                                className="px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 transition-colors"
-                                style={{ backgroundColor: isSpecialHeader ? '#e5e7eb' : locGroup.locationColor, color: isSpecialHeader ? '#1f2937' : headerTextColor }}
-                            >
-                                <div className="flex items-center gap-3">
-                                    {!isSpecialHeader && <div className="w-4 h-4 rounded-full border border-white/30 shadow-sm bg-white/20 backdrop-blur-sm"></div>}
-                                    <h2 className="text-lg font-black uppercase tracking-widest">{locGroup.locationName}</h2>
-                                    {isSpecialHeader && <span className="text-[10px] bg-slate-800 text-white px-2 py-1 rounded font-bold uppercase tracking-tighter">Trascina nei recinti</span>}
-                                </div>
-                                
-                                <div className="flex items-center gap-2">
-                                    {/* Bulk Assignment Trigger */}
-                                    {locGroup.locationId !== 'unassigned' && (
-                                        <button 
-                                            onClick={() => setBulkAssignState({
-                                                isOpen: true,
-                                                locationId: locGroup.locationId,
-                                                locationName: locGroup.locationName,
-                                                locationColor: locGroup.locationColor
-                                            })}
-                                            className="text-[10px] bg-white/20 border border-white/30 hover:bg-white/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all backdrop-blur-sm"
-                                            style={{ color: 'inherit' }}
-                                        >
-                                            <UserPlusIcon /> <span className="uppercase">Assegna Allievi</span>
-                                        </button>
-                                    )}
-
-                                    {/* Bulk Move (Cambio Sede) Trigger */}
-                                    {locGroup.locationId !== 'unassigned' && (
-                                        <button 
-                                            onClick={() => setBulkMoveState({
-                                                isOpen: true,
-                                                sourceLocationId: locGroup.locationId,
-                                                sourceLocationName: locGroup.locationName,
-                                                enrollments: getEnrollmentsInLocation(locGroup.locationId)
-                                            })}
-                                            className="text-[10px] bg-white/20 border border-white/30 hover:bg-white/30 px-3 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all backdrop-blur-sm"
-                                            style={{ color: 'inherit' }}
-                                        >
-                                            <ArrowRightStartOnRectangleIcon /> <span className="uppercase">Cambio Sede</span>
-                                        </button>
-                                    )}
-                                </div>
+            {loading ? <Spinner /> : (
+                <div className="space-y-8">
+                    {groupedEnrollments.map((loc, i) => (
+                        <div key={i} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, loc.locationId, loc.locationName, loc.locationColor, 1, '16:00', '18:00')}>
+                            <div className="px-6 py-4 flex justify-between items-center" style={{ backgroundColor: loc.locationColor, color: getTextColorForBg(loc.locationColor) }}>
+                                <h2 className="text-lg font-black uppercase tracking-widest">{loc.locationName}</h2>
                             </div>
-
                             <div className="p-6 space-y-6">
-                                {locGroup.days.map((dayGroup, dayIdx) => (
-                                    <div key={dayIdx} className="relative pl-4 border-l-2 border-dashed border-gray-300">
-                                        <h3 className="text-md font-bold text-indigo-700 mb-3 uppercase flex items-center"><span className="w-2 h-2 bg-indigo-500 rounded-full mr-2 -ml-[21px] ring-4 ring-white"></span>{dayGroup.dayName}</h3>
-                                        <div className="space-y-4">
-                                            {dayGroup.slots.map((slotGroup, slotIdx) => (
-                                                <div key={slotIdx} className={`rounded-lg p-3 border transition-all ${isMoveMode && moveSourceId ? 'bg-indigo-50 border-indigo-200 cursor-pointer hover:bg-indigo-100 ring-2 ring-indigo-200 ring-offset-1' : 'bg-slate-50 border-slate-100 hover:bg-slate-100'}`} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)} onClick={() => handleSlotClick(locGroup.locationId, locGroup.locationName, locGroup.locationColor, dayGroup.dayIndex, slotGroup.start, slotGroup.end)}>
-                                                    <div className="flex items-center mb-3"><span className="bg-white text-slate-600 border border-slate-200 text-xs font-mono font-bold px-2 py-1 rounded shadow-sm">{slotGroup.timeRange}</span><div className="h-px bg-slate-200 flex-1 ml-3"></div></div>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                                                        {slotGroup.items.map(enr => {
-                                                            const childAge = getChildAge(enr);
-                                                            const isSelectedForMove = moveSourceId === enr.id;
-                                                            const isPending = enr.status === EnrollmentStatus.Pending;
-                                                            const isExhausted = enr.lessonsRemaining <= 0;
-                                                            const isUnassigned = enr.locationId === 'unassigned';
-                                                            let cardBorderColor = locGroup.locationColor;
-                                                            let cardBg = 'bg-white';
-                                                            let opacity = 'opacity-100';
-                                                            if (isPending) { cardBorderColor = '#fbbf24'; cardBg = 'bg-amber-50'; } else if (isExhausted) { cardBorderColor = '#9ca3af'; cardBg = 'bg-gray-100'; opacity = 'opacity-75'; } else if (isUnassigned) { cardBorderColor = '#6b7280'; cardBg = 'bg-gray-50'; }
-                                                            return (
-                                                                <div key={enr.id} draggable={!isExhausted} onDragStart={(e) => !isExhausted && handleDragStart(e, enr.id)} onClick={(e) => handleCardClick(e, enr.id)} className={`p-3 rounded-lg border shadow-sm transition-all relative group ${cardBg} ${opacity} border-gray-200 hover:shadow-md cursor-grab active:cursor-grabbing ${draggedEnrollmentId === enr.id ? 'opacity-50 ring-2 ring-indigo-300' : ''} ${isSelectedForMove ? 'ring-4 ring-indigo-500 transform scale-95 border-indigo-300 z-10' : ''}`} style={{ borderLeftWidth: '5px', borderLeftColor: cardBorderColor }}>
-                                                                    <div className="flex justify-between items-start">
-                                                                        <div><h4 className={`font-bold text-sm text-gray-800`}>{enr.childName}</h4><p className="text-[10px] text-gray-500">{childAge}</p></div>
-                                                                        {isPending && <span className="text-[9px] bg-amber-200 text-amber-800 px-1.5 py-0.5 rounded font-bold uppercase">Dormiente</span>}
-                                                                        {isExhausted && <span className="text-[9px] bg-gray-300 text-gray-700 px-1.5 py-0.5 rounded font-bold uppercase">Esaurito</span>}
-                                                                    </div>
-                                                                    <div className="mt-2 flex items-center justify-between"><p className="text-xs text-gray-600 truncate flex-1 pr-2" title={enr.subscriptionName}>{enr.subscriptionName}</p><div className="text-xs font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap" title="Slot Consumati / Totali"><span className="font-bold text-indigo-600">{enr.lessonsTotal - enr.lessonsRemaining}</span><span className="text-gray-400">/</span><span className="font-bold text-gray-600">{enr.lessonsTotal}</span></div></div>
-                                                                    {!isMoveMode && (<div className="absolute inset-0 bg-white/90 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">{!isUnassigned && (<button onClick={(e) => handlePaymentRequest(e, enr)} className="bg-green-100 text-green-700 p-1.5 rounded-full hover:bg-green-200 shadow-sm" title="Registra Pagamento / Saldo"><span className="font-bold text-xs">€</span></button>)}<button onClick={(e) => handleEditClick(e, parentClients.find(c => c.id === enr.clientId), enr)} className="bg-blue-100 text-blue-600 p-1.5 rounded-full hover:bg-blue-200 shadow-sm" title="Modifica"><PencilIcon /></button><button onClick={(e) => handleDeleteRequest(e, enr)} className="bg-red-100 text-red-600 p-1.5 rounded-full hover:bg-red-200 shadow-sm" title="Elimina"><TrashIcon /></button>{!isExhausted && !isPending && !isUnassigned && (<button onClick={(e) => handleRecoveryRequest(e, enr, 1)} className="bg-orange-100 text-orange-600 p-1.5 rounded-full hover:bg-orange-200 shadow-sm" title="Recupero"><RefreshIcon /></button>)}</div>)}
-                                                                </div>
-                                                            );
-                                                        })}
+                                {Object.values(loc.days).map((day: any, j) => (
+                                    <div key={j} className="pl-4 border-l-2 border-dashed border-slate-200">
+                                        <h3 className="text-xs font-bold text-indigo-600 uppercase mb-4">{day.dayName}</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            {day.items.map((enr: Enrollment) => {
+                                                const isInst = enr.clientType === ClientType.Institutional || enr.isQuoteBased;
+                                                const progress = enr.lessonsTotal > 0 ? ((enr.lessonsTotal - enr.lessonsRemaining) / enr.lessonsTotal) * 100 : 0;
+                                                return (
+                                                    <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-4 transition-all hover:shadow-md cursor-grab ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div>
+                                                                <h4 className="font-bold text-slate-800 text-sm">{enr.childName}</h4>
+                                                                {isInst && <span className="text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
+                                                            </div>
+                                                            <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600"><PencilIcon/></button>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 mb-3 truncate">{enr.subscriptionName}</p>
+                                                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden mt-auto"><div className={`h-full ${isInst ? 'bg-indigo-900' : 'bg-indigo-500'}`} style={{ width: `${progress}%` }}></div></div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    )})}
+                    ))}
                 </div>
             )}
 
-            {/* Modals */}
-            {paymentModalState.isOpen && paymentModalState.enrollment && (
-                <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
-                    <div className="p-6">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
-                        <p className="text-sm text-gray-500 mb-2">Pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.</p>
-                        
-                        <div className="bg-indigo-50 p-3 rounded mb-4 text-xs">
-                            <p>Prezzo Totale: <strong>{paymentModalState.enrollment.price}€</strong></p>
-                            <p>Già Versato: <strong>{paymentModalState.totalPaid.toFixed(2)}€</strong></p>
-                            <p className="text-indigo-700 font-bold">Rimanenza: {( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid ).toFixed(2)}€</p>
-                        </div>
-
-                        <div className="md-input-group mb-4">
-                            <input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" />
-                            <label className="md-input-label !top-0">Data Pagamento</label>
-                        </div>
-                        
-                        <div className="md-input-group mb-4">
-                            <select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">
-                                {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
-                            </select>
-                            <label className="md-input-label !top-0">Metodo Pagamento</label>
-                        </div>
-
-                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
-                            <div className="flex gap-4">
-                                <label className="flex items-center cursor-pointer">
-                                    <input type="radio" name="paymentType" checked={paymentModalState.isDeposit} onChange={() => setPaymentModalState(prev => ({ ...prev, isDeposit: true, isBalance: false, depositAmount: 0 }))} className="h-4 w-4 text-indigo-600 rounded" />
-                                    <span className="ml-2 text-sm font-bold text-gray-700">In Acconto</span>
-                                </label>
-                                <label className="flex items-center cursor-pointer">
-                                    <input type="radio" name="paymentType" checked={paymentModalState.isBalance} onChange={() => setPaymentModalState(prev => ({ ...prev, isBalance: true, isDeposit: false, depositAmount: prev.enrollment ? Math.max(0, (prev.enrollment.price || 0) - prev.totalPaid) : 0 }))} className="h-4 w-4 text-green-600 rounded" />
-                                    <span className="ml-2 text-sm font-bold text-green-700">A Saldo / Tutto Subito</span>
-                                </label>
-                            </div>
-                            
-                            {(paymentModalState.isDeposit || paymentModalState.isBalance) && (
-                                <div className="animate-fade-in pl-2 pt-2">
-                                    <label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label>
-                                    <input type="number" value={paymentModalState.depositAmount} onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))} className="w-full p-2 border rounded text-sm font-bold text-right" placeholder={paymentModalState.isDeposit ? "Inserisci quota concordata..." : ""} />
-                                    {paymentModalState.isDeposit && (
-                                        <div className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded">
-                                            Rimanenza (Saldo): <strong>{( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - paymentModalState.depositAmount ).toFixed(2)}€</strong><br/>
-                                            Verrà generata una notifica di saldo.
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mb-4">
-                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Generazione Documento</label>
-                            <div className="flex gap-4">
-                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${!paymentModalState.createInvoice ? 'bg-gray-100 border-gray-300 text-gray-600' : 'bg-white border-gray-200'}`}>
-                                    <input type="radio" name="invoiceGen" checked={!paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: false }))} className="hidden" />
-                                    🚫 Non crea fattura
-                                </label>
-                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${paymentModalState.createInvoice ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200'}`}>
-                                    <input type="radio" name="invoiceGen" checked={paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: true }))} className="hidden" />
-                                    📄 Crea fattura {paymentModalState.ghostInvoiceId ? '(Promuovi)' : ''}
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 flex justify-end gap-2">
-                            <button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                            <button onClick={handleConfirmPayment} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma Pagamento</button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
-
-            {deleteModalState.isOpen && deleteModalState.enrollment && (
-                <Modal onClose={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} size="md">
-                    <div className="p-6">
-                        <div className="flex items-center gap-3 mb-4 text-red-600">
-                            <TrashIcon />
-                            <h3 className="text-lg font-bold">Elimina Iscrizione</h3>
-                        </div>
-                        <p className="text-sm text-gray-600 mb-6">Stai per eliminare l'iscrizione di <strong>{deleteModalState.enrollment.childName}</strong>. Questa azione è irreversibile.</p>
-                        
-                        <div className="space-y-3 mb-6">
-                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'single' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
-                                <input type="radio" name="deleteScope" checked={deleteModalState.scope === 'single'} onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'single' }))} className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500" />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-bold text-gray-800">Elimina solo questa</span>
-                                    <span className="block text-xs text-gray-500">Rimuove solo questa iscrizione e i relativi movimenti finanziari.</span>
-                                </div>
-                            </label>
-                            <label className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${deleteModalState.scope === 'all' ? 'bg-red-50 border-red-200' : 'bg-white hover:bg-gray-50'}`}>
-                                <input type="radio" name="deleteScope" checked={deleteModalState.scope === 'all'} onChange={() => setDeleteModalState(prev => ({ ...prev, scope: 'all' }))} className="w-4 h-4 text-red-600 border-gray-300 focus:ring-red-500" />
-                                <div className="ml-3">
-                                    <span className="block text-sm font-bold text-gray-800">Elimina tutte (Cliente)</span>
-                                    <span className="block text-xs text-gray-500">Rimuove TUTTE le iscrizioni storiche e i dati finanziari di questo cliente.</span>
-                                </div>
-                            </label>
-                        </div>
-
-                        <div className="flex justify-end gap-2">
-                            <button onClick={() => setDeleteModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                            <button onClick={handleConfirmDelete} className="md-btn md-btn-raised md-btn-red md-btn-sm">Conferma Eliminazione</button>
-                        </div>
-                    </div>
-                </Modal>
-            )}
-
-            <ConfirmModal 
-                isOpen={isDeleteAllModalOpen} 
-                onClose={() => setIsDeleteAllModalOpen(false)} 
-                onConfirm={handleConfirmDeleteAll} 
-                title="ELIMINA TUTTE LE ISCRIZIONI" 
-                message="⚠️ ATTENZIONE: Stai per eliminare TUTTE le iscrizioni attive e storiche. Questa azione cancellerà a cascata anche tutte le Lezioni, Presenze, Transazioni e Fatture collegate. Questa operazione è irreversibile. Confermi?" 
-                isDangerous={true} 
-                confirmText="Sì, Elimina TUTTO" 
-            />
-
-            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm parents={parentClients} initialParent={selectedClient} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
-            
-            {recoveryModalState.isOpen && recoveryModalState.enrollment && <RecoveryModal enrollment={recoveryModalState.enrollment} maxRecoverable={recoveryModalState.maxRecoverable} suppliers={suppliers} onClose={() => setRecoveryModalState(prev => ({ ...prev, isOpen: false }))} onConfirm={handleConfirmRecovery} />}
-            
-            {/* BULK ASSIGNMENT MODAL */}
-            {bulkAssignState && (
-                <BulkAssignModal 
-                    targetLocationId={bulkAssignState.locationId}
-                    targetLocationName={bulkAssignState.locationName}
-                    targetLocationColor={bulkAssignState.locationColor}
-                    suppliers={suppliers}
-                    unassignedEnrollments={unassignedEnrollments}
-                    onClose={() => setBulkAssignState(null)}
-                    onConfirm={handleBulkAssignConfirm}
-                />
-            )}
-
-            {/* BULK MOVE MODAL */}
-            {bulkMoveState && (
-                <BulkMoveModal 
-                    sourceLocationId={bulkMoveState.sourceLocationId}
-                    sourceLocationName={bulkMoveState.sourceLocationName}
-                    enrollments={bulkMoveState.enrollments}
-                    suppliers={suppliers}
-                    onClose={() => setBulkMoveState(null)}
-                    onConfirm={handleBulkMoveConfirm}
-                />
-            )}
-
-            {isImportModalOpen && (
-                <ImportModal 
-                    entityName="Iscrizioni"
-                    templateHeaders={['ParentName', 'ParentSurname', 'ParentEmail', 'ParentPhone', 'ParentFiscalCode', 'ParentAddress', 'ParentZip', 'ParentCity', 'ParentProvince', 'ChildName', 'ChildAge', 'SubscriptionName', 'StartDate', 'LocationName', 'DayOfWeek', 'StartTime', 'EndTime', 'AmountPaid', 'PaymentDate', 'PaymentType', 'PaymentMethod', 'CreateInvoice', 'SDI']}
-                    instructions={[
-                        '1. GENITORE: Compila Nome, Cognome, CF/PIVA, indirizzo, CAP, città, provincia, Telefono, Email (obbligatoria)',
-                        '2. ALLIEVO: Inserisci Nome ed Età del bambino.',
-                        '3. PACCHETTO: "SubscriptionName" è l\'Abbonamento e il testo scritto deve essere IDENTICO al nome che trovi in Impostazioni.',
-                        '4. SEDE (Opzionale): Scrivi il nome esatto della sede. Se cambia durante la validità di un abbonamento, usa righe successive con Nome e Pacchetto identici per SPOSTARE un\'iscrizione esistente. [la nuova riga deve chiedere il nome della NUOVA sede e dello stesso Pacchetto].',
-                        '5. ORARI (Opzionale): "DayOfWeek" accetta numeri (0-6) o testo (LUN, MAR...).',
-                        '6. PAGAMENTO: "PaymentType" = Acconto/Saldo. "PaymentMethod" = Contanti/Bonifico/Carta.',
-                        '7. FATTURA: "CreateInvoice" = No/False per non creare fattura (di default è impostato su Si/True e crea la fattura).'
-                    ]}
-                    onClose={() => setIsImportModalOpen(false)}
-                    onImport={handleImportEnrollments}
-                />
-            )}
+            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm clients={allClients} initialClient={editingEnrollment ? allClients.find(c => c.id === editingEnrollment.clientId) : undefined} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
         </div>
     );
 };

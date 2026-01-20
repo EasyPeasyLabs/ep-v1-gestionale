@@ -1,3 +1,4 @@
+
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual';
 
 export enum ClientType {
@@ -346,9 +347,12 @@ export interface Appointment {
 export interface Enrollment {
     id: string;
     clientId: string;
+    clientType?: ClientType; // NEW: Tracciabilità tipo cliente
     childId: string;
     childName: string;
     isAdult: boolean;
+    isQuoteBased?: boolean; // NEW: Progetto istituzionale
+    relatedQuoteId?: string; // NEW: Rif preventivo
     subscriptionTypeId: string;
     subscriptionName: string;
     price: number;
@@ -376,6 +380,7 @@ export interface LessonAttendee {
     clientId: string;
     childId: string;
     childName: string;
+    enrollmentId?: string; // NEW: Collegamento diretto a iscrizione istituzionale
 }
 
 export interface Lesson {
@@ -469,7 +474,7 @@ export type PeriodicCheckInput = Omit<PeriodicCheck, 'id'>;
 
 export interface Notification {
     id: string;
-    type: 'payment_required' | 'expiry' | 'low_lessons' | 'balance_due' | 'action_required' | 'sdi_deadline' | 'accountant_send';
+    type: 'payment_required' | 'expiry' | 'low_lessons' | 'balance_due' | 'action_required' | 'sdi_deadline' | 'accountant_send' | 'institutional_billing';
     message: string;
     clientId?: string;
     date: string;

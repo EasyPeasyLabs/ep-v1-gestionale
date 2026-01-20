@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAllEnrollments, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
-import { cleanupEnrollmentFinancials, getInvoices, getTransactions, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment } from '../services/financeService';
+import { cleanupEnrollmentFinancials, getInvoices, getTransactions, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment, getQuotes } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus, EnrollmentInput, Invoice, Transaction, PaymentMethod, DocumentStatus } from '../types';
+import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus, EnrollmentInput, Invoice, Transaction, PaymentMethod, DocumentStatus, Quote } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -41,12 +42,13 @@ const EnrollmentFinancialWizard: React.FC<{
     enrollment: Enrollment;
     totalPaid: number;
     onClose: () => void;
-    onOpenPayment: () => void;
+    onOpenPayment: (prefillAmount?: number) => void;
     onRefresh: () => void;
 }> = ({ enrollment, totalPaid, onClose, onOpenPayment, onRefresh }) => {
-    const [path, setPath] = useState<'landing' | 'reconcile'>('landing');
+    const [path, setPath] = useState<'landing' | 'reconcile' | 'installments'>('landing');
     const [orphans, setOrphans] = useState<{ orphanInvoices: Invoice[], orphanTransactions: Transaction[], orphanGhosts: Invoice[] }>({ orphanInvoices: [], orphanTransactions: [], orphanGhosts: [] });
     const [loading, setLoading] = useState(false);
+    const [relatedQuote, setRelatedQuote] = useState<Quote | null>(null);
     
     // Reconcile Form State
     const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
@@ -62,7 +64,15 @@ const EnrollmentFinancialWizard: React.FC<{
                 setLoading(false);
             });
         }
-    }, [path, enrollment.clientId]);
+        if (enrollment.isQuoteBased && enrollment.relatedQuoteId && path === 'installments') {
+            setLoading(true);
+            getQuotes().then(list => {
+                const found = list.find(q => q.id === enrollment.relatedQuoteId);
+                if (found) setRelatedQuote(found);
+                setLoading(false);
+            });
+        }
+    }, [path, enrollment.clientId, enrollment.isQuoteBased, enrollment.relatedQuoteId]);
 
     const packagePrice = enrollment.price || 0;
     
@@ -109,10 +119,9 @@ const EnrollmentFinancialWizard: React.FC<{
         if (remainingGap <= 0) return;
         setLoading(true);
         try {
-            const clientName = orphans.orphanGhosts.length > 0 ? orphans.orphanGhosts[0].clientName : enrollment.childName;
+            const clientName = enrollment.childName; // Per gli enti il childName è il nome progetto
             await createGhostInvoiceForEnrollment(enrollment, clientName, remainingGap);
             onRefresh();
-            // Reload local state
             const list = await getInvoices();
             setLinkedGhosts(list.filter(i => i.relatedEnrollmentId === enrollment.id && i.isGhost && !i.isDeleted));
             alert("Pro-forma di saldo generata con successo!");
@@ -127,26 +136,69 @@ const EnrollmentFinancialWizard: React.FC<{
         return (
             <div className="p-8">
                 <h3 className="text-2xl font-black text-slate-800 mb-2">Gestione Finanziaria</h3>
-                <p className="text-sm text-slate-500 mb-8 uppercase tracking-widest font-bold">Iscrizione: {enrollment.childName}</p>
+                <p className="text-sm text-slate-500 mb-8 uppercase tracking-widest font-bold">Progetto: {enrollment.childName}</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <button 
-                        onClick={onOpenPayment}
-                        className="md-card p-6 border-2 border-indigo-50 hover:border-indigo-500 transition-all text-left flex flex-col items-center justify-center group"
-                    >
-                        <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">💸</div>
-                        <h4 className="font-black text-slate-800 text-lg">Nuovo Incasso</h4>
-                        <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Registra un nuovo versamento (Acconto o Saldo) e genera i documenti fiscali necessari.</p>
-                    </button>
+                    {enrollment.isQuoteBased ? (
+                        <button onClick={() => setPath('installments')} className="md-card p-6 border-2 border-indigo-50 hover:border-indigo-500 transition-all text-left flex flex-col items-center justify-center group">
+                            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">🗓️</div>
+                            <h4 className="font-black text-slate-800 text-lg">Piano Rateale</h4>
+                            <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Gestisci le scadenze concordate nel preventivo per questo ente.</p>
+                        </button>
+                    ) : (
+                        <button onClick={() => onOpenPayment()} className="md-card p-6 border-2 border-indigo-50 hover:border-indigo-500 transition-all text-left flex flex-col items-center justify-center group">
+                            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">💸</div>
+                            <h4 className="font-black text-slate-800 text-lg">Nuovo Incasso</h4>
+                            <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Registra un nuovo versamento e genera i documenti fiscali necessari.</p>
+                        </button>
+                    )}
 
-                    <button 
-                        onClick={() => setPath('reconcile')}
-                        className="md-card p-6 border-2 border-amber-50 hover:border-amber-500 transition-all text-left flex flex-col items-center justify-center group"
-                    >
+                    <button onClick={() => setPath('reconcile')} className="md-card p-6 border-2 border-amber-50 hover:border-amber-500 transition-all text-left flex flex-col items-center justify-center group">
                         <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">⚖️</div>
                         <h4 className="font-black text-slate-800 text-lg">Riconciliazione</h4>
-                        <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Collega pagamenti orfani, sposta fatture errate o applica abbuoni per pareggio contabile.</p>
+                        <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Collega pagamenti orfani o applica abbuoni per pareggio contabile.</p>
                     </button>
+                </div>
+            </div>
+        );
+    }
+
+    if (path === 'installments') {
+        return (
+            <div className="flex flex-col h-[85vh]">
+                <div className="p-6 border-b bg-indigo-50 flex-shrink-0">
+                    <h3 className="text-xl font-bold text-indigo-900">Monitoraggio Rate Progetto</h3>
+                    <p className="text-xs text-indigo-700">Situazione debitoria basata sul preventivo.</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    {loading ? <Spinner /> : (
+                        <>
+                            {!relatedQuote ? <p className="text-sm text-red-500">Preventivo originale non trovato.</p> : (
+                                <div className="space-y-3">
+                                    {relatedQuote.installments.map((inst, i) => {
+                                        const isPaid = inst.amount <= (totalPaid / relatedQuote.installments.length); // Semplificazione per UI
+                                        return (
+                                            <div key={i} className={`p-4 border rounded-xl flex justify-between items-center ${isPaid ? 'bg-green-50 border-green-200 opacity-60' : 'bg-white border-slate-200'}`}>
+                                                <div>
+                                                    <p className="font-bold text-slate-800">{inst.description}</p>
+                                                    <p className="text-xs text-slate-500">Scadenza: {new Date(inst.dueDate).toLocaleDateString()}</p>
+                                                </div>
+                                                <div className="text-right flex items-center gap-4">
+                                                    <span className="font-black text-lg">{inst.amount.toFixed(2)}€</span>
+                                                    {!isPaid && (
+                                                        <button onClick={() => onOpenPayment(inst.amount)} className="md-btn md-btn-sm bg-indigo-600 text-white font-bold">Fattura Ora</button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+                <div className="p-4 border-t bg-white flex justify-start flex-shrink-0">
+                    <button onClick={() => setPath('landing')} className="md-btn md-btn-flat">Indietro</button>
                 </div>
             </div>
         );
@@ -161,24 +213,22 @@ const EnrollmentFinancialWizard: React.FC<{
                         <p className="text-xs text-amber-700">Pareggio contabile e collegamento orfani.</p>
                     </div>
                     <div className="text-right">
-                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-tighter">Budget Pacchetto</p>
+                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-tighter">Budget Totale</p>
                         <p className="text-2xl font-black text-slate-800">{packagePrice.toFixed(2)}€</p>
                     </div>
                 </div>
-                
-                {/* Summary Progress Bar */}
                 <div className="mt-4">
                     <div className="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">
-                        <span>Copertura Totale (Incassato + Pro-forma + Abbuoni)</span>
+                        <span>Copertura Rilevata</span>
                         <span className={remainingGap > 0 ? 'text-red-500' : 'text-green-600'}>
                             {isBalanced ? 'Posizione Sanata ✨' : (remainingGap > 0 ? `Scoperto: ${remainingGap}€` : `Surplus: ${Math.abs(remainingGap)}€`)}
                         </span>
                     </div>
                     <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden flex">
-                        <div className="h-full bg-indigo-500" style={{ width: `${Math.min((totalPaid / packagePrice) * 100, 100)}%` }} title="Già Incassato"></div>
-                        <div className="h-full bg-indigo-300" style={{ width: `${Math.min((alreadyLinkedGhostsTotal / packagePrice) * 100, 100)}%` }} title="Pro-forma Collegate"></div>
-                        <div className="h-full bg-indigo-200 animate-pulse" style={{ width: `${Math.min((selectedOrphansTotal / packagePrice) * 100, 100)}%` }} title="Selezione Orfani"></div>
-                        <div className="h-full bg-amber-400" style={{ width: `${Math.min((Number(adjustmentAmount) / packagePrice) * 100, 100)}%` }} title="Abbuoni"></div>
+                        <div className="h-full bg-indigo-500" style={{ width: `${Math.min((totalPaid / packagePrice) * 100, 100)}%` }}></div>
+                        <div className="h-full bg-indigo-300" style={{ width: `${Math.min((alreadyLinkedGhostsTotal / packagePrice) * 100, 100)}%` }}></div>
+                        <div className="h-full bg-indigo-200 animate-pulse" style={{ width: `${Math.min((selectedOrphansTotal / packagePrice) * 100, 100)}%` }}></div>
+                        <div className="h-full bg-amber-400" style={{ width: `${Math.min((Number(adjustmentAmount) / packagePrice) * 100, 100)}%` }}></div>
                     </div>
                 </div>
             </div>
@@ -186,80 +236,27 @@ const EnrollmentFinancialWizard: React.FC<{
             <div className="flex-1 overflow-y-auto p-6 space-y-8">
                 {loading ? <div className="py-20 flex justify-center"><Spinner /></div> : (
                     <>
-                        {/* 1. LINKED GHOSTS (Already there) */}
-                        {linkedGhosts.length > 0 && (
-                            <section className="animate-fade-in">
-                                <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                    📄 Pro-forma di Saldo già Collegate
-                                </h4>
-                                <div className="space-y-2">
-                                    {linkedGhosts.map(g => (
-                                        <div key={g.id} className="flex items-center justify-between p-3 border border-indigo-100 bg-indigo-50/30 rounded-xl">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 text-xs font-bold">G</div>
-                                                <div>
-                                                    <p className="text-sm font-bold text-slate-800">{g.invoiceNumber} (Bozza)</p>
-                                                    <p className="text-[10px] text-slate-500 italic">Documento pro-forma salvato</p>
-                                                </div>
-                                            </div>
-                                            <span className="font-black text-indigo-700">{g.totalAmount.toFixed(2)}€</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
-
-                        {/* 2. ORPHAN GHOSTS (Discovery Option 1) */}
                         <section>
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                <SparklesIcon /> Pro-forma Orfane Trovate
-                            </h4>
+                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">📄 Documenti Orfani del Cliente</h4>
                             <div className="space-y-2">
-                                {orphans.orphanGhosts.length === 0 ? <p className="text-xs text-slate-400 italic">Nessuna pro-forma non collegata trovata per questo cliente.</p> :
-                                orphans.orphanGhosts.map(inv => (
+                                {[...orphans.orphanInvoices, ...orphans.orphanGhosts].length === 0 && orphans.orphanTransactions.length === 0 && <p className="text-xs text-slate-400 italic">Nessun record orfano trovato.</p>}
+                                {[...orphans.orphanInvoices, ...orphans.orphanGhosts].map(inv => (
                                     <label key={inv.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${selectedInvoiceIds.includes(inv.id) ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'bg-white hover:bg-slate-50'}`}>
                                         <div className="flex items-center gap-3">
                                             <input type="checkbox" checked={selectedInvoiceIds.includes(inv.id)} onChange={() => setSelectedInvoiceIds(prev => prev.includes(inv.id) ? prev.filter(x => x !== inv.id) : [...prev, inv.id])} className="rounded text-indigo-600" />
                                             <div>
-                                                <p className="text-sm font-bold text-slate-800">{inv.invoiceNumber} - {new Date(inv.issueDate).toLocaleDateString()}</p>
-                                                <p className="text-[10px] text-slate-500 uppercase font-black tracking-tighter text-indigo-400">Tipo: Ghost (Saldo)</p>
+                                                <p className="text-sm font-bold text-slate-800">{inv.invoiceNumber}</p>
+                                                <p className="text-[10px] text-slate-500 font-bold uppercase">{inv.isGhost ? 'Ghost (Pro-forma)' : 'Fattura Reale'}</p>
                                             </div>
                                         </div>
                                         <span className="font-black text-slate-700">{inv.totalAmount.toFixed(2)}€</span>
                                     </label>
                                 ))}
-                            </div>
-                        </section>
-
-                        {/* 3. ORPHAN INVOICES & TRANSACTIONS */}
-                        <section>
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                                🏛️ Altri Documenti Orfani (Reali o Cassa)
-                            </h4>
-                            <div className="space-y-2">
-                                {orphans.orphanInvoices.length === 0 && orphans.orphanTransactions.length === 0 && <p className="text-xs text-slate-400 italic">Nessuna fattura o movimento di cassa non collegato trovato.</p>}
-                                
-                                {orphans.orphanInvoices.map(inv => (
-                                    <label key={inv.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${selectedInvoiceIds.includes(inv.id) ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'bg-white hover:bg-slate-50'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <input type="checkbox" checked={selectedInvoiceIds.includes(inv.id)} onChange={() => setSelectedInvoiceIds(prev => prev.includes(inv.id) ? prev.filter(x => x !== inv.id) : [...prev, inv.id])} className="rounded text-indigo-600" />
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-800">{inv.invoiceNumber} - {new Date(inv.issueDate).toLocaleDateString()}</p>
-                                                <p className="text-[10px] text-slate-500 font-bold uppercase text-green-600">Fattura Reale</p>
-                                            </div>
-                                        </div>
-                                        <span className="font-black text-slate-700">{inv.totalAmount.toFixed(2)}€</span>
-                                    </label>
-                                ))}
-
                                 {orphans.orphanTransactions.map(trn => (
                                     <label key={trn.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${selectedTransactionIds.includes(trn.id) ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'bg-white hover:bg-slate-50'}`}>
                                         <div className="flex items-center gap-3">
                                             <input type="checkbox" checked={selectedTransactionIds.includes(trn.id)} onChange={() => setSelectedTransactionIds(prev => prev.includes(trn.id) ? prev.filter(x => x !== trn.id) : [...prev, trn.id])} className="rounded text-indigo-600" />
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-800">Cassa: {new Date(trn.date).toLocaleDateString()}</p>
-                                                <p className="text-[10px] text-slate-500 italic">"{trn.description}"</p>
-                                            </div>
+                                            <div><p className="text-sm font-bold text-slate-800">Cassa: {new Date(trn.date).toLocaleDateString()}</p><p className="text-[10px] text-slate-500 italic">"{trn.description}"</p></div>
                                         </div>
                                         <span className="font-black text-slate-700">{trn.amount.toFixed(2)}€</span>
                                     </label>
@@ -267,54 +264,25 @@ const EnrollmentFinancialWizard: React.FC<{
                             </div>
                         </section>
 
-                        {/* 4. AUTO-GENERATE SALDO (Option 2) */}
-                        {remainingGap > 0 && (
+                        {!enrollment.isQuoteBased && remainingGap > 0 && (
                             <section className="bg-indigo-900 text-white p-6 rounded-2xl border border-indigo-700 shadow-xl animate-slide-up">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div>
-                                        <h4 className="text-lg font-black uppercase tracking-tight">Pareggio Automatico</h4>
-                                        <p className="text-xs text-indigo-300">Sanatoria istantanea per Fiscal Doctor.</p>
-                                    </div>
-                                    <div className="bg-indigo-800 px-3 py-1 rounded-full text-xl">🚀</div>
-                                </div>
-                                <p className="text-sm mb-6 leading-relaxed opacity-90">
-                                    Il sistema può generare una **Pro-forma di Saldo (Ghost)** di <strong className="text-amber-400">{remainingGap.toFixed(2)}€</strong> per coprire il debito residuo. Questo silenzierà l'anomalia fiscale in attesa dell'incasso reale.
-                                </p>
-                                <button 
-                                    onClick={handleGenerateSaldoGhost}
-                                    className="w-full bg-amber-400 hover:bg-amber-500 text-gray-900 font-black py-3 rounded-xl shadow-lg transition-all uppercase tracking-widest text-xs"
-                                >
-                                    Genera Pro-forma di Saldo
-                                </button>
+                                <h4 className="text-lg font-black uppercase mb-1">Pareggio Automatico</h4>
+                                <p className="text-sm mb-6 leading-relaxed opacity-90">Genera una **Pro-forma di Saldo** di <strong className="text-amber-400">{remainingGap.toFixed(2)}€</strong> per coprire il debito residuo.</p>
+                                <button onClick={handleGenerateSaldoGhost} className="w-full bg-amber-400 hover:bg-amber-500 text-gray-900 font-black py-3 rounded-xl shadow-lg transition-all uppercase tracking-widest text-xs">Genera Pro-forma</button>
                             </section>
                         )}
 
-                        {/* 5. ADJUSTMENT (ABBUONO) */}
                         <section className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
                             <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">Regolazione Finale (Abbuono)</h4>
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                                 <div className="md:col-span-4">
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Importo Sconto</label>
-                                    <div className="relative">
-                                        <input type="number" value={adjustmentAmount} onChange={e => setAdjustmentAmount(Number(e.target.value))} className="md-input font-black text-indigo-700 pr-8" placeholder="0.00" />
-                                        <span className="absolute right-3 top-3.5 font-bold text-slate-400">€</span>
-                                    </div>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => {
-                                            // Auto-calc to balance everything including ghosts
-                                            const currentTotal = totalPaid + selectedOrphansTotal + alreadyLinkedGhostsTotal;
-                                            const gap = packagePrice - currentTotal;
-                                            setAdjustmentAmount(Number(gap.toFixed(2)));
-                                        }}
-                                        className="text-[10px] font-black text-indigo-600 mt-2 hover:underline uppercase"
-                                    >
-                                        Auto-Pareggio (Abbuona Residuo)
-                                    </button>
+                                    <input type="number" value={adjustmentAmount} onChange={e => setAdjustmentAmount(Number(e.target.value))} className="md-input font-black text-indigo-700" placeholder="0.00" />
+                                    <button type="button" onClick={() => setAdjustmentAmount(Number((packagePrice - (totalPaid + selectedOrphansTotal + alreadyLinkedGhostsTotal)).toFixed(2)))} className="text-[10px] font-black text-indigo-600 mt-2 hover:underline uppercase">Auto-Pareggio</button>
                                 </div>
-                                <div className="md:col-span-8">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Motivazione Tecnica</label>
-                                    <textarea value={adjustmentNotes} onChange={e => setAdjustmentNotes(e.target.value)} className="md-input text-xs" rows={3} placeholder="Es: Sconto famiglia, arrotondamento finale..." />
+                                <div className="md-col-span-8">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Motivazione</label>
+                                    <textarea value={adjustmentNotes} onChange={e => setAdjustmentNotes(e.target.value)} className="md-input text-xs" rows={3} placeholder="Es: Sconto Ente, Abbuono arrotondamento..." />
                                 </div>
                             </div>
                         </section>
@@ -326,9 +294,7 @@ const EnrollmentFinancialWizard: React.FC<{
                 <button onClick={() => setPath('landing')} className="md-btn md-btn-flat">Indietro</button>
                 <div className="flex gap-3">
                     <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
-                    <button onClick={handleConfirmReconcile} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">
-                        {loading ? <Spinner /> : 'Conferma Regolarizzazione'}
-                    </button>
+                    <button onClick={handleConfirmReconcile} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">{loading ? <Spinner /> : 'Conferma Regolarizzazione'}</button>
                 </div>
             </div>
         </div>
@@ -355,7 +321,7 @@ const EnrollmentArchive: React.FC = () => {
     const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null);
     const [terminateTarget, setTerminateTarget] = useState<Enrollment | null>(null);
 
-    // NEW: Financial Wizard State
+    // Financial Wizard State
     const [financialWizardTarget, setFinancialWizardTarget] = useState<Enrollment | null>(null);
 
     // Payment Modal State
@@ -403,8 +369,6 @@ const EnrollmentArchive: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchData(); window.addEventListener('EP_DataUpdated', fetchData); return () => window.removeEventListener('EP_DataUpdated', fetchData); }, [fetchData]);
-
-    const parentClients = useMemo(() => clients.filter(c => c.clientType === ClientType.Parent) as ParentClient[], [clients]);
 
     const availableYears = useMemo(() => {
         const years = new Set<number>();
@@ -458,11 +422,8 @@ const EnrollmentArchive: React.FC = () => {
         const totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
         const price = enr.price || 0;
         const adjustment = Number(enr.adjustmentAmount || 0);
-        
-        // Include also linked ghosts in the coverage check for archive status
         const linkedGhosts = invoices.filter(i => i.relatedEnrollmentId === enr.id && i.isGhost && !i.isDeleted);
         const ghostTotal = linkedGhosts.reduce((sum, g) => sum + g.totalAmount, 0);
-
         const remaining = Math.max(0, price - totalPaid - adjustment - ghostTotal);
         const isFullyPaid = remaining < 0.5 && price > 0;
         return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
@@ -527,14 +488,13 @@ const EnrollmentArchive: React.FC = () => {
         try { await updateEnrollment(terminateTarget.id, { status: EnrollmentStatus.Expired }); await fetchData(); } catch (err) { alert("Errore aggiornamento stato."); } finally { setLoading(false); setTerminateTarget(null); }
     };
 
-    // Payment Logic (Triggered from Wizard Path 1)
-    const handleOpenPaymentFromWizard = (enr: Enrollment) => {
+    const handleOpenPaymentFromWizard = (enr: Enrollment, prefillAmount?: number) => {
         const status = getPaymentStatus(enr);
         let ghostId = undefined;
         const ghostInvoice = invoices.find(i => i.relatedEnrollmentId === enr.id && i.isGhost === true && i.status === DocumentStatus.Draft && !i.isDeleted);
         if (ghostInvoice) ghostId = ghostInvoice.id;
-        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, createInvoice: true, isDeposit: false, isBalance: true, depositAmount: status.remaining, ghostInvoiceId: ghostId, totalPaid: status.totalPaid });
-        setFinancialWizardTarget(null); // Close wizard
+        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, createInvoice: true, isDeposit: false, isBalance: true, depositAmount: prefillAmount || status.remaining, ghostInvoiceId: ghostId, totalPaid: status.totalPaid });
+        setFinancialWizardTarget(null); 
     };
 
     const executePaymentAction = async () => {
@@ -542,20 +502,18 @@ const EnrollmentArchive: React.FC = () => {
         setLoading(true);
         const enr = paymentModalState.enrollment; const client = clients.find(c => c.id === enr.clientId);
         const result = await processPayment(enr, client, Number(paymentModalState.depositAmount), paymentModalState.date, paymentModalState.method, paymentModalState.createInvoice, paymentModalState.isDeposit, enr.price || 0, paymentModalState.ghostInvoiceId);
-        if (result.success) { alert("Pagamento registrato con successo."); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } else { alert("ERRORE: " + result.error); }
+        if (result.success) { alert("Pagamento registrato."); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } else { alert("ERRORE: " + result.error); }
         setLoading(false); setPaymentModalState(prev => ({...prev, isOpen: false}));
     };
 
     return (
         <div className="h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 flex-shrink-0">
-                <div><h1 className="text-3xl font-bold text-gray-800">Archivio Iscrizioni</h1><p className="mt-1 text-gray-500">Storico e copertura temporale delle iscrizioni.</p></div>
+                <div><h1 className="text-3xl font-bold text-gray-800">Archivio Iscrizioni</h1><p className="mt-1 text-gray-500">Copertura temporale e pareggio contabile.</p></div>
                 <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-xl shadow-sm border border-gray-200">
                     <div className="relative w-40"><div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="w-full pl-8 pr-2 py-1.5 text-sm border-none bg-transparent focus:ring-0 placeholder:text-gray-400" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
-                    <div className="w-px h-6 bg-gray-200 mx-1"></div>
                     <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="text-sm font-bold text-indigo-700 bg-indigo-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-indigo-200">{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
                     <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="text-sm text-gray-600 bg-gray-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-gray-200 max-w-[150px]"><option value="">Tutte le Sedi</option>{availableLocations.map(l => <option key={l} value={l}>{l}</option>)}</select>
-                    <div className="w-px h-6 bg-gray-200 mx-1"></div>
                     <div className="flex bg-gray-100 p-1 rounded-lg"><button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Lista"><ChecklistIcon /></button><button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Calendario Copertura"><CalendarIcon /></button></div>
                 </div>
             </div>
@@ -564,7 +522,7 @@ const EnrollmentArchive: React.FC = () => {
                 <div className="flex-1 overflow-y-auto pr-2 pb-10">
                     {viewMode === 'list' ? (
                         <div className="space-y-6 animate-fade-in">
-                            {groupedData.length === 0 && <p className="text-center text-gray-400 italic py-10">Nessuna iscrizione trovata per i filtri selezionati.</p>}
+                            {groupedData.length === 0 && <p className="text-center text-gray-400 italic py-10">Nessuna iscrizione trovata.</p>}
                             {groupedData.map((group, idx) => (
                                 <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                                     <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex justify-between items-center">
@@ -609,9 +567,7 @@ const EnrollmentArchive: React.FC = () => {
                             ))}
                         </div>
                     ) : (
-                        <div className="animate-fade-in bg-white p-4 rounded-xl shadow border border-gray-200 overflow-hidden">
-                            {calendarGrid}{groupedData.length === 0 && <p className="text-center text-gray-400 italic py-10">Nessun dato da visualizzare.</p>}
-                        </div>
+                        <div className="animate-fade-in bg-white p-4 rounded-xl shadow border border-gray-200 overflow-hidden">{calendarGrid}</div>
                     )}
                 </div>
             )}
@@ -623,7 +579,7 @@ const EnrollmentArchive: React.FC = () => {
                         enrollment={financialWizardTarget}
                         totalPaid={getPaymentStatus(financialWizardTarget).totalPaid}
                         onClose={() => setFinancialWizardTarget(null)}
-                        onOpenPayment={() => handleOpenPaymentFromWizard(financialWizardTarget)}
+                        onOpenPayment={(amt) => handleOpenPaymentFromWizard(financialWizardTarget, amt)}
                         onRefresh={fetchData}
                     />
                 </Modal>
@@ -631,43 +587,31 @@ const EnrollmentArchive: React.FC = () => {
 
             {isEditModalOpen && editingEnrollment && (
                 <Modal onClose={() => setIsEditModalOpen(false)} size="lg">
-                    <EnrollmentForm parents={parentClients} initialParent={parentClients.find(p => p.id === editingEnrollment.clientId)} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsEditModalOpen(false)} />
+                    <EnrollmentForm clients={clients} initialClient={clients.find(c => c.id === editingEnrollment.clientId)} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsEditModalOpen(false)} />
                 </Modal>
             )}
 
             {paymentModalState.isOpen && paymentModalState.enrollment && (
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
-                        <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento (Archivio)</h3>
-                        <p className="text-sm text-gray-500 mb-2">Pagamento per <strong>{paymentModalState.enrollment.childName}</strong>.</p>
+                        <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
                         <div className="bg-indigo-50 p-3 rounded mb-4 text-xs">
                             <p>Prezzo Totale: <strong>{paymentModalState.enrollment.price}€</strong></p>
-                            <p>Già Versato: <strong>{paymentModalState.totalPaid.toFixed(2)}€</strong></p>
                             <p className="text-indigo-700 font-bold">Rimanenza: {( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - (paymentModalState.enrollment.adjustmentAmount || 0) ).toFixed(2)}€</p>
                         </div>
-                        <div className="md-input-group mb-4"><input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" /><label className="md-input-label !top-0">Data Pagamento</label></div>
-                        <div className="md-input-group mb-4"><select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select><label className="md-input-label !top-0">Metodo Pagamento</label></div>
-                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200 space-y-3">
-                            <div className="flex gap-4">
-                                <label className="flex items-center cursor-pointer"><input type="radio" name="paymentType" checked={paymentModalState.isDeposit} onChange={() => setPaymentModalState(prev => ({ ...prev, isDeposit: true, isBalance: false, depositAmount: 0 }))} className="h-4 w-4 text-indigo-600 rounded" /><span className="ml-2 text-sm font-bold text-gray-700">In Acconto</span></label>
-                                <label className="flex items-center cursor-pointer"><input type="radio" name="paymentType" checked={paymentModalState.isBalance} onChange={() => setPaymentModalState(prev => ({ ...prev, isBalance: true, isDeposit: false, depositAmount: prev.enrollment ? Math.max(0, (prev.enrollment.price || 0) - prev.totalPaid - (prev.enrollment.adjustmentAmount || 0)) : 0 }))} className="h-4 w-4 text-green-600 rounded" /><span className="ml-2 text-sm font-bold text-green-700">A Saldo / Tutto Subito</span></label>
-                            </div>
-                            {(paymentModalState.isDeposit || paymentModalState.isBalance) && ( <div className="animate-fade-in pl-2 pt-2"><label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label><input type="number" value={paymentModalState.depositAmount} onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))} className="w-full p-2 border rounded text-sm font-bold text-right" placeholder={paymentModalState.isDeposit ? "Inserisci quota concordata..." : ""} /></div> )}
-                        </div>
-                        <div className="mb-4">
-                            <label className="block text-xs font-bold text-gray-500 mb-2 uppercase">Generazione Documento</label>
-                            <div className="flex gap-4">
-                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${!paymentModalState.createInvoice ? 'bg-gray-100 border-gray-300 text-gray-600' : 'bg-white border-gray-200'}`}><input type="radio" name="invoiceGen" checked={!paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: false }))} className="hidden" />🚫 Non crea fattura</label>
-                                <label className={`flex-1 p-2 border rounded cursor-pointer text-center text-xs transition-colors ${paymentModalState.createInvoice ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'bg-white border-gray-200'}`}><input type="radio" name="invoiceGen" checked={paymentModalState.createInvoice} onChange={() => setPaymentModalState(prev => ({ ...prev, createInvoice: true }))} className="hidden" />📄 Crea fattura {paymentModalState.ghostInvoiceId ? '(Promuovi)' : ''}</label>
-                            </div>
+                        <div className="md-input-group mb-4"><input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" /><label className="md-input-label !top-0">Data</label></div>
+                        <div className="md-input-group mb-4"><select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select><label className="md-input-label !top-0">Metodo</label></div>
+                        <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200">
+                             <label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label>
+                             <input type="number" value={paymentModalState.depositAmount} onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))} className="w-full p-2 border rounded text-sm font-bold text-right" />
                         </div>
                         <div className="mt-6 flex justify-end gap-2"><button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button><button onClick={executePaymentAction} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma Pagamento</button></div>
                     </div>
                 </Modal>
             )}
 
-            <ConfirmModal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleConfirmDelete} title="Elimina Iscrizione Storica" message="Sei sicuro di voler eliminare questa iscrizione dall'archivio? Questa azione cancellerà anche tutti i dati finanziari e le lezioni associate. È irreversibile." isDangerous={true} />
-            <ConfirmModal isOpen={!!terminateTarget} onClose={() => setTerminateTarget(null)} onConfirm={handleConfirmTerminate} title="Annulla/Termina Iscrizione" message="Vuoi segnare questa iscrizione come 'Scaduta/Ritirata'? Questo non cancella i dati, ma aggiorna lo stato per indicare che non è stata completata regolarmente." confirmText="Sì, Termina" />
+            <ConfirmModal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleConfirmDelete} title="Elimina Iscrizione" message="Sei sicuro? Questa azione cancellerà anche i dati finanziari collegati." isDangerous={true} />
+            <ConfirmModal isOpen={!!terminateTarget} onClose={() => setTerminateTarget(null)} onConfirm={handleConfirmTerminate} title="Termina Iscrizione" message="Vuoi segnare l'iscrizione come 'Scaduta'?" confirmText="Sì, Termina" />
         </div>
     );
 };

@@ -19,10 +19,10 @@ interface CalendarCluster {
     endTime: string;
     locationName: string;
     locationColor: string;
-    count: number; // Numero studenti (se manuale)
+    count: number; // Numero studenti
     isManual?: boolean; 
-    isClosed?: boolean; // NEW: Indicates site is decommissioned on this date
-    closedAtDate?: string; // Stored for the alert
+    isClosed?: boolean; 
+    closedAtDate?: string; 
     title?: string;
     description?: string; 
     childNames?: string; 
@@ -59,23 +59,18 @@ const Calendar: React.FC = () => {
             setClients(clis);
 
             const clusterMap = new Map<string, CalendarCluster>();
-
-            // 0. Mappa di Disponibilità e Chiusura per Sede
-            // Key: locationName (trimmed), Value: { allowedDays: Set, closedAt: string }
             const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
             supps.forEach(s => {
                 s.locations.forEach(l => {
                     const days = new Set<number>(l.availability?.map(a => a.dayOfWeek) || []);
-                    if (l.name) {
-                        locationConfigMap.set(l.name.trim(), { 
-                            days, 
-                            closedAt: l.closedAt 
-                        });
-                    }
+                    if (l.name) locationConfigMap.set(l.name.trim(), { days, closedAt: l.closedAt });
                 });
             });
 
-            // 1. Process Enrollments (Cartellini) -> Raggruppati per Lezione (TimeSlot)
+            // Set per tracciare le lezioni manuali che sono state "assorbite" da un'iscrizione istituzionale
+            const absorbedLessonIds = new Set<string>();
+
+            // 1. Process Enrollments (Cartellini)
             enrollments.forEach(enr => {
                 if (enr.appointments && enr.appointments.length > 0) {
                     enr.appointments.forEach(app => {
@@ -85,33 +80,29 @@ const Calendar: React.FC = () => {
                         const locName = (app.locationName || enr.locationName || 'N/D').trim();
                         const locColor = app.locationColor || enr.locationColor || '#ccc';
                         
-                        // Check Site Status (Closed/Availability)
                         const config = locationConfigMap.get(locName);
                         let isClosed = false;
                         let closedAtVal = '';
 
                         if (config) {
-                            // Check if site is closed on this specific date
                             if (config.closedAt) {
                                 const closingDate = new Date(config.closedAt);
                                 closingDate.setHours(0,0,0,0);
                                 const currentLessonDate = new Date(app.date);
-                                currentLessonDate.setHours(0,0,0,0);
-                                
                                 if (currentLessonDate >= closingDate) {
                                     isClosed = true;
                                     closedAtVal = config.closedAt;
                                 }
                             }
+                            if (!isClosed && app.status === 'Scheduled' && !config.days.has(dayOfWeek)) return; 
+                        }
 
-                            // If not closed, check standard availability (skip if day not allowed, except if it's already a present/absent record)
-                            if (!isClosed && app.status === 'Scheduled' && !config.days.has(dayOfWeek)) {
-                                return; 
-                            }
+                        // Tracciamo il collegamento referenziale per l'assorbimento
+                        if (enr.isQuoteBased) {
+                            absorbedLessonIds.add(app.lessonId);
                         }
 
                         const key = `${dateKey}_${app.startTime}_${locName}`;
-
                         if (!clusterMap.has(key)) {
                             clusterMap.set(key, {
                                 id: key,
@@ -125,52 +116,45 @@ const Calendar: React.FC = () => {
                                 count: 0 
                             });
                         }
-
                         const cluster = clusterMap.get(key);
                         if (cluster) {
                             cluster.count++;
-                            // Se un allievo nel cluster è in una sede chiusa, il cluster eredita lo stato
-                            if (isClosed) {
-                                cluster.isClosed = true;
-                                cluster.closedAtDate = closedAtVal;
+                            if (isClosed) { cluster.isClosed = true; cluster.closedAtDate = closedAtVal; }
+                            // Se è istituzionale, sovrascriviamo childNames per chiarezza
+                            if (enr.isQuoteBased) {
+                                cluster.childNames = enr.childName;
+                                cluster.title = 'ENTE';
                             }
                         }
                     });
                 }
             });
 
-            // 2. Process Manual Lessons (Extra)
+            // 2. Process Manual Lessons (Extra) - FILTRO ASSORBIMENTO ATTIVO
             mLessons.forEach(ml => {
-                const dateKey = ml.date.split('T')[0];
-                const key = ml.id; 
-                
+                // Se questa lezione manuale è già stata renderizzata tramite un'iscrizione istituzionale, saltala
+                if (absorbedLessonIds.has(ml.id)) return;
+
                 const config = locationConfigMap.get(ml.locationName.trim());
                 let isClosed = false;
                 let closedAtVal = '';
                 if (config?.closedAt) {
                     const closingDate = new Date(config.closedAt);
-                    const lessonDate = new Date(ml.date);
-                    if (lessonDate >= closingDate) {
-                        isClosed = true;
-                        closedAtVal = config.closedAt;
-                    }
+                    if (new Date(ml.date) >= closingDate) { isClosed = true; closedAtVal = config.closedAt; }
                 }
 
-                // Generazione stringa nomi
                 let displayNames = '';
                 let attendeeCount = 0;
                 if (ml.attendees && ml.attendees.length > 0) {
                     displayNames = ml.attendees.map(a => a.childName).join(', ');
                     attendeeCount = ml.attendees.length;
-                    if (ml.attendees.length > 2) {
-                        displayNames = `${ml.attendees[0].childName} +${ml.attendees.length - 1}`;
-                    }
+                    if (ml.attendees.length > 2) displayNames = `${ml.attendees[0].childName} +${ml.attendees.length - 1}`;
                 } else {
                     displayNames = ml.childName || '';
                     if (displayNames) attendeeCount = 1;
                 }
 
-                clusterMap.set(key, {
+                clusterMap.set(ml.id, {
                     id: ml.id,
                     date: ml.date,
                     startTime: ml.startTime,
@@ -191,7 +175,7 @@ const Calendar: React.FC = () => {
             setError(null);
         } catch (err) {
             console.error(err);
-            setError("Impossibile caricare il calendario.");
+            setError("Errore calendario.");
         } finally {
             setLoading(false);
         }
@@ -199,7 +183,6 @@ const Calendar: React.FC = () => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    // --- Actions ---
     const handleSaveLesson = async (data: LessonInput | Lesson) => {
         setLoading(true);
         try {
@@ -207,31 +190,10 @@ const Calendar: React.FC = () => {
             else await addLesson(data);
             setIsModalOpen(false);
             await fetchData();
-        } catch (e) { alert("Errore salvataggio"); }
+        } catch (e) { alert("Errore"); }
         finally { setLoading(false); }
     };
 
-    const handleDeleteLesson = async (id: string) => {
-        if(confirm("Eliminare questo evento extra?")) {
-            setLoading(true);
-            try {
-                await deleteLesson(id);
-                setIsModalOpen(false);
-                await fetchData();
-            } catch(e) { alert("Errore eliminazione"); }
-            finally { setLoading(false); }
-        }
-    };
-
-    const handleEditManual = (id: string) => {
-        const lesson = manualLessons.find(l => l.id === id);
-        if (lesson) {
-            setEditingLesson(lesson);
-            setIsModalOpen(true);
-        }
-    };
-
-    // --- Helper Colors ---
     const getTextColorForBg = (bgColor: string) => {
         if (!bgColor) return '#000';
         const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
@@ -241,126 +203,50 @@ const Calendar: React.FC = () => {
         return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#000' : '#fff';
     };
 
-    // --- Calendar Grid Rendering Logic ---
     const { monthGrid, daysOfWeek } = useMemo(() => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
         const firstDayOfMonth = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        
         const startDayIndex = (firstDayOfMonth === 0) ? 6 : firstDayOfMonth - 1;
-        
         const grid: (Date | null)[] = Array(startDayIndex).fill(null);
-        for (let day = 1; day <= daysInMonth; day++) {
-            grid.push(new Date(year, month, day));
-        }
-        return { 
-            monthGrid: grid, 
-            daysOfWeek: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] 
-        };
+        for (let day = 1; day <= daysInMonth; day++) grid.push(new Date(year, month, day));
+        return { monthGrid: grid, daysOfWeek: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] };
     }, [currentDate]);
-
-    const changeMonth = (delta: number) => {
-        setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
-    };
 
     return (
         <div>
-            {/* Header */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-4">
                 <h1 className="text-3xl font-bold">Calendario</h1>
-                <div className="flex gap-2">
-                    <button 
-                        onClick={() => { setEditingLesson(null); setIsModalOpen(true); }}
-                        className="md-btn md-btn-raised md-btn-green md-btn-sm flex items-center"
-                    >
-                        <PlusIcon /><span className="ml-2">Nuovo Evento</span>
-                    </button>
-                </div>
+                <button onClick={() => { setEditingLesson(null); setIsModalOpen(true); }} className="md-btn md-btn-raised md-btn-green md-btn-sm flex items-center"><PlusIcon /><span className="ml-2">Nuovo Evento</span></button>
             </div>
             
             <div className="mt-2 md-card p-2 md:p-6">
-                {/* Navigazione Mese */}
                 <div className="flex justify-between items-center mb-4">
-                    <button onClick={() => changeMonth(-1)} className="md-icon-btn h-10 w-10 bg-gray-100 rounded-full font-bold">&lt;</button>
-                    <h2 className="text-lg md:text-xl font-bold capitalize text-center">
-                        {currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}
-                    </h2>
-                    <button onClick={() => changeMonth(1)} className="md-icon-btn h-10 w-10 bg-gray-100 rounded-full font-bold">&gt;</button>
+                    <button onClick={() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} className="md-icon-btn h-10 w-10 bg-gray-50 rounded-full font-bold">&lt;</button>
+                    <h2 className="text-lg md:text-xl font-bold capitalize text-center">{currentDate.toLocaleString('it-IT', { month: 'long', year: 'numeric' })}</h2>
+                    <button onClick={() => setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} className="md-icon-btn h-10 w-10 bg-gray-50 rounded-full font-bold">&gt;</button>
                 </div>
 
                  {loading ? <div className="flex justify-center items-center py-8"><Spinner /></div> :
                  <div className="grid grid-cols-7 gap-1">
-                     {/* Intestazioni Giorni */}
-                     {daysOfWeek.map(day => (
-                        <div key={day} className="text-center font-bold text-xs md:text-sm p-1 md:p-2" style={{color: 'var(--md-text-secondary)'}}>
-                            {day}
-                        </div>
-                     ))}
-                     
-                     {/* Celle Giorni */}
+                     {daysOfWeek.map(day => <div key={day} className="text-center font-bold text-xs md:text-sm p-1 md:p-2 text-slate-400">{day}</div>)}
                      {monthGrid.map((day, index) => {
-                        const dayEvents = day 
-                            ? clusters
-                                .filter(c => new Date(c.date).toDateString() === day.toDateString())
-                                .sort((a,b) => a.startTime.localeCompare(b.startTime))
-                            : [];
-
+                        const dayEvents = day ? clusters.filter(c => new Date(c.date).toDateString() === day.toDateString()).sort((a,b) => a.startTime.localeCompare(b.startTime)) : [];
                         return (
-                            <div 
-                                key={index} 
-                                className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors ${day ? 'bg-white' : 'bg-gray-50'}`}
-                                style={{borderColor: 'var(--md-divider)'}} 
-                            >
-                                 {day && (
-                                     <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>
-                                         {day.getDate()}
-                                     </span>
-                                 )}
-                                 
-                                 {/* Lista Eventi */}
+                            <div key={index} className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors ${day ? 'bg-white' : 'bg-gray-50'}`} style={{borderColor: 'var(--md-divider)'}}>
+                                 {day && <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>}
                                  <div className="space-y-1 overflow-y-auto flex-1 custom-scrollbar">
                                      {dayEvents.map(event => {
                                          const textColor = getTextColorForBg(event.locationColor);
                                          const locPrefix = event.locationName.substring(0, 3).toUpperCase();
-                                         const isManual = event.isManual;
-                                         const isClosed = event.isClosed;
-                                         
                                          return (
-                                             <div 
-                                                key={event.id}
-                                                onClick={(e) => {
-                                                    if (isClosed) {
-                                                        e.stopPropagation();
-                                                        alert(`⚠️ SEDE DISMESSA\n\nQuesta sede ("${event.locationName}") è stata chiusa in data ${new Date(event.closedAtDate!).toLocaleDateString('it-IT')}.\n\nL'allievo o il gruppo visualizzato in questo slot è rimasto "orfano". È necessario spostare l'iscrizione presso un'altra sede attiva per riprendere le modifiche e le attività.`);
-                                                        return;
-                                                    }
-                                                    isManual && handleEditManual(event.id);
-                                                }}
-                                                className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center transition-all ${isManual && !isClosed ? 'cursor-pointer hover:opacity-80 ring-1 ring-black/10' : ''} ${isClosed ? 'grayscale-ghost bg-zebra cursor-help' : ''}`}
-                                                style={{ backgroundColor: event.locationColor, color: textColor }}
-                                                title={isClosed ? "Sede Dismessa - Sola Lettura" : (isManual ? `${event.description || 'Extra'} - ${event.childNames || ''}` : `${event.count} Allievi`)}
-                                             >
-                                                 {/* Label */}
+                                             <div key={event.id} onClick={(e) => { if(event.isClosed) return alert("Sede chiusa."); if(event.isManual) { setEditingLesson(manualLessons.find(l => l.id === event.id) || null); setIsModalOpen(true); } }} className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center transition-all ${event.isManual && !event.isClosed ? 'cursor-pointer hover:opacity-80' : ''} ${event.isClosed ? 'grayscale-ghost bg-zebra' : ''}`} style={{ backgroundColor: event.locationColor, color: textColor }}>
                                                  <span className="truncate mr-1 flex-1 flex items-center gap-1">
-                                                     {isClosed && <span className="text-[9px]">🚫</span>}
-                                                     {isManual ? (
-                                                         <span className="flex items-center gap-1 truncate">
-                                                             <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">EXT</span>
-                                                             <span className="truncate">
-                                                                 {event.childNames ? event.childNames : (event.description || 'Evento')}
-                                                             </span>
-                                                         </span>
-                                                     ) : (
-                                                         <span className="truncate">{locPrefix} {event.startTime}</span>
-                                                     )}
+                                                     {event.title === 'ENTE' ? <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">ENTE</span> : (event.isManual && <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">EXT</span>)}
+                                                     <span className="truncate">{event.childNames ? event.childNames : `${locPrefix} ${event.startTime}`}</span>
                                                  </span>
-                                                 {/* Counter */}
-                                                 {!isClosed && isManual && event.count > 1 && (
-                                                     <span className="bg-white/30 px-1 rounded text-[9px] min-w-[1.2em] text-center flex-shrink-0" title="Partecipanti">
-                                                         {event.count}
-                                                     </span>
-                                                 )}
+                                                 {!event.isClosed && event.count > 1 && <span className="bg-white/30 px-1 rounded text-[9px] min-w-[1.2em] text-center">{event.count}</span>}
                                              </div>
                                          );
                                      })}
@@ -372,18 +258,7 @@ const Calendar: React.FC = () => {
                  }
             </div>
 
-            {isModalOpen && (
-                <Modal onClose={() => setIsModalOpen(false)} size="md">
-                    <LessonForm 
-                        lesson={editingLesson}
-                        suppliers={suppliers}
-                        clients={clients}
-                        onSave={handleSaveLesson}
-                        onDelete={handleDeleteLesson}
-                        onCancel={() => setIsModalOpen(false)}
-                    />
-                </Modal>
-            )}
+            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="md"><LessonForm lesson={editingLesson} suppliers={suppliers} clients={clients} onSave={handleSaveLesson} onDelete={id => deleteLesson(id).then(fetchData)} onCancel={() => setIsModalOpen(false)} /></Modal>}
         </div>
     );
 };

@@ -6,7 +6,7 @@ import TrashIcon from '../icons/TrashIcon';
 import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
-import { Transaction, Invoice, Quote, DocumentStatus, Supplier } from '../../types';
+import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType } from '../../types';
 import { updateInvoice, markInvoicesAsPaid } from '../../services/financeService';
 import Spinner from '../Spinner';
 
@@ -20,16 +20,44 @@ const WhatsAppIcon = () => (
 // --- Icona Magic Wand (Converti) ---
 const MagicWandIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09-3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
     </svg>
 );
 
-// --- Icona Sort ---
+// --- Icona Fulmine (Attivazione Istituzionale) ---
+const BoltIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+);
+
 const SortIcon: React.FC<{ active: boolean; direction: 'asc' | 'desc' }> = ({ active, direction }) => (
     <span className={`ml-1 text-[10px] ${active ? 'text-indigo-600 font-bold' : 'text-slate-300'}`}>
         {active ? (direction === 'asc' ? '▲' : '▼') : '↕'}
     </span>
 );
+
+// Added missing helper to get status color classes
+const getStatusColor = (status: string) => {
+    switch (status) {
+        case 'Paid':
+        case 'completed':
+            return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+        case 'Draft':
+        case 'pending':
+        case 'PendingSDI':
+            return 'bg-amber-50 text-amber-700 border-amber-200';
+        case 'Sent':
+            return 'bg-blue-50 text-blue-700 border-blue-200';
+        case 'Overdue':
+        case 'cancelled':
+            return 'bg-red-50 text-red-700 border-red-200';
+        case 'SealedSDI':
+            return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+        default:
+            return 'bg-gray-50 text-gray-700 border-gray-200';
+    }
+};
 
 interface FinanceListViewProps {
     activeTab: 'transactions' | 'invoices' | 'archive' | 'quotes';
@@ -47,37 +75,28 @@ interface FinanceListViewProps {
     onSeal?: (item: Invoice) => void;
     onWhatsApp: (item: any) => void;
     onConvert?: (item: Quote) => void;
+    onActivate?: (item: Quote) => void; 
 }
-
-const getStatusColor = (status: string) => {
-    switch (status) {
-        case 'Paid':
-        case 'Completed':
-            return 'bg-green-100 text-green-700 border-green-200';
-        case DocumentStatus.SealedSDI:
-            return 'bg-cyan-100 text-cyan-700 border-cyan-200'; 
-        case DocumentStatus.PendingSDI:
-        case 'pending':
-            return 'bg-amber-100 text-amber-800 border-amber-200'; 
-        case DocumentStatus.Overdue:
-            return 'bg-red-100 text-red-700 border-red-200';
-        case DocumentStatus.Draft:
-            return 'bg-gray-100 text-gray-600 border-gray-200';
-        case DocumentStatus.Sent:
-            return 'bg-blue-100 text-blue-700 border-blue-200';
-        default:
-            return 'bg-gray-100 text-gray-600 border-gray-200';
-    }
-};
 
 const FinanceListView: React.FC<FinanceListViewProps> = ({ 
     activeTab, transactions, invoices, quotes, suppliers, filters, setFilters, 
-    onExportTransactions, onExportInvoices, onEdit, onDelete, onPrint, onSeal, onWhatsApp, onConvert
+    onExportTransactions, onExportInvoices, onEdit, onDelete, onPrint, onSeal, onWhatsApp, onConvert, onActivate
 }) => {
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [statusFilter, setStatusFilter] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'number'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
     const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
+    // --- NUOVI FILTRI TEMPORALI ---
+    const now = new Date();
+    const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
+    const [filterMonth, setFilterMonth] = useState<string>(String(now.getMonth() + 1)); // 1-12 o "all"
+    const years = useMemo(() => {
+        const list = [];
+        for (let y = now.getFullYear() + 1; y >= 2025; y--) list.push(y);
+        return list;
+    }, [now]);
+    const months = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
     const handleSort = (key: 'date' | 'number') => {
         setSortConfig(current => ({
@@ -88,31 +107,46 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 
     const filteredList = useMemo(() => {
         let list: any[] = [];
-        if (activeTab === 'transactions') list = transactions.filter(t => !t.isDeleted);
-        else if (activeTab === 'invoices') {
-            list = invoices.filter(i => !i.isDeleted && !i.isGhost);
-            if (statusFilter) {
+        if (activeTab === 'transactions') {
+            list = transactions.filter(t => !t.isDeleted);
+            // Applica Filtro Temporale per Transazioni
+            list = list.filter(t => {
+                const d = new Date(t.date);
+                const yearMatch = d.getFullYear() === filterYear;
+                const monthMatch = filterMonth === 'all' || (d.getMonth() + 1) === parseInt(filterMonth);
+                return yearMatch && monthMatch;
+            });
+        }
+        else if (activeTab === 'invoices' || activeTab === 'archive') {
+            const baseList = invoices.filter(i => !i.isDeleted);
+            
+            list = baseList.filter(i => {
+                // Filtro Anagrafico/Tab
+                const matchesTab = activeTab === 'invoices' 
+                    ? !i.isGhost 
+                    : (i.status === DocumentStatus.PendingSDI || i.status === DocumentStatus.SealedSDI || (i.sdiId && String(i.sdiId).trim().length > 0));
+                
+                if (!matchesTab) return false;
+
+                // Filtro Temporale (Data Emissione)
+                const d = new Date(i.issueDate);
+                const yearMatch = d.getFullYear() === filterYear;
+                const monthMatch = filterMonth === 'all' || (d.getMonth() + 1) === parseInt(filterMonth);
+                
+                return yearMatch && monthMatch;
+            });
+
+            if (statusFilter && activeTab === 'invoices') {
                 list = list.filter(i => i.status === statusFilter);
             }
-        }
-        else if (activeTab === 'archive') {
-            list = invoices.filter(i => 
-                !i.isDeleted && (
-                    i.status === DocumentStatus.PendingSDI || 
-                    i.status === DocumentStatus.SealedSDI || 
-                    (i.sdiId && String(i.sdiId).trim().length > 0)
-                )
-            );
         }
         else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
         
         let result = list.filter(item => (item.clientName || item.description || item.invoiceNumber || '').toLowerCase().includes(filters.search.toLowerCase()));
 
-        // Sorting Logic
         result.sort((a, b) => {
             let valA: any = '';
             let valB: any = '';
-
             if (sortConfig.key === 'date') {
                 valA = new Date(a.date || a.issueDate).getTime();
                 valB = new Date(b.date || b.issueDate).getTime();
@@ -120,153 +154,116 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                 valA = a.invoiceNumber || a.quoteNumber || ('id' in a ? a.id : '');
                 valB = b.invoiceNumber || b.quoteNumber || ('id' in b ? b.id : '');
             }
-
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-
         return result;
-    }, [activeTab, transactions, invoices, quotes, filters, statusFilter, sortConfig]);
+    }, [activeTab, transactions, invoices, quotes, filters, statusFilter, sortConfig, filterYear, filterMonth]);
 
-    // Helper per estrarre il numero documento in modo sicuro (Type Guard)
+    // --- CALCOLO TOTALI DINAMICI (Cassa vs Fatturazione) ---
+    const totals = useMemo(() => {
+        if (activeTab === 'transactions') {
+            return filteredList.reduce((acc, t) => {
+                if (t.type === TransactionType.Income) acc.income += Number(t.amount);
+                else if (t.type === TransactionType.Expense) acc.expense += Number(t.amount);
+                return acc;
+            }, { income: 0, expense: 0 });
+        } else if (activeTab === 'invoices' || activeTab === 'archive') {
+            // Solo fatture reali per calcolo fiscale
+            const realInvoices = filteredList.filter(i => !i.isGhost);
+            const gross = realInvoices.reduce((acc, i) => acc + (Number(i.totalAmount) || 0), 0);
+            const taxable = gross * 0.78;
+            const stamps = realInvoices.reduce((acc, i) => acc + (Number(i.totalAmount) > 77.47 ? 2 : 0), 0);
+            return { gross, taxable, stamps };
+        }
+        return null;
+    }, [filteredList, activeTab]);
+
     const getDocumentNumber = (item: any) => {
         if ('invoiceNumber' in item) return item.invoiceNumber;
         if ('quoteNumber' in item) return item.quoteNumber;
         return 'TRX-' + item.id.substring(0, 5).toUpperCase();
     };
 
-    // Funzione per inviare report a Simona Puddu
     const handleSendReportToSimona = () => {
         if (!suppliers) return alert("Errore: Anagrafica fornitori non disponibile.");
-        
-        // 1. Trova Simona Puddu
         const targetSupplier = suppliers.find(s => 
             s.companyName.toLowerCase().includes('simona') && 
             s.companyName.toLowerCase().includes('puddu')
         );
-
         let phone = targetSupplier?.phone;
         if (!phone) {
-            // Fallback: se non trovata, chiedi all'utente (opzionale) o avvisa
-            if(!confirm("Fornitore 'Simona Puddu' non trovato o senza numero di telefono. Vuoi procedere comunque aprendo WhatsApp (dovrai selezionare il contatto)?")) return;
+            if(!confirm("Fornitore 'Simona Puddu' non trovato. Procedere comunque?")) return;
             phone = ""; 
         }
-
-        // 2. Costruisci il messaggio
         const selectedInvoices = invoices.filter(i => selectedItems.includes(i.id));
-        
         let message = `*REPORT FATTURE SDI*\n------------------\n`;
-        
         selectedInvoices.forEach(inv => {
             const dateStr = new Date(inv.issueDate).toLocaleDateString('it-IT');
-            message += `🔹 *Fattura:* ${inv.invoiceNumber}\n`;
-            message += `   Data: ${dateStr}\n`;
-            message += `   SDI: ${inv.sdiId || 'N/D'}\n\n`;
+            message += `🔹 *Fattura:* ${inv.invoiceNumber}\n   Data: ${dateStr}\n   SDI: ${inv.sdiId || 'N/D'}\n\n`;
         });
         message += `------------------\nTotale documenti: ${selectedInvoices.length}`;
-
-        // 3. Apri WhatsApp
         const cleanPhone = phone.replace(/[^0-9]/g, '');
         const finalPhone = (cleanPhone.length === 10) ? '39' + cleanPhone : cleanPhone;
-        const url = `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
-        window.open(url, '_blank');
+        window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`, '_blank');
     };
 
-    // Stampa Massiva
     const handleBulkPrint = () => {
         if (!onPrint) return;
-
-        // Determina la sorgente dati corretta
         let sourceList: any[] = [];
-        if (activeTab === 'invoices' || activeTab === 'archive') {
-            sourceList = invoices;
-        } else if (activeTab === 'quotes') {
-            sourceList = quotes;
-        }
-
-        // Filtra gli oggetti completi basandosi sugli ID selezionati
+        if (activeTab === 'invoices' || activeTab === 'archive') sourceList = invoices;
+        else if (activeTab === 'quotes') sourceList = quotes;
         const itemsToPrint = sourceList.filter(item => selectedItems.includes(item.id));
-
         if (itemsToPrint.length === 0) return;
-
-        // Lancia la stampa in sequenza
-        itemsToPrint.forEach(item => {
-            onPrint(item);
-        });
+        itemsToPrint.forEach(item => onPrint(item));
     };
 
-    // Segna Pagate (Massivo)
     const handleBulkMarkAsPaid = async () => {
         if (selectedItems.length === 0) return;
         if (!confirm(`Vuoi segnare come PAGATE ${selectedItems.length} fatture?`)) return;
-
         setIsBulkUpdating(true);
         try {
             await markInvoicesAsPaid(selectedItems);
-            // Trigger update per ricaricare la lista
             window.dispatchEvent(new Event('EP_DataUpdated'));
             setSelectedItems([]);
         } catch (e) {
-            alert("Errore durante l'aggiornamento.");
-            console.error(e);
+            alert("Errore aggiornamento.");
         } finally {
             setIsBulkUpdating(false);
         }
     };
 
-    // --- NUOVA LOGICA: Segna Sigillate Automatica (Massiva) ---
     const handleBulkAutoSeal = async () => {
         if (selectedItems.length === 0) return;
-        if (!confirm(`Vuoi elaborare lo stato SDI per le ${selectedItems.length} fatture selezionate?\n\nQuesta operazione rileverà se il codice SDI è presente e aggiornerà lo stato automaticamente.`)) return;
-
+        if (!confirm(`Vuoi elaborare lo stato SDI per le ${selectedItems.length} fatture selezionate?`)) return;
         setIsBulkUpdating(true);
         try {
             const targets = invoices.filter(i => selectedItems.includes(i.id));
             const updates: Promise<void>[] = [];
-
             for (const inv of targets) {
                 let newStatus: DocumentStatus | null = null;
                 const hasSdi = inv.sdiId && inv.sdiId.trim().length > 0;
-
                 if (hasSdi) {
-                    // Se SDI presente -> SealedSDI
-                    if (inv.status !== DocumentStatus.SealedSDI) {
-                        newStatus = DocumentStatus.SealedSDI;
-                    }
+                    if (inv.status !== DocumentStatus.SealedSDI) newStatus = DocumentStatus.SealedSDI;
                 } else {
-                    // Se SDI vuoto
-                    if (inv.status === DocumentStatus.Paid) {
-                        // Caso A: Pagata -> PendingSDI
-                        newStatus = DocumentStatus.PendingSDI;
-                    }
-                    // Caso B: Già PendingSDI -> No change
-                    // Caso C: Altro stato (Bozza/Inviata) -> No change
+                    if (inv.status === DocumentStatus.Paid) newStatus = DocumentStatus.PendingSDI;
                 }
-
-                if (newStatus) {
-                    updates.push(updateInvoice(inv.id, { status: newStatus }));
-                }
+                if (newStatus) updates.push(updateInvoice(inv.id, { status: newStatus }));
             }
-
             if (updates.length > 0) {
                 await Promise.all(updates);
                 window.dispatchEvent(new Event('EP_DataUpdated'));
-                alert(`${updates.length} fatture aggiornate con successo.`);
-            } else {
-                alert("Nessuna modifica necessaria in base alle regole.");
+                alert(`${updates.length} fatture aggiornate.`);
             }
             setSelectedItems([]);
-
         } catch (e) {
-            console.error(e);
-            alert("Errore durante l'elaborazione SDI.");
+            alert("Errore elaborazione SDI.");
         } finally {
             setIsBulkUpdating(false);
         }
     };
 
-    // Segna Pagato (Singolo)
     const handleMarkAsPaid = async (item: Invoice) => {
         try {
             await updateInvoice(item.id, { status: DocumentStatus.Paid });
@@ -279,85 +276,87 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     return (
         <div className="md-card overflow-hidden bg-white shadow-2xl border-0">
             <div className="p-6 bg-slate-50 border-b flex flex-col gap-4">
-                
-                {/* RIGA 1: INPUT RICERCA E FILTRI */}
-                <div className="flex flex-col md:flex-row gap-4 w-full items-center">
-                    <div className="relative flex-1 w-full md:w-auto md:max-w-md">
-                        <div className="absolute left-3 top-3"><SearchIcon /></div>
-                        <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500 w-full" />
+                <div className="flex flex-col md:flex-row gap-4 w-full items-center justify-between">
+                    <div className="flex flex-col md:flex-row gap-4 flex-1 w-full md:w-auto">
+                        <div className="relative flex-1 w-full md:w-auto md:max-w-md">
+                            <div className="absolute left-3 top-3"><SearchIcon /></div>
+                            <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500 w-full" />
+                        </div>
+                        
+                        {/* FILTRI TEMPORALI UNIVERSALI (Cassa + Fatture) */}
+                        {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'archive') && (
+                            <div className="flex gap-2">
+                                <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="md-input !py-2 !px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold w-28">
+                                    {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                                <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="md-input !py-2 !px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold w-32">
+                                    <option value="all">Tutto l'anno</option>
+                                    {months.map((m, i) => <option key={i} value={String(i+1)}>{m}</option>)}
+                                </select>
+                            </div>
+                        )}
+
+                        {activeTab === 'invoices' && (
+                            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                                <option value="">Tutti gli stati</option>
+                                <option value={DocumentStatus.Draft}>Bozza</option>
+                                <option value={DocumentStatus.Sent}>Inviata</option>
+                                <option value={DocumentStatus.Paid}>Pagata</option>
+                                <option value={DocumentStatus.PendingSDI}>In Attesa SDI</option>
+                                <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
+                                <option value={DocumentStatus.Overdue}>Scaduta</option>
+                            </select>
+                        )}
                     </div>
-                    {activeTab === 'invoices' && (
-                        <select 
-                            value={statusFilter} 
-                            onChange={(e) => setStatusFilter(e.target.value)} 
-                            className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                        >
-                            <option value="">Tutti gli stati</option>
-                            <option value={DocumentStatus.Draft}>Bozza (Draft)</option>
-                            <option value={DocumentStatus.Sent}>Inviata (Sent)</option>
-                            <option value={DocumentStatus.Paid}>Pagata (Paid)</option>
-                            <option value={DocumentStatus.PendingSDI}>In Attesa SDI</option>
-                            <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
-                            <option value={DocumentStatus.Overdue}>Scaduta (Overdue)</option>
-                        </select>
+
+                    {/* SMART COUNTERS REGISTRO CASSA */}
+                    {activeTab === 'transactions' && totals && 'income' in totals && (
+                        <div className="flex gap-3 flex-shrink-0 animate-fade-in">
+                            <div className="bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-2xl flex flex-col items-end shadow-sm">
+                                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">Entrate Periodo</span>
+                                <span className="text-sm font-black text-emerald-700 font-mono">+{totals.income.toFixed(2)}€</span>
+                            </div>
+                            <div className="bg-red-50 border border-red-200 px-4 py-2 rounded-2xl flex flex-col items-end shadow-sm">
+                                <span className="text-[9px] font-black text-red-600 uppercase tracking-tighter">Uscite Periodo</span>
+                                <span className="text-sm font-black text-red-700 font-mono">-{totals.expense.toFixed(2)}€</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FISCAL COUNTERS FATTURAZIONE */}
+                    {(activeTab === 'invoices' || activeTab === 'archive') && totals && 'gross' in totals && (
+                        <div className="flex gap-2 flex-shrink-0 animate-fade-in flex-wrap justify-end">
+                            <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl flex flex-col items-end shadow-sm min-w-[90px]">
+                                <span className="text-[8px] font-black text-indigo-600 uppercase tracking-tighter">Lordo Fatturato</span>
+                                <span className="text-xs font-black text-indigo-700 font-mono">{totals.gross.toFixed(2)}€</span>
+                            </div>
+                            <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex flex-col items-end shadow-sm min-w-[90px]">
+                                <span className="text-[8px] font-black text-amber-600 uppercase tracking-tighter">Imponibile 78%</span>
+                                <span className="text-xs font-black text-amber-700 font-mono">{totals.taxable.toFixed(2)}€</span>
+                            </div>
+                            <div className="bg-slate-100 border border-slate-300 px-3 py-1.5 rounded-xl flex flex-col items-end shadow-sm min-w-[80px]">
+                                <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Totale Bolli</span>
+                                <span className="text-xs font-black text-slate-700 font-mono">{totals.stamps.toFixed(2)}€</span>
+                            </div>
+                        </div>
                     )}
                 </div>
 
-                {/* RIGA 2: BARRA AZIONI E EXPORT */}
                 <div className="flex flex-wrap gap-2 items-center w-full">
-                    {/* BOTTONI EXPORT */}
-                    {activeTab === 'transactions' && onExportTransactions && (
-                        <button onClick={onExportTransactions} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center gap-1 font-bold">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Export Excel
-                        </button>
-                    )}
-                    {activeTab === 'invoices' && onExportInvoices && (
-                        <button onClick={onExportInvoices} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 flex items-center gap-1 font-bold">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Export Excel
-                        </button>
-                    )}
-
-                    {/* BOTTONI AZIONI MASSIVE (Visibili se selezione attiva) */}
                     {selectedItems.length > 0 && (
                         <div className="flex gap-2 animate-fade-in flex-wrap">
                             {activeTab === 'invoices' && (
                                 <>
-                                    <button 
-                                        onClick={handleBulkMarkAsPaid} 
-                                        disabled={isBulkUpdating}
-                                        className={`md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm ${isBulkUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        title="Segna selezionati come pagati"
-                                    >
-                                        {isBulkUpdating ? (
-                                            <><div className="w-3 h-3 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div> Attendere...</>
-                                        ) : (
-                                            <><BanknotesIcon /> Segna Pagate</>
-                                        )}
+                                    <button onClick={handleBulkMarkAsPaid} disabled={isBulkUpdating} className={`md-btn md-btn-sm bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold flex items-center gap-1 hover:bg-emerald-200 shadow-sm ${isBulkUpdating ? 'opacity-70' : ''}`} title="Segna selezionati come pagati">
+                                        {isBulkUpdating ? <div className="w-3 h-3 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div> : <><BanknotesIcon /> Segna Pagate</>}
                                     </button>
-                                    
-                                    {/* NUOVO BOTTONE SEGNA SIGILLATE */}
-                                    <button 
-                                        onClick={handleBulkAutoSeal}
-                                        disabled={isBulkUpdating}
-                                        className={`md-btn md-btn-sm bg-cyan-100 text-cyan-800 border border-cyan-200 font-bold flex items-center gap-1 hover:bg-cyan-200 shadow-sm ${isBulkUpdating ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                        title="Processa stato SDI (Sigilla se ID presente, Pending se pagata)"
-                                    >
+                                    <button onClick={handleBulkAutoSeal} disabled={isBulkUpdating} className={`md-btn md-btn-sm bg-cyan-100 text-cyan-800 border border-cyan-200 font-bold flex items-center gap-1 hover:bg-cyan-200 shadow-sm ${isBulkUpdating ? 'opacity-70' : ''}`} title="Processa stato SDI">
                                         <DocumentCheckIcon /> Segna Sigillate
                                     </button>
                                 </>
                             )}
                             {activeTab === 'archive' && (
-                                <button 
-                                    onClick={handleSendReportToSimona} 
-                                    className="md-btn md-btn-sm bg-emerald-500 text-white font-bold flex items-center gap-1 hover:bg-emerald-600 shadow-sm"
-                                    title="Invia report a Simona Puddu"
-                                >
+                                <button onClick={handleSendReportToSimona} className="md-btn md-btn-sm bg-emerald-500 text-white font-bold flex items-center gap-1 hover:bg-emerald-600 shadow-sm" title="Invia report a Simona Puddu">
                                     <WhatsAppIcon /> Report Simona ({selectedItems.length})
                                 </button>
                             )}
@@ -375,23 +374,11 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                             <th className="px-6 py-4 w-10">
                                 <input type="checkbox" onChange={e => setSelectedItems(e.target.checked ? filteredList.map(i => i.id) : [])} checked={selectedItems.length === filteredList.length && filteredList.length > 0} />
                             </th>
-                            <th 
-                                className="px-6 py-4 cursor-pointer hover:bg-slate-100 hover:text-slate-600 transition-colors select-none group" 
-                                onClick={() => handleSort('date')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Data
-                                    <SortIcon active={sortConfig.key === 'date'} direction={sortConfig.direction} />
-                                </div>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('date')}>
+                                <div className="flex items-center gap-1">Data <SortIcon active={sortConfig.key === 'date'} direction={sortConfig.direction} /></div>
                             </th>
-                            <th 
-                                className="px-6 py-4 cursor-pointer hover:bg-slate-100 hover:text-slate-600 transition-colors select-none group" 
-                                onClick={() => handleSort('number')}
-                            >
-                                <div className="flex items-center gap-1">
-                                    Rif / ID
-                                    <SortIcon active={sortConfig.key === 'number'} direction={sortConfig.direction} />
-                                </div>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('number')}>
+                                <div className="flex items-center gap-1">Rif / ID <SortIcon active={sortConfig.key === 'number'} direction={sortConfig.direction} /></div>
                             </th>
                             <th className="px-6 py-4">Soggetto / Causale</th>
                             <th className="px-6 py-4 text-right">Importo</th>
@@ -406,69 +393,32 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                     <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id])} />
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
-                                <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">
-                                    {getDocumentNumber(item)}
-                                </td>
+                                <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">{getDocumentNumber(item)}</td>
                                 <td className="px-6 py-4 font-bold text-slate-900 truncate max-w-[250px]">{item.clientName || item.description}</td>
                                 <td className="px-6 py-4 text-right font-black text-slate-900">{(item.amount || item.totalAmount).toFixed(2)}€</td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>
-                                        {item.status}
-                                    </span>
+                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>{item.status}</span>
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-1">
+                                        {/* NEW: Institutional Activation Button */}
+                                        {activeTab === 'quotes' && onActivate && (
+                                            <button onClick={() => onActivate(item)} className="md-icon-btn text-indigo-600 bg-indigo-50 hover:bg-indigo-100" title="Attiva Progetto Ente"><BoltIcon /></button>
+                                        )}
                                         {onConvert && (
-                                            <button 
-                                                type="button" 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    e.preventDefault();
-                                                    onConvert(item);
-                                                }} 
-                                                className="md-icon-btn text-purple-600" 
-                                                title="Converti in Fattura"
-                                            >
-                                                <MagicWandIcon />
-                                            </button>
+                                            <button onClick={() => onConvert(item)} className="md-icon-btn text-purple-600" title="Converti in Fattura"><MagicWandIcon /></button>
                                         )}
-
-                                        {/* Bottone Paga: Nascosto se Pagato o se in ciclo SDI (Pending/Sealed) */}
-                                        {activeTab === 'invoices' && 
-                                         item.status !== DocumentStatus.Paid && 
-                                         item.status !== DocumentStatus.PendingSDI && 
-                                         item.status !== DocumentStatus.SealedSDI && (
-                                            <button 
-                                                onClick={() => handleMarkAsPaid(item)} 
-                                                className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" 
-                                                title="Segna come Pagata"
-                                            >
-                                                €
-                                            </button>
+                                        {activeTab === 'invoices' && item.status !== DocumentStatus.Paid && item.status !== DocumentStatus.PendingSDI && item.status !== DocumentStatus.SealedSDI && (
+                                            <button onClick={() => handleMarkAsPaid(item)} className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" title="Segna come Pagata">€</button>
                                         )}
-
-                                        {/* Bottone SIGILLA: Se in Attesa (PendingSDI) O se ha SDI ID ma non ancora Sigillata */}
                                         {onSeal && (item.status === DocumentStatus.PendingSDI || (item.sdiId && item.status !== DocumentStatus.SealedSDI)) && (
-                                            <button 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    onSeal(item);
-                                                }} 
-                                                className="md-icon-btn text-indigo-600 hover:bg-indigo-50" 
-                                                title={item.sdiId ? "SDI Presente: Sigilla Ora" : "Inserisci SDI e Sigilla"}
-                                            >
-                                                <DocumentCheckIcon />
-                                            </button>
+                                            <button onClick={() => onSeal(item)} className="md-icon-btn text-indigo-600 hover:bg-indigo-50" title="Sigilla SDI"><DocumentCheckIcon /></button>
                                         )}
-                                        
                                         <button onClick={() => onWhatsApp(item)} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
-                                        
                                         {(activeTab === 'invoices' || activeTab === 'quotes' || activeTab === 'archive') && onPrint && (
                                             <button onClick={() => onPrint(item)} className="md-icon-btn text-slate-600" title="PDF"><PrinterIcon /></button>
                                         )}
-                                        
                                         <button onClick={() => onEdit(item)} className="md-icon-btn edit"><PencilIcon /></button>
-                                        
                                         <button onClick={() => onDelete(item.id)} className="md-icon-btn delete"><TrashIcon /></button>
                                     </div>
                                 </td>

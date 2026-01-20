@@ -1,3 +1,4 @@
+
 # EP v.1 - Manuale Operativo Enterprise
 
 Benvenuto nel sistema di gestione strategica **EP v.1**. Questa piattaforma è il "sistema nervoso" della tua scuola, progettato per eliminare gli errori umani e massimizzare la profittabilità delle sedi.
@@ -68,7 +69,12 @@ Gestione chirurgica degli slot.
 
 ## ## Modulo 7: Finanza & CFO
 
-Strumenti per la gestione del capitale.
+Strumenti per la gestione del capitale e monitoraggio fiscale.
+- **Fiscal Smart Counters:** Nella tab "Fatturazione", tre badge dinamici mostrano in tempo reale:
+    - **Lordo Fatturato:** Il totale dei documenti emessi nel periodo scelto (Anno/Mese).
+    - **Imponibile 78%:** Il valore su cui verranno calcolate tasse e INPS, basato sul coefficiente forfettario.
+    - **Totale Bolli:** Il debito accumulato verso l'Erario per i bolli virtuali da 2,00€ (applicati automaticamente a fatture > 77,47€).
+- **Filtri Temporali:** Usa i selettori di Anno e Mese per navigare nel database. Questi filtri isolano i documenti e aggiornano istantaneamente i contatori fiscali.
 - **Sigillo SDI:** Proteggi le fatture già trasmesse al sistema di interscambio per evitare modifiche accidentali.
 - **Simulatore Tasse Start-up:** Calcola gli accantonamenti basandoti sulla logica 150% (Saldo + Acconto) tipica delle nuove attività.
 - **TCO Logistica:** Calcola quanto ti costa realmente spostarti tra le sedi (carburante, usura veicolo, km totali).

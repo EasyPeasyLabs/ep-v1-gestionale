@@ -1,3 +1,4 @@
+
 # Story of EP v.1: Enterprise Management Ecosystem
 
 ## 1. Visione di Progetto
@@ -38,8 +39,9 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - **Move Mode:** Interfaccia touch-friendly per spostare allievi tra sedi e orari con ricalcolo automatico delle lezioni future.
 
 ### B. Finanza & Fiscal Doctor
-- **Scenario Start-up:** Calcolo accantonamenti tasse basato sulla logica 150% (Saldo + Acconto) per nuove attività.
+- **Scenario Start-up:** Calcolo accantonamenti tasse basato sulla logica 150% (Saldo + Acconto) tipica delle nuove attività.
 - **Fiscal Doctor:** Algoritmo di scansione integrità che rileva discrepanze tra iscrizioni, fatture emesse e incassi reali (Smart Identity Matching).
+- **Fiscal Smart Counters:** Monitoraggio in tempo reale del Lordo, dell'Imponibile (78%) e del debito Bolli virtuali direttamente nel database fatture.
 - **Sigillo SDI:** Protezione dei documenti fiscali già trasmessi al sistema di interscambio.
 - **TCO Logistica:** Calcolo dinamico del costo per chilometro, usura veicolo e carburante ripartito sulle sedi.
 
@@ -50,6 +52,7 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 
 ### D. CRM & Automazione
 - **Alert Rinnovi:** Notifiche automatiche 30 giorni prima della scadenza del cartellino.
+- **Progetti Istituzionali:** Trasformazione dei preventivi Enti in iscrizioni operative con monitoraggio rateale e billing alert automatico.
 - **WhatsApp Blaster:** Invio massivo di comunicazioni personalizzate tramite placeholder (es. `{{cliente}}`, `{{bambino}}`).
 - **Rating 4 Assi:** Valutazione qualitativa costante di allievi (Apprendimento/Condotta) e fornitori (Partnership/Negoziazione).
 
@@ -61,7 +64,8 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - **02/01:** Creazione "Archivio Iscrizioni" con vista Timeline e Calendario Copertura annuale.
 - **18/01 (Mattina):** Implementazione "Fiscal Doctor Wizard" con supporto Fuzzy Match per riconciliazione clusterizzata di fatture e movimenti di cassa.
 - **18/01 (Pomeriggio):** Refactoring del Manuale Operativo con navigazione a matrice 3-righe ottimizzata per Mobile e integrazione simulatore interattivo.
-- **18/01 (Sera):** Consolidamento documentale in `Story.md` e pulizia codebase.
+- **18/01 (Sera):** Lancio Modulo "Progetti Istituzionali": attivazione iscrizioni da preventivi Enti, link referenziale lezioni "Extra" e automazione billing rateale.
+- **18/01 (Notte):** Consolidamento fiscale avanzato. Introduzione dei contatori dinamici per Lordo, Imponibile (Coefficiente 78%) e Bolli Virtuali con filtri temporali unificati per Anno/Mese in tutta la sezione Finanza.
 
 ---
 
