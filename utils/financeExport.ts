@@ -46,6 +46,7 @@ export const exportInvoicesToExcel = (invoices: Invoice[]) => {
 };
 
 export const exportEnrollmentsToExcel = (enrollments: Enrollment[], clients: Client[]) => {
+    // Deprecated simple export, kept for compatibility if needed elsewhere
     const data = enrollments.map(e => {
         const client = clients.find(c => c.id === e.clientId);
         let parentName = '';
@@ -77,4 +78,69 @@ export const exportEnrollmentsToExcel = (enrollments: Enrollment[], clients: Cli
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Iscrizioni");
     XLSX.writeFile(wb, `Iscrizioni_Storico_${new Date().toISOString().split('T')[0]}.xlsx`);
+};
+
+// --- NEW ADVANCED EXPORT ---
+export interface AdvancedEnrollmentExportData {
+    studentName: string;
+    parentName: string;
+    locationNames: string; // Added Location
+    startDate: string;
+    endDate: string;
+    price: number;
+    totalSlots: number;
+    presentCount: number;
+    absentCount: number;
+    paidAmount: number;
+    paymentRefs: string; // Concatenated string
+}
+
+export const exportAdvancedEnrollmentReport = (data: AdvancedEnrollmentExportData[]) => {
+    // 1. Ordinamento: Cronologico Crescente -> Alfabetico Cognome (approssimato sul nome genitore)
+    data.sort((a, b) => {
+        const dateA = new Date(a.startDate).getTime();
+        const dateB = new Date(b.startDate).getTime();
+        
+        if (dateA !== dateB) {
+            return dateA - dateB; // Cronologico Crescente
+        }
+        return a.parentName.localeCompare(b.parentName); // Alfabetico A-Z
+    });
+
+    // 2. Mappatura colonne Excel
+    const rows = data.map(item => ({
+        "Allievo": item.studentName,
+        "Tutore / Ente": item.parentName,
+        "Sede / Recinto": item.locationNames,
+        "Data Inizio": new Date(item.startDate).toLocaleDateString('it-IT'),
+        "Data Fine": new Date(item.endDate).toLocaleDateString('it-IT'),
+        "Prezzo Totale": item.price,
+        "Slot Totali": item.totalSlots,
+        "Presenze / Assenze": `${item.presentCount} / ${item.absentCount}`,
+        "Incassato / Ric.": item.paidAmount,
+        "Rif. Pagamenti": item.paymentRefs
+    }));
+
+    // 3. Creazione Foglio
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Impostazioni larghezza colonne (approssimative)
+    ws['!cols'] = [
+        { wch: 20 }, // Allievo
+        { wch: 25 }, // Tutore
+        { wch: 25 }, // Sede (Wider for potential history)
+        { wch: 12 }, // Inizio
+        { wch: 12 }, // Fine
+        { wch: 10 }, // Prezzo
+        { wch: 10 }, // Slot
+        { wch: 15 }, // Pres/Ass
+        { wch: 12 }, // Incassato
+        { wch: 40 }, // Rif
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Report Iscrizioni");
+
+    // Salvataggio
+    XLSX.writeFile(wb, `Report_Iscrizioni_Avanzato_${new Date().toISOString().split('T')[0]}.xlsx`);
 };

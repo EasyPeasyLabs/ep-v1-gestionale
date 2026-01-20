@@ -18,6 +18,8 @@ import TrashIcon from '../components/icons/TrashIcon';
 import StopIcon from '../components/icons/StopIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 import BanknotesIcon from '../components/icons/BanknotesIcon';
+import DownloadIcon from '../components/icons/DownloadIcon'; // NEW
+import { exportAdvancedEnrollmentReport, AdvancedEnrollmentExportData } from '../utils/financeExport'; // NEW
 
 // Helpers
 const getClientName = (c?: Client) => {
@@ -324,6 +326,9 @@ const EnrollmentArchive: React.FC = () => {
     const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null);
     const [terminateTarget, setTerminateTarget] = useState<Enrollment | null>(null);
 
+    // Selection State for Export
+    const [selectedEnrollmentIds, setSelectedEnrollmentIds] = useState<string[]>([]);
+
     // Financial Wizard State
     const [financialWizardTarget, setFinancialWizardTarget] = useState<Enrollment | null>(null);
 
@@ -429,11 +434,6 @@ const EnrollmentArchive: React.FC = () => {
         const invoicePaid = relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
         
         // 2. Sum linked cash transactions (Solo Cassa)
-        // These are transactions directly linked to enrollment AND NOT linked to any invoice
-        // If they are linked to an invoice, they are covered by the invoice sum above (or ignored here to avoid double counting)
-        // The standard is: invoice is the debt document. If invoice exists, we track invoice.
-        // If no invoice (Solo Cassa), we track transaction.
-        // To be safe: Sum transactions that have relatedEnrollmentId == enr.id AND (no relatedDocumentId OR relatedDocumentId starts with 'ENR-')
         const directTransactions = transactions.filter(t => 
             t.relatedEnrollmentId === enr.id && 
             !t.isDeleted && 
@@ -532,11 +532,84 @@ const EnrollmentArchive: React.FC = () => {
         setLoading(false); setPaymentModalState(prev => ({...prev, isOpen: false}));
     };
 
+    // --- NEW: Toggle Select ---
+    const toggleEnrollmentSelection = (id: string) => {
+        setSelectedEnrollmentIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const handleExportExcel = () => {
+        // 1. Determine Target Data
+        let targets = selectedEnrollmentIds.length > 0 
+            ? enrollments.filter(e => selectedEnrollmentIds.includes(e.id))
+            : filteredEnrollments;
+
+        if (targets.length === 0) return alert("Nessuna iscrizione da esportare.");
+
+        // 2. Prepare Data Structure
+        const exportData: AdvancedEnrollmentExportData[] = targets.map(enr => {
+            const client = clients.find(c => c.id === enr.clientId);
+            const parentName = getClientName(client);
+            
+            // Financial Status
+            const status = getPaymentStatus(enr); // Calculate paid amount
+            
+            // Financial Refs String
+            const linkedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
+            const linkedTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted && (!t.relatedDocumentId || t.relatedDocumentId.startsWith('ENR-')));
+            
+            const refsParts = [];
+            linkedInvoices.forEach(i => refsParts.push(`${new Date(i.issueDate).toLocaleDateString()} (${i.invoiceNumber})`));
+            linkedTrans.forEach(t => refsParts.push(`${new Date(t.date).toLocaleDateString()} (Cassa)`));
+            const paymentRefs = refsParts.join(' | ');
+
+            // Attendance Count
+            let presentCount = 0;
+            let absentCount = 0;
+            if (enr.appointments) {
+                presentCount = enr.appointments.filter(a => a.status === 'Present').length;
+                absentCount = enr.appointments.filter(a => a.status === 'Absent').length;
+            }
+
+            // Location Logic (History)
+            let locationString = enr.locationName || 'Sede Non Definita';
+            if (enr.appointments && enr.appointments.length > 0) {
+                const uniqueLocs = Array.from(new Set(enr.appointments.map(a => a.locationName))).filter(Boolean);
+                if (uniqueLocs.length > 0) {
+                    locationString = uniqueLocs.join(' -> ');
+                }
+            }
+
+            return {
+                studentName: enr.childName,
+                parentName: parentName,
+                locationNames: locationString, // NEW
+                startDate: enr.startDate,
+                endDate: enr.endDate,
+                price: Number(enr.price) || 0,
+                totalSlots: enr.lessonsTotal,
+                presentCount,
+                absentCount,
+                paidAmount: status.totalPaid + Number(enr.adjustmentAmount || 0),
+                paymentRefs
+            };
+        });
+
+        // 3. Export
+        exportAdvancedEnrollmentReport(exportData);
+    };
+
     return (
         <div className="h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 flex-shrink-0">
                 <div><h1 className="text-3xl font-bold text-gray-800">Archivio Iscrizioni</h1><p className="mt-1 text-gray-500">Copertura temporale e pareggio contabile.</p></div>
                 <div className="flex flex-wrap gap-2 items-center bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    {/* EXPORT BUTTON */}
+                    <button onClick={handleExportExcel} className="p-1.5 rounded-md transition-all text-gray-600 hover:text-indigo-600 hover:bg-gray-100 border border-transparent hover:border-gray-200 flex items-center gap-1" title="Esporta Excel">
+                        <DownloadIcon />
+                        {selectedEnrollmentIds.length > 0 && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 rounded-full">{selectedEnrollmentIds.length}</span>}
+                    </button>
+                    <div className="w-px h-6 bg-gray-200 mx-1"></div>
+
                     <div className="relative w-40"><div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="w-full pl-8 pr-2 py-1.5 text-sm border-none bg-transparent focus:ring-0 placeholder:text-gray-400" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
                     <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="text-sm font-bold text-indigo-700 bg-indigo-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-indigo-200">{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
                     <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="text-sm text-gray-600 bg-gray-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-gray-200 max-w-[150px]"><option value="">Tutte le Sedi</option>{availableLocations.map(l => <option key={l} value={l}>{l}</option>)}</select>
@@ -560,7 +633,17 @@ const EnrollmentArchive: React.FC = () => {
                                             const paymentInfo = getPaymentStatus(enr);
                                             const isFullyPaid = paymentInfo.isFullyPaid;
                                             return (
-                                            <div key={enr.id} className="p-4 hover:bg-gray-50 transition-colors flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                                            <div key={enr.id} className="p-4 hover:bg-gray-50 transition-colors flex flex-col sm:flex-row gap-4 items-start sm:items-center group">
+                                                {/* Checkbox Selection */}
+                                                <div className="flex items-center justify-center h-full mr-2">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedEnrollmentIds.includes(enr.id)} 
+                                                        onChange={() => toggleEnrollmentSelection(enr.id)}
+                                                        className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 border-gray-300" 
+                                                    />
+                                                </div>
+
                                                 <div className="flex flex-col items-center justify-center bg-indigo-50 text-indigo-800 rounded-lg p-2 min-w-[100px] border border-indigo-100">
                                                     <span className="text-[10px] font-bold uppercase">Dal</span><span className="text-sm font-mono font-bold">{new Date(enr.startDate).toLocaleDateString()}</span>
                                                     <div className="w-full h-px bg-indigo-200 my-1"></div>
