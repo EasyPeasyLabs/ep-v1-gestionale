@@ -84,7 +84,7 @@ export const exportEnrollmentsToExcel = (enrollments: Enrollment[], clients: Cli
 export interface AdvancedEnrollmentExportData {
     studentName: string;
     parentName: string;
-    locationNames: string; // Added Location
+    locationNames: string; // Colonna Sede / Recinto
     startDate: string;
     endDate: string;
     price: number;
@@ -92,7 +92,7 @@ export interface AdvancedEnrollmentExportData {
     presentCount: number;
     absentCount: number;
     paidAmount: number;
-    paymentRefs: string; // Concatenated string
+    paymentRefs: string; // Stringa concatenata
 }
 
 export const exportAdvancedEnrollmentReport = (data: AdvancedEnrollmentExportData[]) => {
@@ -111,7 +111,7 @@ export const exportAdvancedEnrollmentReport = (data: AdvancedEnrollmentExportDat
     const rows = data.map(item => ({
         "Allievo": item.studentName,
         "Tutore / Ente": item.parentName,
-        "Sede / Recinto": item.locationNames,
+        "Sede / Recinto": item.locationNames, // Inserito secondo richiesta
         "Data Inizio": new Date(item.startDate).toLocaleDateString('it-IT'),
         "Data Fine": new Date(item.endDate).toLocaleDateString('it-IT'),
         "Prezzo Totale": item.price,
@@ -128,7 +128,7 @@ export const exportAdvancedEnrollmentReport = (data: AdvancedEnrollmentExportDat
     ws['!cols'] = [
         { wch: 20 }, // Allievo
         { wch: 25 }, // Tutore
-        { wch: 25 }, // Sede (Wider for potential history)
+        { wch: 25 }, // Sede / Recinto (più larga per gestire lo storico cambi)
         { wch: 12 }, // Inizio
         { wch: 12 }, // Fine
         { wch: 10 }, // Prezzo

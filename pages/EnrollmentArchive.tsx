@@ -18,8 +18,8 @@ import TrashIcon from '../components/icons/TrashIcon';
 import StopIcon from '../components/icons/StopIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 import BanknotesIcon from '../components/icons/BanknotesIcon';
-import DownloadIcon from '../components/icons/DownloadIcon'; // NEW
-import { exportAdvancedEnrollmentReport, AdvancedEnrollmentExportData } from '../utils/financeExport'; // NEW
+import DownloadIcon from '../components/icons/DownloadIcon';
+import { exportAdvancedEnrollmentReport, AdvancedEnrollmentExportData } from '../utils/financeExport';
 
 // Helpers
 const getClientName = (c?: Client) => {
@@ -279,7 +279,7 @@ const EnrollmentFinancialWizard: React.FC<{
                         <section className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
                             <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">Regolazione Finale (Abbuono)</h4>
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                                <div className="md:col-span-4">
+                                <div className="md-col-span-4">
                                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Importo Sconto</label>
                                     <input type="number" value={adjustmentAmount} onChange={e => setAdjustmentAmount(Number(e.target.value))} className="md-input font-black text-indigo-700" placeholder="0.00" />
                                     <button type="button" onClick={() => setAdjustmentAmount(Number((packagePrice - (totalPaid + selectedOrphansTotal + alreadyLinkedGhostsTotal)).toFixed(2)))} className="text-[10px] font-black text-indigo-600 mt-2 hover:underline uppercase">Auto-Pareggio</button>
@@ -312,7 +312,7 @@ const EnrollmentArchive: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
-    const [transactions, setTransactions] = useState<Transaction[]>([]); // ADDED STATE
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
     // Filters
@@ -364,13 +364,13 @@ const EnrollmentArchive: React.FC = () => {
                 getClients(),
                 getSuppliers(),
                 getInvoices(),
-                getTransactions() // ADDED FETCH
+                getTransactions()
             ]);
             setEnrollments(enrData);
             setClients(cliData);
             setSuppliers(supData);
             setInvoices(invData);
-            setTransactions(trnData); // ADDED SET
+            setTransactions(trnData);
         } catch (e) {
             console.error(e);
         } finally {
@@ -532,7 +532,6 @@ const EnrollmentArchive: React.FC = () => {
         setLoading(false); setPaymentModalState(prev => ({...prev, isOpen: false}));
     };
 
-    // --- NEW: Toggle Select ---
     const toggleEnrollmentSelection = (id: string) => {
         setSelectedEnrollmentIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
@@ -557,7 +556,7 @@ const EnrollmentArchive: React.FC = () => {
             const linkedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
             const linkedTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted && (!t.relatedDocumentId || t.relatedDocumentId.startsWith('ENR-')));
             
-            const refsParts = [];
+            const refsParts: string[] = []; // FIXED: Added explicit string[] type to prevent TS7034/TS7005
             linkedInvoices.forEach(i => refsParts.push(`${new Date(i.issueDate).toLocaleDateString()} (${i.invoiceNumber})`));
             linkedTrans.forEach(t => refsParts.push(`${new Date(t.date).toLocaleDateString()} (Cassa)`));
             const paymentRefs = refsParts.join(' | ');
@@ -570,19 +569,32 @@ const EnrollmentArchive: React.FC = () => {
                 absentCount = enr.appointments.filter(a => a.status === 'Absent').length;
             }
 
-            // Location Logic (History)
+            // --- LOGICA SEDI (STORICO RECINTI) ---
             let locationString = enr.locationName || 'Sede Non Definita';
             if (enr.appointments && enr.appointments.length > 0) {
-                const uniqueLocs = Array.from(new Set(enr.appointments.map(a => a.locationName))).filter(Boolean);
-                if (uniqueLocs.length > 0) {
-                    locationString = uniqueLocs.join(' -> ');
+                const chronologicalLocs: string[] = [];
+                let lastLoc = "";
+                
+                // Ordina appuntamenti per data
+                const sortedApps = [...enr.appointments].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                
+                sortedApps.forEach(app => {
+                    const currentLoc = app.locationName || enr.locationName;
+                    if (currentLoc && currentLoc !== lastLoc) {
+                        chronologicalLocs.push(currentLoc);
+                        lastLoc = currentLoc;
+                    }
+                });
+
+                if (chronologicalLocs.length > 0) {
+                    locationString = chronologicalLocs.join(' -> ');
                 }
             }
 
             return {
                 studentName: enr.childName,
                 parentName: parentName,
-                locationNames: locationString, // NEW
+                locationNames: locationString,
                 startDate: enr.startDate,
                 endDate: enr.endDate,
                 price: Number(enr.price) || 0,
