@@ -340,8 +340,8 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
             {/* Storico */}
             <div className="mt-8">
                 <h3 className="text-lg font-bold text-slate-700 mb-4">Storico Esercizi Chiusi</h3>
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <table className="w-full text-sm text-left">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden overflow-x-auto">
+                    <table className="w-full text-sm text-left min-w-[600px]">
                         <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
                             <tr>
                                 <th className="px-6 py-3">Anno</th>
