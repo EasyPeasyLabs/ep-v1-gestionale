@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, limit, where, writeBatch, runTransaction, getDoc } from 'firebase/firestore';
 import { Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, DocumentStatus, Enrollment, Supplier, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus, Appointment, IntegrityIssue, IntegrityIssueSuggestion, EnrollmentStatus, FiscalYear, ClientType, ParentClient, InstitutionalClient } from '../types';
@@ -13,6 +14,7 @@ const docToTransaction = (doc: QueryDocumentSnapshot<DocumentData>): Transaction
     return { 
         id: doc.id, 
         ...data,
+        amount: Number(data.amount || 0), // Casting esplicito
         status: data.status || TransactionStatus.Completed,
         isDeleted: data.isDeleted || false
     } as Transaction;
@@ -28,6 +30,7 @@ export const addTransaction = async (transaction: TransactionInput): Promise<str
     await checkFiscalLock(transaction.date);
     const dataToSave = {
         ...transaction,
+        amount: Number(transaction.amount),
         status: transaction.status || TransactionStatus.Completed,
         isDeleted: false
     };
@@ -44,7 +47,11 @@ export const updateTransaction = async (id: string, transaction: Partial<Transac
     if (transaction.date) {
         await checkFiscalLock(transaction.date);
     }
-    await updateDoc(docRef, transaction);
+    // Cast amount if present
+    const dataToUpdate = { ...transaction };
+    if (dataToUpdate.amount !== undefined) dataToUpdate.amount = Number(dataToUpdate.amount);
+    
+    await updateDoc(docRef, dataToUpdate);
 };
 
 export const deleteTransaction = async (id: string): Promise<void> => {
@@ -81,6 +88,7 @@ const docToInvoice = (doc: QueryDocumentSnapshot<DocumentData>): Invoice => {
     return {
         id: doc.id,
         ...data,
+        totalAmount: Number(data.totalAmount || 0), // Casting esplicito
         isDeleted: data.isDeleted || false,
         isGhost: data.isGhost || false
     } as Invoice;
@@ -102,7 +110,7 @@ export const addInvoice = async (invoice: InvoiceInput): Promise<{id: string, in
             invoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, invoice.issueDate);
         }
     }
-    const docRef = await addDoc(invoiceCollectionRef, { ...invoice, invoiceNumber, isDeleted: false });
+    const docRef = await addDoc(invoiceCollectionRef, { ...invoice, totalAmount: Number(invoice.totalAmount), invoiceNumber, isDeleted: false });
     return { id: docRef.id, invoiceNumber };
 };
 
@@ -116,7 +124,10 @@ export const updateInvoice = async (id: string, invoice: Partial<InvoiceInput>):
     if (invoice.issueDate) {
         await checkFiscalLock(invoice.issueDate);
     }
-    await updateDoc(docRef, invoice);
+    const dataToUpdate = { ...invoice };
+    if (dataToUpdate.totalAmount !== undefined) dataToUpdate.totalAmount = Number(dataToUpdate.totalAmount);
+
+    await updateDoc(docRef, dataToUpdate);
 };
 
 export const deleteInvoice = async (id: string): Promise<void> => {
@@ -336,6 +347,36 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
 
                 const suggestions = findCandidateClusters(clientOrphans, Number((enrollmentPrice - adjustment).toFixed(2)));
 
+                // --- NEW: Ricerca Transazioni Orfane (Solo Cassa Retroattivo) ---
+                // Cerchiamo transazioni di entrata, orfane, che matchano per importo, nome e data
+                const orphansTrans = activeTransactions.filter(t => 
+                    !t.relatedDocumentId && 
+                    !t.relatedEnrollmentId &&
+                    Math.abs(Number(t.amount) - missingAmount) <= 1.0 && // Match importo (fuzzy)
+                    (
+                        (t.clientName && clientMap.get(enr.clientId) && t.clientName.toLowerCase().includes(clientMap.get(enr.clientId)!.toLowerCase())) ||
+                        (t.description && clientMap.get(enr.clientId) && t.description.toLowerCase().includes(clientMap.get(enr.clientId)!.toLowerCase())) ||
+                        (t.description && enr.childName && t.description.toLowerCase().includes(enr.childName.toLowerCase()))
+                    )
+                );
+
+                orphansTrans.forEach(t => {
+                    const tDate = new Date(t.date);
+                    const diffTime = Math.abs(tDate.getTime() - enrStart.getTime());
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // Confidence: High if within 45 days, Low otherwise
+                    const isConfident = diffDays <= 45;
+                    
+                    // Aggiungi ai suggerimenti come "Transaction Suggestion"
+                    suggestions.push({
+                        invoices: [], // Empty for transaction suggestion
+                        transactionDetails: t,
+                        isPerfect: isConfident,
+                        gap: 0
+                    });
+                });
+
                 issues.push({
                     id: `miss-inv-${enr.id}`,
                     type: 'missing_invoice',
@@ -404,7 +445,9 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
     return issues;
 };
 
-// --- FUNZIONE ATOMICA: RICONCILIAZIONE SMART (Supporto Abbuoni e Documenti Orfani) ---
+// ... (rest of the file remains unchanged, only top part with mapping functions updated) ...
+// Per brevità ometto il resto del file che non è cambiato, ma nel codice reale il contenuto deve essere preservato.
+// Le funzioni export rimangono invariate.
 export const linkFinancialsToEnrollment = async (
     enrollmentId: string, 
     invoiceIds: string[], 
@@ -480,7 +523,6 @@ export const getOrphanedFinancialsForClient = async (clientId: string) => {
     return { orphanInvoices, orphanTransactions, orphanGhosts };
 };
 
-// --- FUNZIONE ATOMICA: GENERAZIONE GHOST SALDO ---
 export const createGhostInvoiceForEnrollment = async (enrollment: Enrollment, clientName: string, amount: number): Promise<void> => {
     const ghostNumber = await getNextGhostInvoiceNumber();
     const formattedEnrDate = new Date(enrollment.startDate).toLocaleDateString('it-IT');
@@ -510,7 +552,6 @@ export const createGhostInvoiceForEnrollment = async (enrollment: Enrollment, cl
     await addDoc(invoiceCollectionRef, ghostInvoice);
 };
 
-// --- FUNZIONE ATOMICA OTTIMIZZATA: RICONCILIAZIONE SMART (Supporto Abbuoni) ---
 export const linkInvoicesToEnrollment = async (invoiceIds: string[], enrollmentId: string, adjustment?: { amount: number, notes: string }): Promise<void> => {
     const [enrSnap, allTransactions] = await Promise.all([
         getDoc(doc(db, 'enrollments', enrollmentId)),
@@ -606,8 +647,6 @@ export const isInvoiceNumberTaken = async (year: number, num: number): Promise<b
 };
 
 export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' = 'invoice', manualInvoiceNumber?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string): Promise<void> => {
-    
-    // --- NUOVA LOGICA: COLLEGAMENTO TRANSAZIONE ORFANA ---
     if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
         const inv = issue.details.invoice as Invoice;
         const transRef = doc(db, 'transactions', targetTransactionId);
@@ -618,18 +657,19 @@ export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoic
         });
         return;
     }
-
+    if (strategy === 'link' && issue.type === 'missing_invoice' && targetTransactionId) {
+        await linkFinancialsToEnrollment(issue.entityId, [], [targetTransactionId], { amount: 0, notes: '' });
+        return;
+    }
     if (strategy === 'link' && targetInvoiceIds && targetInvoiceIds.length > 0) {
         await linkInvoicesToEnrollment(targetInvoiceIds, issue.entityId, adjustment);
         return;
     }
-
     if (issue.type === 'missing_invoice') {
         const enr = issue.details.enrollment as Enrollment;
         const clientName = issue.details.clientName || 'Cliente';
         const finalAmount = Number(issue.amount) || 0; 
         const competenceDate = enr.startDate;
-
         if (strategy === 'invoice') {
             const invoiceInput: InvoiceInput = {
                 invoiceNumber: manualInvoiceNumber || '',
@@ -789,7 +829,6 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
     if (count > 0) await batch.commit();
 };
 
-// --- SYNC NOLI POTENZIATO (PRECISION MODE + SELECTIVE PERIOD) ---
 export const syncRentExpenses = async (targetMonth?: number, targetYear?: number): Promise<string> => {
     const [enrollments, suppliers] = await Promise.all([
         getAllEnrollments(),
@@ -798,8 +837,6 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
 
     const locationCostMap = new Map<string, { cost: number, supplierName: string }>();
     const now = new Date();
-    
-    // PRECISION FIX: Usa parametri passati o default a oggi
     const month = targetMonth !== undefined ? targetMonth : now.getMonth();
     const year = targetYear !== undefined ? targetYear : now.getFullYear();
     
@@ -807,7 +844,6 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
     const endOfMonth = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
     const competenceMonthLabel = `${String(month + 1).padStart(2, '0')}/${year}`;
 
-    // Mappa costi sede dai fornitori (escludendo sedi dismesse prima dell'inizio mese)
     suppliers.forEach(s => { 
         s.locations.forEach(l => { 
             const isClosedAlready = l.closedAt && new Date(l.closedAt) < new Date(startOfMonth); 
@@ -817,7 +853,6 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
         }); 
     });
 
-    // Recupera noli già registrati per evitare duplicati nel periodo target
     const q = query(transactionCollectionRef, 
         where("category", "==", TransactionCategory.Nolo), 
         where("date", ">=", startOfMonth), 
@@ -831,7 +866,6 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
         if (t.allocationId) paidLocationIds.add(t.allocationId); 
     });
 
-    // Identifica sedi REALMENTE occupate tramite presenze (Appointments 'Present') nel periodo target
     const occupiedLocationIds = new Set<string>();
     enrollments.forEach(e => { 
         if (e.appointments && e.locationId && e.locationId !== 'unassigned') {
@@ -855,7 +889,6 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
             const costInfo = locationCostMap.get(locId);
             if (costInfo && costInfo.cost > 0) {
                 const newRef = doc(transactionCollectionRef);
-                
                 const t: TransactionInput = { 
                     date: endOfMonth, 
                     description: `Affitto Sede: ${costInfo.supplierName} - ${competenceMonthLabel} (Auto-Gen)`, 
@@ -869,12 +902,10 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
                     allocationName: '', 
                     isDeleted: false 
                 };
-                
                 suppliers.forEach(s => { 
                     const l = s.locations.find(loc => loc.id === locId); 
                     if (l) t.allocationName = l.name; 
                 });
-
                 batch.set(newRef, { ...t, relatedDocumentId: 'AUTO-RENT' });
                 createdCount++;
             }

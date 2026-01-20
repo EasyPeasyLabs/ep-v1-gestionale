@@ -74,7 +74,7 @@ const EnrollmentFinancialWizard: React.FC<{
         }
     }, [path, enrollment.clientId, enrollment.isQuoteBased, enrollment.relatedQuoteId]);
 
-    const packagePrice = enrollment.price || 0;
+    const packagePrice = Number(enrollment.price) || 0;
     
     // Find already linked ghosts for this enrollment
     const [linkedGhosts, setLinkedGhosts] = useState<Invoice[]>([]);
@@ -86,14 +86,16 @@ const EnrollmentFinancialWizard: React.FC<{
     }, [enrollment.id]);
 
     const selectedOrphansTotal = useMemo(() => {
-        const invSum = orphans.orphanInvoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((s, i) => s + i.totalAmount, 0);
-        const trnSum = orphans.orphanTransactions.filter(t => selectedTransactionIds.includes(t.id)).reduce((s, t) => s + t.amount, 0);
-        const ghostSum = orphans.orphanGhosts.filter(g => selectedInvoiceIds.includes(g.id)).reduce((s, g) => s + g.totalAmount, 0);
+        const invSum = orphans.orphanInvoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((s, i) => s + Number(i.totalAmount), 0);
+        const trnSum = orphans.orphanTransactions.filter(t => selectedTransactionIds.includes(t.id)).reduce((s, t) => s + Number(t.amount), 0);
+        const ghostSum = orphans.orphanGhosts.filter(g => selectedInvoiceIds.includes(g.id)).reduce((s, g) => s + Number(g.totalAmount), 0);
         return invSum + trnSum + ghostSum;
     }, [orphans, selectedInvoiceIds, selectedTransactionIds]);
 
-    const alreadyLinkedGhostsTotal = linkedGhosts.reduce((sum, g) => sum + g.totalAmount, 0);
-    const projectedCoverage = totalPaid + selectedOrphansTotal + alreadyLinkedGhostsTotal + Number(adjustmentAmount);
+    const alreadyLinkedGhostsTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
+    
+    // Critical Fix: Force Number casting on totalPaid to ensure correct math
+    const projectedCoverage = Number(totalPaid) + selectedOrphansTotal + alreadyLinkedGhostsTotal + Number(adjustmentAmount);
     const remainingGap = Number((packagePrice - projectedCoverage).toFixed(2));
     const isBalanced = Math.abs(remainingGap) < 0.1;
 
@@ -249,7 +251,7 @@ const EnrollmentFinancialWizard: React.FC<{
                                                 <p className="text-[10px] text-slate-500 font-bold uppercase">{inv.isGhost ? 'Ghost (Pro-forma)' : 'Fattura Reale'}</p>
                                             </div>
                                         </div>
-                                        <span className="font-black text-slate-700">{inv.totalAmount.toFixed(2)}€</span>
+                                        <span className="font-black text-slate-700">{Number(inv.totalAmount).toFixed(2)}€</span>
                                     </label>
                                 ))}
                                 {orphans.orphanTransactions.map(trn => (
@@ -258,7 +260,7 @@ const EnrollmentFinancialWizard: React.FC<{
                                             <input type="checkbox" checked={selectedTransactionIds.includes(trn.id)} onChange={() => setSelectedTransactionIds(prev => prev.includes(trn.id) ? prev.filter(x => x !== trn.id) : [...prev, trn.id])} className="rounded text-indigo-600" />
                                             <div><p className="text-sm font-bold text-slate-800">Cassa: {new Date(trn.date).toLocaleDateString()}</p><p className="text-[10px] text-slate-500 italic">"{trn.description}"</p></div>
                                         </div>
-                                        <span className="font-black text-slate-700">{trn.amount.toFixed(2)}€</span>
+                                        <span className="font-black text-slate-700">{Number(trn.amount).toFixed(2)}€</span>
                                     </label>
                                 ))}
                             </div>
@@ -308,6 +310,7 @@ const EnrollmentArchive: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]); // ADDED STATE
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
 
     // Filters
@@ -351,16 +354,18 @@ const EnrollmentArchive: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrData, cliData, supData, invData] = await Promise.all([
+            const [enrData, cliData, supData, invData, trnData] = await Promise.all([
                 getAllEnrollments(),
                 getClients(),
                 getSuppliers(),
-                getInvoices()
+                getInvoices(),
+                getTransactions() // ADDED FETCH
             ]);
             setEnrollments(enrData);
             setClients(cliData);
             setSuppliers(supData);
             setInvoices(invData);
+            setTransactions(trnData); // ADDED SET
         } catch (e) {
             console.error(e);
         } finally {
@@ -417,15 +422,36 @@ const EnrollmentArchive: React.FC = () => {
         return Object.values(groups).sort((a,b) => a.studentName.localeCompare(b.studentName));
     }, [filteredEnrollments, clients]);
 
+    // UPDATED PAYMENT STATUS LOGIC
     const getPaymentStatus = (enr: Enrollment) => {
+        // 1. Sum linked invoices (Standard)
         const relatedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
-        const totalPaid = relatedInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
-        const price = enr.price || 0;
+        const invoicePaid = relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
+        
+        // 2. Sum linked cash transactions (Solo Cassa)
+        // These are transactions directly linked to enrollment AND NOT linked to any invoice
+        // If they are linked to an invoice, they are covered by the invoice sum above (or ignored here to avoid double counting)
+        // The standard is: invoice is the debt document. If invoice exists, we track invoice.
+        // If no invoice (Solo Cassa), we track transaction.
+        // To be safe: Sum transactions that have relatedEnrollmentId == enr.id AND (no relatedDocumentId OR relatedDocumentId starts with 'ENR-')
+        const directTransactions = transactions.filter(t => 
+            t.relatedEnrollmentId === enr.id && 
+            !t.isDeleted && 
+            (!t.relatedDocumentId || t.relatedDocumentId.startsWith('ENR-'))
+        );
+        const cashPaid = directTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+
+        const totalPaid = invoicePaid + cashPaid;
+
+        const price = Number(enr.price) || 0;
         const adjustment = Number(enr.adjustmentAmount || 0);
+        
         const linkedGhosts = invoices.filter(i => i.relatedEnrollmentId === enr.id && i.isGhost && !i.isDeleted);
-        const ghostTotal = linkedGhosts.reduce((sum, g) => sum + g.totalAmount, 0);
+        const ghostTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
+        
         const remaining = Math.max(0, price - totalPaid - adjustment - ghostTotal);
         const isFullyPaid = remaining < 0.5 && price > 0;
+        
         return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
     };
 
@@ -501,7 +527,7 @@ const EnrollmentArchive: React.FC = () => {
         if (!paymentModalState.enrollment) return;
         setLoading(true);
         const enr = paymentModalState.enrollment; const client = clients.find(c => c.id === enr.clientId);
-        const result = await processPayment(enr, client, Number(paymentModalState.depositAmount), paymentModalState.date, paymentModalState.method, paymentModalState.createInvoice, paymentModalState.isDeposit, enr.price || 0, paymentModalState.ghostInvoiceId);
+        const result = await processPayment(enr, client, Number(paymentModalState.depositAmount), paymentModalState.date, paymentModalState.method, paymentModalState.createInvoice, paymentModalState.isDeposit, Number(enr.price) || 0, paymentModalState.ghostInvoiceId);
         if (result.success) { alert("Pagamento registrato."); await fetchData(); window.dispatchEvent(new Event('EP_DataUpdated')); } else { alert("ERRORE: " + result.error); }
         setLoading(false); setPaymentModalState(prev => ({...prev, isOpen: false}));
     };
@@ -527,7 +553,7 @@ const EnrollmentArchive: React.FC = () => {
                                 <div key={idx} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
                                     <div className="bg-gray-50 px-6 py-3 border-b border-gray-100 flex justify-between items-center">
                                         <div><h3 className="text-lg font-bold text-gray-800">{group.studentName}</h3><p className="text-xs text-gray-500 font-medium uppercase tracking-wide">{group.clientName}</p></div>
-                                        <span className="text-xs font-mono font-bold bg-white px-2 py-1 rounded border text-gray-600">Tot. {group.items.reduce((acc, curr) => acc + (curr.price || 0), 0).toFixed(2)}€</span>
+                                        <span className="text-xs font-mono font-bold bg-white px-2 py-1 rounded border text-gray-600">Tot. {group.items.reduce((acc, curr) => acc + (Number(curr.price) || 0), 0).toFixed(2)}€</span>
                                     </div>
                                     <div className="divide-y divide-gray-50">
                                         {group.items.map(enr => {
@@ -551,7 +577,7 @@ const EnrollmentArchive: React.FC = () => {
                                                     </div>
                                                 </div>
                                                 <div className="text-right flex-shrink-0">
-                                                    <span className="block text-lg font-black text-gray-700 font-mono">{enr.price?.toFixed(2)}€</span>
+                                                    <span className="block text-lg font-black text-gray-700 font-mono">{Number(enr.price)?.toFixed(2)}€</span>
                                                     {isFullyPaid ? <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">COPERTO</span> : <span className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded">SCOPERTO: {paymentInfo.remaining.toFixed(2)}€</span>}
                                                 </div>
                                                 <div className="flex gap-1 md:flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-4 mt-2 md-mt-0">
@@ -596,8 +622,8 @@ const EnrollmentArchive: React.FC = () => {
                     <div className="p-6">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
                         <div className="bg-indigo-50 p-3 rounded mb-4 text-xs">
-                            <p>Prezzo Totale: <strong>{paymentModalState.enrollment.price}€</strong></p>
-                            <p className="text-indigo-700 font-bold">Rimanenza: {( (paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - (paymentModalState.enrollment.adjustmentAmount || 0) ).toFixed(2)}€</p>
+                            <p>Prezzo Totale: <strong>{Number(paymentModalState.enrollment.price).toFixed(2)}€</strong></p>
+                            <p className="text-indigo-700 font-bold">Rimanenza: {( Number(paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - Number(paymentModalState.enrollment.adjustmentAmount || 0) ).toFixed(2)}€</p>
                         </div>
                         <div className="md-input-group mb-4"><input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" /><label className="md-input-label !top-0">Data</label></div>
                         <div className="md-input-group mb-4"><select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select><label className="md-input-label !top-0">Metodo</label></div>

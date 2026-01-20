@@ -85,11 +85,21 @@ const FixWizard: React.FC<{
     const [fixingId, setFixingId] = useState<string | null>(null);
     const [successId, setSuccessId] = useState<string | null>(null);
     const handleSelectIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', targetInvoices?: Invoice[], targetTransactionId?: string) => {
+        // CASE: Linking Transaction to Invoice
         if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
             setFixingId(issue.id);
             try { await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore collegamento cassa."); setFixingId(null); }
             return;
         }
+        
+        // CASE: Linking Transaction to Enrollment (New Solo Cassa Retroactive)
+        if (strategy === 'link' && issue.type === 'missing_invoice' && targetTransactionId) {
+            setFixingId(issue.id);
+            try { await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore collegamento cassa."); setFixingId(null); }
+            return;
+        }
+
+        // CASE: Linking Invoices to Enrollment
         if (strategy === 'link' && targetInvoices) {
             const ids = targetInvoices.map(i => i.id);
             const suggestion = issue.suggestions?.find(s => s.invoices.length === targetInvoices.length && s.invoices.every(inv => ids.includes(inv.id)));
@@ -145,11 +155,30 @@ const FixWizard: React.FC<{
                                     {issue.suggestions && issue.suggestions.length > 0 && (
                                         <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-xl animate-slide-up"><h5 className="text-[10px] font-black text-indigo-700 uppercase mb-2 flex items-center gap-2"><SparklesIcon /> Smart Identity Match</h5>
                                             <div className="space-y-3">{issue.suggestions.map((suggestion, gIdx) => {
-                                                const invGroup = suggestion.invoices;
-                                                const totalVal = invGroup.reduce((s, i) => s + i.totalAmount, 0);
-                                                return (
-                                                    <div key={gIdx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3 rounded-xl border border-indigo-200 shadow-sm transition-all"><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-indigo-900 uppercase">Somma: {totalVal.toFixed(2)}€</span><div className="space-y-1 mt-1">{invGroup.map((inv, idx) => (<div key={inv.id} className="flex items-center gap-2 text-[11px] text-slate-700"><span className="font-bold font-mono">{inv.invoiceNumber}</span><span className="text-[9px] text-slate-400 italic">{inv.totalAmount.toFixed(2)}€</span></div>))}</div></div><button disabled={isFixing} onClick={() => handleSelectIssue(issue, 'link', invGroup)} className="text-[10px] font-black text-white px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 transition-all uppercase disabled:opacity-50 mt-3 sm:mt-0">Collega Ora</button></div>
-                                                );
+                                                if (suggestion.transactionDetails) {
+                                                    // RENDER: Transaction Match
+                                                    const t = suggestion.transactionDetails;
+                                                    const tDate = new Date(t.date).toLocaleDateString();
+                                                    return (
+                                                        <div key={gIdx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3 rounded-xl border border-indigo-200 shadow-sm transition-all">
+                                                            <div className="flex-1 min-w-0 pr-4">
+                                                                <span className="text-[10px] font-black text-indigo-900 uppercase flex items-center gap-1">
+                                                                    {suggestion.isPerfect ? <span className="text-green-500">●</span> : <span className="text-amber-500">●</span>}
+                                                                    Transazione Cassa: {Number(t.amount).toFixed(2)}€
+                                                                </span>
+                                                                <div className="text-[11px] text-slate-700 mt-1 truncate font-medium">{tDate} - {t.description}</div>
+                                                            </div>
+                                                            <button disabled={isFixing} onClick={() => handleSelectIssue(issue, 'link', undefined, t.id)} className="text-[10px] font-black text-white px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 transition-all uppercase disabled:opacity-50 mt-3 sm:mt-0">Collega</button>
+                                                        </div>
+                                                    );
+                                                } else {
+                                                    // RENDER: Invoice Cluster Match
+                                                    const invGroup = suggestion.invoices;
+                                                    const totalVal = invGroup.reduce((s, i) => s + i.totalAmount, 0);
+                                                    return (
+                                                        <div key={gIdx} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-3 rounded-xl border border-indigo-200 shadow-sm transition-all"><div className="flex-1 min-w-0 pr-4"><span className="text-[10px] font-black text-indigo-900 uppercase">Somma Doc: {totalVal.toFixed(2)}€</span><div className="space-y-1 mt-1">{invGroup.map((inv, idx) => (<div key={inv.id} className="flex items-center gap-2 text-[11px] text-slate-700"><span className="font-bold font-mono">{inv.invoiceNumber}</span><span className="text-[9px] text-slate-400 italic">{inv.totalAmount.toFixed(2)}€</span></div>))}</div></div><button disabled={isFixing} onClick={() => handleSelectIssue(issue, 'link', invGroup)} className="text-[10px] font-black text-white px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 transition-all uppercase disabled:opacity-50 mt-3 sm:mt-0">Collega Ora</button></div>
+                                                    );
+                                                }
                                             })}</div>
                                         </div>
                                     )}
