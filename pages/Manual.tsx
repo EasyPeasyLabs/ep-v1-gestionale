@@ -145,7 +145,6 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
     const [stepIdx, setStepIdx] = useState(0);
     const [isAutoPlaying, setIsAutoPlaying] = useState(true);
     
-    // CRITICAL FIX: Reset stepIdx when mission changes to prevent 'undefined' access
     useEffect(() => {
         setStepIdx(0);
     }, [mission.title]);
@@ -160,35 +159,32 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
 
     const currentStep = mission.steps[stepIdx];
 
-    // Safety return to avoid TypeError on handX
     if (!currentStep) return <div className="w-full aspect-video flex items-center justify-center bg-slate-900 rounded-[40px]"><Spinner /></div>;
 
     return (
-        <div className="w-full bg-slate-900 rounded-[40px] p-1 border-[12px] border-slate-800 shadow-2xl overflow-hidden relative aspect-video flex flex-col group">
+        <div className="w-full bg-slate-900 md:rounded-[40px] rounded-2xl p-1 border-[6px] md:border-[12px] border-slate-800 shadow-2xl overflow-hidden relative aspect-video flex flex-col group">
             
-            <div className="bg-slate-800 px-6 py-3 flex justify-between items-center border-b border-slate-700/50">
+            <div className="bg-slate-800 px-4 md:px-6 py-2 md:py-3 flex justify-between items-center border-b border-slate-700/50">
                 <div className="flex gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
                     <div className="w-2.5 h-2.5 rounded-full bg-amber-500/50"></div>
                     <div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
                 </div>
-                <div className="bg-slate-900 px-4 py-1 rounded-full border border-slate-700">
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                <div className="bg-slate-900 px-3 md:px-4 py-0.5 md:py-1 rounded-full border border-slate-700">
+                    <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">
                         {mission.title} • Passo {stepIdx + 1} di {mission.steps.length}
                     </p>
                 </div>
-                <button onClick={() => setIsAutoPlaying(!isAutoPlaying)} className="text-[10px] font-black text-indigo-400 uppercase hover:text-white transition-colors">
+                <button onClick={() => setIsAutoPlaying(!isAutoPlaying)} className="text-[8px] md:text-[10px] font-black text-indigo-400 uppercase hover:text-white transition-colors">
                     {isAutoPlaying ? 'Pausa' : 'Riproduci'}
                 </button>
             </div>
 
             <div className="flex-1 bg-slate-50 relative overflow-hidden">
                 <div className="absolute inset-0 bg-black/5 pointer-events-none z-10"></div>
-                
-                {/* SAFE ACCESS: CurrentStep is guaranteed by above check */}
                 <VirtualHand active={true} x={currentStep.handX} y={currentStep.handY} action={currentStep.action} />
 
-                <div className="p-8 h-full">
+                <div className="p-4 md:p-8 h-full">
                     {mission.emulatorType === 'clients' && <ClientCreationScenario step={stepIdx} />}
                     {mission.emulatorType === 'finance' && <FinanceCycleScenario step={stepIdx} />}
                     {mission.emulatorType === 'move' && <MoveModeScenario step={stepIdx} />}
@@ -203,9 +199,9 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
                     {mission.emulatorType === 'log' && <LogScenario step={stepIdx} />}
                 </div>
 
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-4/5 bg-white/95 backdrop-blur shadow-2xl border-l-4 border-indigo-600 p-4 rounded-2xl z-50 animate-manual-slide-up">
-                    <p className="text-indigo-600 text-[10px] font-black uppercase tracking-widest mb-1">{currentStep.caption}</p>
-                    <p className="text-slate-700 text-sm font-bold leading-tight">{currentStep.description}</p>
+                <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 w-[90%] md:w-4/5 bg-white/95 backdrop-blur shadow-2xl border-l-4 border-indigo-600 p-3 md:p-4 rounded-xl md:rounded-2xl z-50 animate-manual-slide-up">
+                    <p className="text-indigo-600 text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-0.5 md:mb-1">{currentStep.caption}</p>
+                    <p className="text-slate-700 text-xs md:text-sm font-bold leading-tight">{currentStep.description}</p>
                 </div>
             </div>
 
@@ -220,21 +216,20 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
 };
 
 // --- MINI SCENARI PER IL SIMULATORE ---
-
 const CalendarScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="bg-white rounded-2xl p-4 shadow-xl border h-full">
-        <div className="flex justify-between items-center mb-4 px-2">
-            <span className="font-bold text-sm">{step === 0 ? "Gennaio 2026" : "Febbraio 2026"}</span>
+    <div className="bg-white rounded-xl p-3 md:p-4 shadow-xl border h-full">
+        <div className="flex justify-between items-center mb-2 md:mb-4 px-1 md:px-2">
+            <span className="font-bold text-xs md:text-sm">{step === 0 ? "Gennaio 2026" : "Febbraio 2026"}</span>
             <div className="flex gap-1">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border ${step === 1 ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'}`}>&gt;</div>
+                <div className={`w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold border ${step === 1 ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400'}`}>&gt;</div>
             </div>
         </div>
         <div className="grid grid-cols-7 gap-1">
             {Array.from({ length: 14 }).map((_, i) => (
                 <div key={i} className="aspect-square border border-gray-100 rounded bg-gray-50/50 flex flex-col p-1">
-                    <span className="text-[8px] text-gray-300 font-bold">{i+1}</span>
-                    {i === 3 && <div className="mt-auto h-1.5 bg-blue-400 rounded-full w-full"></div>}
-                    {i === 8 && <div className="mt-auto h-1.5 bg-indigo-500 rounded-full w-full"></div>}
+                    <span className="text-[6px] md:text-[8px] text-gray-300 font-bold">{i+1}</span>
+                    {i === 3 && <div className="mt-auto h-1 md:h-1.5 bg-blue-400 rounded-full w-full"></div>}
+                    {i === 8 && <div className="mt-auto h-1 md:h-1.5 bg-indigo-500 rounded-full w-full"></div>}
                 </div>
             ))}
         </div>
@@ -242,22 +237,22 @@ const CalendarScenario: React.FC<{ step: number }> = ({ step }) => (
 );
 
 const ArchiveScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="space-y-4">
-        <div className="bg-white p-5 rounded-2xl border shadow-xl">
-            <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold text-sm">Timeline Copertura</h4>
-                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded">2026</span>
+    <div className="space-y-2 md:space-y-4">
+        <div className="bg-white p-3 md:p-5 rounded-xl border shadow-xl">
+            <div className="flex justify-between items-center mb-2 md:mb-4">
+                <h4 className="font-bold text-xs md:text-sm">Timeline Copertura</h4>
+                <span className="text-[8px] md:text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded">2026</span>
             </div>
-            <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                    <span className="w-16 text-[9px] font-bold text-gray-400 uppercase">Luca Rossi</span>
-                    <div className="flex-1 h-3 bg-gray-100 rounded-full relative overflow-hidden">
+            <div className="space-y-2 md:space-y-3">
+                <div className="flex items-center gap-2 md:gap-3">
+                    <span className="w-12 md:w-16 text-[7px] md:text-[9px] font-bold text-gray-400 uppercase">Luca Rossi</span>
+                    <div className="flex-1 h-2 md:h-3 bg-gray-100 rounded-full relative overflow-hidden">
                         <div className={`h-full bg-indigo-500 transition-all duration-2000 ${step >= 0 ? 'w-2/3' : 'w-0'}`}></div>
                     </div>
                 </div>
-                <div className="flex items-center gap-3 opacity-50">
-                    <span className="w-16 text-[9px] font-bold text-gray-400 uppercase">Sara B.</span>
-                    <div className="flex-1 h-3 bg-gray-100 rounded-full relative overflow-hidden">
+                <div className="flex items-center gap-2 md:gap-3 opacity-50">
+                    <span className="w-12 md:w-16 text-[7px] md:text-[9px] font-bold text-gray-400 uppercase">Sara B.</span>
+                    <div className="flex-1 h-2 md:h-3 bg-gray-100 rounded-full relative overflow-hidden">
                         <div className={`h-full bg-blue-400 transition-all duration-2000 ${step >= 0 ? 'w-1/2' : 'w-0'}`}></div>
                     </div>
                 </div>
@@ -267,32 +262,32 @@ const ArchiveScenario: React.FC<{ step: number }> = ({ step }) => (
 );
 
 const ActivitiesScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="grid grid-cols-2 gap-4">
-        <div className={`md-card p-4 transition-all ${step === 0 ? 'ring-4 ring-indigo-500' : 'opacity-40'}`}>
-            <div className="w-full h-20 bg-slate-200 rounded-lg mb-2 flex items-center justify-center text-2xl">🎨</div>
-            <p className="text-[10px] font-bold text-slate-800">Pittura Creativa</p>
-            <span className="text-[8px] text-indigo-600 font-bold uppercase">Motoria</span>
+    <div className="grid grid-cols-2 gap-2 md:gap-4">
+        <div className={`md-card p-2 md:p-4 transition-all ${step === 0 ? 'ring-2 md:ring-4 ring-indigo-500' : 'opacity-40'}`}>
+            <div className="w-full h-12 md:h-20 bg-slate-200 rounded-lg mb-1 md:mb-2 flex items-center justify-center text-xl md:text-2xl">🎨</div>
+            <p className="text-[8px] md:text-[10px] font-bold text-slate-800">Pittura Creativa</p>
+            <span className="text-[6px] md:text-[8px] text-indigo-600 font-bold uppercase">Motoria</span>
         </div>
-        <div className={`md-card p-4 transition-all ${step === 1 ? 'ring-4 ring-indigo-500' : 'opacity-40'}`}>
-            <div className="w-full h-20 bg-slate-200 rounded-lg mb-2 flex items-center justify-center text-2xl">⚽</div>
-            <p className="text-[10px] font-bold text-slate-800">Outdoor Games</p>
-            <span className="text-[8px] text-indigo-600 font-bold uppercase">Sport</span>
+        <div className={`md-card p-2 md:p-4 transition-all ${step === 1 ? 'ring-2 md:ring-4 ring-indigo-500' : 'opacity-40'}`}>
+            <div className="w-full h-12 md:h-20 bg-slate-200 rounded-lg mb-1 md:mb-2 flex items-center justify-center text-xl md:text-2xl">⚽</div>
+            <p className="text-[8px] md:text-[10px] font-bold text-slate-800">Outdoor Games</p>
+            <span className="text-[6px] md:text-[8px] text-indigo-600 font-bold uppercase">Sport</span>
         </div>
     </div>
 );
 
 const LogScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="bg-white rounded-2xl shadow-xl overflow-hidden border">
-        <table className="w-full text-[10px]">
+    <div className="bg-white rounded-xl shadow-xl overflow-hidden border">
+        <table className="w-full text-[8px] md:text-[10px]">
             <thead className="bg-gray-50 border-b">
-                <tr><th className="p-2 text-left">Orario</th><th className="p-2 text-left">Allievi</th><th className="p-2 text-left">Attività</th></tr>
+                <tr><th className="p-1 md:p-2 text-left">Ora</th><th className="p-1 md:p-2 text-left">Allievi</th><th className="p-1 md:p-2 text-left">Attività</th></tr>
             </thead>
             <tbody>
                 <tr className={step === 1 ? 'bg-indigo-50' : ''}>
-                    <td className="p-2 font-mono">16:30</td>
-                    <td className="p-2 font-bold">Luca R. +3</td>
-                    <td className="p-2">
-                        {step === 1 ? <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">✓ Pittura</span> : <span className="text-gray-300 italic">Pianifica...</span>}
+                    <td className="p-1 md:p-2 font-mono">16:30</td>
+                    <td className="p-1 md:p-2 font-bold">Luca R. +3</td>
+                    <td className="p-1 md:p-2">
+                        {step === 1 ? <span className="bg-green-100 text-green-700 px-1 md:px-2 py-0.5 rounded-full font-bold">✓ Pittura</span> : <span className="text-gray-300 italic">...</span>}
                     </td>
                 </tr>
             </tbody>
@@ -301,57 +296,56 @@ const LogScenario: React.FC<{ step: number }> = ({ step }) => (
 );
 
 const DashboardScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="grid grid-cols-2 gap-4">
-        <div className={`md-card p-4 transition-all duration-1000 ${step === 0 ? 'ring-4 ring-indigo-500 shadow-2xl scale-105 z-20' : 'opacity-40'}`}>
-            <p className="text-[8px] font-black text-slate-400 uppercase">ROI Sede Bari</p>
-            <p className="text-xl font-black text-indigo-700">+4.500€</p>
+    <div className="grid grid-cols-2 gap-2 md:gap-4">
+        <div className={`md-card p-2 md:p-4 transition-all duration-1000 ${step === 0 ? 'ring-2 md:ring-4 ring-indigo-500 shadow-2xl scale-105 z-20' : 'opacity-40'}`}>
+            <p className="text-[6px] md:text-[8px] font-black text-slate-400 uppercase">ROI Sede Bari</p>
+            <p className="text-xs md:text-xl font-black text-indigo-700">+4.500€</p>
         </div>
-        <div className={`md-card p-4 transition-all duration-1000 ${step === 1 ? 'ring-4 ring-amber-400 shadow-2xl scale-105 z-20 bg-white' : 'opacity-40'}`}>
-            <p className="text-[8px] font-black text-slate-400 uppercase">Dettaglio Smart</p>
-            <p className="text-[10px] font-bold text-slate-600">"Cosa ti rimane in tasca"</p>
+        <div className={`md-card p-2 md:p-4 transition-all duration-1000 ${step === 1 ? 'ring-2 md:ring-4 ring-amber-400 shadow-2xl scale-105 z-20 bg-white' : 'opacity-40'}`}>
+            <p className="text-[6px] md:text-[8px] font-black text-slate-400 uppercase">Dettaglio Smart</p>
+            <p className="text-[8px] md:text-[10px] font-bold text-slate-600">"In tasca"</p>
         </div>
     </div>
 );
 
 const ClientCreationScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="bg-white rounded-3xl p-6 shadow-xl border border-slate-200">
-        <div className="flex gap-2 mb-6 border-b pb-2">
-            {['Anagrafica', 'Figli', 'Valutazione'].map((t, i) => (
-                <div key={t} className={`text-[10px] font-black px-3 py-1 rounded-full ${step === i ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>{t}</div>
+    <div className="bg-white rounded-2xl md:rounded-3xl p-3 md:p-6 shadow-xl border border-slate-200">
+        <div className="flex gap-1 md:gap-2 mb-3 md:mb-6 border-b pb-1 md:pb-2">
+            {['Dati', 'Figli', 'Rating'].map((t, i) => (
+                <div key={t} className={`text-[7px] md:text-[10px] font-black px-2 md:px-3 py-0.5 md:py-1 rounded-full ${step === i ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400'}`}>{t}</div>
             ))}
         </div>
-        <div className="space-y-4">
-            {step === 0 && <div className="space-y-2 animate-fade-in"><div className="h-8 bg-slate-100 rounded-lg w-full flex items-center px-3 text-[10px] text-slate-700">Mario Rossi</div><div className="h-8 bg-slate-100 rounded-lg w-full flex items-center px-3 text-[10px] text-slate-700">mario@email.it</div></div>}
-            {step === 1 && <div className="space-y-2 animate-fade-in"><div className="p-3 border rounded-xl flex justify-between items-center"><span className="text-xs font-bold text-slate-800">Luca Rossi</span><span className="text-[10px] text-slate-400">5 anni</span></div></div>}
-            {step === 2 && <div className="flex gap-1 justify-center py-4 animate-fade-in">{[1,2,3,4,5].map(s => <span key={s} className={`text-2xl ${s <= 4 ? 'text-amber-400' : 'text-slate-200'} transition-all`}>★</span>)}</div>}
-            {step === 3 && <div className="flex justify-center py-10 animate-fade-in"><div className="bg-green-500 text-white px-8 py-3 rounded-full font-black text-xs shadow-lg animate-bounce">SALVATO! ✓</div></div>}
+        <div className="space-y-2 md:space-y-4">
+            {step === 0 && <div className="space-y-1 md:space-y-2 animate-fade-in"><div className="h-6 md:h-8 bg-slate-100 rounded-lg w-full flex items-center px-2 md:px-3 text-[8px] md:text-[10px] text-slate-700">Mario Rossi</div><div className="h-6 md:h-8 bg-slate-100 rounded-lg w-full flex items-center px-2 md:px-3 text-[8px] md:text-[10px] text-slate-700">mario@email.it</div></div>}
+            {step === 1 && <div className="space-y-1 md:space-y-2 animate-fade-in"><div className="p-2 md:p-3 border rounded-xl flex justify-between items-center"><span className="text-[10px] md:text-xs font-bold text-slate-800">Luca Rossi</span><span className="text-[8px] md:text-[10px] text-slate-400">5 anni</span></div></div>}
+            {step === 2 && <div className="flex gap-0.5 md:gap-1 justify-center py-2 md:py-4 animate-fade-in">{[1,2,3,4,5].map(s => <span key={s} className={`text-lg md:text-2xl ${s <= 4 ? 'text-amber-400' : 'text-slate-200'} transition-all`}>★</span>)}</div>}
+            {step === 3 && <div className="flex justify-center py-6 md:py-10 animate-fade-in"><div className="bg-green-500 text-white px-4 md:px-8 py-2 md:py-3 rounded-full font-black text-[10px] md:text-xs shadow-lg animate-bounce">OK! ✓</div></div>}
         </div>
     </div>
 );
 
 const FinanceCycleScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="space-y-4">
+    <div className="space-y-2 md:space-y-4">
         {step <= 2 && (
-            <div className={`md-card p-4 transition-all ${step === 2 ? 'border-indigo-500 ring-4 ring-indigo-50' : ''}`}>
+            <div className={`md-card p-3 md:p-4 transition-all ${step === 2 ? 'border-indigo-500 ring-2 md:ring-4 ring-indigo-50' : ''}`}>
                 <div className="flex justify-between items-center">
-                    <div><p className="text-[10px] font-black text-slate-400 uppercase">Preventivo PR-2026-001</p><p className="text-sm font-bold">Mario Rossi</p></div>
-                    <div className="text-lg font-black">250.00€</div>
+                    <div><p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase">Preventivo</p><p className="text-xs md:text-sm font-bold">Mario Rossi</p></div>
+                    <div className="text-sm md:text-lg font-black">250€</div>
                 </div>
-                {step === 2 && <button className="mt-4 w-full bg-indigo-600 text-white py-2 rounded-lg font-black text-[10px]">🪄 CONVERTI IN FATTURA</button>}
+                {step === 2 && <button className="mt-2 md:mt-4 w-full bg-indigo-600 text-white py-1.5 md:py-2 rounded-lg font-black text-[8px] md:text-[10px]">🪄 FATTURA</button>}
             </div>
         )}
         {step === 3 && (
-            <div className="md-card p-4 border-green-500 animate-fade-in bg-green-50/50">
-                <p className="text-[10px] font-black text-green-600 uppercase">Fattura FT-2026-001</p>
-                <p className="text-sm font-bold">Documento Generato!</p>
+            <div className="md-card p-3 md:p-4 border-green-500 animate-fade-in bg-green-50/50">
+                <p className="text-[8px] md:text-[10px] font-black text-green-600 uppercase">Fattura OK!</p>
             </div>
         )}
         {step === 4 && (
-            <div className="md-card p-4 animate-fade-in">
-                <p className="text-[10px] font-black text-slate-400 uppercase">Registro Cassa</p>
-                <div className="flex justify-between items-center mt-2 border-l-4 border-green-500 pl-3">
-                    <p className="text-xs font-bold text-slate-700">Incasso FT-2026-001</p>
-                    <span className="text-xs font-black text-green-600">+250.00€</span>
+            <div className="md-card p-3 md:p-4 animate-fade-in">
+                <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-tighter">Registro Cassa</p>
+                <div className="flex justify-between items-center mt-1 border-l-2 md:border-l-4 border-green-500 pl-2">
+                    <p className="text-[10px] md:text-xs font-bold text-slate-700">Incasso</p>
+                    <span className="text-[10px] md:text-xs font-black text-green-600">+250€</span>
                 </div>
             </div>
         )}
@@ -359,60 +353,60 @@ const FinanceCycleScenario: React.FC<{ step: number }> = ({ step }) => (
 );
 
 const MoveModeScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="flex justify-between items-center gap-8 h-full">
-        <div className={`flex-1 h-32 border-2 border-dashed rounded-2xl flex items-center justify-center transition-all ${step === 1 ? 'border-indigo-500 bg-indigo-50' : 'bg-white'}`}>
-            {step <= 1 && <div className="p-3 bg-white shadow-xl rounded-xl border border-indigo-100 font-black text-[10px]">LUCA ROSSI</div>}
+    <div className="flex justify-between items-center gap-2 md:gap-8 h-full">
+        <div className={`flex-1 h-20 md:h-32 border md:border-2 border-dashed rounded-xl md:rounded-2xl flex items-center justify-center transition-all ${step === 1 ? 'border-indigo-500 bg-indigo-50' : 'bg-white'}`}>
+            {step <= 1 && <div className="p-1 md:p-3 bg-white shadow-xl rounded-lg md:rounded-xl border border-indigo-100 font-black text-[8px] md:text-[10px]">LUCA ROSSI</div>}
         </div>
-        <div className="text-4xl opacity-20">→</div>
-        <div className={`flex-1 h-32 border-2 border-dashed rounded-2xl flex items-center justify-center transition-all ${step === 2 ? 'border-green-500 bg-green-50' : 'bg-white'}`}>
-            {step >= 2 && <div className="p-3 bg-white shadow-xl rounded-xl border border-green-200 font-black text-[10px] text-green-700">ASSEGNATO! ✓</div>}
+        <div className="text-xl md:text-4xl opacity-20">→</div>
+        <div className={`flex-1 h-20 md:h-32 border md:border-2 border-dashed rounded-xl md:rounded-2xl flex items-center justify-center transition-all ${step === 2 ? 'border-green-500 bg-green-50' : 'bg-white'}`}>
+            {step >= 2 && <div className="p-1 md:p-3 bg-white shadow-xl rounded-lg md:rounded-xl border border-green-200 font-black text-[8px] md:text-[10px] text-green-700">OK! ✓</div>}
         </div>
     </div>
 );
 
 const AttendanceScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="space-y-4">
-        <div className="bg-white p-4 rounded-2xl border shadow-sm flex justify-between items-center">
-            <span className="font-bold text-sm">Sara Bianchi</span>
-            <div className={`w-16 h-8 rounded text-[10px] flex items-center justify-center font-bold ${step === 0 ? 'bg-green-100 text-green-700' : 'bg-red-500 text-white animate-pulse'}`}>{step === 0 ? 'PRESENTE' : 'ASSENTE'}</div>
+    <div className="space-y-2 md:space-y-4">
+        <div className="bg-white p-3 md:p-4 rounded-xl border shadow-sm flex justify-between items-center">
+            <span className="font-bold text-xs md:text-sm">Sara Bianchi</span>
+            <div className={`px-2 md:w-16 h-6 md:h-8 rounded text-[8px] md:text-[10px] flex items-center justify-center font-bold ${step === 0 ? 'bg-green-100 text-green-700' : 'bg-red-500 text-white animate-pulse'}`}>{step === 0 ? 'PRESENTE' : 'ASSENTE'}</div>
         </div>
         {step === 1 && (
-            <div className="md-card p-4 bg-white border-2 border-indigo-500 animate-manual-slide-up shadow-2xl relative z-50">
-                <h5 className="text-xs font-black text-indigo-700 mb-2 uppercase">Gestione Recupero</h5>
-                <button className="w-full bg-indigo-600 text-white py-2 rounded-lg text-[10px] font-black uppercase">SI, RECUPERA</button>
+            <div className="md-card p-3 md:p-4 bg-white border-2 border-indigo-500 animate-manual-slide-up shadow-2xl relative z-50">
+                <h5 className="text-[10px] md:text-xs font-black text-indigo-700 mb-1 md:mb-2 uppercase">Recupero</h5>
+                <button className="w-full bg-indigo-600 text-white py-1 md:py-2 rounded-lg text-[8px] md:text-[10px] font-black uppercase">SI, RECUPERA</button>
             </div>
         )}
     </div>
 );
 
 const CRMScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="space-y-4">
-        <div className="bg-white rounded-2xl p-5 border shadow-xl">
-            <p className="text-[10px] font-black text-slate-400 uppercase mb-3">Template WhatsApp</p>
-            <div className="bg-slate-50 p-3 rounded-lg border text-[11px] text-slate-700 font-medium leading-relaxed italic">
-                {step === 0 ? "Ciao {{cliente}}, ti ricordiamo che il corso di {{bambino}}..." : "Ciao Marco Rossi, ti ricordiamo che il corso di Luca Rossi..."}
+    <div className="space-y-2 md:space-y-4">
+        <div className="bg-white rounded-xl p-3 md:p-5 border shadow-xl">
+            <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase mb-2 md:mb-3">Template WA</p>
+            <div className="bg-slate-50 p-2 md:p-3 rounded-lg border text-[9px] md:text-[11px] text-slate-700 font-medium leading-tight italic">
+                {step === 0 ? "Ciao {{cliente}}..." : "Ciao Marco Rossi..."}
             </div>
         </div>
     </div>
 );
 
 const SupplierScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="space-y-4">
-        <div className="md-card p-4">
-            <h4 className="font-bold text-sm">Scuola Verdi</h4>
-            <div className={`mt-3 p-3 border-2 rounded-xl transition-all ${step === 1 ? 'border-indigo-500 bg-indigo-50/20' : 'border-slate-100'}`}>
-                <p className="text-[10px] font-black text-slate-400 uppercase">Capienza: 12</p>
+    <div className="space-y-2 md:space-y-4">
+        <div className="md-card p-3 md:p-4">
+            <h4 className="font-bold text-xs md:text-sm">Scuola Verdi</h4>
+            <div className={`mt-2 md:mt-3 p-2 md:p-3 border-2 rounded-xl transition-all ${step === 1 ? 'border-indigo-500 bg-indigo-50/20' : 'border-slate-100'}`}>
+                <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-tighter">Capienza: 12</p>
             </div>
         </div>
     </div>
 );
 
 const SettingsScenario: React.FC<{ step: number }> = ({ step }) => (
-    <div className="flex flex-col h-full justify-center space-y-4">
-        <div className="md-card p-4 bg-white">
-            <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Nuovo Abbonamento</p>
-            <div className={`h-10 bg-slate-50 border rounded-lg flex items-center px-4 ${step === 1 ? 'ring-2 ring-indigo-500' : ''}`}>
-                <span className="text-sm font-bold">{step === 0 ? "Nome..." : "K-Trimestrale.2026.Starter"}</span>
+    <div className="flex flex-col h-full justify-center space-y-2 md:space-y-4">
+        <div className="md-card p-3 md:p-4 bg-white">
+            <p className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase mb-1 md:mb-2">Nuovo Listino</p>
+            <div className={`h-8 md:h-10 bg-slate-50 border rounded-lg flex items-center px-2 md:px-4 ${step === 1 ? 'ring-2 ring-indigo-500' : ''}`}>
+                <span className="text-[10px] md:text-sm font-bold">{step === 0 ? "Nome..." : "K-Trimestrale"}</span>
             </div>
         </div>
     </div>
@@ -557,68 +551,72 @@ const Manual: React.FC = () => {
     if (loading) return <div className="flex justify-center py-24"><Spinner /></div>;
 
     return (
-        <div className="flex flex-col lg:flex-row h-full gap-8 animate-fade-in pb-20">
+        <div className="flex flex-col lg:flex-row h-full gap-4 md:gap-8 animate-fade-in pb-20">
             
-            {/* Sidebar Indice */}
-            <aside className="lg:w-80 flex-shrink-0">
-                <div className="sticky top-8 bg-white p-6 rounded-[32px] border border-slate-200 shadow-xl">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 px-4">Moduli Sistema</h3>
-                    <ul className="space-y-1">
-                        {navItems.map(item => (
-                            <li key={item.key}>
-                                <button 
-                                    onClick={() => {
-                                        setActiveMissionKey(item.key);
-                                        contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-                                    }}
-                                    className={`w-full text-left px-4 py-3 rounded-2xl text-xs font-black transition-all flex items-center gap-3 ${activeMissionKey === item.key ? 'bg-indigo-600 text-white shadow-lg ring-4 ring-indigo-50' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
-                                >
-                                    <span className="text-sm">{item.icon}</span>
-                                    <span className="uppercase tracking-tighter">{item.label}</span>
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
+            {/* Sidebar / Navbar Top (Mobile Adaptivity) */}
+            <aside className="lg:w-80 flex-shrink-0 order-first">
+                <div className="sticky top-0 lg:top-8 bg-white p-4 md:p-6 lg:rounded-[32px] rounded-3xl border border-slate-200 shadow-xl overflow-hidden">
+                    <h3 className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 md:mb-6 px-2 md:px-4">Moduli Sistema</h3>
+                    
+                    {/* Griglia a 3 righe per Mobile, Lista per Desktop */}
+                    <div className="overflow-x-auto overflow-y-auto lg:overflow-visible">
+                        <ul className="grid lg:block grid-rows-3 grid-flow-col gap-2 min-w-max lg:min-w-0 lg:space-y-1 pb-2 lg:pb-0">
+                            {navItems.map(item => (
+                                <li key={item.key}>
+                                    <button 
+                                        onClick={() => {
+                                            setActiveMissionKey(item.key);
+                                            contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                                        }}
+                                        className={`lg:w-full text-left px-3 lg:px-4 py-2 lg:py-3 rounded-xl lg:rounded-2xl text-[10px] md:text-xs font-black transition-all flex items-center gap-2 md:gap-3 whitespace-nowrap ${activeMissionKey === item.key ? 'bg-indigo-600 text-white shadow-lg ring-2 lg:ring-4 ring-indigo-50' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+                                    >
+                                        <span className="text-xs md:text-sm">{item.icon}</span>
+                                        <span className="uppercase tracking-tighter">{item.label}</span>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
                 </div>
             </aside>
 
-            {/* Area Simulatore */}
+            {/* Area Simulatore & Content */}
             <main 
                 ref={contentRef}
-                className="flex-1 bg-white p-8 md:p-12 rounded-[48px] border border-slate-200 shadow-2xl overflow-y-auto custom-scrollbar h-[calc(100vh-140px)]"
+                className="flex-1 bg-white p-4 md:p-12 md:rounded-[48px] rounded-3xl border border-slate-200 shadow-2xl overflow-y-auto custom-scrollbar lg:h-[calc(100vh-140px)]"
             >
-                <div className="max-w-4xl mx-auto">
-                    <div className="mb-12">
-                        <div className="flex items-center gap-4 mb-2">
-                            <span className="h-1 w-12 bg-indigo-600 rounded-full"></span>
-                            <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-[10px]">Learning Simulation EP v.1</p>
+                <div className="w-full mx-auto lg:max-w-4xl">
+                    <div className="mb-8 md:mb-12">
+                        <div className="flex items-center gap-3 md:gap-4 mb-1 md:mb-2">
+                            <span className="h-1 w-8 md:w-12 bg-indigo-600 rounded-full"></span>
+                            <p className="text-slate-400 font-black uppercase tracking-[0.2em] md:tracking-[0.4em] text-[8px] md:text-[10px]">Learning Simulation EP v.1</p>
                         </div>
-                        <h1 className="text-5xl font-black text-slate-900 tracking-tighter italic">
+                        <h1 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tighter italic">
                             Guida: {activeMissionKey}
                         </h1>
                     </div>
 
-                    <div className="mb-12">
+                    <div className="mb-8 md:mb-12 w-full">
                         <UIEmulator mission={currentMission} />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
                         {/* OBIETTIVO OPERATIVO DINAMICO */}
-                        <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 transition-all duration-500">
-                            <h4 className="text-[11px] font-black text-indigo-700 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                <span className="text-lg">🎯</span> Obiettivo Operativo
+                        <div className="bg-slate-50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 transition-all duration-500">
+                            <h4 className="text-[10px] md:text-[11px] font-black text-indigo-700 uppercase mb-3 md:mb-4 tracking-widest flex items-center gap-2">
+                                <span className="text-base md:text-lg">🎯</span> Obiettivo Operativo
                             </h4>
-                            <p className="text-sm text-slate-600 leading-relaxed font-bold">
+                            <p className="text-xs md:text-sm text-slate-600 leading-relaxed font-bold">
                                 {currentDetails.objective}
                             </p>
                         </div>
 
                         {/* CONSIGLI PRO DINAMICI */}
-                        <div className="bg-amber-50 p-6 rounded-3xl border border-amber-200 transition-all duration-500">
-                            <h4 className="text-[11px] font-black text-amber-700 uppercase mb-4 tracking-widest flex items-center gap-2">
-                                <span className="text-lg">💡</span> Consigli Pro
+                        <div className="bg-amber-50 p-5 md:p-6 rounded-2xl md:rounded-3xl border border-amber-200 transition-all duration-500">
+                            <h4 className="text-[10px] md:text-[11px] font-black text-amber-700 uppercase mb-3 md:mb-4 tracking-widest flex items-center gap-2">
+                                <span className="text-base md:text-lg">💡</span> Consigli Pro
                             </h4>
-                            <ul className="text-xs text-amber-900 font-bold space-y-3">
+                            <ul className="text-[10px] md:text-xs text-amber-900 font-bold space-y-2 md:space-y-3">
                                 {currentDetails.pros.map((pro, i) => (
                                     <li key={i} className="flex gap-2">
                                         <span className="text-amber-400">•</span>
@@ -629,10 +627,10 @@ const Manual: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="mt-20 pt-12 border-t border-slate-100 text-center">
-                        <div className="inline-block bg-slate-900 px-10 py-5 rounded-[32px] shadow-2xl">
-                            <p className="text-[11px] text-white font-black uppercase tracking-[0.2em] flex items-center gap-4">
-                                <span className="text-amber-400 text-2xl animate-pulse">✨</span> 
+                    <div className="mt-12 md:mt-20 pt-8 md:pt-12 border-t border-slate-100 text-center">
+                        <div className="inline-block bg-slate-900 px-6 md:px-10 py-3 md:py-5 rounded-3xl md:rounded-[32px] shadow-2xl">
+                            <p className="text-[9px] md:text-[11px] text-white font-black uppercase tracking-[0.1em] md:tracking-[0.2em] flex items-center gap-3 md:gap-4">
+                                <span className="text-amber-400 text-xl md:text-2xl animate-pulse">✨</span> 
                                 Manuale Operativo Aggiornato: 18/01/2026
                             </p>
                         </div>
