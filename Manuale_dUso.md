@@ -40,10 +40,12 @@ Il cuore pulsante della gestione allievi.
 
 ---
 
-## ## Modulo 4: Archivio & Financial Wizard
+## ## Modulo 4: Archivio & Advanced Reporting
 
-Sana ogni posizione in sospeso.
+Sana ogni posizione in sospeso e genera report di alto livello.
 - **Timeline di Copertura:** Verifica graficamente se un allievo è coperto finanziariamente per tutto l'anno.
+- **Advanced Excel Export:** Genera report completi incrociando dati anagrafici, didattici e contabili.
+- **Storico Recinti:** La colonna "Sede / Recinto" nel report Excel non è statica: analizza gli appuntamenti e mostra il percorso dell'allievo (es. "Sede Centrale -> Sede Estiva") se ha frequentato più sedi nel periodo.
 - **Financial Wizard (Bottone €):** 
     - **Riconciliazione:** Collega incassi orfani (senza fattura) a documenti esistenti.
     - **Abbuoni:** Se mancano pochi centesimi al pareggio, applica un "Abbuono Fiscale" per chiudere la posizione e silenziare l'alert.

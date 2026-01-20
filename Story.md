@@ -66,10 +66,11 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - **18/01 (Pomeriggio):** Refactoring del Manuale Operativo con navigazione a matrice 3-righe ottimizzata per Mobile e integrazione simulatore interattivo.
 - **18/01 (Sera):** Lancio Modulo "Progetti Istituzionali": attivazione iscrizioni da preventivi Enti, link referenziale lezioni "Extra" e automazione billing rateale.
 - **18/01 (Notte):** Consolidamento fiscale avanzato. Introduzione dei contatori dinamici per Lordo, Imponibile (Coefficiente 78%) e Bolli Virtuali.
-- **19/01 (Mattina):** **Refactoring Presenze & Absence Logic Engine.**
-    - Interfaccia "Card-based" completamente responsive per gestione mobile rapida.
-    - Wizard Assenze: Gestione differenziata tra assenza "Persa" (consuma credito) e "Recupero" (preserva credito).
-    - Auto-scheduler intelligente che calcola la prossima data utile saltando le festività.
+- **19/01 (Mattina):** Refactoring Presenze & Absence Logic Engine. Interfaccia Card-based responsive e Wizard Assenze con recupero automatico.
+- **19/01 (Pomeriggio):** **Advanced Reporting & Deployment Fix.**
+    - Risoluzione criticità TypeScript per build stabili su Vercel.
+    - Implementazione logica "Recinto History" nel report Excel: tracciamento cronologico degli spostamenti sede dell'allievo (es. "Sede A -> Sede B").
+    - Arricchimento report con incrocio dati tra presenze reali, abbuoni fiscali e riferimenti pagamenti.
 
 ---
 
