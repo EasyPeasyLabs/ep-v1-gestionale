@@ -43,7 +43,6 @@ const getClientName = (c?: Client) => {
     }
 };
 
-// --- FIX: Added EnrollmentsProps interface to handle navigation parameters ---
 interface EnrollmentsProps {
     initialParams?: {
         status?: string;
@@ -51,18 +50,22 @@ interface EnrollmentsProps {
     };
 }
 
-// --- FIX: Updated component definition to accept EnrollmentsProps ---
 const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [allClients, setAllClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
-    // --- FIX: Initialized searchTerm with initialParams if provided ---
     const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
     const [filterLocation, setFilterLocation] = useState<string>('');
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     const [bulkAssignState, setBulkAssignState] = useState<{ isOpen: boolean; locationId: string; locationName: string; locationColor: string; } | null>(null);
+    
+    // State per la modale di assegnazione manuale
+    const [assignSearch, setAssignSearch] = useState('');
+    const [assignDay, setAssignDay] = useState(1);
+    const [assignStart, setAssignStart] = useState('16:00');
+    const [assignEnd, setAssignEnd] = useState('18:00');
 
     const fetchData = useCallback(async () => {
         try {
@@ -74,7 +77,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         } catch (err) { console.error(err); } finally { setLoading(false); }
     }, []);
 
-    // --- FIX: Updated useEffect to react to initialParams changes (e.g. from notifications) ---
     useEffect(() => { 
         fetchData(); 
         if (initialParams?.searchTerm) {
@@ -96,6 +98,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         e.preventDefault();
         const id = e.dataTransfer.getData("text/plain");
         if (!id) return;
+        await performAssignment(id, locId, locName, locColor, day, start, end);
+    };
+
+    const performAssignment = async (id: string, locId: string, locName: string, locColor: string, day: number, start: string, end: string) => {
         const enr = enrollments.find(x => x.id === id);
         if (!enr) return;
         setLoading(true);
@@ -109,6 +115,22 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             }
             await fetchData();
         } finally { setLoading(false); }
+    };
+
+    const handleManualAssign = async (enrollment: Enrollment) => {
+        if (!bulkAssignState) return;
+        await performAssignment(
+            enrollment.id, 
+            bulkAssignState.locationId, 
+            bulkAssignState.locationName, 
+            bulkAssignState.locationColor, 
+            assignDay, 
+            assignStart, 
+            assignEnd
+        );
+        // Non chiudiamo la modale per permettere assegnazioni multiple rapide, o la chiudiamo se preferito.
+        // Qui lasciamo aperta per UX veloce.
+        // setBulkAssignState(null);
     };
 
     const groupedEnrollments = useMemo(() => {
@@ -130,6 +152,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         return Object.values(groups).sort((a,b) => a.locationId === 'unassigned' ? -1 : 1);
     }, [enrollments, searchTerm, filterLocation]);
 
+    const unassignedEnrollments = useMemo(() => {
+        return enrollments.filter(e => 
+            (e.locationId === 'unassigned' || !e.locationId) && 
+            e.childName.toLowerCase().includes(assignSearch.toLowerCase())
+        );
+    }, [enrollments, assignSearch]);
+
     return (
         <div className="pb-20">
             <div className="flex justify-between items-center mb-6">
@@ -148,6 +177,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         <div key={i} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, loc.locationId, loc.locationName, loc.locationColor, 1, '16:00', '18:00')}>
                             <div className="px-6 py-4 flex justify-between items-center" style={{ backgroundColor: loc.locationColor, color: getTextColorForBg(loc.locationColor) }}>
                                 <h2 className="text-lg font-black uppercase tracking-widest">{loc.locationName}</h2>
+                                {loc.locationId !== 'unassigned' && (
+                                    <button 
+                                        onClick={() => setBulkAssignState({ isOpen: true, locationId: loc.locationId, locationName: loc.locationName, locationColor: loc.locationColor })}
+                                        className="p-1.5 rounded-lg hover:bg-white/20 transition-colors border border-transparent hover:border-white/30"
+                                        title="Assegna manualmente allievo a questa sede"
+                                    >
+                                        <UserPlusIcon />
+                                    </button>
+                                )}
                             </div>
                             <div className="p-6 space-y-6">
                                 {Object.values(loc.days).map((day: any, j) => (
@@ -181,6 +219,73 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             )}
 
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="lg"><EnrollmentForm clients={allClients} initialClient={editingEnrollment ? allClients.find(c => c.id === editingEnrollment.clientId) : undefined} existingEnrollment={editingEnrollment} onSave={handleSaveEnrollment} onCancel={() => setIsModalOpen(false)} /></Modal>}
+            
+            {/* BULK ASSIGN MODAL */}
+            {bulkAssignState && (
+                <Modal onClose={() => setBulkAssignState(null)} size="lg">
+                    <div className="flex flex-col h-[80vh]">
+                        <div className="p-6 border-b flex-shrink-0" style={{ backgroundColor: bulkAssignState.locationColor, color: getTextColorForBg(bulkAssignState.locationColor) }}>
+                            <h3 className="text-xl font-bold">Assegna a: {bulkAssignState.locationName}</h3>
+                            <p className="text-xs opacity-80">Seleziona un allievo dalla lista "Non Assegnati" per inserirlo in questo recinto.</p>
+                        </div>
+                        
+                        <div className="p-4 bg-gray-50 border-b flex gap-4 items-end flex-shrink-0">
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Giorno</label>
+                                <select value={assignDay} onChange={e => setAssignDay(Number(e.target.value))} className="md-input text-xs py-1">
+                                    {daysOfWeekMap.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Inizio</label>
+                                <input type="time" value={assignStart} onChange={e => setAssignStart(e.target.value)} className="md-input text-xs py-1" />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Fine</label>
+                                <input type="time" value={assignEnd} onChange={e => setAssignEnd(e.target.value)} className="md-input text-xs py-1" />
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-b flex-shrink-0">
+                            <div className="relative">
+                                <SearchIcon />
+                                <input 
+                                    type="text" 
+                                    placeholder="Cerca allievo non assegnato..." 
+                                    className="md-input pl-10" 
+                                    value={assignSearch} 
+                                    onChange={e => setAssignSearch(e.target.value)} 
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                            {unassignedEnrollments.length === 0 ? (
+                                <p className="text-center text-gray-400 italic py-10">Nessun allievo non assegnato trovato.</p>
+                            ) : (
+                                unassignedEnrollments.map(enr => (
+                                    <div key={enr.id} className="flex justify-between items-center p-3 bg-white border rounded-lg hover:shadow-sm">
+                                        <div>
+                                            <p className="font-bold text-gray-800">{enr.childName}</p>
+                                            <p className="text-xs text-gray-500">{enr.subscriptionName}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleManualAssign(enr)}
+                                            className="md-btn md-btn-sm bg-indigo-600 text-white font-bold hover:bg-indigo-700"
+                                        >
+                                            Assegna
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        
+                        <div className="p-4 border-t bg-gray-50 flex justify-end flex-shrink-0">
+                            <button onClick={() => setBulkAssignState(null)} className="md-btn md-btn-flat">Chiudi</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 };

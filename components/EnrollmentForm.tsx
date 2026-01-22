@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
@@ -34,16 +35,34 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const isInstitutional = currentClient?.clientType === ClientType.Institutional || existingEnrollment?.clientType === ClientType.Institutional;
 
     const availableSubscriptions = useMemo(() => {
+        // Helper: controlla se l'abbonamento è valido per la selezione (Attivo o Promo)
+        // OPPURE se è quello già assegnato all'iscrizione corrente (in caso di modifica di un piano obsoleto)
+        const isVisible = (s: SubscriptionType) => {
+            const status = s.statusConfig?.status || 'active'; // default active
+            const isActiveOrPromo = status === 'active' || status === 'promo';
+            const isCurrentLegacy = existingEnrollment && existingEnrollment.subscriptionTypeId === s.id;
+            
+            return isActiveOrPromo || isCurrentLegacy;
+        };
+
         if (isInstitutional) {
-            // Per gli enti di solito usiamo un placeholder o il quote-based, permettiamo di vedere tutto o filtriamo
-            return subscriptionTypes;
+            return subscriptionTypes.filter(isVisible);
         }
+
         return subscriptionTypes.filter(s => {
-            if (s.target) return isAdultEnrollment ? s.target === 'adult' : s.target === 'kid';
-            const isAdultName = s.name.startsWith('A -') || s.name.startsWith('A-');
-            return isAdultEnrollment ? isAdultName : !isAdultName;
+            // 1. Filtro Target (Kid vs Adult)
+            let matchesTarget = false;
+            if (s.target) {
+                matchesTarget = isAdultEnrollment ? s.target === 'adult' : s.target === 'kid';
+            } else {
+                const isAdultName = s.name.startsWith('A -') || s.name.startsWith('A-');
+                matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName;
+            }
+
+            // 2. Filtro Stato
+            return matchesTarget && isVisible(s);
         });
-    }, [subscriptionTypes, isAdultEnrollment, isInstitutional]);
+    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, existingEnrollment]);
 
     const naturalEndDate = useMemo(() => {
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
@@ -195,7 +214,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                                     <span className="truncate">{selectedChildIds.length === 0 ? "Seleziona figli..." : (currentClient as ParentClient)?.children.filter(c => selectedChildIds.includes(c.id)).map(c => c.name).join(', ')}</span>
                                 </div>
                                 <label className="md-input-label !top-0 !text-xs">2. Allievi</label>
-                                {(isChildDropdownOpen || existingEnrollment) && (currentClient as ParentClient)?.children && (
+                                {isChildDropdownOpen && (currentClient as ParentClient)?.children && (
                                     <div className="absolute z-20 w-full bg-white shadow-xl border rounded-md mt-1 max-h-48 overflow-y-auto">
                                         {(currentClient as ParentClient).children.map(child => (
                                             <label key={child.id} className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer">
@@ -222,7 +241,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             {isInstitutional ? <option value="quote-based">Basato su Preventivo</option> : (
                                 <>
                                     <option value="" disabled>Seleziona pacchetto...</option>
-                                    {availableSubscriptions.map(sub => <option key={sub.id} value={sub.id}>{sub.name}</option>)}
+                                    {availableSubscriptions.map(sub => (
+                                        <option key={sub.id} value={sub.id}>
+                                            {sub.name} - {sub.price.toFixed(2)}€
+                                        </option>
+                                    ))}
                                 </>
                             )}
                         </select>
