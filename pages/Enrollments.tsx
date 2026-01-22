@@ -133,24 +133,87 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         // setBulkAssignState(null);
     };
 
+    // Calculate available locations combining suppliers config and existing enrollments (legacy)
+    const availableLocations = useMemo(() => {
+        const names = new Set<string>();
+        suppliers.forEach(s => s.locations.forEach(l => names.add(l.name)));
+        enrollments.forEach(e => {
+            if (e.locationName && e.locationName !== 'Sede Non Definita') names.add(e.locationName);
+        });
+        return Array.from(names).sort();
+    }, [suppliers, enrollments]);
+
+    // Infrastructure-Driven Grouping
     const groupedEnrollments = useMemo(() => {
         const groups: Record<string, any> = {};
+
+        // 1. Initialize from Suppliers (Infrastructure)
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                const key = l.id;
+                groups[key] = { 
+                    locationId: l.id, 
+                    locationName: l.name, 
+                    locationColor: l.color, 
+                    days: {} 
+                };
+            });
+        });
+
+        // 2. Initialize 'Unassigned'
+        groups['unassigned'] = { 
+            locationId: 'unassigned', 
+            locationName: 'Non Assegnati / In Attesa', 
+            locationColor: '#e5e7eb', // Gray
+            days: {} 
+        };
+
+        // 3. Filter Enrollments
         const filtered = enrollments.filter(e => {
             if (searchTerm && !e.childName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
             if (filterLocation && e.locationName !== filterLocation) return false;
             return true;
         });
+
+        // 4. Distribute
         filtered.forEach(e => {
-            const lName = e.locationName || 'Sede Non Definita';
-            if (!groups[lName]) groups[lName] = { locationId: e.locationId, locationName: lName, locationColor: e.locationColor, days: {} };
+            let groupId = e.locationId;
+            if (!groupId || groupId === 'unassigned') groupId = 'unassigned';
+
+            // Fallback for legacy locations not in suppliers
+            if (!groups[groupId]) {
+                groups[groupId] = {
+                    locationId: groupId,
+                    locationName: e.locationName || 'Sede Ignota',
+                    locationColor: e.locationColor || '#9ca3af',
+                    days: {}
+                };
+            }
+
+            // Determine Day
             const date = e.appointments?.[0]?.date ? new Date(e.appointments[0].date) : null;
-            const dIdx = date ? date.getDay() : 99;
+            const dIdx = date ? date.getDay() : 99; // 99 for Unassigned/Pending
             const dName = date ? daysOfWeekMap[dIdx] : 'In Attesa';
-            if (!groups[lName].days[dIdx]) groups[lName].days[dIdx] = { dayName: dName, items: [] };
-            groups[lName].days[dIdx].items.push(e);
+
+            if (!groups[groupId].days[dIdx]) {
+                groups[groupId].days[dIdx] = { dayName: dName, items: [] };
+            }
+            groups[groupId].days[dIdx].items.push(e);
         });
-        return Object.values(groups).sort((a,b) => a.locationId === 'unassigned' ? -1 : 1);
-    }, [enrollments, searchTerm, filterLocation]);
+
+        // 5. Filter result groups if location filter is active
+        let result = Object.values(groups);
+        if (filterLocation) {
+            result = result.filter((g: any) => g.locationName === filterLocation);
+        }
+
+        // 6. Sort
+        return result.sort((a: any, b: any) => {
+            if (a.locationId === 'unassigned') return -1;
+            if (b.locationId === 'unassigned') return 1;
+            return a.locationName.localeCompare(b.locationName);
+        });
+    }, [enrollments, suppliers, searchTerm, filterLocation]);
 
     const unassignedEnrollments = useMemo(() => {
         return enrollments.filter(e => 
@@ -168,7 +231,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
             <div className="bg-white p-3 rounded-xl border mb-6 flex gap-4 items-center">
                 <div className="relative flex-1"><SearchIcon /><input type="text" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="md-input pl-10" /></div>
-                <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input w-48"><option value="">Tutte le Sedi</option>{Array.from(new Set(enrollments.map(e => e.locationName))).map(l => <option key={l} value={l}>{l}</option>)}</select>
+                <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input w-48">
+                    <option value="">Tutte le Sedi</option>
+                    {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
             </div>
 
             {loading ? <Spinner /> : (
@@ -188,6 +254,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 )}
                             </div>
                             <div className="p-6 space-y-6">
+                                {/* Se non ci sono iscritti ma il gruppo esiste (Sede Vuota), mostra placeholder */}
+                                {Object.keys(loc.days).length === 0 && (
+                                    <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-xl">
+                                        <p className="text-sm font-bold text-slate-400">Nessun allievo in questo recinto.</p>
+                                        <p className="text-xs text-slate-300 mt-1">Trascina qui o usa il tasto + per aggiungere.</p>
+                                    </div>
+                                )}
+
                                 {Object.values(loc.days).map((day: any, j) => (
                                     <div key={j} className="pl-4 border-l-2 border-dashed border-slate-200">
                                         <h3 className="text-xs font-bold text-indigo-600 uppercase mb-4">{day.dayName}</h3>
