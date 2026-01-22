@@ -208,6 +208,21 @@ const InvoiceEditForm: React.FC<{
                         )}
                     </div>
                     <div className="lg:col-span-4 bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                        <div className="md-input-group !mb-0">
+                            <input 
+                                type="text" 
+                                value={invoiceNumber} 
+                                onChange={e => setInvoiceNumber(e.target.value.toUpperCase())} 
+                                className="md-input !py-2 !px-3 text-sm font-mono font-bold" 
+                                placeholder=" "
+                            />
+                            <label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Numero Documento</label>
+                            {invoice.id && invoiceNumber !== invoice.invoiceNumber && (
+                                <p className="text-[9px] text-amber-600 font-bold mt-1 animate-pulse">
+                                    ⚠️ Attenzione: modifica manuale in corso
+                                </p>
+                            )}
+                        </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="md-input-group !mb-0"><input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className="md-input !py-2 !px-3 text-xs" required /><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Data Emissione</label></div>
                             <div className="md-input-group !mb-0"><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="md-input !py-2 !px-3 text-xs" required /><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Data Scadenza</label></div>
