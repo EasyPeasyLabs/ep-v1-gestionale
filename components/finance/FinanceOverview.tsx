@@ -10,6 +10,8 @@ interface FinanceOverviewProps {
     stats: any;
     transactions: Transaction[];
     invoices: Invoice[];
+    overviewYear: number;
+    setOverviewYear: (year: number) => void;
 }
 
 const getMacroCategory = (cat: TransactionCategory): string => {
@@ -70,10 +72,17 @@ const KpiCard = ({ title, value, color, progress, label, sub, onClick }: any) =>
     </div>
 );
 
-const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, invoices }) => {
+const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, invoices, overviewYear, setOverviewYear }) => {
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     const chartInstance = useRef<Chart | null>(null);
     const [selectedKpi, setSelectedKpi] = useState<string | null>(null);
+
+    const availableYears = useMemo(() => {
+        const list = [];
+        const currentYear = new Date().getFullYear();
+        for (let y = currentYear + 1; y >= 2025; y--) list.push(y);
+        return list;
+    }, []);
 
     useEffect(() => {
         if (chartRef.current) {
@@ -122,13 +131,25 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 md-card p-8 bg-white h-[450px]">
-                    <h3 className="text-xl font-black mb-6 flex items-center gap-2"><CalculatorIcon /> Flussi di Cassa Annuali</h3>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <h3 className="text-xl font-black flex items-center gap-2"><CalculatorIcon /> Flussi di Cassa Annuali</h3>
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl shadow-inner">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Anno Fiscale</span>
+                            <select 
+                                value={overviewYear} 
+                                onChange={e => setOverviewYear(Number(e.target.value))} 
+                                className="bg-transparent border-none text-sm font-bold text-indigo-700 outline-none cursor-pointer p-0"
+                            >
+                                {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                            </select>
+                        </div>
+                    </div>
                     <div className="h-[320px]"><canvas ref={chartRef}></canvas></div>
                 </div>
                 
                 <div className="space-y-6">
                     <div className="md-card p-6 bg-indigo-900 text-white shadow-xl">
-                        <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato</h4>
+                        <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato ({overviewYear})</h4>
                         <p className="text-3xl font-black">{((stats.profit ?? 0) - (stats.totalAll ?? 0)).toFixed(2)}€</p>
                         <p className="text-[10px] text-indigo-400 mt-2 italic">Cifra al netto di tasse, contributi e bolli.</p>
                     </div>

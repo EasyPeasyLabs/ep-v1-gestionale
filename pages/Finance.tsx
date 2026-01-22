@@ -85,21 +85,16 @@ const FixWizard: React.FC<{
     const [fixingId, setFixingId] = useState<string | null>(null);
     const [successId, setSuccessId] = useState<string | null>(null);
     const handleSelectIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', targetInvoices?: Invoice[], targetTransactionId?: string) => {
-        // CASE: Linking Transaction to Invoice
         if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
             setFixingId(issue.id);
             try { await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore collegamento cassa."); setFixingId(null); }
             return;
         }
-        
-        // CASE: Linking Transaction to Enrollment (New Solo Cassa Retroactive)
         if (strategy === 'link' && issue.type === 'missing_invoice' && targetTransactionId) {
             setFixingId(issue.id);
             try { await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore collegamento cassa."); setFixingId(null); }
             return;
         }
-
-        // CASE: Linking Invoices to Enrollment
         if (strategy === 'link' && targetInvoices) {
             const ids = targetInvoices.map(i => i.id);
             const suggestion = issue.suggestions?.find(s => s.invoices.length === targetInvoices.length && s.invoices.every(inv => ids.includes(inv.id)));
@@ -156,7 +151,6 @@ const FixWizard: React.FC<{
                                         <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-xl animate-slide-up"><h5 className="text-[10px] font-black text-indigo-700 uppercase mb-2 flex items-center gap-2"><SparklesIcon /> Smart Identity Match</h5>
                                             <div className="space-y-3">{issue.suggestions.map((suggestion, gIdx) => {
                                                 if (suggestion.transactionDetails) {
-                                                    // RENDER: Transaction Match
                                                     const t = suggestion.transactionDetails;
                                                     const tDate = new Date(t.date).toLocaleDateString();
                                                     return (
@@ -172,7 +166,6 @@ const FixWizard: React.FC<{
                                                         </div>
                                                     );
                                                 } else {
-                                                    // RENDER: Invoice Cluster Match
                                                     const invGroup = suggestion.invoices;
                                                     const totalVal = invGroup.reduce((s, i) => s + i.totalAmount, 0);
                                                     return (
@@ -211,6 +204,7 @@ const TAB_LABELS = {
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
+    const [overviewYear, setOverviewYear] = useState<number>(new Date().getFullYear());
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [quotes, setQuotes] = useState<Quote[]>([]);
@@ -256,7 +250,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     }, [fetchData, initialParams]);
 
     const stats = useMemo(() => {
-        const activeT = transactions.filter(t => !t.isDeleted);
+        const activeT = transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === overviewYear);
         const revenue = activeT.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
         const expenses = activeT.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
         const profit = revenue - expenses;
@@ -265,7 +259,10 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const inps = taxable * INPS_RATE;
         const tax = taxable * TAX_RATE_STARTUP;
         let stampDutyTotal = 0;
-        invoices.forEach(inv => { if (!inv.isDeleted && !inv.isGhost && (Number(inv.totalAmount) || 0) > 77.47) stampDutyTotal += 2; });
+        
+        const yearInvoices = invoices.filter(inv => !inv.isDeleted && !inv.isGhost && new Date(inv.issueDate).getFullYear() === overviewYear);
+        yearInvoices.forEach(inv => { if ((Number(inv.totalAmount) || 0) > 77.47) stampDutyTotal += 2; });
+        
         const totalInpsTax = inps + tax;
         const totalAll = totalInpsTax + stampDutyTotal;
         return { 
@@ -279,16 +276,17 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 expenses: activeT.filter(t => new Date(t.date).getMonth() === i && t.type === TransactionType.Expense).reduce((a,c) => a + (Number(c.amount) || 0), 0) 
             })) 
         };
-    }, [transactions, invoices]);
+    }, [transactions, invoices, overviewYear]);
 
     const roiSedi = useMemo(() => {
-        const enrollmentMap = new Map<string, { locationId: string, locationName: string, locationColor: string }>();
+        const enrollmentMap = new Map<string, { locationId: string, locationName: string, locationColor: string, isQuoteBased?: boolean }>();
         enrollments.forEach(enr => {
             if (enr.locationId && enr.locationId !== 'unassigned') {
                 enrollmentMap.set(enr.id, { 
                     locationId: enr.locationId, 
                     locationName: enr.locationName, 
-                    locationColor: enr.locationColor 
+                    locationColor: enr.locationColor,
+                    isQuoteBased: enr.isQuoteBased
                 });
             }
         });
@@ -298,15 +296,41 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             locationsMap.set(l.id, { id: l.id, name: l.name, color: l.color, distance: l.distance || 0 });
         }));
 
-        const locStats: Record<string, { revenue: number, rent: number, lessonCount: number }> = {};
-        locationsMap.forEach((_, id) => locStats[id] = { revenue: 0, rent: 0, lessonCount: 0 });
+        const locStats: Record<string, { revenue: number, rent: number, uniqueLessonKeys: Set<string> }> = {};
+        locationsMap.forEach((_, id) => locStats[id] = { revenue: 0, rent: 0, uniqueLessonKeys: new Set<string>() });
 
+        // ACTIVITY-BASED ALLOCATION ENGINE
+        const globalUniqueLessons = new Set<string>();
+
+        // A. Standard B2C Slots (Raggruppati per slot orario: 10 allievi = 1 slot)
         enrollments.forEach(enr => {
-            if (enr.locationId && locStats[enr.locationId]) {
-                const yearApps = (enr.appointments || []).filter(app => 
-                    new Date(app.date).getFullYear() === controllingYear && app.status === 'Present'
-                );
-                locStats[enr.locationId].lessonCount += yearApps.length;
+            if (!enr.isQuoteBased && enr.locationId && locStats[enr.locationId]) {
+                (enr.appointments || []).forEach(app => {
+                    if (new Date(app.date).getFullYear() === controllingYear && app.status === 'Present') {
+                        const lessonKey = `${app.date.split('T')[0]}_${app.startTime}_${enr.locationId}`;
+                        locStats[enr.locationId].uniqueLessonKeys.add(lessonKey);
+                        globalUniqueLessons.add(lessonKey);
+                    }
+                });
+            }
+        });
+
+        // B. Institutional Projects (Sedi Progetto)
+        manualLessons.forEach(ml => {
+            if (new Date(ml.date).getFullYear() === controllingYear) {
+                let targetLocId = "";
+                for (const [id, info] of locationsMap.entries()) {
+                    if (info.name === ml.locationName) { targetLocId = id; break; }
+                }
+
+                if (targetLocId && locStats[targetLocId]) {
+                    const hasInstitutionalAttendee = ml.attendees?.some(a => a.enrollmentId && enrollmentMap.get(a.enrollmentId)?.isQuoteBased);
+                    if (hasInstitutionalAttendee) {
+                        const lessonKey = `${ml.date.split('T')[0]}_${ml.startTime}_${targetLocId}`;
+                        locStats[targetLocId].uniqueLessonKeys.add(lessonKey);
+                        globalUniqueLessons.add(lessonKey);
+                    }
+                }
             }
         });
 
@@ -320,23 +344,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 targetLocId = enrollmentMap.get(t.relatedEnrollmentId)?.locationId;
             }
 
-            if (targetLocId && locStats[targetLocId]) {
-                if (t.type === TransactionType.Income) {
-                    locStats[targetLocId].revenue += Number(t.amount);
-                    totalRevenueForYear += Number(t.amount);
-                } else {
-                    if (t.category === TransactionCategory.Nolo) {
-                        locStats[targetLocId].rent += Number(t.amount);
-                    } else if ([TransactionCategory.RCA, TransactionCategory.BolloAuto, TransactionCategory.ManutenzioneAuto, TransactionCategory.ConsumoAuto, TransactionCategory.Carburante].includes(t.category)) {
-                        totalAutoCosts += Number(t.amount);
-                    } else {
-                        totalCommonExpenses += Number(t.amount);
-                    }
-                }
+            if (t.type === TransactionType.Income) {
+                if (targetLocId && locStats[targetLocId]) locStats[targetLocId].revenue += Number(t.amount);
+                totalRevenueForYear += Number(t.amount);
             } else {
-                if (t.type === TransactionType.Income) {
-                    totalRevenueForYear += Number(t.amount);
-                } else if ([TransactionCategory.RCA, TransactionCategory.BolloAuto, TransactionCategory.ManutenzioneAuto, TransactionCategory.ConsumoAuto, TransactionCategory.Carburante].includes(t.category)) {
+                if (t.category === TransactionCategory.Nolo && targetLocId && locStats[targetLocId]) {
+                    locStats[targetLocId].rent += Number(t.amount);
+                } else if ([TransactionCategory.RCA, TransactionCategory.BolloAuto, TransactionCategory.ManutenzioneAuto, TransactionCategory.ConsumoAuto, TransactionCategory.Carburante, TransactionCategory.BigliettoViaggio].includes(t.category)) {
                     totalAutoCosts += Number(t.amount);
                 } else {
                     totalCommonExpenses += Number(t.amount);
@@ -344,12 +358,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             }
         });
 
-        const totalAppointmentsInYear = Object.values(locStats).reduce((sum, s) => sum + s.lessonCount, 0) || 1;
+        const totalUniqueLessonsInYear = globalUniqueLessons.size || 1;
 
         return Array.from(locationsMap.entries()).map(([id, info]) => {
             const stats = locStats[id];
             const rev = stats.revenue;
-            const logisticsShare = (totalAutoCosts / totalAppointmentsInYear) * stats.lessonCount;
+            const locUniqueCount = stats.uniqueLessonKeys.size;
+            const logisticsShare = (totalAutoCosts / totalUniqueLessonsInYear) * locUniqueCount;
             const overheadShare = totalRevenueForYear > 0 ? (totalCommonExpenses * (rev / totalRevenueForYear)) : (totalCommonExpenses / locationsMap.size);
             const totalLocCosts = stats.rent + logisticsShare + overheadShare;
 
@@ -363,17 +378,19 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     logistics: logisticsShare,
                     overhead: overheadShare
                 },
-                costPerLesson: { value: stats.lessonCount > 0 ? (stats.rent + logisticsShare) / stats.lessonCount : 0, min: 0, max: 0, avg: 0 },
-                costPerStudentPerLesson: stats.lessonCount > 0 ? (totalLocCosts / stats.lessonCount) : 0,
+                costPerLesson: { 
+                    value: locUniqueCount > 0 ? (stats.rent + logisticsShare) / locUniqueCount : 0, 
+                    min: 0, max: 0, avg: 0 
+                },
+                costPerStudentPerLesson: 0, 
                 costPerStudent: 0, 
                 studentBasedCosts: 0,
-                hasActivity: rev > 0 || stats.rent > 0 || stats.lessonCount > 0
+                hasActivity: rev > 0 || stats.rent > 0 || locUniqueCount > 0
             };
         }).filter(sede => sede.hasActivity);
 
-    }, [suppliers, transactions, enrollments, controllingYear]);
+    }, [suppliers, transactions, enrollments, manualLessons, controllingYear]);
 
-    // --- NEW REVERSE ENGINEERING LOGIC ---
     const reverseEngineering = useMemo(() => { 
         const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP); 
         const netRatio = 1 - compositeTaxRate; 
@@ -381,23 +398,13 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const grossNeeded = annualNetTarget / (netRatio || 1); 
         const currentGross = stats.revenue; 
         const gap = Math.max(0, grossNeeded - currentGross);
-        
-        // 1. Calcolo Prezzo Medio Reale (Weighted Average)
         const activeEnr = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
         const totalValue = activeEnr.reduce((acc, e) => acc + (e.price || 0), 0);
         const totalLessons = activeEnr.reduce((acc, e) => acc + (e.lessonsTotal || 0), 0);
         const realAveragePrice = totalLessons > 0 ? totalValue / totalLessons : 25;
-
-        // 2. Scenario A: Studenti Target (Pack standard di 12 lezioni)
         const studentsNeeded = Math.ceil(gap / (realAveragePrice * 12));
-
-        // 3. Scenario B: Prezzo Medio Consigliato (Basato su grossNeeded / lezioni totali erogande)
         const recommendedPrice = totalLessons > 0 ? grossNeeded / totalLessons : realAveragePrice;
-
-        return { 
-            annualNetTarget, grossNeeded, gap, realAveragePrice, studentsNeeded, recommendedPrice,
-            advice: gap > 0 ? `Per coprire il gap di ${gap.toFixed(0)}€ hai due strade: acquisire nuovi allievi o alzare i listini.` : "Obiettivo annuale raggiunto con il fatturato attuale!" 
-        }; 
+        return { annualNetTarget, grossNeeded, gap, realAveragePrice, studentsNeeded, recommendedPrice, advice: gap > 0 ? `Per coprire il gap di ${gap.toFixed(0)}€ hai due strade: acquisire nuovi allievi o alzare i listini.` : "Obiettivo annuale raggiunto con il fatturato attuale!" }; 
     }, [targetMonthlyNet, stats.revenue, enrollments]);
 
     const simulatorData = useMemo(() => { const tax2025 = stats.totalInpsTax; return { tranche1: tax2025 * 1.5, tranche2: tax2025 * 0.5, monthlyInstallment: (tax2025 * 1.5) / 6, savingsPlan: ['GEN', 'FEB', 'MAR', 'APR', 'MAG', 'GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV', 'DIC'].map((m) => ({ month: m, amount: (tax2025 * 2) / 12 })), }; }, [stats]);
@@ -431,7 +438,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             <div className="border-b border-gray-200 mb-8"><nav className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">{Object.entries(TAB_LABELS).map(([k, v]) => ( <button key={k} onClick={() => setActiveTab(k as any)} className={`flex-shrink-0 py-2 px-4 rounded-full text-sm font-bold transition-all whitespace-nowrap mb-2 ${activeTab === k ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 uppercase'}`}>{v}</button> ))}</nav></div>
             {loading ? <div className="flex justify-center py-20"><Spinner /></div> : (
                 <div className="space-y-8">
-                    {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} invoices={invoices} />}
+                    {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} invoices={invoices} overviewYear={overviewYear} setOverviewYear={setOverviewYear} />}
                     {activeTab === 'cfo' && <FinanceCFO stats={stats} simulatorData={simulatorData} reverseEngineering={reverseEngineering} targetMonthlyNet={targetMonthlyNet} setTargetMonthlyNet={setTargetMonthlyNet} />}
                     {activeTab === 'controlling' && <FinanceControlling roiSedi={roiSedi} onSelectLocation={setSelectedLocationROI} year={controllingYear} onYearChange={setControllingYear} />}
                     {activeTab === 'fiscal_closure' && <FiscalYearManager transactions={transactions} invoices={invoices} />}
