@@ -59,7 +59,7 @@ const RentSyncModal: React.FC<{
     return (
         <div className="p-6">
             <h3 className="text-xl font-bold text-slate-800 mb-2">Sincronizzazione Noli Sede</h3>
-            <p className="text-sm text-slate-500 mb-6">Seleziona il periodo di competenza da sanare. Il sistema genererà transazioni di uscita solo se rileva presenze reali ('Present') nel mese scelto.</p>
+            <p className="text-sm text-slate-500 mb-6">Seleziona il periodo di competenza da sanare. Il sistema genererà transazioni di uscita solo se rileva presenze reali ('Present') o lezioni manuali nel mese scelto.</p>
             <div className="grid grid-cols-2 gap-4 mb-6">
                 <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Mese</label><select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="w-full md-input bg-slate-50">{months.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
                 <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Anno</label><select value={year} onChange={e => setYear(parseInt(e.target.value))} className="w-full md-input bg-slate-50">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
@@ -74,6 +74,7 @@ const FixWizard: React.FC<{
     onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string) => Promise<void>;
     onClose: () => void;
 }> = ({ issues, onFix, onClose }) => {
+    // ... (Wizard Code Unchanged) ...
     const [step, setStep] = useState<'list' | 'invoice_wizard' | 'adjustment_confirm'>('list');
     const [activeIssue, setActiveIssue] = useState<IntegrityIssue | null>(null);
     const [pendingSelection, setPendingSelection] = useState<{ issue: IntegrityIssue, invoices: Invoice[], gap: number } | null>(null);
@@ -203,6 +204,7 @@ const TAB_LABELS = {
 };
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
+    // ... (State and useEffects) ...
     const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
     const [overviewYear, setOverviewYear] = useState<number>(new Date().getFullYear());
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -324,12 +326,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 }
 
                 if (targetLocId && locStats[targetLocId]) {
-                    const hasInstitutionalAttendee = ml.attendees?.some(a => a.enrollmentId && enrollmentMap.get(a.enrollmentId)?.isQuoteBased);
-                    if (hasInstitutionalAttendee) {
-                        const lessonKey = `${ml.date.split('T')[0]}_${ml.startTime}_${targetLocId}`;
-                        locStats[targetLocId].uniqueLessonKeys.add(lessonKey);
-                        globalUniqueLessons.add(lessonKey);
-                    }
+                    // Per le lezioni manuali (extra), consideriamo attività se ci sono partecipanti
+                    // O se è un evento extra manuale (es. workshop aperto)
+                    const lessonKey = `${ml.date.split('T')[0]}_${ml.startTime}_${targetLocId}`;
+                    locStats[targetLocId].uniqueLessonKeys.add(lessonKey);
+                    globalUniqueLessons.add(lessonKey);
                 }
             }
         });
@@ -364,9 +365,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             const stats = locStats[id];
             const rev = stats.revenue;
             const locUniqueCount = stats.uniqueLessonKeys.size;
+            
+            // ACTIVITY-BASED COSTING UPDATE:
+            // Se la sede non ha prodotto lezioni (locUniqueCount === 0), azzeriamo il costo nolo
+            // Questo riflette la logica che una sede "spenta" non dovrebbe pesare sul ROI operativo
+            const rentCost = locUniqueCount > 0 ? stats.rent : 0;
+
             const logisticsShare = (totalAutoCosts / totalUniqueLessonsInYear) * locUniqueCount;
             const overheadShare = totalRevenueForYear > 0 ? (totalCommonExpenses * (rev / totalRevenueForYear)) : (totalCommonExpenses / locationsMap.size);
-            const totalLocCosts = stats.rent + logisticsShare + overheadShare;
+            const totalLocCosts = rentCost + logisticsShare + overheadShare;
 
             return {
                 name: info.name,
@@ -374,23 +381,24 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 revenue: rev,
                 costs: totalLocCosts,
                 breakdown: {
-                    rent: stats.rent,
+                    rent: rentCost,
                     logistics: logisticsShare,
                     overhead: overheadShare
                 },
                 costPerLesson: { 
-                    value: locUniqueCount > 0 ? (stats.rent + logisticsShare) / locUniqueCount : 0, 
+                    value: locUniqueCount > 0 ? (rentCost + logisticsShare) / locUniqueCount : 0, 
                     min: 0, max: 0, avg: 0 
                 },
                 costPerStudentPerLesson: 0, 
                 costPerStudent: 0, 
                 studentBasedCosts: 0,
-                hasActivity: rev > 0 || stats.rent > 0 || locUniqueCount > 0
+                hasActivity: rev > 0 || rentCost > 0 || locUniqueCount > 0
             };
         }).filter(sede => sede.hasActivity);
 
     }, [suppliers, transactions, enrollments, manualLessons, controllingYear]);
 
+    // ... (Other functions remain unchanged) ...
     const reverseEngineering = useMemo(() => { 
         const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP); 
         const netRatio = 1 - compositeTaxRate; 
@@ -445,11 +453,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {['transactions', 'invoices', 'archive', 'quotes'].includes(activeTab) && <FinanceListView activeTab={activeTab as any} transactions={transactions} invoices={invoices} quotes={quotes} suppliers={suppliers} filters={filters} setFilters={setFilters} onEdit={handleEditItem} onDelete={setTransactionToDelete} onPrint={handlePrint} onSeal={inv => updateInvoice(inv.id, {status: DocumentStatus.SealedSDI})} onWhatsApp={handleWhatsApp} onConvert={setQuoteToConvert} onActivate={setQuoteToActivate} />}
                 </div>
             )}
+            {/* ... Modals (unchanged) ... */}
             {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="lg"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onSync={handleExecuteSync} /></Modal>}
             {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="2xl"><FixWizard issues={integrityIssues} onFix={handleWizardFix} onClose={() => setIsFixWizardOpen(false)} /></Modal>}
             {isTransactionModalOpen && <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg"><TransactionForm transaction={editingTransaction} suppliers={suppliers} onSave={handleSaveTransaction} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
             {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {} as Invoice} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
-            {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="xl"><QuoteForm quote={editingQuote} clients={clients} onSave={handleSaveQuote} onCancel={() => setIsQuoteModalOpen(false)} /></Modal>}
+            {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="xl"><QuoteForm quote={editingQuote} clients={clients} companyInfo={companyInfo} onSave={handleSaveQuote} onCancel={() => setIsQuoteModalOpen(false)} /></Modal>}
             {selectedLocationROI && <LocationDetailModal data={selectedLocationROI} onClose={() => setSelectedLocationROI(null)} />}
             {quoteToActivate && <Modal onClose={() => setQuoteToActivate(null)} size="xl"><InstitutionalWizard quote={quoteToActivate} suppliers={suppliers} onClose={() => setQuoteToActivate(null)} onComplete={() => { setQuoteToActivate(null); fetchData(); }} /></Modal>}
             <ConfirmModal isOpen={!!transactionToDelete} onClose={() => setTransactionToDelete(null)} onConfirm={confirmDelete} title="Elimina" message="Sei sicuro?" isDangerous={true} />

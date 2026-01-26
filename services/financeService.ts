@@ -6,6 +6,7 @@ import { getAllEnrollments, getActiveLocationForClient } from './enrollmentServi
 import { getSuppliers } from './supplierService';
 import { getClients } from './parentService';
 import { checkFiscalLock, getFiscalYears } from './fiscalYearService';
+import { getLessons } from './calendarService'; // NEW IMPORT
 
 // --- Transactions ---
 const transactionCollectionRef = collection(db, 'transactions');
@@ -293,6 +294,7 @@ function findCandidateClusters(invoices: Invoice[], target: number, maxGap: numb
 }
 
 export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
+    // ... (unchanged) ...
     const [enrollments, invoices, transactions, clients, fiscalYears] = await Promise.all([
         getAllEnrollments(),
         getInvoices(),
@@ -327,12 +329,10 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
             const cashAmount = Number(linkedCash.reduce((sum, t) => sum + Number(Number(t.amount).toFixed(2)), 0).toFixed(2));
             const adjustment = Number(Number(enr.adjustmentAmount || 0).toFixed(2));
             
-            // NEUTRALIZZAZIONE LOGICA: Sommiamo l'abbuono alla copertura rilevata
             const totalDetectedCoverage = Number((Math.max(totalCoveredAmount, cashAmount) + adjustment).toFixed(2));
             const enrollmentPrice = Number(Number(enr.price || 0).toFixed(2));
             const missingAmount = Number((enrollmentPrice - totalDetectedCoverage).toFixed(2));
 
-            // Se la differenza è trascurabile (< 0.10€), la posizione è sanata
             if (missingAmount > 0.1) {
                 const enrStart = new Date(enr.startDate);
                 const enrEnd = new Date(enr.endDate);
@@ -347,8 +347,6 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
 
                 const suggestions = findCandidateClusters(clientOrphans, Number((enrollmentPrice - adjustment).toFixed(2)));
 
-                // --- NEW: Ricerca Transazioni Orfane (Solo Cassa Retroattivo) ---
-                // Cerchiamo transazioni di entrata, orfane, che matchano per importo, nome e data
                 const orphansTrans = activeTransactions.filter(t => 
                     !t.relatedDocumentId && 
                     !t.relatedEnrollmentId &&
@@ -364,13 +362,10 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
                     const tDate = new Date(t.date);
                     const diffTime = Math.abs(tDate.getTime() - enrStart.getTime());
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    // Confidence: High if within 45 days, Low otherwise
                     const isConfident = diffDays <= 45;
                     
-                    // Aggiungi ai suggerimenti come "Transaction Suggestion"
                     suggestions.push({
-                        invoices: [], // Empty for transaction suggestion
+                        invoices: [], 
                         transactionDetails: t,
                         isPerfect: isConfident,
                         gap: 0
@@ -399,7 +394,6 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
         }
     });
 
-    // 2. VERIFICA CASSA (Transazioni mancanti per Fatture)
     activeInvoices.filter(i => !i.isGhost && !i.isDeleted).forEach(inv => {
         const invYear = new Date(inv.issueDate).getFullYear();
         if (closedYears.has(invYear)) return;
@@ -445,9 +439,6 @@ export const runFinancialHealthCheck = async (): Promise<IntegrityIssue[]> => {
     return issues;
 };
 
-// ... (rest of the file remains unchanged, only top part with mapping functions updated) ...
-// Per brevità ometto il resto del file che non è cambiato, ma nel codice reale il contenuto deve essere preservato.
-// Le funzioni export rimangono invariate.
 export const linkFinancialsToEnrollment = async (
     enrollmentId: string, 
     invoiceIds: string[], 
@@ -647,6 +638,7 @@ export const isInvoiceNumberTaken = async (year: number, num: number): Promise<b
 };
 
 export const fixIntegrityIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' = 'invoice', manualInvoiceNumber?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string): Promise<void> => {
+    // ... (unchanged fix logic) ...
     if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
         const inv = issue.details.invoice as Invoice;
         const transRef = doc(db, 'transactions', targetTransactionId);
@@ -830,9 +822,10 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment): Promi
 };
 
 export const syncRentExpenses = async (targetMonth?: number, targetYear?: number): Promise<string> => {
-    const [enrollments, suppliers] = await Promise.all([
+    const [enrollments, suppliers, lessons] = await Promise.all([
         getAllEnrollments(),
-        getSuppliers()
+        getSuppliers(),
+        getLessons()
     ]);
 
     const locationCostMap = new Map<string, { cost: number, supplierName: string }>();
@@ -867,6 +860,8 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
     });
 
     const occupiedLocationIds = new Set<string>();
+    
+    // 1. Check Standard Enrollments
     enrollments.forEach(e => { 
         if (e.appointments && e.locationId && e.locationId !== 'unassigned') {
             const hasPresenceInPeriod = e.appointments.some(app => {
@@ -879,6 +874,21 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
                 occupiedLocationIds.add(e.locationId);
             }
         } 
+    });
+
+    // 2. Check Manual Lessons (Institutional or Extra)
+    lessons.forEach(l => {
+        const lDate = new Date(l.date);
+        if (lDate >= new Date(startOfMonth) && lDate <= new Date(endOfMonth)) {
+             // Find matching location ID from name
+             for (const s of suppliers) {
+                 const loc = s.locations.find(loc => loc.name === l.locationName);
+                 if (loc) {
+                     occupiedLocationIds.add(loc.id);
+                     break;
+                 }
+             }
+        }
     });
 
     const batch = writeBatch(db);
@@ -916,7 +926,7 @@ export const syncRentExpenses = async (targetMonth?: number, targetYear?: number
         await batch.commit(); 
         return `Generati ${createdCount} movimenti affitto per ${competenceMonthLabel}.`; 
     } else { 
-        return `Nessun nuovo movimento necessario per ${competenceMonthLabel} (nessuna presenza 'Present' rilevata o noli già saldati).`; 
+        return `Nessun nuovo movimento necessario per ${competenceMonthLabel} (nessuna presenza rilevata o noli già saldati).`; 
     }
 };
 

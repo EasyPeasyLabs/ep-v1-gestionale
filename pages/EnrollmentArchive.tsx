@@ -519,7 +519,21 @@ const EnrollmentArchive: React.FC = () => {
         let ghostId = undefined;
         const ghostInvoice = invoices.find(i => i.relatedEnrollmentId === enr.id && i.isGhost === true && i.status === DocumentStatus.Draft && !i.isDeleted);
         if (ghostInvoice) ghostId = ghostInvoice.id;
-        setPaymentModalState({ isOpen: true, enrollment: enr, date: new Date().toISOString().split('T')[0], method: PaymentMethod.BankTransfer, createInvoice: true, isDeposit: false, isBalance: true, depositAmount: prefillAmount || status.remaining, ghostInvoiceId: ghostId, totalPaid: status.totalPaid });
+        
+        // Auto-select invoice creation unless Cash
+        // Initial setup for modal
+        setPaymentModalState({ 
+            isOpen: true, 
+            enrollment: enr, 
+            date: new Date().toISOString().split('T')[0], 
+            method: PaymentMethod.BankTransfer, 
+            createInvoice: true, // Default
+            isDeposit: false, 
+            isBalance: true, 
+            depositAmount: prefillAmount || status.remaining, 
+            ghostInvoiceId: ghostId, 
+            totalPaid: status.totalPaid 
+        });
         setFinancialWizardTarget(null); 
     };
 
@@ -721,7 +735,38 @@ const EnrollmentArchive: React.FC = () => {
                             <p className="text-indigo-700 font-bold">Rimanenza: {( Number(paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - Number(paymentModalState.enrollment.adjustmentAmount || 0) ).toFixed(2)}€</p>
                         </div>
                         <div className="md-input-group mb-4"><input type="date" value={paymentModalState.date} onChange={(e) => setPaymentModalState(prev => ({ ...prev, date: e.target.value }))} className="md-input font-bold" /><label className="md-input-label !top-0">Data</label></div>
-                        <div className="md-input-group mb-4"><select value={paymentModalState.method} onChange={(e) => setPaymentModalState(prev => ({ ...prev, method: e.target.value as PaymentMethod }))} className="md-input">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select><label className="md-input-label !top-0">Metodo</label></div>
+                        <div className="md-input-group mb-4">
+                            <select 
+                                value={paymentModalState.method} 
+                                onChange={(e) => {
+                                    const newMethod = e.target.value as PaymentMethod;
+                                    setPaymentModalState(prev => ({ 
+                                        ...prev, 
+                                        method: newMethod,
+                                        createInvoice: newMethod !== PaymentMethod.Cash // Smart default
+                                    }))
+                                }} 
+                                className="md-input"
+                            >
+                                {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <label className="md-input-label !top-0">Metodo</label>
+                        </div>
+
+                        {/* TOGGLE FATTURA */}
+                        <div className="flex items-center gap-3 mb-4 p-3 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-indigo-200 transition-colors cursor-pointer" onClick={() => setPaymentModalState(prev => ({ ...prev, createInvoice: !prev.createInvoice }))}>
+                            <input 
+                                type="checkbox" 
+                                checked={paymentModalState.createInvoice} 
+                                onChange={e => setPaymentModalState(prev => ({ ...prev, createInvoice: e.target.checked }))} 
+                                className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <div>
+                                <span className="block text-sm font-bold text-slate-800">Genera Fattura Elettronica</span>
+                                <span className="text-[10px] text-slate-500 block leading-tight font-medium">Se disattivato, registra solo movimento di cassa (No Doc).</span>
+                            </div>
+                        </div>
+
                         <div className="mb-4 bg-gray-50 p-3 rounded border border-gray-200">
                              <label className="text-xs text-gray-500 block font-bold mb-1">Importo Versato Ora</label>
                              <input type="number" value={paymentModalState.depositAmount} onChange={e => setPaymentModalState(prev => ({ ...prev, depositAmount: Number(e.target.value) }))} className="w-full p-2 border rounded text-sm font-bold text-right" />

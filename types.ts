@@ -326,6 +326,7 @@ export interface Quote {
     notes?: string;
     status: DocumentStatus;
     isDeleted: boolean;
+    paymentMethod?: string;
 }
 
 export type QuoteInput = Omit<Quote, 'id'>;
