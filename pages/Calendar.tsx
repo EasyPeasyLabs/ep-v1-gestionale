@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Lesson, LessonInput, Supplier, Enrollment, Appointment, EnrollmentStatus, Client } from '../types';
-import { getLessons, addLesson, updateLesson, deleteLesson } from '../services/calendarService';
-import { getAllEnrollments } from '../services/enrollmentService';
+import { Lesson, LessonInput, Supplier, Enrollment, Appointment, EnrollmentStatus, Client, SchoolClosure } from '../types';
+import { getLessons, addLesson, updateLesson, deleteLesson, getSchoolClosures, addSchoolClosure } from '../services/calendarService';
+import { getAllEnrollments, suspendLessonsForClosure } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import Modal from '../components/Modal';
@@ -10,6 +10,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import Spinner from '../components/Spinner';
 import PlusIcon from '../components/icons/PlusIcon';
 import LessonForm from '../components/calendar/LessonForm';
+import ClosureWizard from '../components/calendar/ClosureWizard';
 
 // --- Types for Calendar Logic ---
 interface CalendarCluster {
@@ -22,10 +23,12 @@ interface CalendarCluster {
     count: number; // Numero studenti
     isManual?: boolean; 
     isClosed?: boolean; 
-    closedAtDate?: string; 
+    closedAtDate?: string; // Dismissione Sede
+    globalClosureReason?: string; // Chiusura Globale Scuola
     title?: string;
     description?: string; 
     childNames?: string; 
+    isSuspended?: boolean;
 }
 
 const Calendar: React.FC = () => {
@@ -38,25 +41,34 @@ const Calendar: React.FC = () => {
     const [manualLessons, setManualLessons] = useState<Lesson[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
+    const [closures, setClosures] = useState<SchoolClosure[]>([]);
 
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+    
+    // Closure States
+    const [confirmClosureDate, setConfirmClosureDate] = useState<Date | null>(null);
+    const [closureReason, setClosureReason] = useState('Festività');
+    const [isClosureWizardOpen, setIsClosureWizardOpen] = useState(false);
+    const [wizardDate, setWizardDate] = useState<Date | null>(null);
 
     // --- Data Fetching & Aggregation Logic ---
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const [enrollments, mLessons, supps, clis] = await Promise.all([
+            const [enrollments, mLessons, supps, clis, schoolClosures] = await Promise.all([
                 getAllEnrollments(), 
                 getLessons(),
                 getSuppliers(),
-                getClients()
+                getClients(),
+                getSchoolClosures()
             ]);
 
             setManualLessons(mLessons);
             setSuppliers(supps);
             setClients(clis);
+            setClosures(schoolClosures);
 
             const clusterMap = new Map<string, CalendarCluster>();
             const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
@@ -67,10 +79,9 @@ const Calendar: React.FC = () => {
                 });
             });
 
-            // Set per tracciare le lezioni manuali che sono state "assorbite" da un'iscrizione istituzionale
             const absorbedLessonIds = new Set<string>();
 
-            // 1. Process Enrollments (Cartellini)
+            // 1. Process Enrollments
             enrollments.forEach(enr => {
                 if (enr.appointments && enr.appointments.length > 0) {
                     enr.appointments.forEach(app => {
@@ -80,27 +91,32 @@ const Calendar: React.FC = () => {
                         const locName = (app.locationName || enr.locationName || 'N/D').trim();
                         const locColor = app.locationColor || enr.locationColor || '#ccc';
                         
+                        // Check Global Closure
+                        const closure = schoolClosures.find(c => c.date === dateKey);
+                        
                         const config = locationConfigMap.get(locName);
-                        let isClosed = false;
+                        let isClosedLocation = false;
                         let closedAtVal = '';
 
                         if (config) {
                             if (config.closedAt) {
                                 const closingDate = new Date(config.closedAt);
                                 closingDate.setHours(0,0,0,0);
-                                const currentLessonDate = new Date(app.date);
-                                if (currentLessonDate >= closingDate) {
-                                    isClosed = true;
+                                if (appDateObj >= closingDate) {
+                                    isClosedLocation = true;
                                     closedAtVal = config.closedAt;
                                 }
                             }
-                            if (!isClosed && app.status === 'Scheduled' && !config.days.has(dayOfWeek)) return; 
+                            if (!isClosedLocation && app.status === 'Scheduled' && !config.days.has(dayOfWeek)) return; 
                         }
 
-                        // Tracciamo il collegamento referenziale per l'assorbimento
                         if (enr.isQuoteBased) {
                             absorbedLessonIds.add(app.lessonId);
                         }
+
+                        // Don't show suspended lessons in normal calendar flow (they are handled via wizard)
+                        // UNLESS we want to show them as struck-through. Let's show them for visibility.
+                        const isSuspended = app.status === 'Suspended';
 
                         const key = `${dateKey}_${app.startTime}_${locName}`;
                         if (!clusterMap.has(key)) {
@@ -111,16 +127,20 @@ const Calendar: React.FC = () => {
                                 endTime: app.endTime,
                                 locationName: locName,
                                 locationColor: locColor,
-                                isClosed,
+                                isClosed: isClosedLocation,
                                 closedAtDate: closedAtVal,
-                                count: 0 
+                                globalClosureReason: closure?.reason,
+                                count: 0,
+                                isSuspended
                             });
                         }
                         const cluster = clusterMap.get(key);
                         if (cluster) {
                             cluster.count++;
-                            if (isClosed) { cluster.isClosed = true; cluster.closedAtDate = closedAtVal; }
-                            // Se è istituzionale, sovrascriviamo childNames per chiarezza
+                            if (isClosedLocation) { cluster.isClosed = true; cluster.closedAtDate = closedAtVal; }
+                            if (closure) cluster.globalClosureReason = closure.reason;
+                            if (isSuspended) cluster.isSuspended = true;
+                            
                             if (enr.isQuoteBased) {
                                 cluster.childNames = enr.childName;
                                 cluster.title = 'ENTE';
@@ -130,17 +150,18 @@ const Calendar: React.FC = () => {
                 }
             });
 
-            // 2. Process Manual Lessons (Extra) - FILTRO ASSORBIMENTO ATTIVO
+            // 2. Process Manual Lessons
             mLessons.forEach(ml => {
-                // Se questa lezione manuale è già stata renderizzata tramite un'iscrizione istituzionale, saltala
                 if (absorbedLessonIds.has(ml.id)) return;
 
+                const dateKey = ml.date.split('T')[0];
+                const closure = schoolClosures.find(c => c.date === dateKey);
                 const config = locationConfigMap.get(ml.locationName.trim());
-                let isClosed = false;
+                let isClosedLocation = false;
                 let closedAtVal = '';
                 if (config?.closedAt) {
                     const closingDate = new Date(config.closedAt);
-                    if (new Date(ml.date) >= closingDate) { isClosed = true; closedAtVal = config.closedAt; }
+                    if (new Date(ml.date) >= closingDate) { isClosedLocation = true; closedAtVal = config.closedAt; }
                 }
 
                 let displayNames = '';
@@ -154,6 +175,8 @@ const Calendar: React.FC = () => {
                     if (displayNames) attendeeCount = 1;
                 }
 
+                const isSuspended = ml.description.startsWith('[SOSPESO]');
+
                 clusterMap.set(ml.id, {
                     id: ml.id,
                     date: ml.date,
@@ -163,11 +186,13 @@ const Calendar: React.FC = () => {
                     locationColor: ml.locationColor || '#94a3b8',
                     count: attendeeCount, 
                     isManual: true,
-                    isClosed,
+                    isClosed: isClosedLocation,
                     closedAtDate: closedAtVal,
+                    globalClosureReason: closure?.reason,
                     title: 'EXTRA',
                     description: ml.description,
-                    childNames: displayNames
+                    childNames: displayNames,
+                    isSuspended
                 });
             });
 
@@ -214,6 +239,47 @@ const Calendar: React.FC = () => {
         return { monthGrid: grid, daysOfWeek: ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] };
     }, [currentDate]);
 
+    // Closure Logic
+    const handleDayClick = (day: Date) => {
+        const dateStr = day.toISOString().split('T')[0];
+        const existingClosure = closures.find(c => c.date === dateStr);
+        
+        if (existingClosure) {
+            // Already closed -> Open Wizard directly
+            setWizardDate(day);
+            setIsClosureWizardOpen(true);
+        } else {
+            // Not closed -> Ask to close
+            setConfirmClosureDate(day);
+        }
+    };
+
+    const executeSchoolClosure = async () => {
+        if (!confirmClosureDate) return;
+        setLoading(true);
+        try {
+            const dateStr = confirmClosureDate.toISOString().split('T')[0];
+            
+            // 1. Create Closure Record
+            await addSchoolClosure(dateStr, closureReason);
+            
+            // 2. Suspend Lessons
+            await suspendLessonsForClosure(confirmClosureDate.toISOString());
+            
+            await fetchData();
+            setConfirmClosureDate(null);
+            
+            // 3. Open Wizard automatically
+            setWizardDate(confirmClosureDate);
+            setIsClosureWizardOpen(true);
+            
+        } catch (e) {
+            alert("Errore durante la chiusura: " + e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div>
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-4">
@@ -232,16 +298,52 @@ const Calendar: React.FC = () => {
                  <div className="grid grid-cols-7 gap-1">
                      {daysOfWeek.map(day => <div key={day} className="text-center font-bold text-xs md:text-sm p-1 md:p-2 text-slate-400">{day}</div>)}
                      {monthGrid.map((day, index) => {
+                        const dateStr = day ? day.toISOString().split('T')[0] : '';
+                        const dayClosure = closures.find(c => c.date === dateStr);
+                        const isGlobalClosed = !!dayClosure;
+                        
                         const dayEvents = day ? clusters.filter(c => new Date(c.date).toDateString() === day.toDateString()).sort((a,b) => a.startTime.localeCompare(b.startTime)) : [];
+                        
                         return (
-                            <div key={index} className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors ${day ? 'bg-white' : 'bg-gray-50'}`} style={{borderColor: 'var(--md-divider)'}}>
-                                 {day && <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>}
+                            <div 
+                                key={index} 
+                                onClick={() => day && handleDayClick(day)} // Trigger Closure/Wizard
+                                className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors 
+                                    ${!day ? 'bg-gray-50' : isGlobalClosed ? 'bg-stripes-gray cursor-pointer hover:opacity-90' : 'bg-white cursor-pointer hover:bg-slate-50'}`} 
+                                style={{borderColor: 'var(--md-divider)'}}
+                            >
+                                 {day && (
+                                    <div className="flex justify-between items-start">
+                                        <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>
+                                        {isGlobalClosed && (
+                                            <span className="text-[9px] bg-red-100 text-red-700 px-1 rounded font-black uppercase tracking-tighter shadow-sm border border-red-200">
+                                                CHIUSO: {dayClosure.reason}
+                                            </span>
+                                        )}
+                                    </div>
+                                 )}
+                                 
                                  <div className="space-y-1 overflow-y-auto flex-1 custom-scrollbar">
                                      {dayEvents.map(event => {
                                          const textColor = getTextColorForBg(event.locationColor);
                                          const locPrefix = event.locationName.substring(0, 3).toUpperCase();
+                                         const isItemSuspended = event.isSuspended || event.globalClosureReason;
+
                                          return (
-                                             <div key={event.id} onClick={(e) => { if(event.isClosed) return alert("Sede chiusa."); if(event.isManual) { setEditingLesson(manualLessons.find(l => l.id === event.id) || null); setIsModalOpen(true); } }} className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center transition-all ${event.isManual && !event.isClosed ? 'cursor-pointer hover:opacity-80' : ''} ${event.isClosed ? 'grayscale-ghost bg-zebra' : ''}`} style={{ backgroundColor: event.locationColor, color: textColor }}>
+                                             <div 
+                                                key={event.id} 
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); // Prevent Day Click
+                                                    if(event.isClosed) return alert("Sede chiusa."); 
+                                                    if(event.isManual) { setEditingLesson(manualLessons.find(l => l.id === event.id) || null); setIsModalOpen(true); } 
+                                                }} 
+                                                className={`rounded p-1 text-[10px] md:text-xs font-bold shadow-sm leading-tight flex justify-between items-center transition-all 
+                                                    ${event.isManual && !event.isClosed ? 'cursor-pointer hover:opacity-80' : ''} 
+                                                    ${event.isClosed ? 'grayscale-ghost bg-zebra' : ''}
+                                                    ${isItemSuspended ? 'opacity-50 line-through' : ''}
+                                                `} 
+                                                style={{ backgroundColor: event.locationColor, color: textColor }}
+                                             >
                                                  <span className="truncate mr-1 flex-1 flex items-center gap-1">
                                                      {event.title === 'ENTE' ? <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">ENTE</span> : (event.isManual && <span className="text-[8px] bg-black/20 px-1 rounded flex-shrink-0">EXT</span>)}
                                                      <span className="truncate">{event.childNames ? event.childNames : `${locPrefix} ${event.startTime}`}</span>
@@ -258,7 +360,53 @@ const Calendar: React.FC = () => {
                  }
             </div>
 
+            <style>{`
+                .bg-stripes-gray {
+                    background-image: repeating-linear-gradient(45deg, #f3f4f6, #f3f4f6 10px, #e5e7eb 10px, #e5e7eb 20px);
+                }
+            `}</style>
+
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="md"><LessonForm lesson={editingLesson} suppliers={suppliers} clients={clients} onSave={handleSaveLesson} onDelete={id => deleteLesson(id).then(fetchData)} onCancel={() => setIsModalOpen(false)} /></Modal>}
+            
+            {/* Modal Conferma Chiusura */}
+            {confirmClosureDate && (
+                <Modal onClose={() => setConfirmClosureDate(null)} size="md">
+                    <div className="p-6">
+                        <h3 className="text-lg font-bold text-red-600 mb-4">Chiudi Scuola: {confirmClosureDate.toLocaleDateString()}</h3>
+                        <p className="text-sm text-gray-600 mb-4">
+                            Stai per chiudere la scuola per l'intera giornata. Tutte le lezioni previste verranno sospese e spostate nel "Limbo Recuperi".
+                        </p>
+                        <div className="mb-6">
+                            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Motivazione</label>
+                            <select 
+                                value={closureReason} 
+                                onChange={e => setClosureReason(e.target.value)} 
+                                className="md-input"
+                            >
+                                <option value="Festività">Festività Nazionale</option>
+                                <option value="Meteo">Allerta Meteo</option>
+                                <option value="Manutenzione">Manutenzione Straordinaria</option>
+                                <option value="Ferie">Ferie / Ponte</option>
+                                <option value="Altro">Altro</option>
+                            </select>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button onClick={() => setConfirmClosureDate(null)} className="md-btn md-btn-flat">Annulla</button>
+                            <button onClick={executeSchoolClosure} className="md-btn md-btn-raised bg-red-600 text-white font-bold">Conferma Chiusura</button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {/* Wizard Gestione Recuperi */}
+            {isClosureWizardOpen && wizardDate && (
+                <Modal onClose={() => setIsClosureWizardOpen(false)} size="lg">
+                    <ClosureWizard 
+                        date={wizardDate} 
+                        onClose={() => { setIsClosureWizardOpen(false); fetchData(); }} 
+                    />
+                </Modal>
+            )}
         </div>
     );
 };

@@ -331,7 +331,7 @@ export interface Quote {
 
 export type QuoteInput = Omit<Quote, 'id'>;
 
-export type AppointmentStatus = 'Scheduled' | 'Present' | 'Absent';
+export type AppointmentStatus = 'Scheduled' | 'Present' | 'Absent' | 'Suspended';
 
 export interface Appointment {
     lessonId: string;
@@ -399,6 +399,13 @@ export interface Lesson {
 }
 
 export type LessonInput = Omit<Lesson, 'id'>;
+
+export interface SchoolClosure {
+    id: string;
+    date: string; // ISO Date YYYY-MM-DD
+    reason: string;
+    createdAt: string;
+}
 
 export interface CompanyInfo {
     id: string;

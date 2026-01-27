@@ -84,10 +84,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         }
     }, [fetchData, initialParams]);
 
-    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => { 
+    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[], options?: { regenerateCalendar: boolean }) => { 
         setLoading(true); 
         try { 
-            for (const d of enrollmentsData) { if ('id' in d) await updateEnrollment((d as any).id, d); else await addEnrollment(d); } 
+            for (const d of enrollmentsData) { 
+                if ('id' in d) await updateEnrollment((d as any).id, d, options?.regenerateCalendar); 
+                else await addEnrollment(d); 
+            } 
             setIsModalOpen(false); await fetchData(); 
         } finally { setLoading(false); } 
     };

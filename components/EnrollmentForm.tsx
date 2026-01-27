@@ -1,17 +1,68 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import Spinner from './Spinner';
 import SearchIcon from './icons/SearchIcon';
 
 interface EnrollmentFormProps {
-    clients: Client[]; // Renamed from parents to be generic
+    clients: Client[]; 
     initialClient?: Client | null; 
     existingEnrollment?: Enrollment; 
-    onSave: (enrollments: EnrollmentInput[]) => void;
+    onSave: (enrollments: EnrollmentInput[], options?: { regenerateCalendar: boolean }) => void;
     onCancel: () => void;
 }
+
+// Helper Festività (Duplicated for UI Preview)
+const isItalianHoliday = (date: Date): boolean => {
+    const d = date.getDate();
+    const m = date.getMonth() + 1;
+    const y = date.getFullYear();
+    if (d === 1 && m === 1) return true;
+    if (d === 6 && m === 1) return true;
+    if (d === 25 && m === 4) return true;
+    if (d === 1 && m === 5) return true;
+    if (d === 2 && m === 6) return true;
+    if (d === 15 && m === 8) return true;
+    if (d === 1 && m === 11) return true;
+    if (d === 8 && m === 12) return true;
+    if (d === 25 && m === 12) return true;
+    if (d === 26 && m === 12) return true;
+    const easterMondays: Record<number, string> = {
+        2024: '4-1', 2025: '4-21', 2026: '4-6', 2027: '3-29', 2028: '4-17', 2029: '4-2', 2030: '4-22'
+    };
+    const key = `${y}-${m}-${d}`; // Fix key format matching
+    const lookupKey = `${m}-${d}`;
+    if (easterMondays[y] === lookupKey) return true;
+    return false;
+};
+
+const calculateSlotBasedDates = (startStr: string, lessons: number): { start: string, end: string } => {
+    if (!startStr || lessons <= 0) return { start: startStr, end: startStr };
+    
+    let currentDate = new Date(startStr);
+    let validSlots = 0;
+    let firstDate: string | null = null;
+    let lastDate: string = startStr;
+
+    // Safety break
+    let loops = 0;
+    while (validSlots < lessons && loops < 100) {
+        if (!isItalianHoliday(currentDate)) {
+            if (!firstDate) firstDate = currentDate.toISOString().split('T')[0];
+            lastDate = currentDate.toISOString().split('T')[0];
+            validSlots++;
+        }
+        // Advance 1 week
+        currentDate.setDate(currentDate.getDate() + 7);
+        loops++;
+    }
+
+    return { 
+        start: firstDate || startStr, 
+        end: lastDate 
+    };
+};
 
 const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient, existingEnrollment, onSave, onCancel }) => {
     const [selectedClientId, setSelectedClientId] = useState<string>(initialClient?.id || existingEnrollment?.clientId || '');
@@ -21,7 +72,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [subscriptionTypeId, setSubscriptionTypeId] = useState(existingEnrollment?.subscriptionTypeId || '');
     const [startDateInput, setStartDateInput] = useState(existingEnrollment ? existingEnrollment.startDate.split('T')[0] : new Date().toISOString().split('T')[0]); 
     const [endDateInput, setEndDateInput] = useState(existingEnrollment ? existingEnrollment.endDate.split('T')[0] : '');
-    const [isEndDateManual, setIsEndDateManual] = useState(!!existingEnrollment);
+    // Manual End Date is now only relevant if user explicitly overrides the calc
+    const [isEndDateManual, setIsEndDateManual] = useState(false); 
     const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
 
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
@@ -31,17 +83,21 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [loading, setLoading] = useState(true);
 
+    // Track initial values to detect changes
+    const initialValues = useRef({
+        startDate: existingEnrollment ? existingEnrollment.startDate.split('T')[0] : '',
+        subscriptionId: existingEnrollment?.subscriptionTypeId || '',
+        endDate: existingEnrollment ? existingEnrollment.endDate.split('T')[0] : ''
+    });
+
     const currentClient = clients.find(p => p.id === selectedClientId);
     const isInstitutional = currentClient?.clientType === ClientType.Institutional || existingEnrollment?.clientType === ClientType.Institutional;
 
     const availableSubscriptions = useMemo(() => {
-        // Helper: controlla se l'abbonamento è valido per la selezione (Attivo o Promo)
-        // OPPURE se è quello già assegnato all'iscrizione corrente (in caso di modifica di un piano obsoleto)
         const isVisible = (s: SubscriptionType) => {
-            const status = s.statusConfig?.status || 'active'; // default active
+            const status = s.statusConfig?.status || 'active'; 
             const isActiveOrPromo = status === 'active' || status === 'promo';
             const isCurrentLegacy = existingEnrollment && existingEnrollment.subscriptionTypeId === s.id;
-            
             return isActiveOrPromo || isCurrentLegacy;
         };
 
@@ -50,7 +106,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         }
 
         return subscriptionTypes.filter(s => {
-            // 1. Filtro Target (Kid vs Adult)
             let matchesTarget = false;
             if (s.target) {
                 matchesTarget = isAdultEnrollment ? s.target === 'adult' : s.target === 'kid';
@@ -58,26 +113,28 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 const isAdultName = s.name.startsWith('A -') || s.name.startsWith('A-');
                 matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName;
             }
-
-            // 2. Filtro Stato
             return matchesTarget && isVisible(s);
         });
     }, [subscriptionTypes, isAdultEnrollment, isInstitutional, existingEnrollment]);
 
-    const naturalEndDate = useMemo(() => {
+    // SLOT-DRIVEN CALCULATION
+    const calculatedDates = useMemo(() => {
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
-        if (!selectedSub || !startDateInput || selectedSub.id === 'quote-based') return endDateInput;
-        const startObj = new Date(startDateInput);
-        const endDateObj = new Date(startObj);
-        endDateObj.setDate(endDateObj.getDate() + (selectedSub.durationInDays || 0));
-        return endDateObj.toISOString().split('T')[0];
-    }, [subscriptionTypeId, startDateInput, subscriptionTypes, endDateInput]);
+        if (!selectedSub || !startDateInput || selectedSub.id === 'quote-based') {
+            return null;
+        }
+        // Usa il numero di lezioni, non i giorni
+        return calculateSlotBasedDates(startDateInput, selectedSub.lessons);
+    }, [subscriptionTypeId, startDateInput, subscriptionTypes]);
 
     useEffect(() => {
-        if (!isEndDateManual && naturalEndDate && !isInstitutional) {
-            setEndDateInput(naturalEndDate);
+        // Se non è istituzionale e non è manuale, applica la logica Slot
+        if (!isEndDateManual && calculatedDates && !isInstitutional) {
+            setEndDateInput(calculatedDates.end);
+            // Opzionale: Se la data inizio calcolata (es. post-festività) è diversa dall'input, potremmo aggiornare anche quella
+            // Ma per UX lasciamo che l'input rifletta l'intenzione dell'utente, sarà il backend a normalizzare.
         }
-    }, [naturalEndDate, isEndDateManual, isInstitutional]);
+    }, [calculatedDates, isEndDateManual, isInstitutional]);
 
     useEffect(() => {
         getSubscriptionTypes().then(subs => {
@@ -104,7 +161,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         return result;
     }, [clients, clientSearchTerm, clientSort]);
 
-    // Added missing toggleChildSelection function
     const toggleChildSelection = (childId: string) => {
         setSelectedChildIds(prev => 
             prev.includes(childId) ? prev.filter(id => id !== childId) : [...prev, childId]
@@ -118,6 +174,20 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
         
+        // --- SMART CALENDAR REGENERATION CHECK ---
+        let regenerateCalendar = false;
+        if (existingEnrollment) {
+            const dateChanged = startDateInput !== initialValues.current.startDate;
+            const subChanged = subscriptionTypeId !== initialValues.current.subscriptionId;
+            // Also check end date change if it implies duration change
+            const endChanged = endDateInput !== initialValues.current.endDate;
+
+            if (dateChanged || subChanged || endChanged) {
+                const message = "Hai modificato le date o il pacchetto dell'iscrizione.\n\nVuoi rigenerare il calendario lezioni per allinearlo alle nuove date?\n(Le presenze già registrate verranno mantenute se le date coincidono).";
+                regenerateCalendar = window.confirm(message);
+            }
+        }
+
         const enrollmentsToSave: EnrollmentInput[] = [];
         const targets = isInstitutional 
             ? [{ id: existingEnrollment?.childId || 'institutional', name: existingEnrollment?.childName || (currentClient as InstitutionalClient).companyName }]
@@ -160,7 +230,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             enrollmentsToSave.push(newEnrollment);
         });
 
-        onSave(enrollmentsToSave);
+        onSave(enrollmentsToSave, { regenerateCalendar });
     };
 
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
@@ -243,7 +313,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                                     <option value="" disabled>Seleziona pacchetto...</option>
                                     {availableSubscriptions.map(sub => (
                                         <option key={sub.id} value={sub.id}>
-                                            {sub.name} - {sub.price.toFixed(2)}€
+                                            {sub.name} - {sub.price.toFixed(2)}€ ({sub.lessons} lez.)
                                         </option>
                                     ))}
                                 </>
@@ -259,15 +329,20 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                     </div>
                 </div>
 
-                {/* DATE */}
+                {/* DATE (SLOT DRIVEN) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md-input-group">
                         <input type="date" value={startDateInput} onChange={e => setStartDateInput(e.target.value)} required className="md-input" />
-                        <label className="md-input-label !top-0 !text-xs">5. Data Inizio</label>
+                        <label className="md-input-label !top-0 !text-xs">5. Data Inizio (Primo Slot)</label>
                     </div>
                     <div className="md-input-group">
-                        <input type="date" value={endDateInput} onChange={e => setEndDateInput(e.target.value)} required className="md-input" />
-                        <label className="md-input-label !top-0 !text-xs">6. Data Fine</label>
+                        <input type="date" value={endDateInput} onChange={e => { setEndDateInput(e.target.value); setIsEndDateManual(true); }} required className="md-input" />
+                        <label className="md-input-label !top-0 !text-xs">6. Data Fine (Ultimo Slot)</label>
+                        {!isEndDateManual && calculatedDates && !isInstitutional && (
+                            <span className="absolute -bottom-4 right-0 text-[10px] text-indigo-500 font-bold bg-white px-1">
+                                Calcolata su {subscriptionTypes.find(s => s.id === subscriptionTypeId)?.lessons} slot
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>

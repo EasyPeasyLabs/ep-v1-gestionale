@@ -117,8 +117,131 @@ export const createInstitutionalEnrollment = async (
     return newEnrRef.id;
 };
 
-export const updateEnrollment = async (id: string, enrollment: Partial<EnrollmentInput>): Promise<void> => {
+// --- LOGICA GENERAZIONE CALENDARIO (Helper) ---
+const generateTheoreticalAppointments = (
+    startDate: string,
+    totalLessons: number,
+    locationId: string,
+    locationName: string,
+    locationColor: string,
+    startTime: string,
+    endTime: string,
+    childName: string
+): Appointment[] => {
+    const appointments: Appointment[] = [];
+    const startObj = new Date(startDate);
+    let current = new Date(startObj);
+    const dayOfWeek = current.getDay();
+    let count = 0;
+    
+    // Safety break to prevent infinite loops if something goes wrong
+    let loops = 0; 
+    
+    while (count < totalLessons && loops < 100) {
+        // Verifica se il giorno è corretto (dovrebbe esserlo dato che incrementiamo di 7)
+        // E verifica festivi
+        if (!isItalianHoliday(current)) {
+            appointments.push({
+                lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                date: current.toISOString(),
+                startTime: startTime,
+                endTime: endTime,
+                locationId: locationId,
+                locationName: locationName,
+                locationColor: locationColor,
+                childName: childName,
+                status: 'Scheduled'
+            });
+            count++;
+        }
+        current.setDate(current.getDate() + 7);
+        loops++;
+    }
+    return appointments;
+};
+
+export const updateEnrollment = async (id: string, enrollment: Partial<EnrollmentInput>, regenerateCalendar: boolean = false): Promise<void> => {
     const enrollmentDoc = doc(db, 'enrollments', id);
+    
+    if (regenerateCalendar && enrollment.startDate && enrollment.lessonsTotal) {
+        // --- SMART MERGE LOGIC ---
+        const oldSnap = await getDoc(enrollmentDoc);
+        if (oldSnap.exists()) {
+            const oldData = oldSnap.data() as Enrollment;
+            const oldAppointments = oldData.appointments || [];
+            
+            // Map old appointments by Date (YYYY-MM-DD) for quick lookup
+            const historyMap = new Map<string, Appointment>();
+            oldAppointments.forEach(a => {
+                const k = new Date(a.date).toISOString().split('T')[0];
+                historyMap.set(k, a);
+            });
+
+            // Determine base parameters for new schedule
+            // Use existing enrollment's location/time if not provided in update payload
+            // CAUTION: If enrollment.appointments is passed (from form state), it might contain the OLD dates. We ignore it for generation.
+            
+            // Try to find a reference appointment for time info
+            const refApp = oldAppointments.length > 0 ? oldAppointments[0] : null;
+            const locId = enrollment.locationId || oldData.locationId || 'unassigned';
+            const locName = enrollment.locationName || oldData.locationName || 'Sede Non Definita';
+            const locColor = enrollment.locationColor || oldData.locationColor || '#ccc';
+            // Use updated appointments array first element if available to get time, else fallback to old
+            const timeSource = (enrollment.appointments && enrollment.appointments.length > 0) ? enrollment.appointments[0] : refApp;
+            const startTime = timeSource?.startTime || '16:00';
+            const endTime = timeSource?.endTime || '18:00';
+            const childName = enrollment.childName || oldData.childName;
+
+            // Generate Theoretical Schedule based on NEW Start Date
+            const theoreticalSchedule = generateTheoreticalAppointments(
+                enrollment.startDate,
+                enrollment.lessonsTotal,
+                locId,
+                locName,
+                locColor,
+                startTime,
+                endTime,
+                childName
+            );
+
+            // Merge Logic
+            const mergedAppointments: Appointment[] = theoreticalSchedule.map(newApp => {
+                const key = new Date(newApp.date).toISOString().split('T')[0];
+                const historicalMatch = historyMap.get(key);
+
+                if (historicalMatch) {
+                    // Match found! Preserve status and ID (to keep history linked)
+                    return {
+                        ...newApp,
+                        lessonId: historicalMatch.lessonId,
+                        status: historicalMatch.status
+                    };
+                } else {
+                    // New date (e.g. shift forward) -> Scheduled
+                    return newApp;
+                }
+            });
+
+            enrollment.appointments = mergedAppointments;
+            
+            // Also update lessonsRemaining based on new schedule
+            // Count how many are NOT 'Present' (or 'Absent' without recovery logic, simplified here)
+            // Ideally re-calculate based on what's left
+            const used = mergedAppointments.filter(a => a.status === 'Present').length;
+            enrollment.lessonsRemaining = Math.max(0, enrollment.lessonsTotal - used);
+
+            // --- SLOT-DRIVEN DURATION OVERRIDE ---
+            if (mergedAppointments.length > 0) {
+                // Sort chronologically just to be safe
+                mergedAppointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                
+                // Override enrollment bounds
+                enrollment.startDate = mergedAppointments[0].date;
+                enrollment.endDate = mergedAppointments[mergedAppointments.length - 1].date;
+            }
+        }
+    }
+
     await updateDoc(enrollmentDoc, enrollment);
 };
 
@@ -249,9 +372,17 @@ export const registerAbsence = async (
         }
     }
 
+    // UPDATE DATE BOUNDARIES (Extend if recover goes beyond)
+    let newEndDate = enrollment.endDate;
+    if (appointments.length > 0) {
+        appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        newEndDate = appointments[appointments.length - 1].date;
+    }
+
     await updateDoc(enrollmentDocRef, { 
         appointments, 
-        lessonsRemaining: newLessonsRemaining 
+        lessonsRemaining: newLessonsRemaining,
+        endDate: newEndDate
     });
 };
 
@@ -392,7 +523,11 @@ export const addRecoveryLessons = async (
         currentDate.setDate(currentDate.getDate() + 7);
     }
     appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    await updateDoc(enrollmentDocRef, { appointments });
+    
+    // Extend End Date if needed
+    const newEndDate = appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate;
+
+    await updateDoc(enrollmentDocRef, { appointments, endDate: newEndDate });
 };
 
 export const activateEnrollmentWithLocation = async (
@@ -411,12 +546,17 @@ export const activateEnrollmentWithLocation = async (
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
     const enrollment = enrollmentSnap.data() as Enrollment;
     let currentDate = new Date(enrollment.startDate);
+    
+    // Find the first occurrence of the specific dayOfWeek
     while (currentDate.getDay() !== dayOfWeek) {
         currentDate.setDate(currentDate.getDate() + 1);
     }
+    
     const appointments: Appointment[] = [];
     const lessonsTotal = enrollment.lessonsTotal;
     let generatedCount = 0;
+    
+    // Generate until quota filled
     while (generatedCount < lessonsTotal) {
         if (!isItalianHoliday(currentDate)) {
             appointments.push({
@@ -432,8 +572,10 @@ export const activateEnrollmentWithLocation = async (
             });
             generatedCount++;
         }
+        // Advance 1 week regardless (checks holiday next loop)
         currentDate.setDate(currentDate.getDate() + 7);
     }
+
     await updateDoc(enrollmentDocRef, {
         supplierId,
         supplierName,
@@ -441,6 +583,7 @@ export const activateEnrollmentWithLocation = async (
         locationName,
         locationColor,
         appointments: appointments,
+        // Override dates to match reality of slots
         startDate: appointments[0]?.date || enrollment.startDate, 
         endDate: appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate
     });
@@ -486,4 +629,105 @@ export const bulkUpdateLocation = async (
         }
     }
     await batch.commit();
+};
+
+// --- SCHOOL CLOSURE HANDLERS ---
+
+export const suspendLessonsForClosure = async (closureDate: string): Promise<void> => {
+    const batch = writeBatch(db);
+    const targetDate = new Date(closureDate);
+    const targetDateStr = closureDate.split('T')[0];
+
+    // 1. Process Enrollments
+    const enrollmentsSnapshot = await getDocs(enrollmentCollectionRef);
+    enrollmentsSnapshot.docs.forEach(docSnap => {
+        const enr = docSnap.data() as Enrollment;
+        if (enr.appointments && enr.appointments.length > 0) {
+            let modified = false;
+            const newApps = enr.appointments.map(app => {
+                const appDateStr = app.date.split('T')[0];
+                // Only suspend Scheduled lessons
+                if (appDateStr === targetDateStr && app.status === 'Scheduled') {
+                    modified = true;
+                    return { ...app, status: 'Suspended' as AppointmentStatus };
+                }
+                return app;
+            });
+            if (modified) {
+                batch.update(docSnap.ref, { appointments: newApps });
+            }
+        }
+    });
+
+    // 2. Process Manual Lessons (Extra)
+    // Note: Manual lessons are their own docs. We add a field `isSuspended` or update UI logic?
+    // Since `Lesson` type doesn't have status, we assume manual lessons are simply "events".
+    // For this implementation, we will append "[SOSPESO]" to description to indicate closure.
+    const lessonsCollectionRef = collection(db, 'lessons');
+    const lessonsSnapshot = await getDocs(lessonsCollectionRef);
+    lessonsSnapshot.docs.forEach(docSnap => {
+        const lesson = docSnap.data() as Lesson;
+        const lessonDateStr = lesson.date.split('T')[0];
+        if (lessonDateStr === targetDateStr) {
+            if (!lesson.description.startsWith('[SOSPESO]')) {
+                batch.update(docSnap.ref, { description: `[SOSPESO] ${lesson.description}` });
+            }
+        }
+    });
+
+    await batch.commit();
+};
+
+export const rescheduleSuspendedLesson = async (
+    enrollmentId: string, 
+    lessonId: string, 
+    newDate: string, 
+    strategy: 'move_to_date' | 'append_end'
+): Promise<void> => {
+    const enrRef = doc(db, 'enrollments', enrollmentId);
+    const snap = await getDoc(enrRef);
+    if (!snap.exists()) return;
+    
+    const enr = snap.data() as Enrollment;
+    const appointments = [...(enr.appointments || [])];
+    const appIndex = appointments.findIndex(a => a.lessonId === lessonId);
+    if (appIndex === -1) return;
+
+    const originalApp = appointments[appIndex];
+    let targetDateObj = new Date();
+
+    if (strategy === 'move_to_date') {
+        targetDateObj = new Date(newDate);
+    } else {
+        // Append to end: Find last appointment date and add 1 week
+        const sortedApps = [...appointments].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const lastApp = sortedApps[sortedApps.length - 1];
+        const lastDate = new Date(lastApp.date);
+        
+        // Find next valid slot (1 week later, skipping holidays)
+        let candidateDate = new Date(lastDate);
+        candidateDate.setDate(candidateDate.getDate() + 7);
+        while (isItalianHoliday(candidateDate)) {
+            candidateDate.setDate(candidateDate.getDate() + 7);
+        }
+        targetDateObj = candidateDate;
+    }
+
+    // Create rescheduled appointment
+    const newApp: Appointment = {
+        ...originalApp,
+        date: targetDateObj.toISOString(),
+        status: 'Scheduled',
+        // Preserve original time/location unless specified otherwise
+    };
+
+    // Remove old suspended one or update it? 
+    // Requirement says "reschedule", so we replace the suspended one with the new one at new date
+    appointments[appIndex] = newApp;
+    
+    // Sort and update end date
+    appointments.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    const newEndDate = appointments[appointments.length - 1].date;
+
+    await updateDoc(enrRef, { appointments, endDate: newEndDate });
 };
