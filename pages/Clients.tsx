@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
 import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments, deleteEnrollment, getEnrollmentsForClient } from '../services/enrollmentService';
@@ -17,6 +18,7 @@ import TrashIcon from '../components/icons/TrashIcon';
 import RestoreIcon from '../components/icons/RestoreIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import SearchIcon from '../components/icons/SearchIcon';
+import DownloadIcon from '../components/icons/DownloadIcon';
 
 // Internal Star Icon
 const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => (
@@ -296,6 +298,7 @@ const Clients: React.FC = () => {
     // Extra Filters
     const [filterDay, setFilterDay] = useState<string>('');
     const [filterTime, setFilterTime] = useState<string>('');
+    const [filterLocation, setFilterLocation] = useState<string>(''); // NEW: Location Filter
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -330,7 +333,7 @@ const Clients: React.FC = () => {
     // Reset pagination when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, showTrash, filterDay, filterTime, viewMode]);
+    }, [searchTerm, showTrash, filterDay, filterTime, filterLocation, viewMode]);
 
     const handleOpenModal = (client: Client | null = null) => {
         setEditingClient(client);
@@ -425,6 +428,17 @@ const Clients: React.FC = () => {
         return result;
     };
 
+    // Calculate Available Locations for Filter
+    const availableLocations = useMemo(() => {
+        const locs = new Set<string>();
+        enrollments.forEach(e => {
+            if (e.locationName && e.locationName !== 'Sede Non Definita') {
+                locs.add(e.locationName);
+            }
+        });
+        return Array.from(locs).sort();
+    }, [enrollments]);
+
     const filteredClients = useMemo(() => {
         let result = clients.filter(c => showTrash ? c.isDeleted : !c.isDeleted);
 
@@ -473,10 +487,20 @@ const Clients: React.FC = () => {
                 if (!hasLesson) return false;
             }
 
+            // 4. Filter by Location (Recinto)
+            if (filterLocation) {
+                // Check if client has ANY enrollment in this location
+                const hasLocation = enrollments.some(e => 
+                    e.clientId === c.id && 
+                    e.locationName === filterLocation
+                );
+                if (!hasLocation) return false;
+            }
+
             return true;
         });
 
-        result.sort((a, b) => {
+        result.sort((a,b) => {
             let nameA = '', surnameA = '';
             let nameB = '', surnameB = '';
 
@@ -506,7 +530,46 @@ const Clients: React.FC = () => {
         });
 
         return result;
-    }, [clients, enrollments, showTrash, searchTerm, sortOrder, filterDay, filterTime]);
+    }, [clients, enrollments, showTrash, searchTerm, sortOrder, filterDay, filterTime, filterLocation]);
+
+    // EXPORT FUNCTIONALITY
+    const handleExport = () => {
+        if (filteredClients.length === 0) return alert("Nessun cliente da esportare.");
+
+        const rows = filteredClients.map(client => {
+            const isParent = client.clientType === ClientType.Parent;
+            const parent = client as ParentClient;
+            const inst = client as InstitutionalClient;
+
+            // Prepare Children String
+            let childrenStr = '';
+            if (isParent) {
+                childrenStr = parent.children?.map(c => c.name).join(', ') || '';
+            } else {
+                childrenStr = inst.numberOfChildren ? `${inst.numberOfChildren} bambini` : '';
+            }
+
+            const latestNote = client.notesHistory && client.notesHistory.length > 0
+                ? client.notesHistory[0].content 
+                : '';
+
+            return {
+                "Tipo": isParent ? "Genitore" : "Ente",
+                "Nome / Ragione Sociale": isParent ? `${parent.firstName} ${parent.lastName}` : inst.companyName,
+                "Figli / Riferimenti": childrenStr,
+                "Email": client.email,
+                "Telefono": client.phone,
+                "Indirizzo": `${client.address}, ${client.city} ${client.zipCode} (${client.province})`,
+                "Codice Fiscale / P.IVA": isParent ? parent.taxCode : inst.vatNumber,
+                "Note Recenti": latestNote
+            };
+        });
+
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Clienti");
+        XLSX.writeFile(wb, `Clienti_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
 
     // NEW: Grouped Data Logic
     const groupedClients = useMemo(() => {
@@ -662,8 +725,11 @@ const Clients: React.FC = () => {
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci anagrafica, valutazioni e figli.</p>
                 </div>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
+                    {/* EXPORT BUTTON */}
+                    <button onClick={handleExport} className="md-btn md-btn-flat" title="Esporta in Excel"><DownloadIcon /> <span className="ml-2 hidden sm:inline">Esporta</span></button>
+                    
                     <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat"><UploadIcon /> <span className="ml-2 hidden sm:inline">Importa</span></button>
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
                     <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /> <span className="ml-2 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
                     {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> <span className="ml-2">Nuovo</span></button>}
                 </div>
@@ -675,6 +741,18 @@ const Clients: React.FC = () => {
                     <input type="text" placeholder="Cerca Cliente, Figlio, Sede..." className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
                 <div className="flex gap-2 w-full lg:w-auto flex-wrap">
+                    {/* LOCATION FILTER - NEW */}
+                    <select
+                        value={filterLocation}
+                        onChange={(e) => setFilterLocation(e.target.value)}
+                        className="flex-1 lg:w-48 block bg-white border rounded-md py-2 px-3 text-sm min-w-[150px]"
+                    >
+                        <option value="">Tutte le Sedi</option>
+                        {availableLocations.map(loc => (
+                            <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                    </select>
+
                     {/* VIEW TOGGLE */}
                     <button 
                         onClick={() => setViewMode(prev => prev === 'list' ? 'grouped' : 'list')}
