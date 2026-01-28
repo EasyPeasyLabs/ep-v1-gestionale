@@ -71,12 +71,17 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - Risoluzione criticità TypeScript per build stabili su Vercel.
     - Implementazione logica "Recinto History" nel report Excel: tracciamento cronologico degli spostamenti sede dell'allievo (es. "Sede A -> Sede B").
     - Arricchimento report con incrocio dati tra presenze reali, abbuoni fiscali e riferimenti pagamenti.
+- **20/01 (Mattina):** **Upgrade CRM & Comunicazione.**
+    - Aggiunta filtro per Sede/Recinto nel modulo Nuova Comunicazione.
+    - Integrazione Cloud Storage per invio allegati (file e link) nelle comunicazioni massive.
 
 ---
 
 ## 5. Roadmap Evolutiva
+- [ ] **Paginazione Server-Side:** Ottimizzazione performance per gestire >10.000 record (caricamento incrementale "Load More" / Pagine).
+- [ ] **Modulo Sondaggi WhatsApp:** Template automatici per invio survey di soddisfazione a gruppi filtrati per Sede.
 - [ ] **Integrazione Bridge:** Connessione protetta tra Project A e Project B per importazione lead.
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 19 Gennaio 2026.*
+*Documentazione aggiornata al 20 Gennaio 2026.*
