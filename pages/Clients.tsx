@@ -724,14 +724,14 @@ const Clients: React.FC = () => {
                     <h1 className="text-3xl font-bold">Clienti</h1>
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci anagrafica, valutazioni e figli.</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 overflow-x-auto pb-2 w-full md:w-auto scrollbar-hide">
                     {/* EXPORT BUTTON */}
-                    <button onClick={handleExport} className="md-btn md-btn-flat" title="Esporta in Excel"><DownloadIcon /> <span className="ml-2 hidden sm:inline">Esporta</span></button>
+                    <button onClick={handleExport} className="md-btn md-btn-flat flex-shrink-0" title="Esporta in Excel"><DownloadIcon /> <span className="ml-2 hidden sm:inline">Esporta</span></button>
                     
-                    <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat"><UploadIcon /> <span className="ml-2 hidden sm:inline">Importa</span></button>
-                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
-                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /> <span className="ml-2 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
-                    {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> <span className="ml-2">Nuovo</span></button>}
+                    <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat flex-shrink-0"><UploadIcon /> <span className="ml-2 hidden sm:inline">Importa</span></button>
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2 flex-shrink-0"><TrashIcon /> Elimina Tutto</button>
+                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'} flex-shrink-0`}><TrashIcon /> <span className="ml-2 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
+                    {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green flex-shrink-0"><PlusIcon /> <span className="ml-2">Nuovo</span></button>}
                 </div>
             </div>
 
