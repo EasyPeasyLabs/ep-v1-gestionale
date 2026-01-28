@@ -6,7 +6,7 @@ import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getCommunicationLogs, logCommunication, deleteCommunicationLog, getCampaigns, addCampaign, updateCampaign, deleteCampaign, updateCommunicationLog } from '../services/crmService';
 import { getCommunicationTemplates, getCompanyInfo } from '../services/settingsService';
-import { uploadCampaignFile } from '../services/storageService';
+import { uploadCampaignFile, uploadCommunicationAttachment } from '../services/storageService';
 import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -24,6 +24,8 @@ import RichTextEditor from '../components/RichTextEditor';
 const ChatIcon = () => ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}> <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> );
 const PaperAirplaneIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg>);
 const CheckIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>);
+const PaperClipIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>);
+const LinkIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>);
 
 // --- Helpers ---
 const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName || ''} ${(c as ParentClient).lastName || ''}` : ((c as InstitutionalClient).companyName || '');
@@ -113,6 +115,7 @@ const CommunicationModal: React.FC<{
     onSent: () => void;
     clients: Client[];
     suppliers: Supplier[];
+    enrollments: Enrollment[]; // Needed for location filtering
     initialData?: {
         recipientId: string;
         recipientType: 'clients' | 'suppliers';
@@ -123,7 +126,7 @@ const CommunicationModal: React.FC<{
     initialRecipientType?: 'clients' | 'suppliers'; // NEW: Force type
     contextData?: CommunicationContext | null;
     companyInfo?: CompanyInfo | null;
-}> = ({ onClose, onSent, clients, suppliers, initialData, initialSelectedIds, initialRecipientType, contextData, companyInfo }) => {
+}> = ({ onClose, onSent, clients, suppliers, enrollments, initialData, initialSelectedIds, initialRecipientType, contextData, companyInfo }) => {
     
     const [recipientsType, setRecipientsType] = useState<'clients' | 'suppliers' | 'custom'>(initialData?.recipientType || initialRecipientType || 'clients');
     
@@ -139,6 +142,14 @@ const CommunicationModal: React.FC<{
     const [message, setMessage] = useState(initialData?.message || '');
     const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Location Filter
+    const [filterLocation, setFilterLocation] = useState('');
+
+    // Attachments
+    const [attachments, setAttachments] = useState<{name: string, url: string}[]>([]);
+    const [newLink, setNewLink] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
     
     // Templates State
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
@@ -185,6 +196,39 @@ const CommunicationModal: React.FC<{
         }
     }, [selectedIds, recipientsType, clients, suppliers, contextData]);
 
+    // Computed Locations for Filter
+    const availableLocations = useMemo(() => {
+        const names = new Set<string>();
+        enrollments.forEach(e => {
+            if (e.locationName && e.locationName !== 'Sede Non Definita') names.add(e.locationName);
+        });
+        return Array.from(names).sort();
+    }, [enrollments]);
+
+    // Filter Logic
+    const filteredList = useMemo(() => {
+        let list: (Client | Supplier)[] = [];
+        
+        if (recipientsType === 'clients') {
+            // Se c'è filtro location, prendiamo solo clienti con iscrizioni in quella location
+            if (filterLocation) {
+                const clientIdsInLocation = new Set(
+                    enrollments
+                    .filter(e => e.locationName === filterLocation && e.status === EnrollmentStatus.Active)
+                    .map(e => e.clientId)
+                );
+                list = clients.filter(c => clientIdsInLocation.has(c.id));
+            } else {
+                list = clients;
+            }
+            
+            return list.filter(c => getClientName(c as Client).toLowerCase().includes(searchTerm.toLowerCase()));
+        } else {
+            // Suppliers don't use location filter in this context (usually)
+            return suppliers.filter(s => (s.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()));
+        }
+    }, [recipientsType, clients, suppliers, enrollments, filterLocation, searchTerm]);
+
     const replacePlaceholders = (text: string, ctx: CommunicationContext | null) => {
         let res = text;
         
@@ -221,37 +265,63 @@ const CommunicationModal: React.FC<{
             setSubject(replacePlaceholders(tmpl.subject, previewContext));
             let combined = tmpl.body;
             if (tmpl.signature) combined += `<br><br>${tmpl.signature}`;
-            // NOTE: We put placeholders in the editor directly. Replacement happens on send or we can preview it.
-            // Better to keep placeholders in editor so user sees them, but Replace for Subject immediately.
             setMessage(combined); 
         }
     };
 
-    const filteredList = recipientsType === 'clients' 
-        ? clients.filter(c => getClientName(c).toLowerCase().includes(searchTerm.toLowerCase()))
-        : suppliers.filter(s => (s.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()));
-
     const toggleId = (id: string) => {
         setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    // Attachments
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+        
+        setIsUploading(true);
+        try {
+            for (let i = 0; i < files.length; i++) {
+                const url = await uploadCommunicationAttachment(files[i]);
+                setAttachments(prev => [...prev, { name: files[i].name, url }]);
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Errore caricamento file.");
+        } finally {
+            setIsUploading(false);
+            e.target.value = '';
+        }
+    };
+
+    const addExternalLink = () => {
+        if (!newLink) return;
+        setAttachments(prev => [...prev, { name: newLink, url: newLink }]);
+        setNewLink('');
+    };
+
+    const removeAttachment = (idx: number) => {
+        setAttachments(prev => prev.filter((_, i) => i !== idx));
     };
 
     const handleSend = async () => {
         const recipientsList: string[] = [];
         const targetPhones: string[] = []; 
 
-        // Preparazione testo finale (sostituzione placeholder basata sul contesto corrente/primo)
-        // Nota: Per invii massivi reali personalizzati, servirebbe un loop qui. 
-        // Per WhatsApp: Funziona (apre N tab). Per Email: Mailto apre 1 sola finestra.
-        
-        // 1. Risolvi il messaggio finale (con conversione HTML -> Plain/Markdown)
         const rawHtmlMessage = replacePlaceholders(message, previewContext);
         
         let finalMessage = "";
         if (channel === 'whatsapp') {
             finalMessage = convertHtmlToWhatsApp(rawHtmlMessage);
         } else {
-            // Mailto doesn't support HTML body. We must convert to text.
             finalMessage = convertHtmlToPlainText(rawHtmlMessage);
+        }
+
+        // Append Attachments to Body
+        if (attachments.length > 0) {
+            finalMessage += `\n\n📎 MATERIALI & ALLEGATI:\n`;
+            attachments.forEach(att => {
+                finalMessage += `- ${att.name}: ${att.url}\n`;
+            });
         }
 
         const finalSubject = replacePlaceholders(subject, previewContext);
@@ -285,7 +355,6 @@ const CommunicationModal: React.FC<{
 
             const encodedMsg = encodeURIComponent(`*${finalSubject}*\n\n${finalMessage}`);
             
-            // Loop per apertura tab (Browser permettendo)
             targetPhones.forEach(rawPhone => {
                 let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
                 if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
@@ -304,7 +373,7 @@ const CommunicationModal: React.FC<{
             date: new Date().toISOString(),
             channel,
             subject: finalSubject,
-            message: finalMessage, // Log plain text version
+            message: finalMessage, 
             recipients: recipientsList,
             recipientCount: recipientsList.length,
             type: 'manual'
@@ -324,23 +393,42 @@ const CommunicationModal: React.FC<{
                 {/* Recipients Selection */}
                 <div className="space-y-2">
                     <label className="block text-sm font-bold text-gray-700">Destinatari</label>
-                    <div className="flex gap-2 mb-2">
-                        <button onClick={() => { setRecipientsType('clients'); setSelectedIds([]); }} className={`px-3 py-1 rounded text-xs ${recipientsType === 'clients' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>Clienti</button>
+                    <div className="flex flex-wrap gap-2 mb-2 items-center">
+                        <button onClick={() => { setRecipientsType('clients'); setSelectedIds([]); setFilterLocation(''); }} className={`px-3 py-1 rounded text-xs ${recipientsType === 'clients' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>Clienti</button>
                         <button onClick={() => { setRecipientsType('suppliers'); setSelectedIds([]); }} className={`px-3 py-1 rounded text-xs ${recipientsType === 'suppliers' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>Fornitori</button>
                         <button onClick={() => { setRecipientsType('custom'); setSelectedIds([]); }} className={`px-3 py-1 rounded text-xs ${recipientsType === 'custom' ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}>Manuale</button>
+                        
+                        {/* LOCATION FILTER (Only for Clients) */}
+                        {recipientsType === 'clients' && (
+                            <select 
+                                value={filterLocation} 
+                                onChange={e => setFilterLocation(e.target.value)} 
+                                className="text-xs bg-white border border-gray-300 rounded px-2 py-1 ml-auto"
+                            >
+                                <option value="">Tutte le sedi</option>
+                                {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                        )}
                     </div>
 
                     {recipientsType === 'custom' ? (
                         <input type="text" value={customRecipient} onChange={e => setCustomRecipient(e.target.value)} className="md-input" placeholder={channel === 'whatsapp' ? "Numero di telefono (es. 3331234567)" : "Email o Telefono..."} />
                     ) : (
                         <div className="border rounded-md h-40 overflow-hidden flex flex-col">
-                            <div className="p-2 border-b bg-gray-50">
+                            <div className="p-2 border-b bg-gray-50 flex gap-2">
                                 <input type="text" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full text-xs p-1 border rounded" placeholder="Cerca..." />
+                                <button 
+                                    onClick={() => setSelectedIds(filteredList.map(i => i.id))}
+                                    className="text-xs font-bold text-indigo-600 whitespace-nowrap hover:bg-indigo-50 px-2 rounded"
+                                >
+                                    Seleziona Tutti
+                                </button>
                             </div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                                {filteredList.length === 0 && <p className="text-xs text-gray-400 italic text-center p-4">Nessun destinatario trovato.</p>}
                                 {filteredList.map(item => (
-                                    <label key={item.id} className="flex items-center gap-2 text-sm">
-                                        <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleId(item.id)} />
+                                    <label key={item.id} className="flex items-center gap-2 text-sm p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleId(item.id)} className="rounded text-indigo-600" />
                                         <span>{recipientsType === 'clients' ? getClientName(item as Client) : (item as Supplier).companyName}</span>
                                     </label>
                                 ))}
@@ -385,6 +473,48 @@ const CommunicationModal: React.FC<{
                     />
                 </div>
 
+                {/* ATTACHMENTS SECTION */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Materiali & Allegati</label>
+                    
+                    {/* List of added attachments */}
+                    {attachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                            {attachments.map((att, idx) => (
+                                <div key={idx} className="flex items-center gap-2 bg-white border px-2 py-1 rounded-md shadow-sm text-xs">
+                                    <span className="truncate max-w-[150px] font-medium" title={att.url}>{att.name}</span>
+                                    <button onClick={() => removeAttachment(idx)} className="text-red-500 hover:text-red-700 font-bold">×</button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        {/* Link Input */}
+                        <div className="flex-1 flex gap-2">
+                            <div className="relative flex-1">
+                                <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><LinkIcon /></div>
+                                <input 
+                                    type="text" 
+                                    value={newLink} 
+                                    onChange={e => setNewLink(e.target.value)} 
+                                    className="w-full pl-8 pr-2 py-1.5 text-xs border rounded bg-white" 
+                                    placeholder="Incolla link esterno..." 
+                                />
+                            </div>
+                            <button onClick={addExternalLink} disabled={!newLink} className="bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-xs font-bold disabled:opacity-50">+</button>
+                        </div>
+
+                        {/* File Upload */}
+                        <label className={`cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded flex items-center gap-2 text-xs font-bold text-gray-600 transition-all ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                            {isUploading ? <Spinner /> : <PaperClipIcon />}
+                            <span>{isUploading ? 'Caricamento...' : 'Carica File'}</span>
+                            <input type="file" onChange={handleFileUpload} className="hidden" />
+                        </label>
+                    </div>
+                    <p className="text-[9px] text-gray-400 mt-2 italic">I file verranno caricati su cloud e inviati come link pubblici nel messaggio.</p>
+                </div>
+
                 {selectedIds.length > 1 && (
                     <p className="text-xs text-orange-500 italic">Attenzione: inviando a più destinatari via Email, si aprirà un'unica finestra. I placeholder verranno sostituiti con i dati del PRIMO destinatario per anteprima. Per invii massivi personalizzati reali, usare WhatsApp (apre tab multipli).</p>
                 )}
@@ -392,7 +522,7 @@ const CommunicationModal: React.FC<{
 
             <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
                 <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
-                <button onClick={handleSend} className="md-btn md-btn-raised md-btn-primary">Invia Messaggio</button>
+                <button onClick={handleSend} disabled={isUploading} className="md-btn md-btn-raised md-btn-primary">Invia Messaggio</button>
             </div>
         </div>
     );
@@ -414,6 +544,7 @@ const CRM: React.FC = () => {
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [enrollments, setEnrollments] = useState<Enrollment[]>([]); // New State
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
 
     // Filters Overview
@@ -458,7 +589,7 @@ const CRM: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollments, transactions, clientsData, suppliersData, logsData, campaignsData, templatesData, companyInfoData] = await Promise.all([
+            const [enrollmentsData, transactions, clientsData, suppliersData, logsData, campaignsData, templatesData, companyInfoData] = await Promise.all([
                 getAllEnrollments(),
                 getTransactions(),
                 getClients(),
@@ -469,6 +600,7 @@ const CRM: React.FC = () => {
                 getCompanyInfo()
             ]);
             
+            setEnrollments(enrollmentsData);
             setClients(clientsData);
             setSuppliers(suppliersData);
             setLogs(logsData);
@@ -481,7 +613,7 @@ const CRM: React.FC = () => {
             const today = new Date();
             
             // 1. Enrollments
-            enrollments.forEach(enr => {
+            enrollmentsData.forEach(enr => {
                 if (enr.status === EnrollmentStatus.Active) {
                     const endDate = new Date(enr.endDate);
                     const diffTime = endDate.getTime() - today.getTime();
@@ -982,6 +1114,7 @@ const CRM: React.FC = () => {
                         onSent={handleCommunicationSent}
                         clients={clients}
                         suppliers={suppliers}
+                        enrollments={enrollments} // Pass enrollments to filter by location
                         initialData={prefilledCommData}
                         initialSelectedIds={initialBulkRecipients}
                         initialRecipientType={initialRecipientType}
