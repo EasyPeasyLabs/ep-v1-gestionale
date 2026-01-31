@@ -144,7 +144,8 @@ export interface ChildRating {
 export interface Child {
     id: string;
     name: string;
-    age: string;
+    age: string; // Snapshot age (at registration)
+    dateOfBirth?: string; // NEW: ISO Date string (YYYY-MM-DD)
     notes: string;
     notesHistory: Note[];
     tags: string[];

@@ -35,7 +35,7 @@ const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: st
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
-// --- Helper Colors ---
+// --- Helper Functions ---
 const getTextColorForBg = (bgColor: string) => {
     if (!bgColor) return '#000';
     const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
@@ -57,6 +57,37 @@ const getParentRating = (rating?: ParentRating) => {
     const { availability, complaints, churnRate, distance } = rating;
     const sum = availability + complaints + churnRate + distance;
     return sum > 0 ? (sum / 4).toFixed(1) : 0;
+};
+
+const calculateAgeString = (dob: string): string => {
+    if (!dob) return '';
+    const birth = new Date(dob);
+    const now = new Date();
+    let years = now.getFullYear() - birth.getFullYear();
+    let months = now.getMonth() - birth.getMonth();
+    
+    // Adjust if birth month hasn't occurred yet in current year
+    if (months < 0 || (months === 0 && now.getDate() < birth.getDate())) {
+        years--;
+        months += 12;
+    }
+    
+    // Adjust month count if birth day hasn't occurred in current month
+    if (now.getDate() < birth.getDate()) {
+        months--;
+        if (months < 0) {
+            months += 12;
+            // Note: years already adjusted above if needed, careful not to double adjust
+            // If we are wrapping around December->January it's handled, but if we have e.g. 
+            // Now: Feb 1, Birth: Jan 31 -> months was 1, becomes 0.
+        }
+    }
+
+    if (years < 0) return '0 mesi'; // Future date protection
+    
+    let result = `${years} anni`;
+    if (months > 0) result += ` + ${months} mesi`;
+    return result;
 };
 
 const RatingRow: React.FC<{ label: string; value: number; onChange: (v: number) => void }> = ({ label, value, onChange }) => (
@@ -114,19 +145,40 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     // Temporary child input for adding
     const [newChildName, setNewChildName] = useState('');
     const [newChildAge, setNewChildAge] = useState('');
+    const [newChildDob, setNewChildDob] = useState('');
 
     const handleAddChild = () => {
-        if (newChildName && newChildAge) {
+        if (newChildName && (newChildAge || newChildDob)) {
+            let finalAge = newChildAge;
+            // Se c'è la data, calcola l'età automaticamente
+            if (newChildDob) {
+                finalAge = calculateAgeString(newChildDob);
+            }
+
             setChildren([...children, { 
                 id: Date.now().toString(), 
                 name: newChildName, 
-                age: newChildAge,
+                age: finalAge,
+                dateOfBirth: newChildDob || undefined,
                 rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 },
                 notes: '',
                 notesHistory: [],
                 tags: []
             }]);
+            
+            // Reset fields
             setNewChildName('');
+            setNewChildAge('');
+            setNewChildDob('');
+        }
+    };
+
+    const handleNewChildDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const dob = e.target.value;
+        setNewChildDob(dob);
+        if (dob) {
+            setNewChildAge(calculateAgeString(dob));
+        } else {
             setNewChildAge('');
         }
     };
@@ -223,25 +275,68 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
                 {activeTab === 'children' && clientType === ClientType.Parent && (
                     <div className="space-y-4">
-                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            <h4 className="text-xs font-bold text-gray-600 uppercase mb-2">Aggiungi Figlio</h4>
-                            <div className="flex gap-2">
-                                <input type="text" placeholder="Nome" value={newChildName} onChange={e => setNewChildName(e.target.value)} className="md-input flex-1 text-sm" />
-                                <input type="text" placeholder="Età" value={newChildAge} onChange={e => setNewChildAge(e.target.value)} className="md-input w-20 text-sm" />
-                                <button type="button" onClick={handleAddChild} className="md-btn md-btn-raised md-btn-green px-3"><PlusIcon/></button>
+                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm">
+                            <h4 className="text-xs font-bold text-indigo-800 uppercase mb-3 flex items-center gap-2">
+                                <PlusIcon /> Aggiungi Figlio
+                            </h4>
+                            <div className="space-y-3">
+                                <input 
+                                    type="text" 
+                                    placeholder="Nome del bambino" 
+                                    value={newChildName} 
+                                    onChange={e => setNewChildName(e.target.value)} 
+                                    className="md-input w-full" 
+                                />
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="md-input-group !mb-0">
+                                        <input 
+                                            type="date" 
+                                            value={newChildDob} 
+                                            onChange={handleNewChildDobChange} 
+                                            className="md-input"
+                                        />
+                                        <label className="md-input-label !top-0">Data di Nascita</label>
+                                    </div>
+                                    <div className="md-input-group !mb-0">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Età manuale" 
+                                            value={newChildAge} 
+                                            onChange={e => { setNewChildAge(e.target.value); setNewChildDob(''); }} // Clear DOB if manual age typed
+                                            className={`md-input ${newChildDob ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
+                                            readOnly={!!newChildDob}
+                                        />
+                                        <label className="md-input-label">Età (es. 5 anni)</label>
+                                    </div>
+                                </div>
+
+                                <button 
+                                    type="button" 
+                                    onClick={handleAddChild} 
+                                    disabled={!newChildName || (!newChildAge && !newChildDob)}
+                                    className="w-full md-btn md-btn-raised md-btn-primary md-btn-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Aggiungi alla Lista
+                                </button>
                             </div>
                         </div>
+
                         <div className="space-y-2">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase px-1">Lista Figli</h4>
                             {children.map((child, idx) => (
-                                <div key={idx} className="flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm">
+                                <div key={idx} className="flex justify-between items-center p-3 bg-white border border-gray-200 rounded-xl shadow-sm">
                                     <div>
                                         <p className="font-bold text-gray-800">{child.name}</p>
-                                        <p className="text-xs text-gray-500">{child.age}</p>
+                                        <div className="flex gap-2 text-[10px] uppercase font-bold text-gray-500 mt-0.5">
+                                            {child.dateOfBirth && <span>NATO: {new Date(child.dateOfBirth).toLocaleDateString()}</span>}
+                                            <span>| ETÀ: {child.age}</span>
+                                        </div>
                                     </div>
-                                    <button type="button" onClick={() => handleRemoveChild(idx)} className="text-red-400 hover:text-red-600"><TrashIcon/></button>
+                                    <button type="button" onClick={() => handleRemoveChild(idx)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"><TrashIcon/></button>
                                 </div>
                             ))}
-                            {children.length === 0 && <p className="text-center text-gray-400 text-sm py-4">Nessun figlio aggiunto.</p>}
+                            {children.length === 0 && <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-xl"><p className="text-gray-400 text-sm italic">Nessun figlio aggiunto.</p></div>}
                         </div>
                     </div>
                 )}
@@ -679,15 +774,22 @@ const Clients: React.FC = () => {
                             <div className="flex flex-wrap gap-2">
                                 {parentClient.children.map(child => {
                                     const cAvg = getChildRating(child);
+                                    const currentAge = child.dateOfBirth ? calculateAgeString(child.dateOfBirth) : '';
                                     return (
-                                        <span key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex items-center shadow-sm">
-                                            {child.name || 'Senza nome'}
+                                        <div key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex flex-col items-start shadow-sm gap-0.5">
+                                            <span className="font-bold">{child.name || 'Senza nome'}</span>
+                                            <div className="flex flex-wrap gap-1 text-[9px] uppercase font-bold text-gray-400">
+                                                {/* Snapshot Age Badge */}
+                                                {child.age && <span className="bg-gray-100 px-1 rounded border border-gray-200">1^: {child.age}</span>}
+                                                {/* Dynamic Age Badge */}
+                                                {currentAge && <span className="bg-green-50 text-green-700 border border-green-100 px-1 rounded">Oggi: {currentAge}</span>}
+                                            </div>
                                             {Number(cAvg) > 0 && (
-                                                <span className="ml-1.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
+                                                <span className="mt-0.5 text-[9px] font-bold text-yellow-600 bg-yellow-50 px-1 rounded border border-yellow-100 flex items-center">
                                                     {cAvg} <StarIcon filled={true} className="w-2 h-2 ml-0.5" />
                                                 </span>
                                             )}
-                                        </span>
+                                        </div>
                                     )
                                 })}
                             </div>

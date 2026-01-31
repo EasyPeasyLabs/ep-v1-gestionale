@@ -1,3 +1,4 @@
+
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient } from '../types';
@@ -48,6 +49,7 @@ const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
                 id: c.id || Date.now().toString() + Math.random(),
                 name: c.name || 'Senza Nome',
                 age: c.age || '',
+                dateOfBirth: c.dateOfBirth || undefined, // Mappatura nuovo campo opzionale
                 notes: c.notes || '',
                 notesHistory: Array.isArray(c.notesHistory) ? c.notesHistory : [],
                 tags: Array.isArray(c.tags) ? c.tags : [],

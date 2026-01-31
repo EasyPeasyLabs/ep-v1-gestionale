@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Notification } from '../types';
 import Spinner from './Spinner';
 import ClockIcon from './icons/ClockIcon';
@@ -24,13 +24,29 @@ const formatDate = (dateString: string) => {
 };
 
 const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notifications, loading, onNotificationClick }) => {
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     
-    const handleDismissAll = () => {
+    const handleDismiss = () => {
         const currentIgnored = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
-        const newIds = notifications.map(n => n.id);
-        localStorage.setItem('ep_ignored_notifications', JSON.stringify([...currentIgnored, ...newIds]));
+        
+        let idsToDismiss: string[] = [];
+        if (selectedIds.length > 0) {
+            idsToDismiss = selectedIds;
+        } else {
+            idsToDismiss = notifications.map(n => n.id);
+        }
+
+        localStorage.setItem('ep_ignored_notifications', JSON.stringify([...currentIgnored, ...idsToDismiss]));
+        
+        setSelectedIds([]);
         // Triggera evento per aggiornare (trucchetto per refreshare Header)
         window.dispatchEvent(new Event('EP_DataUpdated'));
+    };
+
+    const toggleSelection = (id: string) => {
+        setSelectedIds(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
     };
 
     // Sort notifications by date descending (newest first)
@@ -43,8 +59,8 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
             <div className="px-4 py-2 border-b flex justify-between items-center">
                 <h3 className="text-sm font-semibold text-slate-700">Notifiche</h3>
                 {notifications.length > 0 && (
-                    <button onClick={handleDismissAll} className="text-[10px] text-indigo-600 font-bold hover:underline">
-                        Segna tutti letti
+                    <button onClick={handleDismiss} className="text-[10px] text-indigo-600 font-bold hover:underline">
+                        {selectedIds.length > 0 ? `Segna letti (${selectedIds.length})` : 'Segna tutti letti'}
                     </button>
                 )}
             </div>
@@ -58,12 +74,12 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
                 ) : (
                     <ul>
                         {sortedNotifications.map(notification => (
-                            <li key={notification.id}>
-                                <button
-                                    onClick={() => onNotificationClick(notification)}
-                                    className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b last:border-b-0 border-slate-100"
-                                >
-                                    <div className="flex items-start space-x-3">
+                            <li key={notification.id} className="border-b last:border-b-0 border-slate-100 relative hover:bg-slate-50 transition-colors">
+                                <div className="flex items-center w-full">
+                                    <button
+                                        onClick={() => onNotificationClick(notification)}
+                                        className="flex-1 text-left px-4 py-3 flex items-start space-x-3 min-w-0"
+                                    >
                                         <div className="flex-shrink-0 mt-0.5">
                                             {notification.type === 'expiry' || notification.type === 'balance_due' ? 
                                                 <span className="text-amber-500"><ClockIcon /></span> : 
@@ -74,8 +90,17 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
                                             <p className="text-sm text-slate-600 leading-tight break-words font-medium">{notification.message}</p>
                                             <p className="text-[10px] text-slate-400 mt-1">{formatDate(notification.date)}</p>
                                         </div>
+                                    </button>
+                                    
+                                    <div className="pr-4 pl-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                                         <input 
+                                            type="checkbox" 
+                                            checked={selectedIds.includes(notification.id)}
+                                            onChange={() => toggleSelection(notification.id)}
+                                            className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                                         />
                                     </div>
-                                </button>
+                                </div>
                             </li>
                         ))}
                     </ul>

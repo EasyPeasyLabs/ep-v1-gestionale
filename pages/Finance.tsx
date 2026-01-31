@@ -607,7 +607,25 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     {activeTab === 'cfo' && <FinanceCFO stats={stats} simulatorData={simulatorData} reverseEngineering={reverseEngineering} targetMonthlyNet={targetMonthlyNet} setTargetMonthlyNet={setTargetMonthlyNet} />}
                     {activeTab === 'controlling' && <FinanceControlling roiSedi={roiSedi} onSelectLocation={setSelectedLocationROI} year={controllingYear} onYearChange={setControllingYear} />}
                     {activeTab === 'fiscal_closure' && <FiscalYearManager transactions={transactions} invoices={invoices} />}
-                    {['transactions', 'invoices', 'archive', 'quotes'].includes(activeTab) && <FinanceListView activeTab={activeTab as any} transactions={transactions} invoices={invoices} quotes={quotes} suppliers={suppliers} filters={filters} setFilters={setFilters} onEdit={handleEditItem} onDelete={setTransactionToDelete} onPrint={handlePrint} onSeal={inv => updateInvoice(inv.id, {status: DocumentStatus.SealedSDI})} onWhatsApp={handleWhatsApp} onConvert={setQuoteToConvert} onActivate={setQuoteToActivate} />}
+                    {['transactions', 'invoices', 'archive', 'quotes'].includes(activeTab) && 
+                        <FinanceListView 
+                            activeTab={activeTab as any} 
+                            transactions={transactions} 
+                            invoices={invoices} 
+                            quotes={quotes} 
+                            suppliers={suppliers} 
+                            enrollments={enrollments} // Pass enrollments prop
+                            filters={filters} 
+                            setFilters={setFilters} 
+                            onEdit={handleEditItem} 
+                            onDelete={setTransactionToDelete} 
+                            onPrint={handlePrint} 
+                            onSeal={inv => updateInvoice(inv.id, {status: DocumentStatus.SealedSDI})} 
+                            onWhatsApp={handleWhatsApp} 
+                            onConvert={setQuoteToConvert} 
+                            onActivate={setQuoteToActivate} 
+                        />
+                    }
                 </div>
             )}
             {/* ... Modals (unchanged) ... */}

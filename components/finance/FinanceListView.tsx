@@ -6,7 +6,7 @@ import TrashIcon from '../icons/TrashIcon';
 import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
-import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType } from '../../types';
+import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType, Enrollment, TransactionCategory } from '../../types';
 import { updateInvoice, markInvoicesAsPaid } from '../../services/financeService';
 import Spinner from '../Spinner';
 
@@ -64,6 +64,7 @@ interface FinanceListViewProps {
     invoices: Invoice[];
     quotes: Quote[];
     suppliers?: Supplier[]; 
+    enrollments?: Enrollment[]; // Added for resolving child name
     filters: { search: string };
     setFilters: React.Dispatch<React.SetStateAction<{ search: string }>>;
     onExportTransactions?: () => void;
@@ -78,7 +79,7 @@ interface FinanceListViewProps {
 }
 
 const FinanceListView: React.FC<FinanceListViewProps> = ({ 
-    activeTab, transactions, invoices, quotes, suppliers, filters, setFilters, 
+    activeTab, transactions, invoices, quotes, suppliers, enrollments, filters, setFilters, 
     onExportTransactions, onExportInvoices, onEdit, onDelete, onPrint, onSeal, onWhatsApp, onConvert, onActivate
 }) => {
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -143,14 +144,30 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         
         // SAFE SEARCH: Handle missing clientName for suppliers/rents
         let result = list.filter(item => {
-            const searchableText = [
+            const searchFields = [
                 item.clientName,
                 item.description,
                 item.invoiceNumber,
                 item.quoteNumber,
-                // Fallback for Rent Transactions which have allocationName instead of clientName
                 item.allocationName
-            ].filter(Boolean).join(' ').toLowerCase();
+            ];
+
+            // 1. Resolve Child Badge for Search
+            if (activeTab === 'transactions' && enrollments && (item as Transaction).relatedEnrollmentId) {
+                const enr = enrollments.find(e => e.id === (item as Transaction).relatedEnrollmentId);
+                if (enr && enr.childName) {
+                    searchFields.push(enr.childName);
+                }
+            }
+
+            // 2. Resolve NOLO Badge for Search
+            if (activeTab === 'transactions' && 
+                (item as Transaction).type === TransactionType.Expense && 
+                (item as Transaction).category === TransactionCategory.Nolo) {
+                searchFields.push("NOLO");
+            }
+
+            const searchableText = searchFields.filter(Boolean).join(' ').toLowerCase();
             
             return searchableText.includes(filters.search.toLowerCase());
         });
@@ -170,7 +187,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
             return 0;
         });
         return result;
-    }, [activeTab, transactions, invoices, quotes, filters, statusFilter, sortConfig, filterYear, filterMonth]);
+    }, [activeTab, transactions, invoices, quotes, filters, statusFilter, sortConfig, filterYear, filterMonth, enrollments]);
 
     // --- CALCOLO TOTALI DINAMICI (Cassa vs Fatturazione) ---
     const totals = useMemo(() => {
@@ -425,7 +442,33 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                 <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
                                 <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">{getDocumentNumber(item)}</td>
                                 {/* SAFE RENDER: Fallback to description or allocationName if clientName is missing (e.g. Rent transactions) */}
-                                <td className="px-6 py-4 font-bold text-slate-900 truncate max-w-[250px]">{item.clientName || item.allocationName || item.description}</td>
+                                <td className="px-6 py-4">
+                                    <div className="font-bold text-slate-900 truncate max-w-[250px]">
+                                        {item.clientName || item.allocationName || item.description}
+                                    </div>
+                                    {activeTab === 'transactions' && enrollments && (item as Transaction).relatedEnrollmentId && (
+                                        (() => {
+                                            const enr = enrollments.find(e => e.id === (item as Transaction).relatedEnrollmentId);
+                                            if (enr) {
+                                                return (
+                                                    <div className="mt-1">
+                                                        <span className="inline-flex items-center gap-1 bg-gray-100 text-black text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-gray-200 tracking-tight">
+                                                            👤 {enr.childName}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()
+                                    )}
+                                    {activeTab === 'transactions' && (item as Transaction).type === TransactionType.Expense && (item as Transaction).category === TransactionCategory.Nolo && (
+                                        <div className="mt-1">
+                                            <span className="inline-flex items-center gap-1 bg-gray-100 text-black text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-gray-200 tracking-tight">
+                                                NOLO
+                                            </span>
+                                        </div>
+                                    )}
+                                </td>
                                 <td className={`px-6 py-4 text-right font-black ${amountColor}`}>
                                     {amountPrefix}{safeAmount.toFixed(2)}€
                                 </td>
