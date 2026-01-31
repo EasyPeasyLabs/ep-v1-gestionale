@@ -11,6 +11,18 @@ interface NotificationsDropdownProps {
     onNotificationClick: (notification: Notification) => void;
 }
 
+const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleString('it-IT', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+};
+
 const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notifications, loading, onNotificationClick }) => {
     
     const handleDismissAll = () => {
@@ -20,6 +32,9 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
         // Triggera evento per aggiornare (trucchetto per refreshare Header)
         window.dispatchEvent(new Event('EP_DataUpdated'));
     };
+
+    // Sort notifications by date descending (newest first)
+    const sortedNotifications = [...notifications].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
         // FIX MOBILE: Use fixed positioning on mobile to break out of relative parent constraints and ensure visibility.
@@ -38,11 +53,11 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
                     <div className="flex justify-center items-center py-4">
                         <Spinner />
                     </div>
-                ) : notifications.length === 0 ? (
+                ) : sortedNotifications.length === 0 ? (
                     <p className="text-sm text-slate-500 text-center py-4">Nessuna nuova notifica.</p>
                 ) : (
                     <ul>
-                        {notifications.map(notification => (
+                        {sortedNotifications.map(notification => (
                             <li key={notification.id}>
                                 <button
                                     onClick={() => onNotificationClick(notification)}
@@ -56,7 +71,8 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
                                             }
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className="text-sm text-slate-600 leading-tight break-words">{notification.message}</p>
+                                            <p className="text-sm text-slate-600 leading-tight break-words font-medium">{notification.message}</p>
+                                            <p className="text-[10px] text-slate-400 mt-1">{formatDate(notification.date)}</p>
                                         </div>
                                     </div>
                                 </button>

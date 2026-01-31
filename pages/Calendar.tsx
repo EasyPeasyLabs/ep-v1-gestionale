@@ -301,6 +301,7 @@ const Calendar: React.FC = () => {
                         const dateStr = day ? day.toISOString().split('T')[0] : '';
                         const dayClosure = closures.find(c => c.date === dateStr);
                         const isGlobalClosed = !!dayClosure;
+                        const isToday = day && new Date().toDateString() === day.toDateString();
                         
                         const dayEvents = day ? clusters.filter(c => new Date(c.date).toDateString() === day.toDateString()).sort((a,b) => a.startTime.localeCompare(b.startTime)) : [];
                         
@@ -309,12 +310,14 @@ const Calendar: React.FC = () => {
                                 key={index} 
                                 onClick={() => day && handleDayClick(day)} // Trigger Closure/Wizard
                                 className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors 
-                                    ${!day ? 'bg-gray-50' : isGlobalClosed ? 'bg-stripes-gray cursor-pointer hover:opacity-90' : 'bg-white cursor-pointer hover:bg-slate-50'}`} 
+                                    ${!day ? 'bg-gray-50' : isGlobalClosed ? 'bg-stripes-gray cursor-pointer hover:opacity-90' : 'bg-white cursor-pointer hover:bg-slate-50'}
+                                    ${isToday ? 'ring-4 ring-inset ring-yellow-400' : ''}
+                                `} 
                                 style={{borderColor: 'var(--md-divider)'}}
                             >
                                  {day && (
                                     <div className="flex justify-between items-start">
-                                        <span className={`font-semibold text-xs mb-1 ${new Date().toDateString() === day.toDateString() ? 'bg-indigo-600 text-white rounded-full h-5 w-5 flex items-center justify-center' : ''}`}>{day.getDate()}</span>
+                                        <span className="font-semibold text-xs mb-1">{day.getDate()}</span>
                                         {isGlobalClosed && (
                                             <span className="text-[9px] bg-red-100 text-red-700 px-1 rounded font-black uppercase tracking-tighter shadow-sm border border-red-200">
                                                 CHIUSO: {dayClosure.reason}

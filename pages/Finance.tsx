@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, syncRentExpenses, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, InvoiceGap } from '../services/financeService';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, InvoiceGap, RentAnalysisResult } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -40,31 +40,126 @@ interface FinanceProps {
 
 const RentSyncModal: React.FC<{
     onClose: () => void;
-    onSync: (month: number, year: number) => Promise<void>;
-}> = ({ onClose, onSync }) => {
+    onComplete: () => void;
+}> = ({ onClose, onComplete }) => {
     const now = new Date();
+    const [step, setStep] = useState<'select' | 'preview'>('select');
     const [month, setMonth] = useState(now.getMonth());
     const [year, setYear] = useState(now.getFullYear());
     const [loading, setLoading] = useState(false);
+    const [analysisResults, setAnalysisResults] = useState<RentAnalysisResult[]>([]);
+    
     const months = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
     const years = useMemo(() => {
         const list = [];
         for (let y = now.getFullYear(); y >= 2025; y--) list.push(y);
         return list;
     }, [now]);
-    const handleSync = async () => {
+
+    const handleAnalyze = async () => {
         setLoading(true);
-        try { await onSync(month, year); onClose(); } finally { setLoading(false); }
+        try {
+            const results = await analyzeRentExpenses(month, year);
+            setAnalysisResults(results);
+            setStep('preview');
+        } catch (e) {
+            alert("Errore analisi: " + e);
+        } finally {
+            setLoading(false);
+        }
     };
+
+    const handleConfirmPayment = async () => {
+        const toPay = analysisResults.filter(r => !r.isPaid);
+        if (toPay.length === 0) return onClose();
+        
+        setLoading(true);
+        try {
+            const endOfMonth = new Date(year, month + 1, 0).toISOString();
+            const monthLabel = `${months[month]} ${year}`;
+            await createRentTransactionsBatch(toPay, endOfMonth, monthLabel);
+            alert(`Registrati ${toPay.length} pagamenti con successo.`);
+            onComplete();
+            onClose();
+        } catch (e) {
+            alert("Errore salvataggio: " + e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
-        <div className="p-6">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Sincronizzazione Noli Sede</h3>
-            <p className="text-sm text-slate-500 mb-6">Seleziona il periodo di competenza da sanare. Il sistema genererà transazioni di uscita solo se rileva presenze reali ('Present') o lezioni manuali nel mese scelto.</p>
-            <div className="grid grid-cols-2 gap-4 mb-6">
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Mese</label><select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="w-full md-input bg-slate-50">{months.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Anno</label><select value={year} onChange={e => setYear(parseInt(e.target.value))} className="w-full md-input bg-slate-50">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+        <div className="flex flex-col h-[80vh]">
+            <div className="p-6 border-b bg-indigo-50 flex-shrink-0">
+                <h3 className="text-xl font-bold text-indigo-900">Sincronizzazione Noli (Pay-per-Use)</h3>
+                <p className="text-sm text-indigo-700">Calcola i costi di affitto basati sull'utilizzo reale degli spazi.</p>
             </div>
-            <div className="flex justify-end gap-3"><button onClick={onClose} className="md-btn md-btn-flat">Annulla</button><button onClick={handleSync} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">{loading ? <Spinner /> : 'Avvia Sincronizzazione'}</button></div>
+            
+            <div className="flex-1 overflow-y-auto p-6 min-h-0">
+                {step === 'select' ? (
+                    <div className="space-y-6">
+                        <p className="text-sm text-gray-600">Seleziona il periodo di competenza. Il sistema analizzerà le presenze e le lezioni manuali per calcolare il dovuto.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Mese</label><select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="w-full md-input bg-gray-50">{months.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+                            <div><label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Anno</label><select value={year} onChange={e => setYear(parseInt(e.target.value))} className="w-full md-input bg-gray-50">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {analysisResults.length === 0 ? (
+                            <div className="text-center py-10 text-gray-500 italic">Nessun utilizzo rilevato in questo periodo.</div>
+                        ) : (
+                            <div className="border rounded-lg overflow-x-auto">
+                                <table className="w-full text-sm text-left whitespace-nowrap">
+                                    <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-bold">
+                                        <tr>
+                                            <th className="p-3">Sede</th>
+                                            <th className="p-3 text-center">Eventi</th>
+                                            <th className="p-3 text-right">Costo Unit.</th>
+                                            <th className="p-3 text-right">Totale</th>
+                                            <th className="p-3 text-center">Stato</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {analysisResults.map((res, i) => (
+                                            <tr key={i} className={res.isPaid ? "bg-green-50 opacity-60" : "bg-white"}>
+                                                <td className="p-3 font-medium text-gray-800">
+                                                    {res.locationName} <span className="text-xs text-gray-400 block">{res.supplierName}</span>
+                                                </td>
+                                                <td className="p-3 text-center font-bold">{res.usageCount}</td>
+                                                <td className="p-3 text-right text-gray-500">{res.unitCost.toFixed(2)}€</td>
+                                                <td className="p-3 text-right font-black text-indigo-700">{res.totalCost.toFixed(2)}€</td>
+                                                <td className="p-3 text-center">
+                                                    {res.isPaid ? (
+                                                        <span className="text-[10px] bg-green-200 text-green-800 px-2 py-1 rounded font-bold uppercase">Pagato</span>
+                                                    ) : (
+                                                        <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-1 rounded font-bold uppercase">Da Pagare</span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                        <div className="text-right text-xs text-gray-500 mt-2">
+                            Totale da versare: <strong>{analysisResults.filter(r => !r.isPaid).reduce((sum, r) => sum + r.totalCost, 0).toFixed(2)}€</strong>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-end gap-3 flex-shrink-0">
+                {step === 'preview' && <button onClick={() => setStep('select')} className="md-btn md-btn-flat">Indietro</button>}
+                <button onClick={onClose} className="md-btn md-btn-flat">Annulla</button>
+                {step === 'select' ? (
+                    <button onClick={handleAnalyze} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">{loading ? <Spinner /> : 'Analizza Utilizzi'}</button>
+                ) : (
+                    <button onClick={handleConfirmPayment} disabled={loading || analysisResults.filter(r => !r.isPaid).length === 0} className="md-btn md-btn-raised md-btn-green px-8">
+                        {loading ? <Spinner /> : `Registra (${analysisResults.filter(r => !r.isPaid).length}) Pagamenti`}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };
@@ -232,6 +327,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
     const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null);
     const [quoteToActivate, setQuoteToActivate] = useState<Quote | null>(null);
+
+    // End of Month Check for Alert
+    const isLateMonth = new Date().getDate() > 27;
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -424,7 +522,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const handleSaveInvoice = async (data: any) => { setLoading(true); try { if (editingInvoice?.id) await updateInvoice(editingInvoice.id, data); else await addInvoice(data); setIsInvoiceModalOpen(false); await fetchData(); } finally { setLoading(false); } };
     const handleSaveQuote = async (data: any) => { setLoading(true); try { if ('id' in data) await updateQuote(data.id, data); else await addQuote(data); setIsQuoteModalOpen(false); await fetchData(); } finally { setLoading(false); } };
     const handleWizardFix = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' = 'invoice', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string) => { await fixIntegrityIssue(issue, strategy, manualNum, targetInvoiceIds, adjustment, targetTransactionId); await fetchData(); };
-    const handleExecuteSync = async (month: number, year: number) => { setLoading(true); const result = await syncRentExpenses(month, year); alert(result); await fetchData(); setLoading(false); };
+    
     const confirmDelete = async () => { if (transactionToDelete) { setLoading(true); try { if (activeTab === 'transactions') await deleteTransaction(transactionToDelete); else if (activeTab === 'invoices' || activeTab === 'archive') await deleteInvoice(transactionToDelete); else if (activeTab === 'quotes') await deleteQuote(transactionToDelete); await fetchData(); } finally { setLoading(false) ; setTransactionToDelete(null); } } };
     const processConversion = async () => { if (quoteToConvert) { setLoading(true); try { await convertQuoteToInvoice(quoteToConvert.id); await fetchData(); } finally { setLoading(false); setQuoteToConvert(null); } } };
 
@@ -439,7 +537,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
                 <div><h1 className="text-3xl font-black text-slate-900">Finanza Enterprise</h1></div>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsSyncModalOpen(true)} className="md-btn md-btn-flat bg-white border border-indigo-200">Sync Noli</button>
+                    <button onClick={() => setIsSyncModalOpen(true)} className={`md-btn md-btn-flat border ${isLateMonth ? 'border-red-500 text-red-600 bg-red-50 animate-pulse' : 'border-indigo-200 bg-white'}`}>Sync Noli {isLateMonth && '⚠️'}</button>
                     <button onClick={() => { if (activeTab === 'quotes') setIsQuoteModalOpen(true); else if (activeTab === 'invoices') setIsInvoiceModalOpen(true); else setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> {activeTab === 'quotes' ? 'Preventivo' : (activeTab === 'invoices' ? 'Fattura' : 'Voce')}</button>
                 </div>
             </div>
@@ -454,7 +552,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 </div>
             )}
             {/* ... Modals (unchanged) ... */}
-            {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="lg"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onSync={handleExecuteSync} /></Modal>}
+            {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="lg"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onComplete={() => { fetchData(); }} /></Modal>}
             {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="2xl"><FixWizard issues={integrityIssues} onFix={handleWizardFix} onClose={() => setIsFixWizardOpen(false)} /></Modal>}
             {isTransactionModalOpen && <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg"><TransactionForm transaction={editingTransaction} suppliers={suppliers} onSave={handleSaveTransaction} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
             {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {} as Invoice} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
