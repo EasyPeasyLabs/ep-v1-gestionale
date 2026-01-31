@@ -37,7 +37,6 @@ const SortIcon: React.FC<{ active: boolean; direction: 'asc' | 'desc' }> = ({ ac
     </span>
 );
 
-// Added missing helper to get status color classes
 const getStatusColor = (status: string) => {
     switch (status) {
         case 'Paid':
@@ -142,7 +141,19 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         }
         else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
         
-        let result = list.filter(item => (item.clientName || item.description || item.invoiceNumber || '').toLowerCase().includes(filters.search.toLowerCase()));
+        // SAFE SEARCH: Handle missing clientName for suppliers/rents
+        let result = list.filter(item => {
+            const searchableText = [
+                item.clientName,
+                item.description,
+                item.invoiceNumber,
+                item.quoteNumber,
+                // Fallback for Rent Transactions which have allocationName instead of clientName
+                item.allocationName
+            ].filter(Boolean).join(' ').toLowerCase();
+            
+            return searchableText.includes(filters.search.toLowerCase());
+        });
 
         result.sort((a, b) => {
             let valA: any = '';
@@ -387,15 +398,37 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {filteredList.map(item => (
+                        {filteredList.map(item => {
+                            // CRITICAL FIX: Handle potential null/undefined amount correctly to prevent crash
+                            // For transactions: use item.amount. For invoices: use item.totalAmount.
+                            // If undefined, fallback to 0.
+                            const displayAmount = 'amount' in item ? item.amount : ('totalAmount' in item ? item.totalAmount : 0);
+                            const safeAmount = Number(displayAmount) || 0;
+
+                            const isTransaction = activeTab === 'transactions';
+                            const isIncome = isTransaction && item.type === TransactionType.Income;
+                            const isExpense = isTransaction && item.type === TransactionType.Expense;
+
+                            const amountColor = isTransaction 
+                                ? (isIncome ? 'text-emerald-700' : 'text-red-700') 
+                                : 'text-slate-900';
+
+                            const amountPrefix = isTransaction
+                                ? (isIncome ? '+' : '-')
+                                : '';
+
+                            return (
                             <tr key={item.id} className={`hover:bg-indigo-50/30 transition-colors group ${selectedItems.includes(item.id) ? 'bg-indigo-50' : ''}`}>
                                 <td className="px-6 py-4">
                                     <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id])} />
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
                                 <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">{getDocumentNumber(item)}</td>
-                                <td className="px-6 py-4 font-bold text-slate-900 truncate max-w-[250px]">{item.clientName || item.description}</td>
-                                <td className="px-6 py-4 text-right font-black text-slate-900">{(item.amount || item.totalAmount).toFixed(2)}€</td>
+                                {/* SAFE RENDER: Fallback to description or allocationName if clientName is missing (e.g. Rent transactions) */}
+                                <td className="px-6 py-4 font-bold text-slate-900 truncate max-w-[250px]">{item.clientName || item.allocationName || item.description}</td>
+                                <td className={`px-6 py-4 text-right font-black ${amountColor}`}>
+                                    {amountPrefix}{safeAmount.toFixed(2)}€
+                                </td>
                                 <td className="px-6 py-4">
                                     <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>{item.status}</span>
                                 </td>
@@ -423,7 +456,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                     </div>
                                 </td>
                             </tr>
-                        ))}
+                        )})}
                     </tbody>
                 </table>
                 {filteredList.length === 0 && <div className="py-20 text-center text-slate-400 italic">Nessun record trovato.</div>}

@@ -375,6 +375,20 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     // End of Month Check for Alert
     const isLateMonth = new Date().getDate() > 27;
+    
+    // NEW: Smart check if rent is already paid for current month
+    const isRentPaidForThisMonth = useMemo(() => {
+        const now = new Date();
+        return transactions.some(t => 
+            !t.isDeleted &&
+            t.category === TransactionCategory.Nolo &&
+            t.relatedDocumentId?.startsWith('AUTO-RENT') && // Match AUTO-RENT tag
+            new Date(t.date).getMonth() === now.getMonth() &&
+            new Date(t.date).getFullYear() === now.getFullYear()
+        );
+    }, [transactions]);
+
+    const showRentAlert = isLateMonth && !isRentPaidForThisMonth;
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -582,7 +596,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
                 <div><h1 className="text-3xl font-black text-slate-900">Finanza Enterprise</h1></div>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsSyncModalOpen(true)} className={`md-btn md-btn-flat border ${isLateMonth ? 'border-red-500 text-red-600 bg-red-50 animate-pulse' : 'border-indigo-200 bg-white'}`}>Sync Noli {isLateMonth && '⚠️'}</button>
+                    <button onClick={() => setIsSyncModalOpen(true)} className={`md-btn md-btn-flat border ${showRentAlert ? 'border-red-500 text-red-600 bg-red-50 animate-pulse' : 'border-indigo-200 bg-white'}`}>Sync Noli {showRentAlert && '⚠️'}</button>
                     <button onClick={() => { if (activeTab === 'quotes') setIsQuoteModalOpen(true); else if (activeTab === 'invoices') setIsInvoiceModalOpen(true); else setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> {activeTab === 'quotes' ? 'Preventivo' : (activeTab === 'invoices' ? 'Fattura' : 'Voce')}</button>
                 </div>
             </div>

@@ -925,7 +925,7 @@ export const createRentTransactionsBatch = async (items: RentAnalysisResult[], d
         const newRef = doc(transactionCollectionRef);
         const t: TransactionInput = {
             date: date, // End of Month
-            description: `Affitto Sede: ${item.supplierName} (${item.locationName}) - ${monthLabel} (${item.usageCount} utilizzi x ${item.unitCost}€)`,
+            description: `Nolo ${item.locationName} - ${monthLabel} (${item.usageCount} utilizzi x ${item.unitCost}€)`,
             amount: item.totalCost,
             type: TransactionType.Expense,
             category: TransactionCategory.Nolo,
