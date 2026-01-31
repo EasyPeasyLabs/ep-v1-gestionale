@@ -48,6 +48,7 @@ const RentSyncModal: React.FC<{
     const [year, setYear] = useState(now.getFullYear());
     const [loading, setLoading] = useState(false);
     const [analysisResults, setAnalysisResults] = useState<RentAnalysisResult[]>([]);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
     
     const months = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
     const years = useMemo(() => {
@@ -61,6 +62,8 @@ const RentSyncModal: React.FC<{
         try {
             const results = await analyzeRentExpenses(month, year);
             setAnalysisResults(results);
+            // Pre-seleziona solo quelli non pagati
+            setSelectedIds(results.filter(r => !r.isPaid).map(r => r.locationId));
             setStep('preview');
         } catch (e) {
             alert("Errore analisi: " + e);
@@ -69,8 +72,23 @@ const RentSyncModal: React.FC<{
         }
     };
 
+    const toggleSelect = (id: string) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    };
+
+    const toggleSelectAll = () => {
+        const unpaidIds = analysisResults.filter(r => !r.isPaid).map(r => r.locationId);
+        const allSelected = unpaidIds.every(id => selectedIds.includes(id));
+        if (allSelected) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(unpaidIds);
+        }
+    };
+
     const handleConfirmPayment = async () => {
-        const toPay = analysisResults.filter(r => !r.isPaid);
+        // Filtra solo quelli non pagati E selezionati
+        const toPay = analysisResults.filter(r => !r.isPaid && selectedIds.includes(r.locationId));
         if (toPay.length === 0) return onClose();
         
         setLoading(true);
@@ -87,6 +105,13 @@ const RentSyncModal: React.FC<{
             setLoading(false);
         }
     };
+
+    const totalSelectedCost = analysisResults
+        .filter(r => selectedIds.includes(r.locationId))
+        .reduce((sum, r) => sum + r.totalCost, 0);
+
+    const unpaidCount = analysisResults.filter(r => !r.isPaid).length;
+    const allUnpaidSelected = unpaidCount > 0 && selectedIds.length === unpaidCount;
 
     return (
         <div className="flex flex-col h-[80vh]">
@@ -113,6 +138,16 @@ const RentSyncModal: React.FC<{
                                 <table className="w-full text-sm text-left whitespace-nowrap">
                                     <thead className="bg-gray-50 text-xs text-gray-500 uppercase font-bold">
                                         <tr>
+                                            <th className="p-3 w-10 text-center">
+                                                {unpaidCount > 0 && (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={allUnpaidSelected} 
+                                                        onChange={toggleSelectAll}
+                                                        className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                )}
+                                            </th>
                                             <th className="p-3">Sede</th>
                                             <th className="p-3 text-center">Eventi</th>
                                             <th className="p-3 text-right">Costo Unit.</th>
@@ -122,7 +157,17 @@ const RentSyncModal: React.FC<{
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {analysisResults.map((res, i) => (
-                                            <tr key={i} className={res.isPaid ? "bg-green-50 opacity-60" : "bg-white"}>
+                                            <tr key={i} className={res.isPaid ? "bg-green-50 opacity-60" : "bg-white hover:bg-gray-50"}>
+                                                <td className="p-3 text-center">
+                                                    {!res.isPaid && (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedIds.includes(res.locationId)} 
+                                                            onChange={() => toggleSelect(res.locationId)}
+                                                            className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                        />
+                                                    )}
+                                                </td>
                                                 <td className="p-3 font-medium text-gray-800">
                                                     {res.locationName} <span className="text-xs text-gray-400 block">{res.supplierName}</span>
                                                 </td>
@@ -143,7 +188,7 @@ const RentSyncModal: React.FC<{
                             </div>
                         )}
                         <div className="text-right text-xs text-gray-500 mt-2">
-                            Totale da versare: <strong>{analysisResults.filter(r => !r.isPaid).reduce((sum, r) => sum + r.totalCost, 0).toFixed(2)}€</strong>
+                            Totale selezionato: <strong className="text-indigo-700 text-base">{totalSelectedCost.toFixed(2)}€</strong>
                         </div>
                     </div>
                 )}
@@ -155,8 +200,8 @@ const RentSyncModal: React.FC<{
                 {step === 'select' ? (
                     <button onClick={handleAnalyze} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">{loading ? <Spinner /> : 'Analizza Utilizzi'}</button>
                 ) : (
-                    <button onClick={handleConfirmPayment} disabled={loading || analysisResults.filter(r => !r.isPaid).length === 0} className="md-btn md-btn-raised md-btn-green px-8">
-                        {loading ? <Spinner /> : `Registra (${analysisResults.filter(r => !r.isPaid).length}) Pagamenti`}
+                    <button onClick={handleConfirmPayment} disabled={loading || selectedIds.length === 0} className="md-btn md-btn-raised md-btn-green px-8">
+                        {loading ? <Spinner /> : `Registra (${selectedIds.length}) Pagamenti`}
                     </button>
                 )}
             </div>
