@@ -375,34 +375,37 @@ const Attendance: React.FC = () => {
                 </div>
             </div>
 
-            {/* Navigazione Calendario + Filtro Sede */}
-            <div className="md-card p-4 mb-6 flex items-center justify-between bg-white border-l-4 border-indigo-500 shadow-sm">
-                <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&lt;</button>
+            {/* Navigazione Calendario + Filtro Sede - RESPONSIVE REFACTOR */}
+            <div className="md-card p-4 mb-6 bg-white border-l-4 border-indigo-500 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 
-                <div className="flex flex-col items-center gap-2">
-                    <div className="flex items-center gap-3">
-                        <CalendarIcon />
-                        <div className="text-center">
-                            <span className="block text-lg font-bold text-gray-800 capitalize">{getRangeLabel()}</span>
-                            {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
+                {/* 1. Navigation Group: Date & Buttons (Full width on mobile, auto on desktop) */}
+                <div className="w-full md:w-auto md:flex-1 flex items-center justify-between md:justify-center gap-4 order-1">
+                    <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors flex-shrink-0">&lt;</button>
+                    
+                    <div className="flex flex-col items-center justify-center">
+                        <div className="flex items-center gap-2">
+                            <CalendarIcon />
+                            <span className="block text-lg font-bold text-gray-800 capitalize text-center leading-tight">{getRangeLabel()}</span>
                         </div>
+                        {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium mt-1">Oggi</span>}
                     </div>
-                    {/* Location Filter */}
-                    <div className="mt-1">
-                        <select 
-                            value={filterLocation} 
-                            onChange={(e) => setFilterLocation(e.target.value)} 
-                            className="bg-indigo-50 text-indigo-700 font-bold text-xs rounded-full px-3 py-1 border border-indigo-200 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer"
-                        >
-                            <option value="">Tutte le Sedi</option>
-                            {availableLocations.map(loc => (
-                                <option key={loc} value={loc}>{loc}</option>
-                            ))}
-                        </select>
-                    </div>
+
+                    <button onClick={() => handleNavigate(1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors flex-shrink-0">&gt;</button>
                 </div>
 
-                <button onClick={() => handleNavigate(1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors">&gt;</button>
+                {/* 2. Filter Group: Location Selector (Full width on mobile, auto on desktop) */}
+                <div className="w-full md:w-auto order-2">
+                    <select 
+                        value={filterLocation} 
+                        onChange={(e) => setFilterLocation(e.target.value)} 
+                        className="w-full md:w-64 bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl px-4 py-2 border border-indigo-200 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer"
+                    >
+                        <option value="">Tutte le Sedi</option>
+                        {availableLocations.map(loc => (
+                            <option key={loc} value={loc}>{loc}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
