@@ -20,6 +20,7 @@ import RefreshIcon from '../components/icons/RestoreIcon';
 import UserPlusIcon from '../components/icons/UserPlusIcon';
 import UploadIcon from '../components/icons/UploadIcon';
 import ImportModal from '../components/ImportModal';
+import ClockIcon from '../components/icons/ClockIcon';
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
 
@@ -265,30 +266,79 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                     </div>
                                 )}
 
-                                {Object.values(loc.days).map((day: any, j) => (
-                                    <div key={j} className="pl-4 border-l-2 border-dashed border-slate-200">
-                                        <h3 className="text-xs font-bold text-indigo-600 uppercase mb-4">{day.dayName}</h3>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                            {day.items.map((enr: Enrollment) => {
-                                                const isInst = enr.clientType === ClientType.Institutional || enr.isQuoteBased;
-                                                const progress = enr.lessonsTotal > 0 ? ((enr.lessonsTotal - enr.lessonsRemaining) / enr.lessonsTotal) * 100 : 0;
-                                                return (
-                                                    <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-4 transition-all hover:shadow-md cursor-grab ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
-                                                        <div className="flex justify-between items-start mb-2">
-                                                            <div>
-                                                                <h4 className="font-bold text-slate-800 text-sm">{enr.childName}</h4>
-                                                                {isInst && <span className="text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
+                                {Object.values(loc.days).map((day: any, j) => {
+                                    // GROUP BY TIME SLOTS LOGIC
+                                    const timeGroups: Record<string, Enrollment[]> = {};
+                                    day.items.forEach((enr: Enrollment) => {
+                                        const start = enr.appointments?.[0]?.startTime || 'N/D';
+                                        const end = enr.appointments?.[0]?.endTime || 'N/D';
+                                        const key = `${start}-${end}`;
+                                        if(!timeGroups[key]) timeGroups[key] = [];
+                                        timeGroups[key].push(enr);
+                                    });
+                                    const sortedTimes = Object.keys(timeGroups).sort();
+
+                                    return (
+                                        <div key={j} className="pl-4 border-l-2 border-dashed border-slate-200">
+                                            <div className="space-y-6">
+                                                {sortedTimes.map((timeKey) => {
+                                                    const [start, end] = timeKey.split('-');
+                                                    const items = timeGroups[timeKey];
+                                                    
+                                                    return (
+                                                        <div key={timeKey}>
+                                                            {/* TIME BOX HEADER */}
+                                                            <div className="flex items-center gap-3 bg-slate-100 border border-slate-200 p-2 rounded-lg mb-3">
+                                                                <span className="text-xs font-black text-slate-600 uppercase tracking-wider ml-1">{day.dayName}</span>
+                                                                <div className="h-4 w-px bg-slate-300"></div>
+                                                                <div className="flex items-center gap-1 text-xs font-bold text-slate-700 bg-white px-2 py-0.5 rounded shadow-sm">
+                                                                    <ClockIcon /> <span className="font-mono">{start} - {end}</span>
+                                                                </div>
+                                                                <span className="ml-auto text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-full border border-slate-200">
+                                                                    {items.length}
+                                                                </span>
                                                             </div>
-                                                            <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600"><PencilIcon/></button>
+
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                                                {items.map((enr: Enrollment) => {
+                                                                    const isInst = enr.clientType === ClientType.Institutional || enr.isQuoteBased;
+                                                                    const progress = enr.lessonsTotal > 0 ? ((enr.lessonsTotal - enr.lessonsRemaining) / enr.lessonsTotal) * 100 : 0;
+                                                                    
+                                                                    // Resolve Age
+                                                                    let childAge = '';
+                                                                    if (!isInst) {
+                                                                        const client = allClients.find(c => c.id === enr.clientId);
+                                                                        if (client && client.clientType === ClientType.Parent) {
+                                                                            const child = (client as ParentClient).children.find(c => c.id === enr.childId);
+                                                                            if (child && child.age) childAge = child.age;
+                                                                        }
+                                                                    }
+
+                                                                    return (
+                                                                        <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-4 transition-all hover:shadow-md cursor-grab ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
+                                                                            <div className="flex justify-between items-start mb-2">
+                                                                                <div>
+                                                                                    <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                                                                                        <span className="truncate">{enr.childName}</span>
+                                                                                        {childAge && <span className="bg-gray-100 text-black text-[10px] font-bold px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap">{childAge}</span>}
+                                                                                    </h4>
+                                                                                    {isInst && <span className="text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
+                                                                                </div>
+                                                                                <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 flex-shrink-0 ml-1"><PencilIcon/></button>
+                                                                            </div>
+                                                                            <p className="text-[10px] text-slate-500 mb-3 truncate">{enr.subscriptionName}</p>
+                                                                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden mt-auto"><div className={`h-full ${isInst ? 'bg-indigo-900' : 'bg-indigo-500'}`} style={{ width: `${progress}%` }}></div></div>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
-                                                        <p className="text-[10px] text-slate-500 mb-3 truncate">{enr.subscriptionName}</p>
-                                                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden mt-auto"><div className={`h-full ${isInst ? 'bg-indigo-900' : 'bg-indigo-500'}`} style={{ width: `${progress}%` }}></div></div>
-                                                    </div>
-                                                );
-                                            })}
+                                                    )
+                                                })}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         </div>
                     ))}
