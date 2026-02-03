@@ -140,7 +140,9 @@ exports.checkPeriodicNotifications = onSchedule({
             tokens: notif.tokens
         };
 
-        sendPromises.push(messaging.sendMulticast(message));
+        // FIX CRITICO: Uso sendEachForMulticast invece di sendMulticast
+        // sendMulticast usa un endpoint batch legacy che restituisce 404 sui nuovi server.
+        sendPromises.push(messaging.sendEachForMulticast(message));
     }
 
     // --- STEP E: PULIZIA TOKEN INVALIDI ---
@@ -158,6 +160,8 @@ exports.checkPeriodicNotifications = onSchedule({
                             errCode === 'messaging/registration-token-not-registered') {
                             failedTokens.add(usedTokens[tokenIdx]);
                         }
+                        // Log dell'errore specifico per debug futuro
+                        console.error(`[ERROR DETTAGLIO] Token fallito: ${usedTokens[tokenIdx]} - Errore: ${errCode} - Msg: ${r.error.message}`);
                     }
                 });
             }
