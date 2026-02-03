@@ -352,7 +352,7 @@ const ClientSituation: React.FC = () => {
                         </div>
                         
                         {/* ORPHANS SECTION (If any) */}
-                        {(clientFinancials?.orphanTrans.length > 0 || clientFinancials?.orphanInvoices.length > 0) && (
+                        {clientFinancials && (clientFinancials.orphanTrans.length > 0 || clientFinancials.orphanInvoices.length > 0) && (
                             <div className="bg-amber-50 border-t border-amber-200 p-4">
                                 <h4 className="text-xs font-bold text-amber-800 uppercase mb-2">Elementi Orfani (Non collegati a iscrizioni)</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
