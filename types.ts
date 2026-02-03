@@ -2,13 +2,24 @@
 
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation';
 
+export interface FocusConfig {
+    enabled: boolean;
+    days: number[]; // 0=Dom, 1=Lun, ...
+    time: string; // HH:mm
+}
+
+export interface UserPreferences {
+    focusConfig?: FocusConfig;
+    lastFocusDate?: string; // YYYY-MM-DD
+}
+
 export enum ClientType {
+// ... rest of the file unchanged
     Parent = 'parent',
     Institutional = 'institutional'
 }
 
 export enum TransactionType {
-// ... rest of the file unchanged
     Income = 'income',
     Expense = 'expense'
 }

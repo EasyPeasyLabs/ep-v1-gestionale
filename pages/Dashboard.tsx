@@ -6,7 +6,9 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getLessons } from '../services/calendarService'; 
 import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment } from '../types';
+import { getUserPreferences, markFocusAsSeen } from '../services/profileService';
+import { auth } from '../firebase/config';
+import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment, FocusConfig } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
@@ -14,6 +16,8 @@ import ChecklistIcon from '../components/icons/ChecklistIcon';
 import ClientsIcon from '../components/icons/ClientsIcon';
 import SuppliersIcon from '../components/icons/SuppliersIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
+import FocusModeConfigModal from '../components/FocusModeConfigModal';
+import FocusModePopup from '../components/FocusModePopup';
 
 // Helper per calcolo rating carburante
 const calculateFuelRating = (distance: number) => {
@@ -33,7 +37,8 @@ const StatCard: React.FC<{
     onClick?: () => void;
     icon: React.ReactNode;
     isAlert?: boolean;
-}> = ({ title, value, valueLabel, subtext, onClick, icon, isAlert }) => (
+    headerAction?: React.ReactNode; // New Prop for Header Action
+}> = ({ title, value, valueLabel, subtext, onClick, icon, isAlert, headerAction }) => (
   <div 
     className={`md-card p-5 flex flex-col gap-4 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`} 
     onClick={onClick}
@@ -47,6 +52,11 @@ const StatCard: React.FC<{
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight flex-1">
             {title}
         </p>
+        {headerAction && (
+            <div onClick={e => e.stopPropagation()}>
+                {headerAction}
+            </div>
+        )}
     </div>
     
     {/* Data Area: Full width below header */}
@@ -64,7 +74,7 @@ const StatCard: React.FC<{
   </div>
 );
 
-// Rating Card Component
+// Rating Card Component (unchanged)
 const RatingCard: React.FC<{
     title: string;
     average: number;
@@ -124,6 +134,7 @@ const RatingCard: React.FC<{
     </div>
 );
 
+// Location Occupancy Interface (unchanged)
 interface LocationOccupancy {
     key: string;
     locationName: string;
@@ -140,7 +151,7 @@ interface LocationOccupancy {
 }
 
 interface DashboardProps {
-    setCurrentPage?: (page: Page) => void;
+    setCurrentPage?: (page: Page, params?: any) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
@@ -156,6 +167,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [top5Tab, setTop5Tab] = useState<'clients' | 'suppliers'>('clients');
   const [weekDays, setWeekDays] = useState<{date: Date, count: number, dayName: string}[]>([]);
   const [saturationYear, setSaturationYear] = useState<number>(new Date().getFullYear());
+
+  // Focus Mode State
+  const [isFocusConfigOpen, setIsFocusConfigOpen] = useState(false);
+  const [showFocusPopup, setShowFocusPopup] = useState(false);
 
   const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
 
@@ -178,7 +193,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setManualLessonsData(manualLessons);
         setNotifications(notifs);
 
-        // Weekly Calendar
+        // Weekly Calendar Logic
         const now = new Date();
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
@@ -213,6 +228,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         }
         setWeekDays(daysData);
 
+        // --- CHECK FOCUS MODE TRIGGER (Async Cloud Check) ---
+        checkFocusModeTrigger();
+
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error);
       } finally {
@@ -224,6 +242,50 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     window.addEventListener('EP_DataUpdated', handleDataUpdate);
     return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
   }, []);
+
+  const checkFocusModeTrigger = async () => {
+      try {
+          const user = auth.currentUser;
+          if (!user) return;
+
+          const prefs = await getUserPreferences(user.uid);
+          const config = prefs.focusConfig;
+          
+          if (!config || !config.enabled) return;
+
+          const now = new Date();
+          const todayStr = now.toISOString().split('T')[0];
+          const lastSeen = prefs.lastFocusDate;
+
+          // 1. Check if seen today
+          if (lastSeen === todayStr) return;
+
+          // 2. Check Day
+          const currentDay = now.getDay(); // 0=Dom, 1=Lun
+          if (!config.days.includes(currentDay)) return;
+
+          // 3. Check Time
+          const [targetHour, targetMinute] = config.time.split(':').map(Number);
+          const currentHour = now.getHours();
+          const currentMinute = now.getMinutes();
+
+          if (currentHour > targetHour || (currentHour === targetHour && currentMinute >= targetMinute)) {
+              // Trigger!
+              setShowFocusPopup(true);
+          }
+
+      } catch (e) {
+          console.error("Error checking focus mode", e);
+      }
+  };
+
+  const handleDismissFocus = async () => {
+      setShowFocusPopup(false);
+      const user = auth.currentUser;
+      if (user) {
+          await markFocusAsSeen(user.uid);
+      }
+  };
 
   // --- 1. METRICHE CLIENTI ---
   const advancedMetrics = useMemo(() => {
@@ -661,6 +723,15 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                         onClick={scrollToAlerts}
                         icon={<ExclamationIcon />}
                         isAlert={notifications.length > 0}
+                        headerAction={
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsFocusConfigOpen(true); }}
+                                className="bg-gray-100 hover:bg-white hover:text-amber-500 text-gray-400 p-1 rounded-lg transition-colors border border-transparent hover:border-gray-200"
+                                title="Pianifica Focus Avvisi"
+                            >
+                                <ClockIcon />
+                            </button>
+                        }
                     />
                 </div>
 
@@ -773,7 +844,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                                         <li 
                                             key={index} 
                                             className="flex items-start gap-4 p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-                                            onClick={() => setCurrentPage && notif.linkPage && setCurrentPage(notif.linkPage as Page)}
+                                            onClick={() => setCurrentPage && notif.linkPage && setCurrentPage(notif.linkPage as Page, notif.filterContext)}
                                         >
                                             <div className="flex-shrink-0 mt-1 p-2 bg-gray-50 rounded-xl group-hover:scale-110 transition-transform">
                                                 {getNotificationIcon(notif.type)}
@@ -874,6 +945,24 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
               </div>
           )}
         </>
+      )}
+
+      {/* MODALS */}
+      {isFocusConfigOpen && (
+          <FocusModeConfigModal 
+              onClose={() => setIsFocusConfigOpen(false)}
+              onSave={(cfg) => { console.log('Focus Config Saved', cfg); setIsFocusConfigOpen(false); }}
+          />
+      )}
+
+      {showFocusPopup && (
+          <FocusModePopup 
+              notifications={notifications}
+              onDismiss={handleDismissFocus}
+              onNavigate={(page, params) => {
+                  if (setCurrentPage) setCurrentPage(page, params);
+              }}
+          />
       )}
     </div>
   );
