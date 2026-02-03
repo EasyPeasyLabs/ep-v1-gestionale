@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient } from '../types';
+import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
+import { getSuppliers } from '../services/supplierService';
 import Spinner from './Spinner';
 import SearchIcon from './icons/SearchIcon';
 
@@ -76,6 +77,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [isEndDateManual, setIsEndDateManual] = useState(false); 
     const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
 
+    // Time Slots State
+    const [startTime, setStartTime] = useState(existingEnrollment?.appointments?.[0]?.startTime || '16:00');
+    const [endTime, setEndTime] = useState(existingEnrollment?.appointments?.[0]?.endTime || '18:00');
+    const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
     const [clientSearchTerm, setClientSearchTerm] = useState('');
     const [clientSort, setClientSort] = useState<'surname_asc' | 'surname_desc'>('surname_asc');
@@ -87,11 +93,31 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const initialValues = useRef({
         startDate: existingEnrollment ? existingEnrollment.startDate.split('T')[0] : '',
         subscriptionId: existingEnrollment?.subscriptionTypeId || '',
-        endDate: existingEnrollment ? existingEnrollment.endDate.split('T')[0] : ''
+        endDate: existingEnrollment ? existingEnrollment.endDate.split('T')[0] : '',
+        startTime: existingEnrollment?.appointments?.[0]?.startTime || '16:00',
+        endTime: existingEnrollment?.appointments?.[0]?.endTime || '18:00'
     });
 
     const currentClient = clients.find(p => p.id === selectedClientId);
     const isInstitutional = currentClient?.clientType === ClientType.Institutional || existingEnrollment?.clientType === ClientType.Institutional;
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const [subs, supps] = await Promise.all([
+                    getSubscriptionTypes(),
+                    getSuppliers()
+                ]);
+                setSubscriptionTypes(subs);
+                setSuppliers(supps);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadData();
+    }, []);
 
     const availableSubscriptions = useMemo(() => {
         const isVisible = (s: SubscriptionType) => {
@@ -131,17 +157,33 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         // Se non è istituzionale e non è manuale, applica la logica Slot
         if (!isEndDateManual && calculatedDates && !isInstitutional) {
             setEndDateInput(calculatedDates.end);
-            // Opzionale: Se la data inizio calcolata (es. post-festività) è diversa dall'input, potremmo aggiornare anche quella
-            // Ma per UX lasciamo che l'input rifletta l'intenzione dell'utente, sarà il backend a normalizzare.
         }
     }, [calculatedDates, isEndDateManual, isInstitutional]);
 
-    useEffect(() => {
-        getSubscriptionTypes().then(subs => {
-            setSubscriptionTypes(subs);
-            setLoading(false);
-        });
-    }, []);
+    // Available Time Slots based on Location and Day
+    const locationTimeSlots = useMemo(() => {
+        if (!existingEnrollment?.locationId || existingEnrollment.locationId === 'unassigned') return [];
+        
+        const date = new Date(startDateInput);
+        const dayOfWeek = date.getDay(); // 0=Dom, 1=Lun
+        
+        // Find supplier/location
+        for (const s of suppliers) {
+            const loc = s.locations.find(l => l.id === existingEnrollment.locationId);
+            if (loc && loc.availability) {
+                return loc.availability.filter(slot => slot.dayOfWeek === dayOfWeek).sort((a,b) => a.startTime.localeCompare(b.startTime));
+            }
+        }
+        return [];
+    }, [startDateInput, existingEnrollment, suppliers]);
+
+    const handleQuickTimeSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const val = e.target.value;
+        if (!val) return;
+        const [s, eTime] = val.split('-');
+        setStartTime(s);
+        setEndTime(eTime);
+    };
 
     const filteredClients = useMemo(() => {
         let result = clients.filter(c => {
@@ -176,16 +218,15 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         
         // --- SMART CALENDAR REGENERATION CHECK ---
         let regenerateCalendar = false;
-        if (existingEnrollment) {
-            const dateChanged = startDateInput !== initialValues.current.startDate;
-            const subChanged = subscriptionTypeId !== initialValues.current.subscriptionId;
-            // Also check end date change if it implies duration change
-            const endChanged = endDateInput !== initialValues.current.endDate;
+        
+        const dateChanged = startDateInput !== initialValues.current.startDate;
+        const subChanged = subscriptionTypeId !== initialValues.current.subscriptionId;
+        const endChanged = endDateInput !== initialValues.current.endDate;
+        const timeChanged = startTime !== initialValues.current.startTime || endTime !== initialValues.current.endTime;
 
-            if (dateChanged || subChanged || endChanged) {
-                const message = "Hai modificato le date o il pacchetto dell'iscrizione.\n\nVuoi rigenerare il calendario lezioni per allinearlo alle nuove date?\n(Le presenze già registrate verranno mantenute se le date coincidono).";
-                regenerateCalendar = window.confirm(message);
-            }
+        if (existingEnrollment && (dateChanged || subChanged || endChanged || timeChanged)) {
+            const message = "Hai modificato parametri chiave (date, orari o pacchetto).\n\nVuoi rigenerare il calendario lezioni con i nuovi orari?\n(Le presenze già registrate verranno mantenute se le date coincidono).";
+            regenerateCalendar = window.confirm(message);
         }
 
         const enrollmentsToSave: EnrollmentInput[] = [];
@@ -197,6 +238,35 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                     const c = (currentClient as ParentClient).children.find(child => child.id === id);
                     return c ? { id: c.id, name: c.name } : null;
                 }).filter(Boolean);
+
+        // Prepare Appointments Payload
+        let appointmentsPayload: any[] = [];
+        
+        if (regenerateCalendar || !existingEnrollment) {
+            // Caso A: Nuova iscrizione o Rigenerazione Totale
+            // Creiamo un template per dire al backend di ricalcolare tutto
+            appointmentsPayload = [{
+                lessonId: 'template', 
+                date: new Date(startDateInput).toISOString(),
+                startTime: startTime,
+                endTime: endTime,
+                locationId: existingEnrollment?.locationId || 'unassigned',
+                locationName: existingEnrollment?.locationName || 'Sede Non Definita',
+                locationColor: existingEnrollment?.locationColor || '#e5e7eb',
+                childName: '', 
+                status: 'Scheduled'
+            }];
+        } else {
+            // Caso B: Aggiornamento senza rigenerazione date
+            // Dobbiamo comunque aggiornare l'orario su tutte le lezioni esistenti
+            // altrimenti la modifica del tempo viene persa
+            appointmentsPayload = (existingEnrollment.appointments || []).map(app => ({
+                ...app,
+                startTime: startTime,
+                endTime: endTime
+                // Manteniamo locationId e altri dati esistenti per non rompere i link storici
+            }));
+        }
 
         targets.forEach(target => {
             if(!target) return;
@@ -216,7 +286,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 locationId: existingEnrollment?.locationId || 'unassigned',
                 locationName: existingEnrollment?.locationName || 'Sede Non Definita', 
                 locationColor: existingEnrollment?.locationColor || '#e5e7eb', 
-                appointments: existingEnrollment?.appointments || [], 
+                
+                // IMPORTANT: Pass either the updated history OR the new time template
+                appointments: appointmentsPayload, 
+                
                 lessonsTotal: Number(existingEnrollment?.lessonsTotal || selectedSub?.lessons || 0),
                 lessonsRemaining: Number(existingEnrollment?.lessonsRemaining || selectedSub?.lessons || 0),
                 startDate: new Date(startDateInput).toISOString(),
@@ -345,6 +418,43 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                         )}
                     </div>
                 </div>
+
+                {/* 7. ORARIO LEZIONE (NEW) */}
+                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 mt-2">
+                    <label className="block text-xs font-bold text-indigo-800 uppercase mb-2">7. Orario Lezione / Slot</label>
+                    
+                    {/* Quick Selector if slots available */}
+                    {locationTimeSlots.length > 0 && (
+                        <div className="mb-2">
+                            <select 
+                                onChange={handleQuickTimeSelect}
+                                defaultValue=""
+                                className="w-full text-xs font-bold bg-white border border-indigo-200 text-indigo-700 rounded p-1.5 focus:ring-2 focus:ring-indigo-300 outline-none"
+                            >
+                                <option value="" disabled>✨ Seleziona slot ufficiale ({locationTimeSlots.length} disp.)</option>
+                                {locationTimeSlots.map((slot, idx) => (
+                                    <option key={idx} value={`${slot.startTime}-${slot.endTime}`}>
+                                        {slot.startTime} - {slot.endTime}
+                                    </option>
+                                ))}
+                                <option value="manual">Inerimento Manuale</option>
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Manual Inputs */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="md-input-group !mb-0">
+                            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input text-sm font-bold" />
+                            <label className="md-input-label !top-0">Inizio</label>
+                        </div>
+                        <div className="md-input-group !mb-0">
+                            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="md-input text-sm font-bold" />
+                            <label className="md-input-label !top-0">Fine</label>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
