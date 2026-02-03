@@ -1,6 +1,5 @@
 
-
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation' | 'NotificationPlanning';
 
 export interface FocusConfig {
     enabled: boolean;
@@ -13,8 +12,21 @@ export interface UserPreferences {
     lastFocusDate?: string; // YYYY-MM-DD
 }
 
+// ... rest of the file unchanged ...
+
+export type NotificationType = 'payment_required' | 'expiry' | 'balance_due' | 'low_lessons' | 'institutional_billing';
+
+export interface NotificationRule {
+    id: NotificationType;
+    label: string;
+    description: string;
+    enabled: boolean;
+    days: number[]; // 0=Dom, 1=Lun, ...
+    time: string; // HH:mm
+    pushEnabled: boolean;
+}
+
 export enum ClientType {
-// ... rest of the file unchanged
     Parent = 'parent',
     Institutional = 'institutional'
 }
@@ -24,7 +36,8 @@ export enum TransactionType {
     Expense = 'expense'
 }
 
-// NUOVA GERARCHIA CATEGORIE
+// ... rest of types (TransactionCategory, etc) unchanged ...
+// Assicurati di mantenere tutto il resto del file intatto
 export enum TransactionCategory {
     // A. LOGISTICA
     // 1. Costi Amministrativi

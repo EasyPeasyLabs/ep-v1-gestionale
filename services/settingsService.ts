@@ -1,7 +1,7 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, getDoc, setDoc } from 'firebase/firestore';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate, NotificationRule, NotificationType } from '../types';
 
 const settingsDocRef = doc(db, 'settings', 'companyInfo');
 const subscriptionCollectionRef = collection(db, 'subscriptionTypes');
@@ -9,6 +9,7 @@ const templateCollectionRef = collection(db, 'communicationTemplates');
 const contractTemplateCollectionRef = collection(db, 'contract_templates');
 const checksCollectionRef = collection(db, 'periodicChecks');
 const recoveryPolicyRef = doc(db, 'settings', 'recoveryPolicies');
+const notificationRulesCollectionRef = collection(db, 'notification_rules');
 
 const DEFAULT_LOGO_BASE64 = ''; // Base64 placeholder or logic
 
@@ -223,7 +224,7 @@ export const deleteContractTemplate = async (id: string): Promise<void> => {
     await deleteDoc(docRef);
 };
 
-// --- PERIODIC CHECKS ---
+// --- PERIODIC CHECKS (LEGACY - WILL BE REPLACED BY NOTIFICATION RULES) ---
 const docToCheck = (doc: QueryDocumentSnapshot<DocumentData>): PeriodicCheck => {
     return { id: doc.id, ...doc.data() } as PeriodicCheck;
 };
@@ -259,4 +260,36 @@ export const getRecoveryPolicies = async (): Promise<Record<string, 'allowed' | 
 
 export const saveRecoveryPolicies = async (policies: Record<string, 'allowed' | 'forbidden'>): Promise<void> => {
     await setDoc(recoveryPolicyRef, policies, { merge: true });
+};
+
+// --- NEW: NOTIFICATION RULES (ROUTINE MANAGER) ---
+
+const DEFAULT_RULES: NotificationRule[] = [
+    { id: 'payment_required', label: 'Sollecito Pagamenti', description: 'Iscrizioni in attesa di pagamento', enabled: true, days: [1, 4], time: '09:00', pushEnabled: true },
+    { id: 'expiry', label: 'Scadenze Iscrizioni', description: 'Iscrizioni in scadenza a breve', enabled: true, days: [5], time: '10:00', pushEnabled: true },
+    { id: 'balance_due', label: 'Saldi Sospesi', description: 'Acconti versati da oltre 30gg', enabled: true, days: [3], time: '11:00', pushEnabled: false },
+    { id: 'low_lessons', label: 'Pacchetti in Esaurimento', description: 'Meno di 2 lezioni rimaste', enabled: true, days: [1, 3, 5], time: '17:00', pushEnabled: false },
+    { id: 'institutional_billing', label: 'Billing Enti', description: 'Scadenze rate per progetti istituzionali', enabled: true, days: [1], time: '09:00', pushEnabled: true }
+];
+
+export const getNotificationRules = async (): Promise<NotificationRule[]> => {
+    const snapshot = await getDocs(notificationRulesCollectionRef);
+    const storedRules = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NotificationRule));
+    
+    // Merge con default se mancano
+    if (storedRules.length < DEFAULT_RULES.length) {
+        const missing = DEFAULT_RULES.filter(def => !storedRules.some( stored => stored.id === def.id));
+        // Save missing defaults
+        for (const rule of missing) {
+            await setDoc(doc(db, 'notification_rules', rule.id), rule);
+            storedRules.push(rule);
+        }
+    }
+    
+    return storedRules;
+};
+
+export const saveNotificationRule = async (rule: NotificationRule): Promise<void> => {
+    const docRef = doc(db, 'notification_rules', rule.id);
+    await setDoc(docRef, rule, { merge: true });
 };

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Page } from './types';
 import type { User } from 'firebase/auth';
@@ -12,6 +13,7 @@ import ClipboardIcon from './components/icons/ClipboardIcon';
 import BookOpenIcon from './components/icons/BookOpenIcon';
 import ChevronDownIcon from './components/icons/ChevronDownIcon';
 import ArchiveIcon from './components/icons/ArchiveIcon'; 
+import BellIcon from './components/icons/BellIcon'; // Reusing BellIcon
 import { getCompanyInfo } from './services/settingsService';
 
 const SoccerBallIcon = () => (
@@ -123,6 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
       ]
     }, 
     { page: 'Settings', label: 'Impostazioni', icon: <SettingsIcon /> },
+    { page: 'NotificationPlanning', label: 'Pianificazione Avvisi', icon: <BellIcon /> }, // NEW ITEM
     { page: 'Manual', label: 'Manuale d\'Uso', icon: <BookInfoIcon /> },
   ];
 

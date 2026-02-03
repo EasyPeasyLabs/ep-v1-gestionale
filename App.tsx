@@ -9,6 +9,7 @@ import Clients from './pages/Clients';
 import Suppliers from './pages/Suppliers';
 import Finance from './pages/Finance';
 import Settings from './pages/Settings';
+import NotificationPlanning from './pages/NotificationPlanning'; // NEW IMPORT
 import Profile from './pages/Profile';
 import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
@@ -23,7 +24,7 @@ import ActivityLog from './pages/ActivityLog';
 import Homeworks from './pages/Homeworks';
 import Initiatives from './pages/Initiatives';
 import Manual from './pages/Manual';
-import ClientSituation from './pages/ClientSituation'; // NEW
+import ClientSituation from './pages/ClientSituation'; 
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
@@ -118,12 +119,13 @@ const App: React.FC = () => {
                   case 'Homeworks': return <Homeworks />;
                   case 'Initiatives': return <Initiatives />;
                   case 'Clients': return <Clients />;
-                  case 'ClientSituation': return <ClientSituation />; // NEW
+                  case 'ClientSituation': return <ClientSituation />; 
                   case 'Suppliers': return <Suppliers />;
                   case 'Calendar': return <Calendar />;
                   case 'CRM': return <CRM />;
                   case 'Finance': return <Finance initialParams={pageParams} onNavigate={handleNavigation} />;
                   case 'Settings': return <Settings />;
+                  case 'NotificationPlanning': return <NotificationPlanning />; // NEW ROUTE
                   case 'Profile': return <Profile user={user} />;
                   case 'Manual': return <Manual />;
                   default: return <Dashboard setCurrentPage={handleNavigation} />;

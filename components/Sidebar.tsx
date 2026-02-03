@@ -14,6 +14,7 @@ import BookOpenIcon from './icons/BookOpenIcon';
 import ChevronDownIcon from './icons/ChevronDownIcon';
 import ArchiveIcon from './icons/ArchiveIcon'; 
 import IdentificationIcon from './icons/IdentificationIcon';
+import BellIcon from './icons/BellIcon';
 import { getCompanyInfo } from '../services/settingsService';
 
 const SoccerBallIcon = () => (
@@ -126,6 +127,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
       ]
     }, 
     { page: 'Settings', label: 'Impostazioni', icon: <SettingsIcon /> },
+    { page: 'NotificationPlanning', label: 'Pianificazione Avvisi', icon: <BellIcon /> },
     { page: 'Manual', label: 'Manuale d\'Uso', icon: <BookInfoIcon /> },
   ];
 
