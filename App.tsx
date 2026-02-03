@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from './firebase/config';
@@ -21,7 +22,8 @@ import Activities from './pages/Activities';
 import ActivityLog from './pages/ActivityLog';
 import Homeworks from './pages/Homeworks';
 import Initiatives from './pages/Initiatives';
-import Manual from './pages/Manual'; // NEW
+import Manual from './pages/Manual';
+import ClientSituation from './pages/ClientSituation'; // NEW
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
@@ -116,6 +118,7 @@ const App: React.FC = () => {
                   case 'Homeworks': return <Homeworks />;
                   case 'Initiatives': return <Initiatives />;
                   case 'Clients': return <Clients />;
+                  case 'ClientSituation': return <ClientSituation />; // NEW
                   case 'Suppliers': return <Suppliers />;
                   case 'Calendar': return <Calendar />;
                   case 'CRM': return <CRM />;

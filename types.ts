@@ -1,5 +1,6 @@
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual';
+
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'Profile' | 'LoginPage' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation';
 
 export enum ClientType {
     Parent = 'parent',
@@ -7,6 +8,7 @@ export enum ClientType {
 }
 
 export enum TransactionType {
+// ... rest of the file unchanged
     Income = 'income',
     Expense = 'expense'
 }
