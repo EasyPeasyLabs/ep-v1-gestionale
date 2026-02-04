@@ -135,32 +135,51 @@ const ClientSituation: React.FC = () => {
                 </div>
             </div>
 
-            {/* HEADER FILTERS (Always Visible) */}
-            <div className="md-card p-4 bg-white sticky top-0 z-20 shadow-sm border border-slate-200">
-                <div className="flex flex-col md:flex-row gap-4">
-                    <div className="relative flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-                        <input 
-                            type="text" 
-                            placeholder="Cerca per nome, figlio, azienda..." 
-                            className="md-input pl-10" 
-                            value={searchTerm}
-                            onChange={e => { setSearchTerm(e.target.value); setSelectedClient(null); }} // Reset selection on search
-                        />
+            {/* HEADER FILTERS OR NAVIGATION (STICKY) */}
+            <div className="md-card p-4 bg-white sticky top-0 z-30 shadow-md border-b border-indigo-100 transition-all">
+                {!selectedClient ? (
+                    /* STATE A: SEARCH MODE */
+                    <div className="flex flex-col md:flex-row gap-4 animate-fade-in">
+                        <div className="relative flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
+                            <input 
+                                type="text" 
+                                placeholder="Cerca per nome, figlio, azienda..." 
+                                className="md-input pl-10" 
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)} 
+                            />
+                        </div>
+                        <select 
+                            value={filterLocation} 
+                            onChange={e => setFilterLocation(e.target.value)} 
+                            className="md-input w-full md:w-64"
+                        >
+                            <option value="">Tutte le Sedi</option>
+                            {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
+                        </select>
+                        <div className="flex bg-gray-100 p-1 rounded-lg flex-shrink-0">
+                            <button onClick={() => setSortOrder('asc')} className={`px-3 py-2 text-xs font-bold rounded-md ${sortOrder === 'asc' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>A-Z</button>
+                            <button onClick={() => setSortOrder('desc')} className={`px-3 py-2 text-xs font-bold rounded-md ${sortOrder === 'desc' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>Z-A</button>
+                        </div>
                     </div>
-                    <select 
-                        value={filterLocation} 
-                        onChange={e => { setFilterLocation(e.target.value); setSelectedClient(null); }} 
-                        className="md-input w-full md:w-64"
-                    >
-                        <option value="">Tutte le Sedi</option>
-                        {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
-                    </select>
-                    <div className="flex bg-gray-100 p-1 rounded-lg flex-shrink-0">
-                        <button onClick={() => setSortOrder('asc')} className={`px-3 py-2 text-xs font-bold rounded-md ${sortOrder === 'asc' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>A-Z</button>
-                        <button onClick={() => setSortOrder('desc')} className={`px-3 py-2 text-xs font-bold rounded-md ${sortOrder === 'desc' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>Z-A</button>
+                ) : (
+                    /* STATE B: NAVIGATION MODE (Inside Details) */
+                    <div className="flex items-center justify-between animate-slide-up">
+                        <button 
+                            onClick={() => setSelectedClient(null)} 
+                            className="flex items-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors"
+                        >
+                            <span>←</span> Torna alla lista
+                        </button>
+                        <div className="text-right">
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Scheda Cliente</p>
+                            <h2 className="text-lg font-black text-slate-800 leading-none truncate max-w-[200px] md:max-w-md">
+                                {getClientName(selectedClient)}
+                            </h2>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {!selectedClient ? (
@@ -199,7 +218,6 @@ const ClientSituation: React.FC = () => {
             ) : (
                 /* CLIENT DETAIL VIEW */
                 <div className="space-y-6 animate-slide-up">
-                    <button onClick={() => setSelectedClient(null)} className="text-xs font-bold text-indigo-600 hover:underline mb-2">← Torna alla lista</button>
                     
                     {/* BODY: 3 COLUMNS */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
