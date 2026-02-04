@@ -14,16 +14,17 @@ export interface UserPreferences {
 
 // ... rest of the file unchanged ...
 
-export type NotificationType = 'payment_required' | 'expiry' | 'balance_due' | 'low_lessons' | 'institutional_billing';
+export type NotificationType = 'payment_required' | 'expiry' | 'balance_due' | 'low_lessons' | 'institutional_billing' | string;
 
 export interface NotificationRule {
-    id: NotificationType;
+    id: string; // Changed to string to allow custom IDs
     label: string;
     description: string;
     enabled: boolean;
     days: number[]; // 0=Dom, 1=Lun, ...
     time: string; // HH:mm
     pushEnabled: boolean;
+    isCustom?: boolean; // NEW: Flag for custom user rules
 }
 
 export enum ClientType {

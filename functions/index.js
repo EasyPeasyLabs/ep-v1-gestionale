@@ -65,17 +65,26 @@ exports.checkPeriodicNotifications = onSchedule({
             // ESECUZIONE LOGICA SPECIFICA PER TIPO
             let count = 0;
             let messageBody = rule.description;
+            let shouldSend = false;
 
             try {
-                if (rule.id === 'payment_required') {
+                if (rule.isCustom) {
+                    // REGOLA PERSONALIZZATA (Promemoria)
+                    // Non fa query, invia direttamente il messaggio configurato
+                    shouldSend = true;
+                    // messageBody è già settato dalla description della regola
+                } 
+                else if (rule.id === 'payment_required') {
                     // Conta iscrizioni Pending
                     const snap = await db.collection('enrollments').where('status', '==', 'Pending').get();
                     count = snap.size;
-                    if (count > 0) messageBody = `Ci sono ${count} iscrizioni in attesa di pagamento.`;
+                    if (count > 0) {
+                        messageBody = `Ci sono ${count} iscrizioni in attesa di pagamento.`;
+                        shouldSend = true;
+                    }
                 } 
                 else if (rule.id === 'expiry') {
                     // Conta scadenze prossime (es. 7 giorni)
-                    // Nota: Query complessa su date, semplifichiamo prendendo tutte le attive e filtrando in memoria per semplicità nella function
                     const snap = await db.collection('enrollments').where('status', '==', 'Active').get();
                     const nextWeek = new Date(now);
                     nextWeek.setDate(now.getDate() + 7);
@@ -85,7 +94,10 @@ exports.checkPeriodicNotifications = onSchedule({
                         return end >= now && end <= nextWeek;
                     }).length;
                     
-                    if (count > 0) messageBody = `${count} iscrizioni scadranno nei prossimi 7 giorni.`;
+                    if (count > 0) {
+                        messageBody = `${count} iscrizioni scadranno nei prossimi 7 giorni.`;
+                        shouldSend = true;
+                    }
                 }
                 else if (rule.id === 'balance_due') {
                     // Fatture di acconto vecchie > 30gg
@@ -95,7 +107,6 @@ exports.checkPeriodicNotifications = onSchedule({
                         .where('isDeleted', '==', false)
                         .get();
                     
-                    // Filter in memory for date diff > 30 days
                     const thirtyDaysAgo = new Date(now);
                     thirtyDaysAgo.setDate(now.getDate() - 30);
                     
@@ -104,24 +115,27 @@ exports.checkPeriodicNotifications = onSchedule({
                         return created <= thirtyDaysAgo;
                     }).length;
 
-                    if (count > 0) messageBody = `${count} acconti attendono il saldo da oltre 30 giorni.`;
+                    if (count > 0) {
+                        messageBody = `${count} acconti attendono il saldo da oltre 30 giorni.`;
+                        shouldSend = true;
+                    }
                 }
                 else if (rule.id === 'low_lessons') {
                     // Lezioni residue <= 2
-                    // Firestore non supporta where con filtro numerico su tutti i documenti efficientemente senza indice,
-                    // ma con volumi medi possiamo fare query + filter
                     const snap = await db.collection('enrollments').where('status', '==', 'Active').get();
                     count = snap.docs.filter(d => (d.data().lessonsRemaining || 0) <= 2).length;
                     
-                    if (count > 0) messageBody = `${count} allievi hanno quasi finito le lezioni.`;
+                    if (count > 0) {
+                        messageBody = `${count} allievi hanno quasi finito le lezioni.`;
+                        shouldSend = true;
+                    }
                 }
                 else if (rule.id === 'institutional_billing') {
-                    // Billing enti: rate in scadenza
-                    // Richiede analisi profonda dei preventivi
-                    const snap = await db.collection('quotes').where('status', '==', 'Paid').get(); // Status Paid = Active for institutional logic usually
+                    // Billing enti
+                    const snap = await db.collection('quotes').where('status', '==', 'Paid').get();
                     let dueCount = 0;
                     const threshold = new Date(now);
-                    threshold.setDate(now.getDate() + 45); // 45gg lookahead
+                    threshold.setDate(now.getDate() + 45); 
 
                     snap.docs.forEach(qDoc => {
                         const installments = qDoc.data().installments || [];
@@ -133,11 +147,14 @@ exports.checkPeriodicNotifications = onSchedule({
                         });
                     });
                     count = dueCount;
-                    if (count > 0) messageBody = `${count} rate di progetti istituzionali in scadenza a breve.`;
+                    if (count > 0) {
+                        messageBody = `${count} rate di progetti istituzionali in scadenza a breve.`;
+                        shouldSend = true;
+                    }
                 }
 
-                // INVIO SE CI SONO RISULTATI
-                if (count > 0 && rule.pushEnabled) {
+                // INVIO SE ABILITATO E TRIGGERATO
+                if (shouldSend && rule.pushEnabled) {
                     notificationsToSend.push({
                         tokens: allTokens, // Broadcast agli admin
                         title: `EP Alert: ${rule.label}`,
@@ -145,8 +162,8 @@ exports.checkPeriodicNotifications = onSchedule({
                         tag: `rule-${rule.id}`,
                         icon: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png'
                     });
-                } else if (count > 0 && !rule.pushEnabled) {
-                    console.log(`[DEBUG] Match trovato (${count}) ma PUSH disabilitato per ${rule.id}`);
+                } else if (shouldSend && !rule.pushEnabled) {
+                    console.log(`[DEBUG] Match trovato ma PUSH disabilitato per ${rule.id}`);
                 }
 
             } catch (err) {
@@ -155,8 +172,7 @@ exports.checkPeriodicNotifications = onSchedule({
         }
     }
 
-    // --- STEP C: FOCUS MODE (Manteniamo la logica esistente se non confligge) ---
-    // (Opzionale: Potremmo migrare anche il Focus Mode nel nuovo sistema, ma per ora lo lasciamo separato come "Briefing Personale")
+    // --- STEP C: FOCUS MODE ---
     const prefsSnapshot = await db.collection('user_preferences')
         .where('focusConfig.enabled', '==', true)
         .get();
@@ -166,7 +182,6 @@ exports.checkPeriodicNotifications = onSchedule({
         const config = prefs.focusConfig;
         const userId = doc.id; 
         
-        // Confronto stringa per sicurezza
         const dayMatch = config.days.some(d => String(d) === String(currentDay));
         const timeMatch = config.time === currentHour;
 

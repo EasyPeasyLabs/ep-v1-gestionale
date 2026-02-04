@@ -77,13 +77,10 @@ const calculateAgeString = (dob: string): string => {
         months--;
         if (months < 0) {
             months += 12;
-            // Note: years already adjusted above if needed, careful not to double adjust
-            // If we are wrapping around December->January it's handled, but if we have e.g. 
-            // Now: Feb 1, Birth: Jan 31 -> months was 1, becomes 0.
         }
     }
 
-    if (years < 0) return '0 mesi'; // Future date protection
+    if (years < 0) return '0 mesi'; 
     
     let result = `${years} anni`;
     if (months > 0) result += ` + ${months} mesi`;
@@ -137,8 +134,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     const [numberOfChildren, setNumberOfChildren] = useState((client as InstitutionalClient)?.numberOfChildren || 0);
     const [ageRange, setAgeRange] = useState((client as InstitutionalClient)?.ageRange || '');
 
-    // Ratings & Notes (For Parent & Children & Institutional)
-    // Cast to ParentClient is safe for initial state as BaseClient has notesHistory too
+    // Ratings & Notes
     const [parentRating, setParentRating] = useState<ParentRating>((client as ParentClient)?.rating || { availability: 0, complaints: 0, churnRate: 0, distance: 0 });
     const [notesHistory, setNotesHistory] = useState<Note[]>((client as ParentClient)?.notesHistory || []);
     
@@ -150,10 +146,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     const handleAddChild = () => {
         if (newChildName && (newChildAge || newChildDob)) {
             let finalAge = newChildAge;
-            // Se c'è la data, calcola l'età automaticamente
-            if (newChildDob) {
-                finalAge = calculateAgeString(newChildDob);
-            }
+            if (newChildDob) finalAge = calculateAgeString(newChildDob);
 
             setChildren([...children, { 
                 id: Date.now().toString(), 
@@ -166,7 +159,6 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
                 tags: []
             }]);
             
-            // Reset fields
             setNewChildName('');
             setNewChildAge('');
             setNewChildDob('');
@@ -176,18 +168,13 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     const handleNewChildDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const dob = e.target.value;
         setNewChildDob(dob);
-        if (dob) {
-            setNewChildAge(calculateAgeString(dob));
-        } else {
-            setNewChildAge('');
-        }
+        if (dob) setNewChildAge(calculateAgeString(dob)); else setNewChildAge('');
     };
 
     const handleRemoveChild = (index: number) => {
         setChildren(children.filter((_, i) => i !== index));
     };
 
-    // Child Rating Edit
     const handleChildRatingChange = (index: number, field: keyof ChildRating, value: number) => {
         const updatedChildren = [...children];
         const child = { ...updatedChildren[index] };
@@ -380,20 +367,26 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     );
 };
 
-const Clients: React.FC = () => {
+interface ClientsProps {
+    initialParams?: {
+        searchTerm?: string;
+    };
+}
+
+const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
     const [clients, setClients] = useState<Client[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
     const [showTrash, setShowTrash] = useState(false);
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'surname_asc' | 'surname_desc'>('surname_asc');
     const [nameFormat, setNameFormat] = useState<'first_last' | 'last_first'>('first_last');
-    const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list'); // New state for view mode
+    const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list'); 
     
     // Extra Filters
     const [filterDay, setFilterDay] = useState<string>('');
     const [filterTime, setFilterTime] = useState<string>('');
-    const [filterLocation, setFilterLocation] = useState<string>(''); // NEW: Location Filter
+    const [filterLocation, setFilterLocation] = useState<string>(''); 
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
@@ -424,6 +417,13 @@ const Clients: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchClientsData(); }, [fetchClientsData]);
+
+    // Handle deep linking from search
+    useEffect(() => {
+        if (initialParams?.searchTerm) {
+            setSearchTerm(initialParams.searchTerm);
+        }
+    }, [initialParams]);
 
     // Reset pagination when filters change
     useEffect(() => {
@@ -458,26 +458,20 @@ const Clients: React.FC = () => {
         if (!clientToProcess) return;
         try {
             if (clientToProcess.action === 'delete') {
-                // Cascading delete simulation for single client
                 const clientId = clientToProcess.id;
                 await deleteClient(clientId);
             }
             else if (clientToProcess.action === 'restore') await restoreClient(clientToProcess.id);
             else {
-                // Hard Delete: Clean everything
                 const clientId = clientToProcess.id;
-                // 1. Get Enrollments
                 const clientEnrollments = await getEnrollmentsForClient(clientId);
                 for (const enr of clientEnrollments) {
                     await cleanupEnrollmentFinancials(enr);
                     await deleteEnrollment(enr.id);
-                    // Check auto-rent
                     if (enr.locationId && enr.locationId !== 'unassigned') {
-                        // Quick check (locally is faster but less accurate, here we iterate all)
                         await deleteAutoRentTransactions(enr.locationId);
                     }
                 }
-                // 2. Delete Client
                 await permanentDeleteClient(clientId);
             }
             fetchClientsData();
@@ -492,11 +486,9 @@ const Clients: React.FC = () => {
         setIsDeleteAllModalOpen(false);
         setLoading(true);
         try {
-            // Fetch ALL clients (even deleted ones if we want a total nuke, but getClients returns active/soft-deleted)
             const allClients = await getClients();
             
             for (const client of allClients) {
-                // Cascading delete for each client
                 const clientEnrollments = await getEnrollmentsForClient(client.id);
                 for (const enr of clientEnrollments) {
                     await cleanupEnrollmentFinancials(enr);
@@ -523,7 +515,6 @@ const Clients: React.FC = () => {
         return result;
     };
 
-    // Calculate Available Locations for Filter
     const availableLocations = useMemo(() => {
         const locs = new Set<string>();
         enrollments.forEach(e => {
@@ -540,11 +531,16 @@ const Clients: React.FC = () => {
         result = result.filter(c => {
             const term = (searchTerm || '').toLowerCase();
             
-            // 1. Base Search with Safe Checks
             let match = false;
             if (c.clientType === ClientType.Parent) {
                 const p = c as ParentClient;
-                match = (p.firstName || '').toLowerCase().includes(term) || 
+                // FIX: Check concatenated full name AND reverse full name for global search matching
+                const fullName = `${p.firstName || ''} ${p.lastName || ''}`.toLowerCase();
+                const reverseName = `${p.lastName || ''} ${p.firstName || ''}`.toLowerCase();
+                
+                match = fullName.includes(term) ||
+                        reverseName.includes(term) ||
+                        (p.firstName || '').toLowerCase().includes(term) || 
                         (p.lastName || '').toLowerCase().includes(term) || 
                         (p.email || '').toLowerCase().includes(term) ||
                         (p.children || []).some(child => (child.name || '').toLowerCase().includes(term));
@@ -553,7 +549,6 @@ const Clients: React.FC = () => {
                 match = (i.companyName || '').toLowerCase().includes(term) || (i.email || '').toLowerCase().includes(term);
             }
 
-            // 2. Search in Enrollments (Location Name, Supplier)
             if (!match && term.length > 0) {
                 const clientEnrollments = enrollments.filter(e => e.clientId === c.id);
                 match = clientEnrollments.some(e => 
@@ -564,7 +559,6 @@ const Clients: React.FC = () => {
 
             if (!match) return false;
 
-            // 3. Filter by Day / Time (Cross-check with enrollments)
             if (filterDay !== '' || filterTime !== '') {
                 const clientEnrollments = enrollments.filter(e => e.clientId === c.id && (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending));
                 
@@ -573,7 +567,6 @@ const Clients: React.FC = () => {
                     return enr.appointments.some(app => {
                         const appDate = new Date(app.date);
                         const dayMatch = filterDay === '' || appDate.getDay() === parseInt(filterDay);
-                        // Time check: filterTime should be between start and end
                         const timeMatch = filterTime === '' || (filterTime >= app.startTime && filterTime <= app.endTime);
                         return dayMatch && timeMatch;
                     });
@@ -582,9 +575,7 @@ const Clients: React.FC = () => {
                 if (!hasLesson) return false;
             }
 
-            // 4. Filter by Location (Recinto)
             if (filterLocation) {
-                // Check if client has ANY enrollment in this location
                 const hasLocation = enrollments.some(e => 
                     e.clientId === c.id && 
                     e.locationName === filterLocation
@@ -604,7 +595,7 @@ const Clients: React.FC = () => {
                 surnameA = (a as ParentClient).lastName || '';
             } else {
                 nameA = (a as InstitutionalClient).companyName || '';
-                surnameA = (a as InstitutionalClient).companyName || ''; // Fallback
+                surnameA = (a as InstitutionalClient).companyName || ''; 
             }
 
             if (b.clientType === ClientType.Parent) {
@@ -627,7 +618,6 @@ const Clients: React.FC = () => {
         return result;
     }, [clients, enrollments, showTrash, searchTerm, sortOrder, filterDay, filterTime, filterLocation]);
 
-    // EXPORT FUNCTIONALITY
     const handleExport = () => {
         if (filteredClients.length === 0) return alert("Nessun cliente da esportare.");
 
@@ -636,7 +626,6 @@ const Clients: React.FC = () => {
             const parent = client as ParentClient;
             const inst = client as InstitutionalClient;
 
-            // Prepare Children String
             let childrenStr = '';
             if (isParent) {
                 childrenStr = parent.children?.map(c => c.name).join(', ') || '';
@@ -666,21 +655,16 @@ const Clients: React.FC = () => {
         XLSX.writeFile(wb, `Clienti_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
-    // NEW: Grouped Data Logic
     const groupedClients = useMemo(() => {
         const groups: Record<string, { id: string; name: string; color: string; clients: Client[] }> = {};
-        
-        // Setup Unassigned Group
         groups['unassigned'] = { id: 'unassigned', name: 'Non Assegnati / Inattivi', color: '#6b7280', clients: [] };
 
         filteredClients.forEach(client => {
-            // Find active enrollments
             const activeEnrs = enrollments.filter(e => e.clientId === client.id && e.status === EnrollmentStatus.Active);
 
             if (activeEnrs.length === 0) {
                 groups['unassigned'].clients.push(client);
             } else {
-                // Handle multiple locations (add client to each group)
                 const addedToGroups = new Set<string>();
                 activeEnrs.forEach(enr => {
                     const locId = (enr.locationId && enr.locationId !== 'unassigned') ? enr.locationId : 'unassigned';
@@ -699,7 +683,6 @@ const Clients: React.FC = () => {
             }
         });
 
-        // Sort groups (unassigned last)
         return Object.values(groups).sort((a,b) => {
             if (a.id === 'unassigned') return 1;
             if (b.id === 'unassigned') return -1;
@@ -707,13 +690,11 @@ const Clients: React.FC = () => {
         });
     }, [filteredClients, enrollments]);
 
-    // Paginated Data (only for list view)
     const paginatedClients = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
         return filteredClients.slice(start, start + itemsPerPage);
     }, [filteredClients, currentPage]);
 
-    // Helper to extract location colors for a client (for List View)
     const getClientLocationColors = (clientId: string) => {
         const activeEnrollments = enrollments.filter(e => e.clientId === clientId && e.status === EnrollmentStatus.Active);
         const colors = new Set<string>();
@@ -723,7 +704,6 @@ const Clients: React.FC = () => {
         return Array.from(colors);
     };
 
-    // Card Renderer (Reused in both views)
     const renderClientCard = (client: Client, compact = false) => {
         const isParent = client.clientType === ClientType.Parent;
         const parentClient = client as ParentClient;
@@ -740,7 +720,6 @@ const Clients: React.FC = () => {
 
         return (
             <div key={client.id} className={`md-card flex flex-col cursor-pointer hover:shadow-md transition-shadow relative overflow-hidden ${showTrash ? 'opacity-75' : ''} ${compact ? 'border-gray-200' : ''}`} onClick={() => !showTrash && handleOpenModal(client)}>
-                {/* Left Color Tab (Only in List View or if needed in Grouped for multi-loc) */}
                 {!compact && (
                     <div className="absolute left-0 top-0 bottom-0 w-2 flex flex-col">
                         {locationColors.length > 0 ? (
@@ -779,9 +758,7 @@ const Clients: React.FC = () => {
                                         <div key={child.id} className="text-xs bg-gray-50 text-gray-700 px-2 py-1 rounded border border-gray-100 flex flex-col items-start shadow-sm gap-0.5">
                                             <span className="font-bold">{child.name || 'Senza nome'}</span>
                                             <div className="flex flex-wrap gap-1 text-[9px] uppercase font-bold text-gray-400">
-                                                {/* Snapshot Age Badge */}
                                                 {child.age && <span className="bg-gray-100 px-1 rounded border border-gray-200">1^: {child.age}</span>}
-                                                {/* Dynamic Age Badge */}
                                                 {currentAge && <span className="bg-green-50 text-green-700 border border-green-100 px-1 rounded">Oggi: {currentAge}</span>}
                                             </div>
                                             {Number(cAvg) > 0 && (
@@ -827,7 +804,6 @@ const Clients: React.FC = () => {
                     <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci anagrafica, valutazioni e figli.</p>
                 </div>
                 <div className="flex gap-2 overflow-x-auto pb-2 w-full md:w-auto scrollbar-hide">
-                    {/* EXPORT BUTTON */}
                     <button onClick={handleExport} className="md-btn md-btn-flat flex-shrink-0" title="Esporta in Excel"><DownloadIcon /> <span className="ml-2 hidden sm:inline">Esporta</span></button>
                     
                     <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat flex-shrink-0"><UploadIcon /> <span className="ml-2 hidden sm:inline">Importa</span></button>
@@ -843,7 +819,6 @@ const Clients: React.FC = () => {
                     <input type="text" placeholder="Cerca Cliente, Figlio, Sede..." className="block w-full bg-white border rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
                 <div className="flex gap-2 w-full lg:w-auto flex-wrap">
-                    {/* LOCATION FILTER - NEW */}
                     <select
                         value={filterLocation}
                         onChange={(e) => setFilterLocation(e.target.value)}
@@ -855,7 +830,6 @@ const Clients: React.FC = () => {
                         ))}
                     </select>
 
-                    {/* VIEW TOGGLE */}
                     <button 
                         onClick={() => setViewMode(prev => prev === 'list' ? 'grouped' : 'list')}
                         className={`flex-1 lg:w-auto border rounded-md py-2 px-3 text-sm font-medium whitespace-nowrap shadow-sm min-w-[140px] flex items-center justify-center gap-2 ${viewMode === 'grouped' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
@@ -898,7 +872,6 @@ const Clients: React.FC = () => {
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
                 <>
                 {viewMode === 'list' ? (
-                    // LIST VIEW
                     <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {paginatedClients.map(client => renderClientCard(client))}
@@ -912,13 +885,11 @@ const Clients: React.FC = () => {
                         />
                     </>
                 ) : (
-                    // GROUPED VIEW
                     <div className="space-y-8 animate-fade-in">
                         {groupedClients.map(group => {
                             const textColor = getTextColorForBg(group.color);
                             return (
                                 <div key={group.id} className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                                    {/* Header Sede */}
                                     <div className="px-6 py-3 flex justify-between items-center" style={{ backgroundColor: group.color, color: textColor }}>
                                         <h3 className="text-lg font-bold flex items-center gap-2">
                                             {group.name}
@@ -928,7 +899,6 @@ const Clients: React.FC = () => {
                                         </h3>
                                     </div>
                                     
-                                    {/* Grid Clienti */}
                                     <div className="p-6 bg-gray-50/50">
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                             {group.clients.map(client => renderClientCard(client, true))}

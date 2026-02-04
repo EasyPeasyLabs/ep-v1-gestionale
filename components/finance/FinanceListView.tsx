@@ -107,15 +107,20 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 
     const filteredList = useMemo(() => {
         let list: any[] = [];
+        // Se c'è una ricerca testuale attiva (lunga almeno 2 caratteri), bypassiamo i filtri data
+        const isSearching = filters.search.trim().length > 1;
+
         if (activeTab === 'transactions') {
             list = transactions.filter(t => !t.isDeleted);
-            // Applica Filtro Temporale per Transazioni
-            list = list.filter(t => {
-                const d = new Date(t.date);
-                const yearMatch = d.getFullYear() === filterYear;
-                const monthMatch = filterMonth === 'all' || (d.getMonth() + 1) === parseInt(filterMonth);
-                return yearMatch && monthMatch;
-            });
+            // Applica Filtro Temporale per Transazioni SOLO se non sto cercando
+            if (!isSearching) {
+                list = list.filter(t => {
+                    const d = new Date(t.date);
+                    const yearMatch = d.getFullYear() === filterYear;
+                    const monthMatch = filterMonth === 'all' || (d.getMonth() + 1) === parseInt(filterMonth);
+                    return yearMatch && monthMatch;
+                });
+            }
         }
         else if (activeTab === 'invoices' || activeTab === 'archive') {
             const baseList = invoices.filter(i => !i.isDeleted);
@@ -127,6 +132,9 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                     : (i.status === DocumentStatus.PendingSDI || i.status === DocumentStatus.SealedSDI || (i.sdiId && String(i.sdiId).trim().length > 0));
                 
                 if (!matchesTab) return false;
+
+                // Se sto cercando, salto il filtro data
+                if (isSearching) return true;
 
                 // Filtro Temporale (Data Emissione)
                 const d = new Date(i.issueDate);
@@ -313,7 +321,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                         
                         {/* FILTRI TEMPORALI UNIVERSALI (Cassa + Fatture) */}
                         {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'archive') && (
-                            <div className="flex gap-2">
+                            <div className={`flex gap-2 transition-opacity ${filters.search.length > 1 ? 'opacity-50 pointer-events-none' : ''}`}>
                                 <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="md-input !py-2 !px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold w-28">
                                     {years.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>

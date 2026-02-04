@@ -9,7 +9,7 @@ import Clients from './pages/Clients';
 import Suppliers from './pages/Suppliers';
 import Finance from './pages/Finance';
 import Settings from './pages/Settings';
-import NotificationPlanning from './pages/NotificationPlanning'; // NEW IMPORT
+import NotificationPlanning from './pages/NotificationPlanning';
 import Profile from './pages/Profile';
 import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
@@ -112,20 +112,20 @@ const App: React.FC = () => {
                   case 'Dashboard': return <Dashboard setCurrentPage={handleNavigation} />;
                   case 'Enrollments': return <Enrollments initialParams={pageParams} />;
                   case 'EnrollmentArchive': return <EnrollmentArchive />;
-                  case 'Attendance': return <Attendance />;
+                  case 'Attendance': return <Attendance initialParams={pageParams} />;
                   case 'AttendanceArchive': return <AttendanceArchive />;
                   case 'Activities': return <Activities />;
                   case 'ActivityLog': return <ActivityLog />;
                   case 'Homeworks': return <Homeworks />;
                   case 'Initiatives': return <Initiatives />;
-                  case 'Clients': return <Clients />;
-                  case 'ClientSituation': return <ClientSituation />; 
+                  case 'Clients': return <Clients initialParams={pageParams} />;
+                  case 'ClientSituation': return <ClientSituation initialParams={pageParams} />; 
                   case 'Suppliers': return <Suppliers />;
                   case 'Calendar': return <Calendar />;
                   case 'CRM': return <CRM />;
                   case 'Finance': return <Finance initialParams={pageParams} onNavigate={handleNavigation} />;
                   case 'Settings': return <Settings />;
-                  case 'NotificationPlanning': return <NotificationPlanning />; // NEW ROUTE
+                  case 'NotificationPlanning': return <NotificationPlanning />;
                   case 'Profile': return <Profile user={user} />;
                   case 'Manual': return <Manual />;
                   default: return <Dashboard setCurrentPage={handleNavigation} />;

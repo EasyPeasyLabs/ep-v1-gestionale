@@ -18,6 +18,12 @@ interface AttendanceItem extends Appointment {
     lessonsRemaining: number;
 }
 
+interface AttendanceProps {
+    initialParams?: {
+        date?: string; // ISO date string
+    };
+}
+
 // Helpers Date
 const getStartOfWeek = (d: Date) => { const date = new Date(d); const day = date.getDay(); const diff = date.getDate() - day + (day === 0 ? -6 : 1); return new Date(date.setDate(diff)); };
 const getEndOfWeek = (d: Date) => { const date = getStartOfWeek(d); date.setDate(date.getDate() + 6); return date; };
@@ -129,7 +135,7 @@ const AbsenceWizardModal: React.FC<{
     );
 };
 
-const Attendance: React.FC = () => {
+const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -144,6 +150,17 @@ const Attendance: React.FC = () => {
 
     // Wizard State
     const [wizardItem, setWizardItem] = useState<AttendanceItem | null>(null);
+
+    // Initial Params Effect
+    useEffect(() => {
+        if (initialParams?.date) {
+            const d = new Date(initialParams.date);
+            if (!isNaN(d.getTime())) {
+                setCurrentDate(d);
+                setViewMode('day');
+            }
+        }
+    }, [initialParams]);
 
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);

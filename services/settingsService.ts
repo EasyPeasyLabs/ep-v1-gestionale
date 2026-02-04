@@ -293,3 +293,8 @@ export const saveNotificationRule = async (rule: NotificationRule): Promise<void
     const docRef = doc(db, 'notification_rules', rule.id);
     await setDoc(docRef, rule, { merge: true });
 };
+
+export const deleteNotificationRule = async (id: string): Promise<void> => {
+    const docRef = doc(db, 'notification_rules', id);
+    await deleteDoc(docRef);
+};

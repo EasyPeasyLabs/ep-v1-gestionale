@@ -11,7 +11,13 @@ import IdentificationIcon from '../components/icons/IdentificationIcon';
 
 const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
 
-const ClientSituation: React.FC = () => {
+interface ClientSituationProps {
+    initialParams?: {
+        clientId?: string;
+    };
+}
+
+const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
     const [clients, setClients] = useState<Client[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
@@ -50,6 +56,16 @@ const ClientSituation: React.FC = () => {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    // Handle deep linking via initialParams
+    useEffect(() => {
+        if (initialParams?.clientId && clients.length > 0) {
+            const found = clients.find(c => c.id === initialParams.clientId);
+            if (found) {
+                setSelectedClient(found);
+            }
+        }
+    }, [initialParams, clients]);
 
     // Computed Data
     const availableLocations = useMemo(() => {

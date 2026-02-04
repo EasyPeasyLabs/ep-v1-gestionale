@@ -311,7 +311,7 @@ const Calendar: React.FC = () => {
                                 onClick={() => day && handleDayClick(day)} // Trigger Closure/Wizard
                                 className={`border min-h-[80px] md:min-h-[120px] p-1 overflow-hidden flex flex-col relative transition-colors 
                                     ${!day ? 'bg-gray-50' : isGlobalClosed ? 'bg-stripes-gray cursor-pointer hover:opacity-90' : 'bg-white cursor-pointer hover:bg-slate-50'}
-                                    ${isToday ? 'ring-4 ring-inset ring-yellow-400' : ''}
+                                    ${isToday ? 'animate-neon-pulse z-10' : ''}
                                 `} 
                                 style={{borderColor: 'var(--md-divider)'}}
                             >
