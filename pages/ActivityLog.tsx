@@ -189,14 +189,15 @@ const ActivityLog: React.FC = () => {
                                         let bestSlot: AvailabilitySlot | null = null;
                                         let minDiff = 45; // Tolerance threshold (minutes)
 
-                                        officialSlots.forEach(slot => {
+                                        // Use for...of instead of forEach for better TS type inference in this context
+                                        for (const slot of officialSlots) {
                                             const slotMinutes = getMinutesFromTime(slot.startTime);
                                             const diff = Math.abs(slotMinutes - appMinutes);
                                             if (diff <= minDiff) {
                                                 minDiff = diff;
                                                 bestSlot = slot;
                                             }
-                                        });
+                                        }
 
                                         if (bestSlot) {
                                             displayStartTime = bestSlot.startTime;

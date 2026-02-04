@@ -338,11 +338,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       return { totalCensus, activeCount, enthusiasticCount };
   }, [clientsData, allEnrollments, suppliersData]);
 
-  // --- 2. METRICHE LEZIONI MESE (LOGICA SLOT ORARI) ---
+  // --- 2. METRICHE LEZIONI MESE (LOGICA SLOT ORARI REALI) ---
   const lessonsMetrics = useMemo(() => {
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
+      const todayStr = now.toISOString().split('T')[0];
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
       // Sets per tracciare gli Slot Unici (Standard)
       const uniqueSlots = new Set<string>();
@@ -353,16 +355,39 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
               if (enr.appointments) {
                   enr.appointments.forEach(app => {
+                      // EXCLUDE SUSPENDED LESSONS
+                      if (app.status === 'Suspended') return;
+
                       const d = new Date(app.date);
                       if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                          // Chiave univoca per lo slot: Data + Ora + Sede
-                          // Questo raggruppa 5 bambini della stessa ora in 1 sola "Lezione"
-                          const slotKey = `${app.date}_${app.startTime}_${app.locationId}`;
+                          // Chiave univoca per lo slot: Data (YYYY-MM-DD) + Ora + Sede (NOME, non ID)
+                          // Questo allinea il conteggio visivo del Calendario con la Dashboard
+                          const dateKey = d.toISOString().split('T')[0];
+                          const locKey = (app.locationName || enr.locationName || 'N/D').trim();
+                          const slotKey = `${dateKey}_${app.startTime}_${locKey}`;
                           
                           uniqueSlots.add(slotKey);
 
-                          // Logica "Fatto": Se passato OPPURE se marcato Presente
-                          if (d < now || app.status === 'Present') {
+                          // Logica "Fatto": 
+                          // 1. Status 'Present' (vince su tutto)
+                          // 2. Data passata (ieri o prima)
+                          // 3. Data oggi MA orario fine passato
+                          
+                          let isDone = false;
+                          
+                          if (app.status === 'Present') {
+                              isDone = true;
+                          } else if (dateKey < todayStr) {
+                              isDone = true;
+                          } else if (dateKey === todayStr) {
+                              const [endH, endM] = app.endTime.split(':').map(Number);
+                              const endMinutes = endH * 60 + endM;
+                              if (currentMinutes >= endMinutes) {
+                                  isDone = true;
+                              }
+                          }
+
+                          if (isDone) {
                               doneSlots.add(slotKey);
                           }
                       }
@@ -376,11 +401,26 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       let extraDone = 0;
 
       manualLessonsData.forEach(ml => {
+          if (ml.description && ml.description.startsWith('[SOSPESO]')) return;
+
           const d = new Date(ml.date);
           if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
               extraTotal++;
-              // Lezioni manuali sono "Fatte" se passate
-              if (d < now) {
+              
+              const dateKey = d.toISOString().split('T')[0];
+              let isDone = false;
+              
+              if (dateKey < todayStr) {
+                  isDone = true;
+              } else if (dateKey === todayStr) {
+                  const [endH, endM] = ml.endTime.split(':').map(Number);
+                  const endMinutes = endH * 60 + endM;
+                  if (currentMinutes >= endMinutes) {
+                      isDone = true;
+                  }
+              }
+              
+              if (isDone) {
                   extraDone++;
               }
           }
