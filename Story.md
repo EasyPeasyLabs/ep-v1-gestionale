@@ -55,6 +55,7 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - **Progetti Istituzionali:** Trasformazione dei preventivi Enti in iscrizioni operative con monitoraggio rateale e billing alert automatico.
 - **WhatsApp Blaster:** Invio massivo di comunicazioni personalizzate tramite placeholder (es. `{{cliente}}`, `{{bambino}}`).
 - **Rating 4 Assi:** Valutazione qualitativa costante di allievi (Apprendimento/Condotta) e fornitori (Partnership/Negoziazione).
+- **Routine Manager:** Sistema di pianificazione avvisi personalizzati (es. manutenzioni) con supporto per la settimana lavorativa italiana (Lun-Dom).
 
 ---
 
@@ -75,6 +76,14 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - Aggiunta filtro per Sede/Recinto nel modulo Nuova Comunicazione.
     - Integrazione Cloud Storage per invio allegati (file e link) nelle comunicazioni massive.
 
+### Milestone Febbraio 2026
+- **18/02 (Mattina):** **Notification Engine Upgrade & Localization.**
+    - Implementazione regole di notifica personalizzate (Custom Rules) per task ricorrenti non legati agli allievi.
+    - **UX Localization:** Adattamento dell'interfaccia "Pianificazione Avvisi" alla settimana italiana (Lunedì-Domenica) tramite mapping visivo, mantenendo la compatibilità tecnica internazionale (0=Dom) per il backend Cloud Functions.
+- **18/02 (Pomeriggio):** **Client 360° View.**
+    - Rilascio del modulo "Situazione Clienti": dashboard unificata per l'analisi finanziaria e anagrafica del singolo cliente.
+    - **Financial Aggregation Logic:** Algoritmo di aggregazione che incrocia dati da 4 collezioni (Clients, Enrollments, Invoices, Transactions) per mostrare lo stato dei pagamenti e rilevare elementi orfani in tempo reale.
+
 ---
 
 ## 5. Roadmap Evolutiva
@@ -84,4 +93,4 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 20 Gennaio 2026.*
+*Documentazione aggiornata al 18 Febbraio 2026.*

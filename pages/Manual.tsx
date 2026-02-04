@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import Spinner from '../components/Spinner';
 
@@ -120,6 +121,22 @@ const MISSION_DETAILS: Record<string, MissionDetails> = {
             "Usa i placeholder nel footer legale per automatizzare le diciture IVA forfettario.",
             "I listini promozionali possono avere target specifici (solo certe sedi o certi clienti)."
         ]
+    },
+    'Pianificazione Avvisi': {
+        objective: "Il 'Pilota Automatico' della scuola. Non gestisce solo gli avvisi di sistema (pagamenti, scadenze), ma ti permette di creare Routine personalizzate (es. 'Backup Settimanale', 'Pulizia Filtri'). La visualizzazione della settimana è localizzata (Lunedì-Domenica) per facilitare la pianificazione italiana, pur mantenendo la compatibilità tecnica internazionale.",
+        pros: [
+            "Crea regole custom per task ricorrenti che non riguardano gli allievi.",
+            "Attiva le notifiche Push per i task critici da non dimenticare.",
+            "Usa i giorni della settimana (L-D) per distribuire il carico di lavoro."
+        ]
+    },
+    'Situazione Clienti': {
+        objective: "La 'Cartella Clinica' finanziaria del cliente. Offre una vista a 360° che unisce anagrafica, iscrizioni e movimenti contabili in un'unica schermata divisa (Split View). È il punto di riferimento per analizzare discrepanze, saldi aperti e pagamenti non riconciliati (Orfani) senza dover saltare tra più moduli.",
+        pros: [
+            "Usa la 'Ricerca Globale' nella header per atterrare direttamente qui.",
+            "Controlla la sezione 'Elementi Orfani' per trovare bonifici non collegati.",
+            "Verifica a colpo d'occhio se il cliente è in regola (Badge Verde)."
+        ]
     }
 };
 
@@ -139,81 +156,6 @@ const VirtualHand: React.FC<{ active: boolean; x: string; y: string; action: str
         </div>
     </div>
 );
-
-// --- MINI-APP SIMULATOR CORE ---
-const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
-    const [stepIdx, setStepIdx] = useState(0);
-    const [isAutoPlaying, setIsAutoPlaying] = useState(true);
-    
-    useEffect(() => {
-        setStepIdx(0);
-    }, [mission.title]);
-
-    useEffect(() => {
-        if (!isAutoPlaying || !mission.steps.length) return;
-        const timer = setTimeout(() => {
-            setStepIdx((prev) => (prev + 1) % mission.steps.length);
-        }, 4000);
-        return () => clearTimeout(timer);
-    }, [stepIdx, isAutoPlaying, mission.steps.length]);
-
-    const currentStep = mission.steps[stepIdx];
-
-    if (!currentStep) return <div className="w-full aspect-video flex items-center justify-center bg-slate-900 rounded-[40px]"><Spinner /></div>;
-
-    return (
-        <div className="w-full bg-slate-900 md:rounded-[40px] rounded-2xl p-1 border-[6px] md:border-[12px] border-slate-800 shadow-2xl overflow-hidden relative aspect-video flex flex-col group">
-            
-            <div className="bg-slate-800 px-4 md:px-6 py-2 md:py-3 flex justify-between items-center border-b border-slate-700/50">
-                <div className="flex gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500/50"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
-                </div>
-                <div className="bg-slate-900 px-3 md:px-4 py-0.5 md:py-1 rounded-full border border-slate-700">
-                    <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        {mission.title} • Passo {stepIdx + 1} di {mission.steps.length}
-                    </p>
-                </div>
-                <button onClick={() => setIsAutoPlaying(!isAutoPlaying)} className="text-[8px] md:text-[10px] font-black text-indigo-400 uppercase hover:text-white transition-colors">
-                    {isAutoPlaying ? 'Pausa' : 'Riproduci'}
-                </button>
-            </div>
-
-            <div className="flex-1 bg-slate-50 relative overflow-hidden">
-                <div className="absolute inset-0 bg-black/5 pointer-events-none z-10"></div>
-                <VirtualHand active={true} x={currentStep.handX} y={currentStep.handY} action={currentStep.action} />
-
-                <div className="p-4 md:p-8 h-full">
-                    {mission.emulatorType === 'clients' && <ClientCreationScenario step={stepIdx} />}
-                    {mission.emulatorType === 'finance' && <FinanceCycleScenario step={stepIdx} />}
-                    {mission.emulatorType === 'move' && <MoveModeScenario step={stepIdx} />}
-                    {mission.emulatorType === 'attendance' && <AttendanceScenario step={stepIdx} />}
-                    {mission.emulatorType === 'crm' && <CRMScenario step={stepIdx} />}
-                    {mission.emulatorType === 'dashboard' && <DashboardScenario step={stepIdx} />}
-                    {mission.emulatorType === 'suppliers' && <SupplierScenario step={stepIdx} />}
-                    {mission.emulatorType === 'settings' && <SettingsScenario step={stepIdx} />}
-                    {mission.emulatorType === 'calendar' && <CalendarScenario step={stepIdx} />}
-                    {mission.emulatorType === 'archive' && <ArchiveScenario step={stepIdx} />}
-                    {mission.emulatorType === 'activities' && <ActivitiesScenario step={stepIdx} />}
-                    {mission.emulatorType === 'log' && <LogScenario step={stepIdx} />}
-                </div>
-
-                <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 w-[90%] md:w-4/5 bg-white/95 backdrop-blur shadow-2xl border-l-4 border-indigo-600 p-3 md:p-4 rounded-xl md:rounded-2xl z-50 animate-manual-slide-up">
-                    <p className="text-indigo-600 text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-0.5 md:mb-1">{currentStep.caption}</p>
-                    <p className="text-slate-700 text-xs md:text-sm font-bold leading-tight">{currentStep.description}</p>
-                </div>
-            </div>
-
-            <style>{`
-                @keyframes manual-ping { 0% { transform: scale(0.2); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }
-                @keyframes manual-slide-up { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-                .animate-manual-ping { animation: manual-ping 1s infinite; }
-                .animate-manual-slide-up { animation: manual-slide-up 0.5s ease-out; }
-            `}</style>
-        </div>
-    );
-};
 
 // --- MINI SCENARI PER IL SIMULATORE ---
 const CalendarScenario: React.FC<{ step: number }> = ({ step }) => (
@@ -412,6 +354,122 @@ const SettingsScenario: React.FC<{ step: number }> = ({ step }) => (
     </div>
 );
 
+const PlanningScenario: React.FC<{ step: number }> = ({ step }) => (
+    <div className="flex flex-col h-full space-y-2 md:space-y-4">
+        <div className={`md-card p-3 md:p-4 transition-all ${step === 2 ? 'ring-2 ring-teal-500 shadow-xl scale-105' : 'bg-white'}`}>
+            <div className="flex justify-between mb-2">
+                <span className="font-bold text-[10px] md:text-xs">Backup Settimanale</span>
+                {step === 2 && <span className="bg-teal-100 text-teal-700 px-2 rounded text-[8px] font-black">PUSH</span>}
+            </div>
+            <div className="flex gap-1 justify-between">
+                {['L','M','M','G','V','S','D'].map((d, i) => (
+                    <div key={i} className={`w-4 h-4 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-bold ${i === 4 && step >= 2 ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{d}</div>
+                ))}
+            </div>
+        </div>
+    </div>
+);
+
+const ClientSituationScenario: React.FC<{ step: number }> = ({ step }) => (
+    <div className="flex flex-col h-full space-y-2">
+        {step >= 1 && (
+            <div className="flex flex-row gap-2 bg-white rounded-xl shadow-lg border overflow-hidden">
+                <div className="flex-1 p-2 bg-indigo-50 border-r border-indigo-100">
+                    <p className="text-[8px] text-gray-400 font-bold uppercase">Iscrizione</p>
+                    <p className="text-[10px] md:text-xs font-bold text-indigo-700">Corso Inglese</p>
+                    <p className="text-[10px] font-mono">300.00€</p>
+                </div>
+                <div className="flex-1 p-2 bg-green-50">
+                    <p className="text-[8px] text-gray-400 font-bold uppercase">Copertura</p>
+                    <p className="text-[10px] md:text-xs font-bold text-green-700">Bonifico + Fattura</p>
+                    <p className="text-[10px] font-mono">300.00€</p>
+                </div>
+            </div>
+        )}
+        {step === 2 && (
+            <div className="bg-green-100 text-green-800 text-[10px] font-black text-center py-1 rounded-lg animate-pulse border border-green-200">
+                ✨ POSIZIONE SALDATA
+            </div>
+        )}
+    </div>
+);
+
+// --- MINI-APP SIMULATOR CORE ---
+const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
+    const [stepIdx, setStepIdx] = useState(0);
+    const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+    
+    useEffect(() => {
+        setStepIdx(0);
+    }, [mission.title]);
+
+    useEffect(() => {
+        if (!isAutoPlaying || !mission.steps.length) return;
+        const timer = setTimeout(() => {
+            setStepIdx((prev) => (prev + 1) % mission.steps.length);
+        }, 4000);
+        return () => clearTimeout(timer);
+    }, [stepIdx, isAutoPlaying, mission.steps.length]);
+
+    const currentStep = mission.steps[stepIdx];
+
+    if (!currentStep) return <div className="w-full aspect-video flex items-center justify-center bg-slate-900 rounded-[40px]"><Spinner /></div>;
+
+    return (
+        <div className="w-full bg-slate-900 md:rounded-[40px] rounded-2xl p-1 border-[6px] md:border-[12px] border-slate-800 shadow-2xl overflow-hidden relative aspect-video flex flex-col group">
+            
+            <div className="bg-slate-800 px-4 md:px-6 py-2 md:py-3 flex justify-between items-center border-b border-slate-700/50">
+                <div className="flex gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/50"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500/50"></div>
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/50"></div>
+                </div>
+                <div className="bg-slate-900 px-3 md:px-4 py-0.5 md:py-1 rounded-full border border-slate-700">
+                    <p className="text-[8px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        {mission.title} • Passo {stepIdx + 1} di {mission.steps.length}
+                    </p>
+                </div>
+                <button onClick={() => setIsAutoPlaying(!isAutoPlaying)} className="text-[8px] md:text-[10px] font-black text-indigo-400 uppercase hover:text-white transition-colors">
+                    {isAutoPlaying ? 'Pausa' : 'Riproduci'}
+                </button>
+            </div>
+
+            <div className="flex-1 bg-slate-50 relative overflow-hidden">
+                <div className="absolute inset-0 bg-black/5 pointer-events-none z-10"></div>
+                <VirtualHand active={true} x={currentStep.handX} y={currentStep.handY} action={currentStep.action} />
+
+                <div className="p-4 md:p-8 h-full">
+                    {mission.emulatorType === 'clients' && <ClientCreationScenario step={stepIdx} />}
+                    {mission.emulatorType === 'finance' && <FinanceCycleScenario step={stepIdx} />}
+                    {mission.emulatorType === 'move' && <MoveModeScenario step={stepIdx} />}
+                    {mission.emulatorType === 'attendance' && <AttendanceScenario step={stepIdx} />}
+                    {mission.emulatorType === 'crm' && <CRMScenario step={stepIdx} />}
+                    {mission.emulatorType === 'dashboard' && <DashboardScenario step={stepIdx} />}
+                    {mission.emulatorType === 'suppliers' && <SupplierScenario step={stepIdx} />}
+                    {mission.emulatorType === 'settings' && <SettingsScenario step={stepIdx} />}
+                    {mission.emulatorType === 'calendar' && <CalendarScenario step={stepIdx} />}
+                    {mission.emulatorType === 'archive' && <ArchiveScenario step={stepIdx} />}
+                    {mission.emulatorType === 'activities' && <ActivitiesScenario step={stepIdx} />}
+                    {mission.emulatorType === 'log' && <LogScenario step={stepIdx} />}
+                    {mission.emulatorType === 'planning' && <PlanningScenario step={stepIdx} />}
+                    {mission.emulatorType === 'clientsituation' && <ClientSituationScenario step={stepIdx} />}
+                </div>
+
+                <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 w-[90%] md:w-4/5 bg-white/95 backdrop-blur shadow-2xl border-l-4 border-indigo-600 p-3 md:p-4 rounded-xl md:rounded-2xl z-50 animate-manual-slide-up">
+                    <p className="text-indigo-600 text-[8px] md:text-[10px] font-black uppercase tracking-widest mb-0.5 md:mb-1">{currentStep.caption}</p>
+                    <p className="text-slate-700 text-xs md:text-sm font-bold leading-tight">{currentStep.description}</p>
+                </div>
+            </div>
+
+            <style>{`
+                @keyframes manual-ping { 0% { transform: scale(0.2); opacity: 0.8; } 100% { transform: scale(2.5); opacity: 0; } }
+                @keyframes manual-slide-up { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+                .animate-manual-ping { animation: manual-ping 1s infinite; }
+                .animate-manual-slide-up { animation: manual-slide-up 0.5s ease-out; }
+            `}</style>
+        </div>
+    );
+};
 
 // --- CONFIGURAZIONE MISSIONI ---
 const MISSIONS: Record<string, Mission> = {
@@ -517,6 +575,24 @@ const MISSIONS: Record<string, Mission> = {
             { id: 0, caption: 'Nuovo Listino', description: 'Crea pacchetti K- (Kid) o A- (Adult).', handX: '50%', handY: '20%', action: 'click' },
             { id: 1, caption: 'Naming Enterprise', description: 'Usa il formato corretto per la tracciabilità fiscale.', handX: '50%', handY: '45%', action: 'type' }
         ]
+    },
+    'Pianificazione Avvisi': {
+        title: 'Routine Manager',
+        emulatorType: 'planning',
+        steps: [
+            { id: 0, caption: 'Nuovo Avviso', description: 'Crea un promemoria per task ricorrenti (es. Backup).', handX: '80%', handY: '10%', action: 'click' },
+            { id: 1, caption: 'Dettagli', description: 'Inserisci Titolo e Descrizione per lo staff.', handX: '50%', handY: '30%', action: 'type' },
+            { id: 2, caption: 'Schedulazione', description: 'Seleziona i giorni (L-D) e attiva la notifica Push.', handX: '60%', handY: '60%', action: 'click' }
+        ]
+    },
+    'Situazione Clienti': {
+        title: 'Analisi Cliente',
+        emulatorType: 'clientsituation',
+        steps: [
+            { id: 0, caption: 'Ricerca', description: 'Trova rapidamente il genitore o l\'ente da analizzare.', handX: '20%', handY: '20%', action: 'type' },
+            { id: 1, caption: 'Split Finanziario', description: 'Confronta il dovuto (Iscrizione) con il pagato (Bonifici/Fatture).', handX: '50%', handY: '50%', action: 'idle' },
+            { id: 2, caption: 'Verifica Orfani', description: 'Identifica eventuali pagamenti non riconciliati.', handX: '50%', handY: '80%', action: 'idle' }
+        ]
     }
 };
 
@@ -540,8 +616,10 @@ const Manual: React.FC = () => {
         { key: 'Finanza', label: 'Finanza', icon: '💰' },
         { key: 'CRM', label: 'CRM', icon: '📱' },
         { key: 'Clienti', label: 'Clienti', icon: '👥' },
+        { key: 'Situazione Clienti', label: 'Situazione Clienti', icon: '🆔' }, // NEW
         { key: 'Fornitori', label: 'Fornitori', icon: '🏢' },
         { key: 'Attività', label: 'Attività', icon: '⚽' },
+        { key: 'Pianificazione Avvisi', label: 'Pianificazione Avvisi', icon: '🔔' }, // NEW
         { key: 'Impostazioni', label: 'Impostazioni', icon: '⚙️' }
     ];
 
@@ -631,7 +709,7 @@ const Manual: React.FC = () => {
                         <div className="inline-block bg-slate-900 px-6 md:px-10 py-3 md:py-5 rounded-3xl md:rounded-[32px] shadow-2xl">
                             <p className="text-[9px] md:text-[11px] text-white font-black uppercase tracking-[0.1em] md:tracking-[0.2em] flex items-center gap-3 md:gap-4">
                                 <span className="text-amber-400 text-xl md:text-2xl animate-pulse">✨</span> 
-                                Manuale Operativo Aggiornato: 18/01/2026
+                                Manuale Operativo Aggiornato: 18/02/2026
                             </p>
                         </div>
                     </div>
