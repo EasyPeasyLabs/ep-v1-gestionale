@@ -32,7 +32,7 @@ const isItalianHoliday = (date: Date): boolean => {
     const easterMondays: Record<number, string> = {
         2024: '4-1', 2025: '4-21', 2026: '4-6', 2027: '3-29', 2028: '4-17', 2029: '4-2', 2030: '4-22'
     };
-    const key = `${y}-${m}-${d}`; // Fix key format matching
+    const key = `${y}-${m}-${d}`; 
     const lookupKey = `${m}-${d}`;
     if (easterMondays[y] === lookupKey) return true;
     return false;
@@ -73,15 +73,16 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [subscriptionTypeId, setSubscriptionTypeId] = useState(existingEnrollment?.subscriptionTypeId || '');
     const [startDateInput, setStartDateInput] = useState(existingEnrollment ? existingEnrollment.startDate.split('T')[0] : new Date().toISOString().split('T')[0]); 
     const [endDateInput, setEndDateInput] = useState(existingEnrollment ? existingEnrollment.endDate.split('T')[0] : '');
-    // Manual End Date is now only relevant if user explicitly overrides the calc
     const [isEndDateManual, setIsEndDateManual] = useState(false); 
     const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
 
-    // Time Slots State
+    // Location & Time State
+    // Se stiamo modificando, usiamo i valori esistenti. Se nuova, default vuoto.
+    const [targetLocationId, setTargetLocationId] = useState(existingEnrollment?.locationId !== 'unassigned' ? existingEnrollment?.locationId : '');
     const [startTime, setStartTime] = useState(existingEnrollment?.appointments?.[0]?.startTime || '16:00');
     const [endTime, setEndTime] = useState(existingEnrollment?.appointments?.[0]?.endTime || '18:00');
+    
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
     const [clientSearchTerm, setClientSearchTerm] = useState('');
     const [clientSort, setClientSort] = useState<'surname_asc' | 'surname_desc'>('surname_asc');
@@ -119,6 +120,23 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         loadData();
     }, []);
 
+    // Flatten all locations for dropdown
+    const allLocations = useMemo(() => {
+        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string}[] = [];
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                locs.push({
+                    id: l.id, 
+                    name: l.name, 
+                    color: l.color,
+                    supplierId: s.id,
+                    supplierName: s.companyName
+                });
+            });
+        });
+        return locs.sort((a,b) => a.name.localeCompare(b.name));
+    }, [suppliers]);
+
     const availableSubscriptions = useMemo(() => {
         const isVisible = (s: SubscriptionType) => {
             const status = s.statusConfig?.status || 'active'; 
@@ -149,37 +167,35 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         if (!selectedSub || !startDateInput || selectedSub.id === 'quote-based') {
             return null;
         }
-        // Usa il numero di lezioni, non i giorni
         return calculateSlotBasedDates(startDateInput, selectedSub.lessons);
     }, [subscriptionTypeId, startDateInput, subscriptionTypes]);
 
     useEffect(() => {
-        // Se non è istituzionale e non è manuale, applica la logica Slot
         if (!isEndDateManual && calculatedDates && !isInstitutional) {
             setEndDateInput(calculatedDates.end);
         }
     }, [calculatedDates, isEndDateManual, isInstitutional]);
 
-    // Available Time Slots based on Location and Day
+    // Available Time Slots based on SELECTED LOCATION and START DATE
     const locationTimeSlots = useMemo(() => {
-        if (!existingEnrollment?.locationId || existingEnrollment.locationId === 'unassigned') return [];
+        if (!targetLocationId) return [];
         
         const date = new Date(startDateInput);
         const dayOfWeek = date.getDay(); // 0=Dom, 1=Lun
         
         // Find supplier/location
         for (const s of suppliers) {
-            const loc = s.locations.find(l => l.id === existingEnrollment.locationId);
+            const loc = s.locations.find(l => l.id === targetLocationId);
             if (loc && loc.availability) {
                 return loc.availability.filter(slot => slot.dayOfWeek === dayOfWeek).sort((a,b) => a.startTime.localeCompare(b.startTime));
             }
         }
         return [];
-    }, [startDateInput, existingEnrollment, suppliers]);
+    }, [startDateInput, targetLocationId, suppliers]);
 
     const handleQuickTimeSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const val = e.target.value;
-        if (!val) return;
+        if (!val || val === 'manual') return;
         const [s, eTime] = val.split('-');
         setStartTime(s);
         setEndTime(eTime);
@@ -216,6 +232,31 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
         
+        // --- CALCOLO PARAMETRI LOCATION ---
+        let finalLocationId = 'unassigned';
+        let finalLocationName = 'Sede Non Definita';
+        let finalLocationColor = '#e5e7eb';
+        let finalSupplierId = 'unassigned';
+        let finalSupplierName = '';
+
+        if (targetLocationId) {
+            const locInfo = allLocations.find(l => l.id === targetLocationId);
+            if (locInfo) {
+                finalLocationId = locInfo.id;
+                finalLocationName = locInfo.name;
+                finalLocationColor = locInfo.color;
+                finalSupplierId = locInfo.supplierId;
+                finalSupplierName = locInfo.supplierName;
+            }
+        } else if (existingEnrollment) {
+            // Keep existing if not changing
+            finalLocationId = existingEnrollment.locationId;
+            finalLocationName = existingEnrollment.locationName;
+            finalLocationColor = existingEnrollment.locationColor;
+            finalSupplierId = existingEnrollment.supplierId;
+            finalSupplierName = existingEnrollment.supplierName;
+        }
+
         // --- SMART CALENDAR REGENERATION CHECK ---
         let regenerateCalendar = false;
         
@@ -223,9 +264,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         const subChanged = subscriptionTypeId !== initialValues.current.subscriptionId;
         const endChanged = endDateInput !== initialValues.current.endDate;
         const timeChanged = startTime !== initialValues.current.startTime || endTime !== initialValues.current.endTime;
+        const locationChanged = finalLocationId !== existingEnrollment?.locationId;
 
-        if (existingEnrollment && (dateChanged || subChanged || endChanged || timeChanged)) {
-            const message = "Hai modificato parametri chiave (date, orari o pacchetto).\n\nVuoi rigenerare il calendario lezioni con i nuovi orari?\n(Le presenze già registrate verranno mantenute se le date coincidono).";
+        // Se è una modifica (existing) e cambiamo parametri chiave
+        if (existingEnrollment && (dateChanged || subChanged || endChanged || timeChanged || locationChanged)) {
+            const message = "Hai modificato parametri chiave (date, orari, sede o pacchetto).\n\nVuoi rigenerare il calendario lezioni con i nuovi orari?\n(Le presenze già registrate verranno mantenute se le date coincidono).";
             regenerateCalendar = window.confirm(message);
         }
 
@@ -239,32 +282,31 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                     return c ? { id: c.id, name: c.name } : null;
                 }).filter(Boolean);
 
-        // Prepare Appointments Payload
+        // Prepare Appointments Payload template (Time/Loc Info)
         let appointmentsPayload: any[] = [];
         
         if (regenerateCalendar || !existingEnrollment) {
             // Caso A: Nuova iscrizione o Rigenerazione Totale
-            // Creiamo un template per dire al backend di ricalcolare tutto
             appointmentsPayload = [{
                 lessonId: 'template', 
                 date: new Date(startDateInput).toISOString(),
                 startTime: startTime,
                 endTime: endTime,
-                locationId: existingEnrollment?.locationId || 'unassigned',
-                locationName: existingEnrollment?.locationName || 'Sede Non Definita',
-                locationColor: existingEnrollment?.locationColor || '#e5e7eb',
+                locationId: finalLocationId,
+                locationName: finalLocationName,
+                locationColor: finalLocationColor,
                 childName: '', 
                 status: 'Scheduled'
             }];
         } else {
-            // Caso B: Aggiornamento senza rigenerazione date
-            // Dobbiamo comunque aggiornare l'orario su tutte le lezioni esistenti
-            // altrimenti la modifica del tempo viene persa
+            // Caso B: Update semplice, aggiorniamo i metadati sugli appuntamenti futuri
             appointmentsPayload = (existingEnrollment.appointments || []).map(app => ({
                 ...app,
                 startTime: startTime,
-                endTime: endTime
-                // Manteniamo locationId e altri dati esistenti per non rompere i link storici
+                endTime: endTime,
+                locationId: finalLocationId, // Se cambiata sede ma no regen, aggiorna almeno il metadato
+                locationName: finalLocationName,
+                locationColor: finalLocationColor
             }));
         }
 
@@ -281,13 +323,14 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 subscriptionTypeId: subscriptionTypeId || 'quote-based',
                 subscriptionName: selectedSub?.name || existingEnrollment?.subscriptionName || 'Progetto Istituzionale',
                 price: Number(existingEnrollment?.price || selectedSub?.price || 0),
-                supplierId: existingEnrollment?.supplierId || 'unassigned',
-                supplierName: existingEnrollment?.supplierName || '',
-                locationId: existingEnrollment?.locationId || 'unassigned',
-                locationName: existingEnrollment?.locationName || 'Sede Non Definita', 
-                locationColor: existingEnrollment?.locationColor || '#e5e7eb', 
                 
-                // IMPORTANT: Pass either the updated history OR the new time template
+                // Location Info Populated from State
+                supplierId: finalSupplierId,
+                supplierName: finalSupplierName,
+                locationId: finalLocationId,
+                locationName: finalLocationName, 
+                locationColor: finalLocationColor, 
+                
                 appointments: appointmentsPayload, 
                 
                 lessonsTotal: Number(existingEnrollment?.lessonsTotal || selectedSub?.lessons || 0),
@@ -419,17 +462,32 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                     </div>
                 </div>
 
-                {/* 7. ORARIO LEZIONE (NEW) */}
-                <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 mt-2">
-                    <label className="block text-xs font-bold text-indigo-800 uppercase mb-2">7. Orario Lezione / Slot</label>
+                {/* 7. ASSEGNAZIONE SEDE E ORARIO (IBRIDO) */}
+                <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mt-2">
+                    <label className="block text-xs font-bold text-indigo-800 uppercase mb-3">7. Assegnazione Sede & Orario</label>
                     
+                    {/* Location Selector */}
+                    <div className="md-input-group !mb-3">
+                        <select 
+                            value={targetLocationId || ''} 
+                            onChange={e => setTargetLocationId(e.target.value)} 
+                            className="md-input bg-white font-bold text-indigo-700"
+                        >
+                            <option value="">-- Nessuna / Da Assegnare (Manuale) --</option>
+                            {allLocations.map(l => (
+                                <option key={l.id} value={l.id}>{l.name}</option>
+                            ))}
+                        </select>
+                        <label className="md-input-label !top-0">Recinto di Destinazione (Opzionale)</label>
+                    </div>
+
                     {/* Quick Selector if slots available */}
-                    {locationTimeSlots.length > 0 && (
-                        <div className="mb-2">
+                    {targetLocationId && locationTimeSlots.length > 0 && (
+                        <div className="mb-3 animate-fade-in">
                             <select 
                                 onChange={handleQuickTimeSelect}
                                 defaultValue=""
-                                className="w-full text-xs font-bold bg-white border border-indigo-200 text-indigo-700 rounded p-1.5 focus:ring-2 focus:ring-indigo-300 outline-none"
+                                className="w-full text-xs font-bold bg-white border border-indigo-200 text-indigo-700 rounded p-2 focus:ring-2 focus:ring-indigo-300 outline-none"
                             >
                                 <option value="" disabled>✨ Seleziona slot ufficiale ({locationTimeSlots.length} disp.)</option>
                                 {locationTimeSlots.map((slot, idx) => (
@@ -437,7 +495,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                                         {slot.startTime} - {slot.endTime}
                                     </option>
                                 ))}
-                                <option value="manual">Inerimento Manuale</option>
+                                <option value="manual">Inserimento Manuale</option>
                             </select>
                         </div>
                     )}
@@ -453,6 +511,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             <label className="md-input-label !top-0">Fine</label>
                         </div>
                     </div>
+                    {targetLocationId && (
+                        <p className="text-[10px] text-indigo-600 mt-2 italic">
+                            *Selezionando una sede, l'allievo verrà assegnato automaticamente e il calendario verrà generato in base alla data di inizio.
+                        </p>
+                    )}
                 </div>
 
             </div>

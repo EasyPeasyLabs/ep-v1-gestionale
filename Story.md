@@ -83,6 +83,10 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - **18/02 (Pomeriggio):** **Client 360° View.**
     - Rilascio del modulo "Situazione Clienti": dashboard unificata per l'analisi finanziaria e anagrafica del singolo cliente.
     - **Financial Aggregation Logic:** Algoritmo di aggregazione che incrocia dati da 4 collezioni (Clients, Enrollments, Invoices, Transactions) per mostrare lo stato dei pagamenti e rilevare elementi orfani in tempo reale.
+- **18/02 (Sera):** **UX Refinements (Registro Presenze).**
+    - **Grouped Time Slots:** Nuova visualizzazione gerarchica nel registro presenze (Sede -> Giorno -> Slot Orario) per migliorare la leggibilità e l'operatività.
+    - **Bulk Actions:** Introduzione di azioni massive per slot orario ("Tutti Presenti" / "Tutti Assenti") e refactoring del Wizard Assenze per supportare input multipli.
+    - **Box Liberation Strategy:** Risoluzione conflitti di clipping CSS sui menu a discesa delle card presenze, rimuovendo `overflow-hidden` dai contenitori e gestendo manualmente il `border-radius` per mantenere il design pulito.
 
 ---
 

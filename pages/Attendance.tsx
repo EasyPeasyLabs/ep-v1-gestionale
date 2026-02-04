@@ -9,6 +9,14 @@ import CalendarIcon from '../components/icons/CalendarIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ChevronDownIcon from '../components/icons/ChevronDownIcon';
+import CheckIcon from '../components/icons/CheckIcon'; 
+
+// Icona X per "Tutti Assenti" (inline SVG per sicurezza)
+const XIcon = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+);
 
 // Interfaccia estesa per visualizzare le lezioni nella lista presenze
 interface AttendanceItem extends Appointment {
@@ -30,18 +38,22 @@ const getEndOfWeek = (d: Date) => { const date = getStartOfWeek(d); date.setDate
 const getStartOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const getEndOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 
-// --- ABSENCE WIZARD MODAL ---
+// --- ABSENCE WIZARD MODAL (MULTI-ITEM SUPPORT) ---
 const AbsenceWizardModal: React.FC<{
-    item: AttendanceItem;
+    items: AttendanceItem[];
     suppliers: Supplier[];
     onClose: () => void;
     onConfirm: (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: any) => Promise<void>;
-}> = ({ item, suppliers, onClose, onConfirm }) => {
+}> = ({ items, suppliers, onClose, onConfirm }) => {
+    // Use first item as reference for defaults (since they are in same slot)
+    const refItem = items[0];
+    if (!refItem) return null;
+
     const [step, setStep] = useState<'choice' | 'manual'>('choice');
     const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
-    const [manualTimeStart, setManualTimeStart] = useState(item.startTime);
-    const [manualTimeEnd, setManualTimeEnd] = useState(item.endTime);
-    const [manualLocationId, setManualLocationId] = useState(item.locationId);
+    const [manualTimeStart, setManualTimeStart] = useState(refItem.startTime);
+    const [manualTimeEnd, setManualTimeEnd] = useState(refItem.endTime);
+    const [manualLocationId, setManualLocationId] = useState(refItem.locationId);
     const [loading, setLoading] = useState(false);
 
     // Flatten locations for selector
@@ -71,36 +83,47 @@ const AbsenceWizardModal: React.FC<{
         setLoading(false);
     };
 
+    const isSingle = items.length === 1;
+    const title = isSingle ? `Gestione Assenza: ${items[0].childName}` : `Gestione Assenza di Gruppo (${items.length})`;
+
     return (
         <Modal onClose={onClose} size="md">
             <div className="p-6">
                 <div className="flex justify-between items-start mb-6">
                     <div>
-                        <h3 className="text-xl font-bold text-slate-800">Gestione Assenza</h3>
-                        <p className="text-sm text-slate-500 font-medium">{item.childName} • {new Date(item.date).toLocaleDateString()}</p>
+                        <h3 className="text-xl font-bold text-slate-800">{title}</h3>
+                        <p className="text-sm text-slate-500 font-medium">
+                            {new Date(refItem.date).toLocaleDateString()} • {refItem.startTime}
+                        </p>
                     </div>
-                    <div className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs font-black uppercase">Assente</div>
+                    <div className="bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs font-black uppercase">
+                        {isSingle ? 'Assente' : 'Tutti Assenti'}
+                    </div>
                 </div>
 
                 {step === 'choice' && (
                     <div className="space-y-4">
-                        <p className="text-sm text-slate-600 mb-4">Come vuoi gestire questa assenza a livello economico e didattico?</p>
+                        <p className="text-sm text-slate-600 mb-4">Come vuoi gestire questa assenza {!isSingle && 'massiva'} a livello economico e didattico?</p>
                         
                         <button onClick={() => handleAction('lost')} disabled={loading} className="w-full p-4 border-2 border-red-100 bg-red-50 hover:bg-red-100 rounded-xl text-left transition-all group relative overflow-hidden">
                             <div className="relative z-10">
                                 <h4 className="font-bold text-red-800 text-sm uppercase mb-1">🚫 Assenza Persa (No Recupero)</h4>
-                                <p className="text-xs text-red-600 leading-snug">Lo slot viene bruciato. Il credito lezione viene scalato dal pacchetto.</p>
+                                <p className="text-xs text-red-600 leading-snug">
+                                    {isSingle ? "Lo slot viene bruciato." : "Gli slot vengono bruciati."} Il credito lezione viene scalato dal pacchetto.
+                                </p>
                             </div>
                         </button>
 
                         <button onClick={() => handleAction('recover_auto')} disabled={loading} className="w-full p-4 border-2 border-amber-100 bg-amber-50 hover:bg-amber-100 rounded-xl text-left transition-all group">
                             <h4 className="font-bold text-amber-800 text-sm uppercase mb-1">⚡ Recupero Automatico</h4>
-                            <p className="text-xs text-amber-700 leading-snug">Lo slot slitta alla prossima settimana (stessa ora/sede). Credito preservato.</p>
+                            <p className="text-xs text-amber-700 leading-snug">
+                                {isSingle ? "Lo slot slitta" : "Gli slot slittano"} alla prossima settimana (stessa ora/sede). Credito preservato.
+                            </p>
                         </button>
 
                         <button onClick={() => setStep('manual')} disabled={loading} className="w-full p-4 border-2 border-slate-100 bg-slate-50 hover:bg-white hover:border-indigo-300 rounded-xl text-left transition-all group">
                             <h4 className="font-bold text-slate-800 text-sm uppercase mb-1">📅 Recupero Manuale</h4>
-                            <p className="text-xs text-slate-500 leading-snug">Scegli tu la data, l'orario e la sede del recupero. Credito preservato.</p>
+                            <p className="text-xs text-slate-500 leading-snug">Scegli tu la data, l'orario e la sede del recupero {isSingle ? "" : "per l'intero gruppo"}. Credito preservato.</p>
                         </button>
                     </div>
                 )}
@@ -108,7 +131,7 @@ const AbsenceWizardModal: React.FC<{
                 {step === 'manual' && (
                     <div className="space-y-4 animate-slide-up">
                         <div className="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-800 mb-4">
-                            Stai riprogrammando la lezione. Il credito non verrà scalato oggi.
+                            Stai riprogrammando {isSingle ? "la lezione" : `le ${items.length} lezioni`}. Il credito non verrà scalato oggi.
                         </div>
                         <div className="md-input-group">
                             <input type="date" value={manualDate} onChange={e => setManualDate(e.target.value)} className="md-input" />
@@ -148,8 +171,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     // UI state per menu "Gestisci" aperto
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-    // Wizard State
-    const [wizardItem, setWizardItem] = useState<AttendanceItem | null>(null);
+    // Wizard State (Array for bulk)
+    const [wizardItems, setWizardItems] = useState<AttendanceItem[]>([]);
 
     // Initial Params Effect
     useEffect(() => {
@@ -223,9 +246,10 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
     useEffect(() => { fetchAttendanceData(); }, [fetchAttendanceData]); 
 
-    // Grouping Logic: Location -> Date (if not daily) -> Items
+    // Grouping Logic: Location -> Date -> Time -> Items
     const groupedData = useMemo(() => {
-        const locationGroups: Record<string, Record<string, AttendanceItem[]>> = {}; // Location -> DateString -> Items
+        // Location -> DateString -> Items
+        const locationGroups: Record<string, Record<string, AttendanceItem[]>> = {}; 
         
         attendanceItems.forEach(item => {
             const loc = item.locationName || 'Sede Non Definita';
@@ -273,6 +297,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         return currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
     };
 
+    // --- Individual Actions ---
     const handleMarkPresence = async (item: AttendanceItem) => {
         try {
             setLoading(true);
@@ -287,16 +312,46 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     };
 
     const handleMarkAbsence = (item: AttendanceItem) => {
-        setWizardItem(item);
+        setWizardItems([item]);
+    };
+
+    // --- Bulk Slot Actions ---
+    const handleBulkSlotPresence = async (slotItems: AttendanceItem[]) => {
+        // Filter out those already present
+        const targets = slotItems.filter(i => i.status !== 'Present');
+        if (targets.length === 0) return;
+
+        try {
+            setLoading(true);
+            for(const item of targets) {
+                await registerPresence(item.enrollmentId, item.lessonId);
+            }
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch(e) {
+            console.error(e);
+            alert("Errore aggiornamento massivo.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBulkSlotAbsence = (slotItems: AttendanceItem[]) => {
+        // Filter out those already absent? No, allow re-managing
+        setWizardItems(slotItems);
     };
 
     const handleWizardConfirm = async (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: any) => {
-        if (!wizardItem) return;
+        if (wizardItems.length === 0) return;
         try {
-            await registerAbsence(wizardItem.enrollmentId, wizardItem.lessonId, strategy, details);
+            // Se recover_manual, usiamo i dettagli per TUTTI gli item (es. spostamento classe intera)
+            // Se recover_auto, ognuno calcola il suo prossimo slot.
+            for (const item of wizardItems) {
+                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details);
+            }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
-            setWizardItem(null);
+            setWizardItems([]);
         } catch (e) {
             console.error(e);
             alert("Errore durante l'elaborazione dell'assenza.");
@@ -310,9 +365,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
     const handleModify = (item: AttendanceItem) => {
         setOpenMenuId(null);
-        // Invece di un semplice toggle, apriamo il Wizard Assenze
-        // Questo permette di scegliere tra "Persa" e "Recupero" anche partendo da "Presente"
-        setWizardItem(item);
+        setWizardItems([item]);
     };
 
     const handleDelete = async (item: AttendanceItem) => {
@@ -330,8 +383,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         }
     };
 
-    // --- Bulk Actions ---
-    const handleBulkMarkPresent = async () => {
+    // --- Global Bulk Actions (Page Level) ---
+    const handleGlobalBulkMarkPresent = async () => {
         if (!confirm("Segnare TUTTI gli studenti visualizzati come PRESENTI?")) return;
         setLoading(true);
         try {
@@ -348,7 +401,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         }
     };
 
-    const handleBulkMarkAbsent = async () => {
+    const handleGlobalBulkMarkAbsent = async () => {
         if (!confirm("Segnare TUTTI gli studenti visualizzati come ASSENTI con RECUPERO automatico?")) return;
         setLoading(true);
         try {
@@ -365,6 +418,17 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         }
     };
 
+    // Helper: Raggruppamento per Orario (all'interno di Location/Date)
+    const groupItemsByTime = (items: AttendanceItem[]) => {
+        const groups: Record<string, AttendanceItem[]> = {};
+        items.forEach(item => {
+            const key = `${item.startTime} - ${item.endTime}`;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
+        });
+        return groups;
+    };
+
     return (
         <div onClick={() => setOpenMenuId(null)}> {/* Chiude menu al click fuori */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -375,11 +439,11 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 
                 {/* TOOLBAR SCORREVOLE SU MOBILE */}
                 <div className="w-full md:w-auto flex gap-2 items-center overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                    {/* Bulk Actions */}
-                    <button onClick={handleBulkMarkPresent} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 whitespace-nowrap flex-shrink-0">
+                    {/* Bulk Actions Globali */}
+                    <button onClick={handleGlobalBulkMarkPresent} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 whitespace-nowrap flex-shrink-0">
                         ✓ Tutti Presenti
                     </button>
-                    <button onClick={handleBulkMarkAbsent} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap flex-shrink-0">
+                    <button onClick={handleGlobalBulkMarkAbsent} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap flex-shrink-0">
                         ✕ Tutti Assenti
                     </button>
 
@@ -392,10 +456,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 </div>
             </div>
 
-            {/* Navigazione Calendario + Filtro Sede - RESPONSIVE REFACTOR */}
+            {/* Navigazione Calendario + Filtro Sede */}
             <div className="md-card p-4 mb-6 bg-white border-l-4 border-indigo-500 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 
-                {/* 1. Navigation Group: Date & Buttons (Full width on mobile, auto on desktop) */}
                 <div className="w-full md:w-auto md:flex-1 flex items-center justify-between md:justify-center gap-4 order-1">
                     <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors flex-shrink-0">&lt;</button>
                     
@@ -410,7 +473,6 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                     <button onClick={() => handleNavigate(1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors flex-shrink-0">&gt;</button>
                 </div>
 
-                {/* 2. Filter Group: Location Selector (Full width on mobile, auto on desktop) */}
                 <div className="w-full md:w-auto order-2">
                     <select 
                         value={filterLocation} 
@@ -439,14 +501,13 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
                         // LOGICA CONTEGGIO LEZIONI (Non studenti)
                         const totalLessonsCount = Object.values(datesMap).reduce((acc, itemsOnDate) => {
-                            // Conta gli slot unici (startTime) per ogni giornata
                             const uniqueTimes = new Set(itemsOnDate.map(i => i.startTime));
                             return acc + uniqueTimes.size;
                         }, 0);
 
                         return (
                         <div key={locationName} className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-                            {/* RECINTO HEADER */}
+                            {/* RECINTO HEADER (LOCATION) */}
                             <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex items-center gap-3 cursor-pointer hover:bg-gray-100 transition-colors rounded-t-xl">
                                 <span className="w-4 h-4 rounded-full shadow-sm ring-2 ring-white" style={{ backgroundColor: firstItem?.locationColor || '#ccc' }}></span>
                                 <h2 className="text-lg font-bold text-gray-800 uppercase tracking-wide">{locationName}</h2>
@@ -456,119 +517,134 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             </div>
 
                             <div className="divide-y divide-gray-100">
-                                {sortedDates.map(dateKey => (
-                                    <div key={dateKey}>
+                                {sortedDates.map(dateKey => {
+                                    // GROUP BY TIME SLOT INSIDE DATE
+                                    const timeGroups = groupItemsByTime(datesMap[dateKey]);
+                                    const sortedTimeKeys = Object.keys(timeGroups).sort();
+
+                                    return (
+                                    <div key={dateKey} className="p-4 md:p-6 bg-white">
                                         {/* Date Header (Se non è Daily View) */}
                                         {viewMode !== 'day' && (
-                                            <div className="px-6 py-2 bg-indigo-50/50 text-xs font-bold text-indigo-800 uppercase border-b border-indigo-100/50 flex items-center">
-                                                <CalendarIcon /> <span className="ml-2">{new Date(dateKey).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long'})}</span>
+                                            <div className="mb-4 pb-2 border-b border-indigo-50 flex items-center">
+                                                <CalendarIcon /> <span className="ml-2 text-sm font-bold text-indigo-900 uppercase">{new Date(dateKey).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long'})}</span>
                                             </div>
                                         )}
 
-                                        {datesMap[dateKey].map(item => {
-                                            const isPresent = item.status === 'Present';
-                                            const isAbsent = item.status === 'Absent';
-                                            
-                                            // Check se il menu è aperto per questo item
-                                            const isMenuOpen = openMenuId === item.lessonId;
-
-                                            return (
-                                                <div key={item.lessonId} className={`px-4 md:px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-all border-l-4 ${isAbsent ? 'border-l-red-400 bg-red-50/20' : isPresent ? 'border-l-green-400 bg-green-50/20' : 'border-l-transparent'}`}>
-                                                    
-                                                    {/* LEFT: Info Studente (Responsive) */}
-                                                    <div className="flex-1 mb-3 md:mb-0">
-                                                        <div className="flex items-center justify-between md:justify-start gap-3">
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="font-mono font-bold text-sm text-gray-600 bg-gray-100 px-2 py-1 rounded">{item.startTime} - {item.endTime}</span>
-                                                                <h3 className="font-bold text-gray-900 text-base md:text-lg">{item.childName}</h3>
+                                        <div className="space-y-6">
+                                            {sortedTimeKeys.map(timeKey => {
+                                                const slotItems = timeGroups[timeKey];
+                                                
+                                                return (
+                                                    <div key={timeKey} className="border border-indigo-100 rounded-xl mb-4 shadow-sm">
+                                                        
+                                                        {/* TIME SLOT HEADER (With Bulk Actions) - Updated rounded-t-xl */}
+                                                        <div className="bg-indigo-50/70 px-4 py-2 flex flex-wrap justify-between items-center gap-2 border-b border-indigo-100 rounded-t-xl">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex items-center gap-1 text-xs font-bold text-slate-700 bg-white px-2 py-1 rounded shadow-sm border border-indigo-100">
+                                                                    <span className="font-mono">{timeKey}</span>
+                                                                </div>
+                                                                <span className="text-[10px] font-bold text-slate-500 uppercase">
+                                                                    {slotItems.length} Allievi
+                                                                </span>
                                                             </div>
-                                                            {/* Mobile-only status badge small */}
-                                                            {(isPresent || isAbsent) && (
-                                                                <span className={`md:hidden px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isPresent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                    {isPresent ? 'Pres' : 'Ass'}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-2 mt-1 ml-1">
-                                                            <span className="text-xs text-gray-500 truncate max-w-[150px] md:max-w-none">{item.subscriptionName}</span>
-                                                            <span className="text-[10px] text-gray-400">•</span>
-                                                            <span className="text-xs text-gray-500">Slot residui: <strong>{item.lessonsRemaining}</strong></span>
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* RIGHT: Actions */}
-                                                    <div className="flex items-center gap-2 md:ml-4 relative justify-end">
-                                                        {isPresent || isAbsent ? (
-                                                            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                                                                <span className={`hidden md:flex px-3 py-1 text-xs font-bold rounded-full border shadow-sm items-center gap-1 min-w-[90px] justify-center ${isPresent ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
-                                                                    {isPresent ? '✓ PRESENTE' : '✕ ASSENTE'}
-                                                                </span>
-                                                                
-                                                                {/* CRUD Dropdown Trigger */}
+                                                            
+                                                            <div className="flex gap-2">
                                                                 <button 
-                                                                    onClick={(e) => { e.stopPropagation(); toggleMenu(item.lessonId); }} 
-                                                                    className="md-btn md-btn-sm bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 flex items-center gap-1 w-full md:w-auto justify-center"
+                                                                    onClick={() => handleBulkSlotPresence(slotItems)}
+                                                                    className="flex items-center gap-1 bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors border border-green-200"
+                                                                    title="Segna tutti presenti in questo slot"
                                                                 >
-                                                                    Gestisci <ChevronDownIcon />
+                                                                    <span className="text-sm">✓</span> Tutti Pres.
                                                                 </button>
+                                                                <button 
+                                                                    onClick={() => handleBulkSlotAbsence(slotItems)}
+                                                                    className="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors border border-red-200"
+                                                                    title="Segna tutti assenti in questo slot"
+                                                                >
+                                                                    <XIcon /> Tutti Ass.
+                                                                </button>
+                                                            </div>
+                                                        </div>
 
-                                                                {/* CRUD Dropdown Menu */}
-                                                                {isMenuOpen && (
-                                                                    <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50 animate-fade-in-down origin-top-right" onClick={(e) => e.stopPropagation()}>
-                                                                        <div className="py-1">
-                                                                            <button 
-                                                                                onClick={() => handleModify(item)}
-                                                                                className="block w-full text-left px-4 py-3 md:py-2 text-sm text-gray-700 hover:bg-gray-100 font-medium"
-                                                                            >
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <PencilIcon /> Modifica Stato
+                                                        {/* STUDENTS LIST */}
+                                                        <div className="divide-y divide-gray-50 bg-white">
+                                                            {slotItems.map(item => {
+                                                                const isPresent = item.status === 'Present';
+                                                                const isAbsent = item.status === 'Absent';
+                                                                const isMenuOpen = openMenuId === item.lessonId;
+
+                                                                return (
+                                                                    <div key={item.lessonId} className={`px-4 py-3 flex flex-col md:flex-row md:items-center justify-between hover:bg-gray-50 transition-all ${isAbsent ? 'bg-red-50/10' : isPresent ? 'bg-green-50/10' : ''}`}>
+                                                                        
+                                                                        <div className="flex-1 mb-2 md:mb-0">
+                                                                            <div className="flex items-center gap-3">
+                                                                                <h3 className="font-bold text-gray-900 text-sm">{item.childName}</h3>
+                                                                                {(isPresent || isAbsent) && (
+                                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isPresent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                                                                        {isPresent ? 'Presente' : 'Assente'}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex items-center gap-2 mt-0.5 ml-0.5">
+                                                                                <span className="text-[10px] text-gray-400 truncate max-w-[150px]">{item.subscriptionName}</span>
+                                                                                <span className="text-[10px] text-gray-300">•</span>
+                                                                                <span className="text-[10px] text-gray-500">Residui: <strong>{item.lessonsRemaining}</strong></span>
+                                                                            </div>
+                                                                        </div>
+                                                                        
+                                                                        <div className="flex items-center gap-2 justify-end">
+                                                                            {isPresent || isAbsent ? (
+                                                                                <div className="relative">
+                                                                                    <button 
+                                                                                        onClick={(e) => { e.stopPropagation(); toggleMenu(item.lessonId); }} 
+                                                                                        className="md-btn md-btn-sm bg-white border border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center gap-1 text-xs"
+                                                                                    >
+                                                                                        Opzioni <ChevronDownIcon />
+                                                                                    </button>
+                                                                                    {isMenuOpen && (
+                                                                                        <div className="absolute right-0 top-full mt-1 w-40 bg-white rounded-lg shadow-xl border border-gray-200 z-50 animate-fade-in-down origin-top-right overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                                                                            <button onClick={() => handleModify(item)} className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-gray-100 font-bold flex items-center gap-2">
+                                                                                                <PencilIcon /> Modifica Stato
+                                                                                            </button>
+                                                                                            <button onClick={() => handleDelete(item)} className="w-full text-left px-4 py-2 text-xs text-red-600 hover:bg-red-50 font-bold border-t border-gray-100 flex items-center gap-2">
+                                                                                                <TrashIcon /> Elimina
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
-                                                                            </button>
-                                                                            <button 
-                                                                                onClick={() => handleDelete(item)}
-                                                                                className="block w-full text-left px-4 py-3 md:py-2 text-sm text-red-600 hover:bg-red-50 font-bold border-t border-gray-100"
-                                                                            >
-                                                                                <div className="flex items-center gap-2">
-                                                                                    <TrashIcon /> Elimina Slot
+                                                                            ) : (
+                                                                                <div className="flex gap-2">
+                                                                                    <button onClick={() => handleMarkPresence(item)} className="px-3 py-1.5 bg-white border border-green-500 text-green-600 rounded-lg text-xs font-bold hover:bg-green-50 shadow-sm transition-all">
+                                                                                        ✓ Presente
+                                                                                    </button>
+                                                                                    <button onClick={() => handleMarkAbsence(item)} className="px-3 py-1.5 bg-white border border-red-300 text-red-500 rounded-lg text-xs font-bold hover:bg-red-50 shadow-sm transition-all">
+                                                                                        ✕ Assente
+                                                                                    </button>
                                                                                 </div>
-                                                                            </button>
-                                                                            <button 
-                                                                                onClick={() => setOpenMenuId(null)}
-                                                                                className="block w-full text-left px-4 py-3 md:py-2 text-sm text-gray-400 hover:bg-gray-50 border-t border-gray-100 md:hidden"
-                                                                            >
-                                                                                Annulla
-                                                                            </button>
+                                                                            )}
                                                                         </div>
                                                                     </div>
-                                                                )}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex gap-2 w-full md:w-auto">
-                                                                <button onClick={() => handleMarkPresence(item)} className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-white border border-green-500 text-green-600 rounded-xl md:rounded-lg text-sm md:text-xs font-bold hover:bg-green-50 hover:shadow-md transition-all active:scale-95 shadow-sm">
-                                                                    ✓ Presente
-                                                                </button>
-                                                                <button onClick={() => handleMarkAbsence(item)} className="flex-1 md:flex-none px-4 py-3 md:py-2 bg-white border border-red-300 text-red-500 rounded-xl md:rounded-lg text-sm md:text-xs font-medium hover:bg-red-50 hover:shadow-md transition-all active:scale-95 shadow-sm">
-                                                                    ✕ Assente
-                                                                </button>
-                                                            </div>
-                                                        )}
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
                                     </div>
-                                ))}
+                                )})}
                             </div>
                         </div>
                     )})}
                 </div>
             )}
 
-            {wizardItem && (
+            {wizardItems.length > 0 && (
                 <AbsenceWizardModal 
-                    item={wizardItem}
+                    items={wizardItems}
                     suppliers={suppliers}
-                    onClose={() => setWizardItem(null)}
+                    onClose={() => setWizardItems([])}
                     onConfirm={handleWizardConfirm}
                 />
             )}

@@ -89,8 +89,36 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setLoading(true); 
         try { 
             for (const d of enrollmentsData) { 
-                if ('id' in d) await updateEnrollment((d as any).id, d, options?.regenerateCalendar); 
-                else await addEnrollment(d); 
+                if ('id' in d) {
+                    // Update Logic
+                    await updateEnrollment((d as any).id, d, options?.regenerateCalendar);
+                } else {
+                    // Create Logic
+                    const newId = await addEnrollment(d);
+                    
+                    // HYBRID LOGIC: Direct Assignment if location was selected in Modal
+                    if (d.locationId && d.locationId !== 'unassigned') {
+                        // Extract Start/End from template if available, otherwise use defaults
+                        const startTime = d.appointments?.[0]?.startTime || '16:00';
+                        const endTime = d.appointments?.[0]?.endTime || '18:00';
+                        
+                        // Calculate Day of Week from Start Date
+                        const dayOfWeek = new Date(d.startDate).getDay(); // 0=Dom, 1=Lun
+
+                        // Call Activate logic to generate calendar
+                        await activateEnrollmentWithLocation(
+                            newId,
+                            d.supplierId || 'unassigned',
+                            d.supplierName || '',
+                            d.locationId,
+                            d.locationName || 'Sede',
+                            d.locationColor || '#ccc',
+                            dayOfWeek,
+                            startTime,
+                            endTime
+                        );
+                    }
+                }
             } 
             setIsModalOpen(false); await fetchData(); 
         } finally { setLoading(false); } 
@@ -132,9 +160,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             assignStart, 
             assignEnd
         );
-        // Non chiudiamo la modale per permettere assegnazioni multiple rapide, o la chiudiamo se preferito.
-        // Qui lasciamo aperta per UX veloce.
-        // setBulkAssignState(null);
+        // Non chiudiamo la modale per permettere assegnazioni multiple rapide
     };
 
     // Calculate available locations combining suppliers config and existing enrollments (legacy)

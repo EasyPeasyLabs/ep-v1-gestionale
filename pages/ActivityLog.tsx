@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Appointment, LessonActivity, EnrollmentStatus, Homework } from '../types';
+import { Activity, Appointment, LessonActivity, EnrollmentStatus, Homework, Supplier, AvailabilitySlot } from '../types';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getActivities, getLessonActivities, saveLessonActivities } from '../services/activityService';
 import { getHomeworks } from '../services/homeworkService';
+import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
@@ -14,6 +15,12 @@ const getStartOfWeek = (d: Date) => { const date = new Date(d); const day = date
 const getEndOfWeek = (d: Date) => { const date = getStartOfWeek(d); date.setDate(date.getDate() + 6); return date; };
 const getStartOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const getEndOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+// Helper per conversione orario in minuti (es. 16:30 -> 990)
+const getMinutesFromTime = (time: string) => {
+    const [h, m] = time.split(':').map(Number);
+    return h * 60 + m;
+};
 
 // --- Componente Selezione Attività (Modal) ---
 const SelectActivityModal: React.FC<{
@@ -111,13 +118,29 @@ const ActivityLog: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [allEnrollments, allActivities, allHomeworks] = await Promise.all([
+            const [allEnrollments, allActivities, allHomeworks, allSuppliers] = await Promise.all([
                 getAllEnrollments(),
                 getActivities(),
-                getHomeworks()
+                getHomeworks(),
+                getSuppliers()
             ]);
             setActivities(allActivities);
             setHomeworks(allHomeworks);
+
+            // --- SMART SLOT MAP BUILDER ---
+            // Mappa: locationId_dayIndex -> AvailabilitySlot[]
+            const locationScheduleMap = new Map<string, AvailabilitySlot[]>();
+            allSuppliers.forEach(s => {
+                s.locations.forEach(l => {
+                    if (l.availability && l.availability.length > 0) {
+                        l.availability.forEach(slot => {
+                            const key = `${l.id}_${slot.dayOfWeek}`; // es. loc123_1 (Lunedì)
+                            if (!locationScheduleMap.has(key)) locationScheduleMap.set(key, []);
+                            locationScheduleMap.get(key)?.push(slot);
+                        });
+                    }
+                });
+            });
 
             // Calcola Range Date
             let start = new Date(currentDate);
@@ -150,17 +173,50 @@ const ActivityLog: React.FC = () => {
                         enr.appointments.forEach(app => {
                             const appDate = new Date(app.date);
                             if (appDate >= start && appDate <= end) {
-                                // Grouping Key: Date + StartTime + Location
+                                // --- SMART SNAPPING LOGIC ---
+                                const locationId = app.locationId && app.locationId !== 'unassigned' ? app.locationId : enr.locationId;
+                                const dayIndex = appDate.getDay();
+                                
+                                let displayStartTime = app.startTime;
+                                let displayEndTime = app.endTime;
+
+                                if (locationId && locationId !== 'unassigned') {
+                                    const scheduleKey = `${locationId}_${dayIndex}`;
+                                    const officialSlots = locationScheduleMap.get(scheduleKey);
+                                    
+                                    if (officialSlots) {
+                                        const appMinutes = getMinutesFromTime(app.startTime);
+                                        let bestSlot: AvailabilitySlot | null = null;
+                                        let minDiff = 45; // Tolerance threshold (minutes)
+
+                                        officialSlots.forEach(slot => {
+                                            const slotMinutes = getMinutesFromTime(slot.startTime);
+                                            const diff = Math.abs(slotMinutes - appMinutes);
+                                            if (diff <= minDiff) {
+                                                minDiff = diff;
+                                                bestSlot = slot;
+                                            }
+                                        });
+
+                                        if (bestSlot) {
+                                            displayStartTime = bestSlot.startTime;
+                                            displayEndTime = bestSlot.endTime;
+                                        }
+                                    }
+                                }
+                                // -----------------------------
+
+                                // Grouping Key using SNAPPED Time
                                 const dateKey = app.date.split('T')[0];
                                 const locKey = (app.locationName || enr.locationName || 'N/D').trim();
-                                const groupKey = `${dateKey}_${app.startTime}_${locKey}`;
+                                const groupKey = `${dateKey}_${displayStartTime}_${locKey}`;
 
                                 if (!groups[groupKey]) {
                                     groups[groupKey] = {
                                         id: groupKey,
                                         date: app.date,
-                                        startTime: app.startTime,
-                                        endTime: app.endTime,
+                                        startTime: displayStartTime,
+                                        endTime: displayEndTime,
                                         locationName: locKey,
                                         locationColor: app.locationColor || enr.locationColor || '#ccc',
                                         childNames: [],
