@@ -12,7 +12,7 @@ import DownloadIcon from '../components/icons/DownloadIcon';
 import PrinterIcon from '../components/icons/PrinterIcon';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import 'jspdf-autotable'; // Side-effect import to patch jsPDF prototype
 import { getCompanyInfo } from '../services/settingsService';
 
 const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
@@ -251,7 +251,8 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             // Totals
             const totalGap = data.reduce((sum, d) => sum + (d.balance > 0 ? d.balance : 0), 0);
 
-            autoTable(doc, {
+            // Use autoTable via 'any' casting on doc because we used side-effect import
+            (doc as any).autoTable({
                 startY: 40,
                 head: [['Cliente', 'Iscrizioni', 'Dovuto', 'Pagato', 'Saldo']],
                 body: tableRows,
@@ -263,13 +264,17 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                     3: { halign: 'right' },
                     4: { halign: 'right', fontStyle: 'bold' }
                 },
-                didParseCell: (data) => {
+                didParseCell: (data: any) => {
                     if (data.section === 'body' && data.column.index === 4) {
-                        const val = parseFloat(data.cell.raw.toString().replace('€', ''));
-                        if (val > 0.1) {
-                            data.cell.styles.textColor = [220, 38, 38]; // Red
-                        } else {
-                            data.cell.styles.textColor = [22, 163, 74]; // Green
+                        const raw = data.cell.raw;
+                        // Use String() for safe casting to avoid TS18047
+                        if (raw !== null && raw !== undefined) {
+                            const val = parseFloat(String(raw).replace('€', ''));
+                            if (val > 0.1) {
+                                data.cell.styles.textColor = [220, 38, 38]; // Red
+                            } else {
+                                data.cell.styles.textColor = [22, 163, 74]; // Green
+                            }
                         }
                     }
                 }
