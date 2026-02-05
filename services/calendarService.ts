@@ -21,13 +21,18 @@ export const addLesson = async (lessonItem: LessonInput): Promise<string> => {
     return docRef.id;
 };
 
-export const addLessonsBatch = async (lessons: LessonInput[]): Promise<void> => {
+export const addLessonsBatch = async (lessons: LessonInput[]): Promise<string[]> => {
     const batch = writeBatch(db);
+    const ids: string[] = [];
+    
     lessons.forEach(lesson => {
         const lessonRef = doc(lessonCollectionRef);
         batch.set(lessonRef, lesson);
+        ids.push(lessonRef.id);
     });
+    
     await batch.commit();
+    return ids;
 };
 
 export const updateLesson = async (id: string, lessonItem: Partial<LessonInput>): Promise<void> => {
