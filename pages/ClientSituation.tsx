@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus } from '../types';
+import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions, getInvoices } from '../services/financeService';
@@ -8,6 +8,12 @@ import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
 import SearchIcon from '../components/icons/SearchIcon';
 import IdentificationIcon from '../components/icons/IdentificationIcon';
+import DownloadIcon from '../components/icons/DownloadIcon';
+import PrinterIcon from '../components/icons/PrinterIcon';
+import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { getCompanyInfo } from '../services/settingsService';
 
 const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
 
@@ -19,6 +25,7 @@ interface ClientSituationProps {
 
 const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
+    const [generatingReport, setGeneratingReport] = useState(false);
     const [clients, setClients] = useState<Client[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -115,10 +122,6 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             const linkedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted);
             const linkedTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted);
             
-            // Financials not linked specifically to enrollment but to client in that period? 
-            // For now, strict linking + orphans separately if needed.
-            // Let's stick to strict linking for the "aligned" view requested.
-            
             return {
                 enrollment: enr,
                 invoices: linkedInvoices,
@@ -135,7 +138,155 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
 
     const handleSelectClient = (c: Client) => {
         setSelectedClient(c);
-        // Scroll to details? No, layout switches.
+    };
+
+    // --- BULK EXPORT LOGIC ---
+    const generateBulkFinancialData = () => {
+        return filteredClients.map(client => {
+            const name = getClientName(client);
+            
+            // 1. Enrollments
+            const clientEnrs = enrollments.filter(e => e.clientId === client.id);
+            const totalDue = clientEnrs.reduce((acc, e) => acc + (Number(e.price) || 0), 0);
+            const enrIds = new Set(clientEnrs.map(e => e.id));
+
+            // 2. Transactions (Paid)
+            // Linked to Enrollment
+            const linkedTrans = transactions.filter(t => 
+                !t.isDeleted && 
+                t.type === TransactionType.Income && 
+                t.relatedEnrollmentId && 
+                enrIds.has(t.relatedEnrollmentId)
+            );
+            
+            // Orphans
+            const orphanTrans = transactions.filter(t => 
+                !t.isDeleted && 
+                t.type === TransactionType.Income && 
+                !t.relatedEnrollmentId && 
+                t.clientName === name
+            );
+
+            const totalPaid = linkedTrans.reduce((s,t) => s + t.amount, 0) + orphanTrans.reduce((s,t) => s + t.amount, 0);
+            
+            // Orphans count (Invoices + Trans)
+            const orphanInvoicesCount = invoices.filter(i => i.clientId === client.id && !i.relatedEnrollmentId && !i.isDeleted).length;
+            const orphanTransCount = orphanTrans.length;
+            
+            return {
+                client,
+                name,
+                type: client.clientType === ClientType.Parent ? 'Genitore' : 'Ente',
+                enrollmentCount: clientEnrs.length,
+                totalDue,
+                totalPaid,
+                balance: totalDue - totalPaid,
+                orphansCount: orphanInvoicesCount + orphanTransCount,
+                phone: client.phone || ''
+            };
+        });
+    };
+
+    const handleExportExcel = () => {
+        if (filteredClients.length === 0) return alert("Nessun dato da esportare.");
+        setGeneratingReport(true);
+        
+        setTimeout(() => {
+            try {
+                const data = generateBulkFinancialData();
+                const rows = data.map(d => ({
+                    "Cliente": d.name,
+                    "Tipo": d.type,
+                    "Telefono": d.phone,
+                    "N. Iscrizioni": d.enrollmentCount,
+                    "Totale Dovuto": d.totalDue,
+                    "Totale Pagato": d.totalPaid,
+                    "Saldo": d.balance,
+                    "Note": d.orphansCount > 0 ? `${d.orphansCount} elementi orfani` : d.balance > 0.1 ? 'Scoperto' : 'In Regola'
+                }));
+
+                const ws = XLSX.utils.json_to_sheet(rows);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Situazione Clienti");
+                XLSX.writeFile(wb, `Report_Situazione_Clienti_${new Date().toISOString().split('T')[0]}.xlsx`);
+            } catch (e) {
+                console.error(e);
+                alert("Errore esportazione Excel.");
+            } finally {
+                setGeneratingReport(false);
+            }
+        }, 100);
+    };
+
+    const handleExportPDF = async () => {
+        if (filteredClients.length === 0) return alert("Nessun dato da esportare.");
+        setGeneratingReport(true);
+
+        try {
+            const companyInfo = await getCompanyInfo();
+            const data = generateBulkFinancialData();
+            const doc = new jsPDF();
+
+            // Header
+            doc.setFontSize(18);
+            doc.text("Report Situazione Clienti", 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Generato il: ${new Date().toLocaleDateString('it-IT')}`, 14, 26);
+            if (filterLocation) {
+                doc.text(`Filtro Sede: ${filterLocation}`, 14, 32);
+            }
+            if (companyInfo?.name) {
+                doc.setFontSize(9);
+                doc.text(companyInfo.name, 195, 20, { align: 'right' });
+            }
+
+            const tableRows = data.map(d => [
+                d.name,
+                d.enrollmentCount,
+                `${d.totalDue.toFixed(2)}€`,
+                `${d.totalPaid.toFixed(2)}€`,
+                `${d.balance.toFixed(2)}€`
+            ]);
+
+            // Totals
+            const totalGap = data.reduce((sum, d) => sum + (d.balance > 0 ? d.balance : 0), 0);
+
+            autoTable(doc, {
+                startY: 40,
+                head: [['Cliente', 'Iscrizioni', 'Dovuto', 'Pagato', 'Saldo']],
+                body: tableRows,
+                theme: 'grid',
+                styles: { fontSize: 8, cellPadding: 3 },
+                headStyles: { fillColor: [60, 60, 82] },
+                columnStyles: {
+                    2: { halign: 'right' },
+                    3: { halign: 'right' },
+                    4: { halign: 'right', fontStyle: 'bold' }
+                },
+                didParseCell: (data) => {
+                    if (data.section === 'body' && data.column.index === 4) {
+                        const val = parseFloat(data.cell.raw.toString().replace('€', ''));
+                        if (val > 0.1) {
+                            data.cell.styles.textColor = [220, 38, 38]; // Red
+                        } else {
+                            data.cell.styles.textColor = [22, 163, 74]; // Green
+                        }
+                    }
+                }
+            });
+
+            const finalY = (doc as any).lastAutoTable.finalY + 10;
+            doc.setFontSize(10);
+            doc.text(`Totale Scoperto Lista: ${totalGap.toFixed(2)}€`, 14, finalY);
+
+            doc.save(`Report_Situazione_Clienti_${new Date().toISOString().split('T')[0]}.pdf`);
+
+        } catch (e) {
+            console.error(e);
+            alert("Errore generazione PDF.");
+        } finally {
+            setGeneratingReport(false);
+        }
     };
 
     if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
@@ -155,8 +306,8 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             <div className="md-card p-4 bg-white sticky top-0 z-30 shadow-md border-b border-indigo-100 transition-all">
                 {!selectedClient ? (
                     /* STATE A: SEARCH MODE */
-                    <div className="flex flex-col md:flex-row gap-4 animate-fade-in">
-                        <div className="relative flex-1">
+                    <div className="flex flex-col md:flex-row gap-4 animate-fade-in items-center">
+                        <div className="relative flex-1 w-full">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
                             <input 
                                 type="text" 
@@ -177,6 +328,28 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         <div className="flex bg-gray-100 p-1 rounded-lg flex-shrink-0">
                             <button onClick={() => setSortOrder('asc')} className={`px-3 py-2 text-xs font-bold rounded-md ${sortOrder === 'asc' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>A-Z</button>
                             <button onClick={() => setSortOrder('desc')} className={`px-3 py-2 text-xs font-bold rounded-md ${sortOrder === 'desc' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>Z-A</button>
+                        </div>
+                        
+                        {/* EXPORT BUTTONS */}
+                        <div className="flex gap-2 pl-2 border-l border-gray-200">
+                            <button 
+                                onClick={handleExportExcel} 
+                                disabled={filteredClients.length === 0 || generatingReport}
+                                className="md-btn md-btn-flat hover:bg-green-50 text-gray-500 hover:text-green-700 p-2" 
+                                title="Esporta Excel"
+                            >
+                                {generatingReport ? <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin"></div> : <DownloadIcon />}
+                                <span className="sr-only md:not-sr-only md:ml-2 text-xs font-bold hidden lg:inline">Excel</span>
+                            </button>
+                            <button 
+                                onClick={handleExportPDF} 
+                                disabled={filteredClients.length === 0 || generatingReport}
+                                className="md-btn md-btn-flat hover:bg-red-50 text-gray-500 hover:text-red-700 p-2" 
+                                title="Stampa Report PDF"
+                            >
+                                {generatingReport ? <div className="w-4 h-4 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div> : <PrinterIcon />}
+                                <span className="sr-only md:not-sr-only md:ml-2 text-xs font-bold hidden lg:inline">PDF</span>
+                            </button>
                         </div>
                     </div>
                 ) : (
