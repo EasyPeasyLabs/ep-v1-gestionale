@@ -46,6 +46,7 @@ const Calendar: React.FC = () => {
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+    const [lessonToDelete, setLessonToDelete] = useState<string | null>(null);
     
     // Closure States
     const [confirmClosureDate, setConfirmClosureDate] = useState<Date | null>(null);
@@ -219,6 +220,26 @@ const Calendar: React.FC = () => {
         finally { setLoading(false); }
     };
 
+    const handleDeleteRequest = (id: string) => {
+        setIsModalOpen(false);
+        setLessonToDelete(id);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!lessonToDelete) return;
+        setLoading(true);
+        try {
+            await deleteLesson(lessonToDelete);
+            await fetchData();
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante l'eliminazione.");
+        } finally {
+            setLoading(false);
+            setLessonToDelete(null);
+        }
+    };
+
     const getTextColorForBg = (bgColor: string) => {
         if (!bgColor) return '#000';
         const color = (bgColor.charAt(0) === '#') ? bgColor.substring(1, 7) : bgColor;
@@ -369,8 +390,30 @@ const Calendar: React.FC = () => {
                 }
             `}</style>
 
-            {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="md"><LessonForm lesson={editingLesson} suppliers={suppliers} clients={clients} onSave={handleSaveLesson} onDelete={id => deleteLesson(id).then(fetchData)} onCancel={() => setIsModalOpen(false)} /></Modal>}
+            {isModalOpen && (
+                <Modal onClose={() => setIsModalOpen(false)} size="md">
+                    <LessonForm 
+                        lesson={editingLesson} 
+                        suppliers={suppliers} 
+                        clients={clients} 
+                        onSave={handleSaveLesson} 
+                        onDelete={handleDeleteRequest} 
+                        onCancel={() => setIsModalOpen(false)} 
+                    />
+                </Modal>
+            )}
             
+            {/* Modal Conferma Eliminazione Lezione */}
+            <ConfirmModal 
+                isOpen={!!lessonToDelete}
+                onClose={() => setLessonToDelete(null)}
+                onConfirm={handleConfirmDelete}
+                title="Elimina Evento Extra"
+                message="Sei sicuro di voler eliminare questo evento dal calendario? L'operazione è irreversibile."
+                isDangerous={true}
+                confirmText="Elimina"
+            />
+
             {/* Modal Conferma Chiusura */}
             {confirmClosureDate && (
                 <Modal onClose={() => setConfirmClosureDate(null)} size="md">

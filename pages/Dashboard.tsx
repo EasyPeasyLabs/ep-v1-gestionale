@@ -28,6 +28,14 @@ const calculateFuelRating = (distance: number) => {
     return 1;
 };
 
+// Helper per data locale YYYY-MM-DD
+const toLocalISOString = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 // --- NEW STAT CARD (VERTICAL STACK STYLE) ---
 const StatCard: React.FC<{ 
     title: string; 
@@ -193,7 +201,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setManualLessonsData(manualLessons);
         setNotifications(notifs);
 
-        // Weekly Calendar Logic
+        // Weekly Calendar Logic (Unique Slots)
         const now = new Date();
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
@@ -209,22 +217,44 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         for(let i=0; i<7; i++) {
             const currentDay = new Date(startOfWeek);
             currentDay.setDate(startOfWeek.getDate() + i);
-            let dayLessonCount = 0;
+            const currentDayStr = toLocalISOString(currentDay);
+            
+            const uniqueSlots = new Set<string>();
+
+            // 1. Process Enrollments
             activeOrPendingEnrollments.forEach(enr => {
                 if(enr.appointments) {
                     enr.appointments.forEach(app => {
-                         if(new Date(app.date).toDateString() === currentDay.toDateString()) {
-                             dayLessonCount++;
+                         // Fix Date Comparison: Convert app date to local YYYY-MM-DD
+                         const appDateObj = new Date(app.date);
+                         const appDateStr = toLocalISOString(appDateObj);
+                         
+                         if(appDateStr === currentDayStr && app.status !== 'Suspended') {
+                             // Unique Key: Time + LocationName
+                             const loc = (app.locationName || enr.locationName || 'N/D').trim();
+                             const key = `${app.startTime}_${loc}`;
+                             uniqueSlots.add(key);
                          }
                     });
                 }
             });
+
+            // 2. Process Manual Lessons
             manualLessons.forEach(ml => {
-                if(new Date(ml.date).toDateString() === currentDay.toDateString()) {
-                    dayLessonCount++;
+                // Fix Date Comparison
+                const mlDateObj = new Date(ml.date);
+                const mlDateStr = toLocalISOString(mlDateObj);
+
+                if(mlDateStr === currentDayStr) {
+                    if (ml.description && ml.description.startsWith('[SOSPESO]')) return;
+                    // Unique Key: Time + LocationName
+                    const loc = (ml.locationName || 'N/D').trim();
+                    const key = `${ml.startTime}_${loc}`;
+                    uniqueSlots.add(key);
                 }
             });
-            daysData.push({ date: currentDay, count: dayLessonCount, dayName: dayNames[i] });
+
+            daysData.push({ date: currentDay, count: uniqueSlots.size, dayName: dayNames[i] });
         }
         setWeekDays(daysData);
 
@@ -343,7 +373,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = toLocalISOString(now);
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
       // Sets per tracciare gli Slot Unici (Standard)
@@ -361,8 +391,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                       const d = new Date(app.date);
                       if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
                           // Chiave univoca per lo slot: Data (YYYY-MM-DD) + Ora + Sede (NOME, non ID)
-                          // Questo allinea il conteggio visivo del Calendario con la Dashboard
-                          const dateKey = d.toISOString().split('T')[0];
+                          const dateKey = toLocalISOString(d);
                           const locKey = (app.locationName || enr.locationName || 'N/D').trim();
                           const slotKey = `${dateKey}_${app.startTime}_${locKey}`;
                           
@@ -407,7 +436,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
               extraTotal++;
               
-              const dateKey = d.toISOString().split('T')[0];
+              const dateKey = toLocalISOString(d);
               let isDone = false;
               
               if (dateKey < todayStr) {
@@ -784,23 +813,31 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                             <h3 className="text-lg font-bold text-gray-800">Attività Settimanale</h3>
                             <button className="p-2 bg-gray-50 rounded-lg text-[#3C3C52] hover:bg-gray-100"><CalendarIcon /></button>
                         </div>
-                        <div className="flex justify-between items-end h-48 px-2">
-                            {weekDays.map((day, idx) => {
-                                const isToday = new Date().toDateString() === day.date.toDateString();
-                                const heightPercent = Math.max(15, Math.min((day.count / 8) * 100, 100));
-                                return (
-                                    <div key={idx} className="flex flex-col items-center space-y-3 w-full group cursor-default">
-                                        <div className="relative w-full flex justify-center items-end h-32 bg-gray-50 rounded-xl overflow-hidden group-hover:bg-gray-100 transition-colors">
-                                            <div 
-                                                className={`w-4 rounded-full transition-all duration-700 ease-out ${isToday ? 'bg-[#3C3C52] shadow-lg' : 'bg-gray-300'}`}
-                                                style={{ height: `${heightPercent}%`, marginBottom: '8px' }}
-                                            ></div>
-                                        </div>
-                                        <div className={`text-xs font-bold ${isToday ? 'text-[#3C3C52]' : 'text-gray-400'}`}>{day.dayName}</div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                        {(() => {
+                            const maxWeekly = Math.max(...weekDays.map(d => d.count), 1);
+                            return (
+                                <div className="flex justify-between items-end h-48 px-2">
+                                    {weekDays.map((day, idx) => {
+                                        const isToday = new Date().toDateString() === day.date.toDateString();
+                                        const heightPercent = day.count === 0 ? 4 : Math.max(10, (day.count / maxWeekly) * 100);
+                                        return (
+                                            <div key={idx} className="flex flex-col items-center space-y-2 w-full group cursor-default">
+                                                <span className={`text-[10px] font-bold h-4 transition-all duration-300 ${isToday ? 'text-indigo-600' : 'text-gray-300 opacity-0 group-hover:opacity-100'}`}>
+                                                    {day.count}
+                                                </span>
+                                                <div className="relative w-full flex justify-center items-end h-32 bg-gray-50 rounded-xl overflow-hidden group-hover:bg-gray-100 transition-colors">
+                                                    <div 
+                                                        className={`w-4 rounded-full transition-all duration-700 ease-out ${isToday ? 'bg-[#3C3C52] shadow-lg' : 'bg-gray-300 group-hover:bg-indigo-300'}`}
+                                                        style={{ height: `${heightPercent}%`, marginBottom: '8px' }}
+                                                    ></div>
+                                                </div>
+                                                <div className={`text-xs font-bold ${isToday ? 'text-[#3C3C52]' : 'text-gray-400'}`}>{day.dayName}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* COL 2: Saturazione Aule */}
