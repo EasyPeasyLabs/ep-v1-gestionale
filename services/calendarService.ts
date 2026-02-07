@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch, query, where } from '@firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch, query, where } from 'firebase/firestore';
 import { Lesson, LessonInput, SchoolClosure } from '../types';
 
 const lessonCollectionRef = collection(db, 'lessons');

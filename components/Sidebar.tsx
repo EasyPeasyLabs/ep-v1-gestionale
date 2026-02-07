@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Page } from '../types';
-import type { User } from '@firebase/auth';
+import type { User } from 'firebase/auth';
 import DashboardIcon from './icons/DashboardIcon';
 import ClientsIcon from './icons/ClientsIcon';
 import SuppliersIcon from './icons/SuppliersIcon';

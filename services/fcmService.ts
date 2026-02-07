@@ -1,7 +1,7 @@
 
 import { messaging, db } from '../firebase/config';
-import { getToken } from '@firebase/messaging';
-import { doc, setDoc } from '@firebase/firestore';
+import { getToken } from 'firebase/messaging';
+import { doc, setDoc } from 'firebase/firestore';
 
 // Chiave VAPID reale fornita dall'utente
 const VAPID_KEY = "BOqTrAbRMwoOwkO9dt9r-fAglvqNmmosdNFRcWpfB67V-ecvVkA_VAFcM7RR7EJKK0RuaHwiREwG-6u997AEgXo";

@@ -1,9 +1,9 @@
 
-import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getStorage } from "firebase/storage";
-import { getMessaging } from "firebase/messaging";
+import { initializeApp, FirebaseApp } from "firebase/app";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, Firestore } from "firebase/firestore";
+import { getAuth, Auth } from "firebase/auth";
+import { getStorage, FirebaseStorage } from "firebase/storage";
+import { getMessaging, Messaging } from "firebase/messaging";
 
 // Helper for boot monitor
 const logToScreen = (window as any).logToScreen || console.log;
@@ -21,7 +21,11 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID || "1:332612800443:web:d5d434d38a78020dd57e9e"
 };
 
-let app, db, auth, storage, messaging;
+let app: FirebaseApp;
+let db: Firestore;
+let auth: Auth;
+let storage: FirebaseStorage;
+let messaging: Messaging;
 
 try {
     if (!firebaseConfig.apiKey) {
