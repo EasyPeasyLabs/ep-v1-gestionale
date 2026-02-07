@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getAllEnrollments, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, getInvoices, getTransactions, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment, getQuotes } from '../services/financeService';
@@ -319,6 +318,7 @@ const EnrollmentArchive: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterYear, setFilterYear] = useState<number>(new Date().getFullYear());
     const [filterLocation, setFilterLocation] = useState('');
+    const [filterPaymentStatus, setFilterPaymentStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
 
     // Actions State
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -396,39 +396,8 @@ const EnrollmentArchive: React.FC = () => {
         return Array.from(locs).sort();
     }, [enrollments]);
 
-    const filteredEnrollments = useMemo(() => {
-        return enrollments.filter(enr => {
-            const startYear = new Date(enr.startDate).getFullYear();
-            const endYear = new Date(enr.endDate).getFullYear();
-            const yearMatch = startYear <= filterYear && endYear >= filterYear;
-            if (!yearMatch) return false;
-            if (filterLocation && enr.locationName !== filterLocation) return false;
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
-                const client = clients.find(c => c.id === enr.clientId);
-                const parentName = getClientName(client);
-                return (enr.childName.toLowerCase().includes(term) || parentName.toLowerCase().includes(term) || enr.subscriptionName.toLowerCase().includes(term));
-            }
-            return true;
-        });
-    }, [enrollments, filterYear, filterLocation, searchTerm, clients]);
-
-    const groupedData = useMemo(() => {
-        const groups: Record<string, { studentName: string, clientName: string, items: Enrollment[] }> = {};
-        filteredEnrollments.forEach(enr => {
-            const key = `${enr.childName}_${enr.clientId}`;
-            if (!groups[key]) {
-                const client = clients.find(c => c.id === enr.clientId);
-                groups[key] = { studentName: enr.childName, clientName: getClientName(client), items: [] };
-            }
-            groups[key].items.push(enr);
-        });
-        Object.values(groups).forEach(g => { g.items.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()); });
-        return Object.values(groups).sort((a,b) => a.studentName.localeCompare(b.studentName));
-    }, [filteredEnrollments, clients]);
-
-    // UPDATED PAYMENT STATUS LOGIC
-    const getPaymentStatus = (enr: Enrollment) => {
+    // UPDATED PAYMENT STATUS LOGIC (Hoisted)
+    const getPaymentStatus = useCallback((enr: Enrollment) => {
         // 1. Sum linked invoices (Standard)
         const relatedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
         const invoicePaid = relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
@@ -453,7 +422,49 @@ const EnrollmentArchive: React.FC = () => {
         const isFullyPaid = remaining < 0.5 && price > 0;
         
         return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
-    };
+    }, [invoices, transactions]);
+
+    const filteredEnrollments = useMemo(() => {
+        return enrollments.filter(enr => {
+            const startYear = new Date(enr.startDate).getFullYear();
+            const endYear = new Date(enr.endDate).getFullYear();
+            const yearMatch = startYear <= filterYear && endYear >= filterYear;
+            if (!yearMatch) return false;
+            
+            if (filterLocation && enr.locationName !== filterLocation) return false;
+            
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                const client = clients.find(c => c.id === enr.clientId);
+                const parentName = getClientName(client);
+                const matches = enr.childName.toLowerCase().includes(term) || parentName.toLowerCase().includes(term) || enr.subscriptionName.toLowerCase().includes(term);
+                if (!matches) return false;
+            }
+
+            // New Payment Status Filter
+            if (filterPaymentStatus !== 'all') {
+                const status = getPaymentStatus(enr);
+                if (filterPaymentStatus === 'paid' && !status.isFullyPaid) return false;
+                if (filterPaymentStatus === 'unpaid' && status.isFullyPaid) return false;
+            }
+
+            return true;
+        });
+    }, [enrollments, filterYear, filterLocation, searchTerm, clients, filterPaymentStatus, getPaymentStatus]);
+
+    const groupedData = useMemo(() => {
+        const groups: Record<string, { studentName: string, clientName: string, items: Enrollment[] }> = {};
+        filteredEnrollments.forEach(enr => {
+            const key = `${enr.childName}_${enr.clientId}`;
+            if (!groups[key]) {
+                const client = clients.find(c => c.id === enr.clientId);
+                groups[key] = { studentName: enr.childName, clientName: getClientName(client), items: [] };
+            }
+            groups[key].items.push(enr);
+        });
+        Object.values(groups).forEach(g => { g.items.sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()); });
+        return Object.values(groups).sort((a,b) => a.studentName.localeCompare(b.studentName));
+    }, [filteredEnrollments, clients]);
 
     const calendarGrid = useMemo(() => {
         if (viewMode !== 'calendar') return null;
@@ -637,8 +648,22 @@ const EnrollmentArchive: React.FC = () => {
                     <div className="w-px h-6 bg-gray-200 mx-1"></div>
 
                     <div className="relative w-40"><div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="w-full pl-8 pr-2 py-1.5 text-sm border-none bg-transparent focus:ring-0 placeholder:text-gray-400" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
+                    
                     <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="text-sm font-bold text-indigo-700 bg-indigo-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-indigo-200">{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
+                    
                     <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="text-sm text-gray-600 bg-gray-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-gray-200 max-w-[150px]"><option value="">Tutte le Sedi</option>{availableLocations.map(l => <option key={l} value={l}>{l}</option>)}</select>
+                    
+                    {/* NEW PAYMENT STATUS FILTER */}
+                    <select
+                        value={filterPaymentStatus}
+                        onChange={e => setFilterPaymentStatus(e.target.value as any)}
+                        className="text-sm text-gray-600 bg-gray-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-gray-200"
+                    >
+                        <option value="all">Tutti gli stati</option>
+                        <option value="paid">✅ Coperti</option>
+                        <option value="unpaid">⚠️ Scoperti</option>
+                    </select>
+
                     <div className="flex bg-gray-100 p-1 rounded-lg"><button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Lista"><ChecklistIcon /></button><button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Calendario Copertura"><CalendarIcon /></button></div>
                 </div>
             </div>

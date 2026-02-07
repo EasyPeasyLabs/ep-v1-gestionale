@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, InvoiceGap, RentAnalysisResult } from '../services/financeService';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus, InvoiceGap, RentAnalysisResult } from '../types';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -38,10 +37,12 @@ interface FinanceProps {
     onNavigate?: (page: Page, params?: any) => void;
 }
 
+// Separate component to handle the async analysis logic cleanly
 const RentSyncModal: React.FC<{
     onClose: () => void;
     onComplete: () => void;
-}> = ({ onClose, onComplete }) => {
+    enrollments: Enrollment[]; // Pass Enrollments down
+}> = ({ onClose, onComplete, enrollments }) => {
     const now = new Date();
     const [step, setStep] = useState<'select' | 'preview'>('select');
     const [month, setMonth] = useState(now.getMonth());
@@ -60,9 +61,9 @@ const RentSyncModal: React.FC<{
     const handleAnalyze = async () => {
         setLoading(true);
         try {
-            const results = await analyzeRentExpenses(month, year);
+            // Updated call: Passing enrollments to avoid circular dependency
+            const results = await analyzeRentExpenses(month, year, enrollments);
             setAnalysisResults(results);
-            // Pre-seleziona solo quelli non pagati
             setSelectedIds(results.filter(r => !r.isPaid).map(r => r.locationId));
             setStep('preview');
         } catch (e) {
@@ -87,7 +88,6 @@ const RentSyncModal: React.FC<{
     };
 
     const handleConfirmPayment = async () => {
-        // Filtra solo quelli non pagati E selezionati
         const toPay = analysisResults.filter(r => !r.isPaid && selectedIds.includes(r.locationId));
         if (toPay.length === 0) return onClose();
         
@@ -211,13 +211,12 @@ const RentSyncModal: React.FC<{
 
 const FixWizard: React.FC<{
     issues: IntegrityIssue[];
-    onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string) => Promise<void>;
+    onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string) => Promise<void>;
     onClose: () => void;
 }> = ({ issues, onFix, onClose }) => {
-    // ... (Wizard Code Unchanged) ...
-    const [step, setStep] = useState<'list' | 'invoice_wizard' | 'adjustment_confirm'>('list');
+    const [step, setStep] = useState<'list' | 'invoice_wizard' | 'adjustment_confirm' | 'year_closed_override'>('list');
     const [activeIssue, setActiveIssue] = useState<IntegrityIssue | null>(null);
-    const [pendingSelection, setPendingSelection] = useState<{ issue: IntegrityIssue, invoices: Invoice[], gap: number } | null>(null);
+    const [pendingSelection, setPendingSelection] = useState<{ issue: IntegrityIssue, invoices: Invoice[], gap: number, strategy: 'link' | 'cash' | 'invoice', targetId?: string } | null>(null);
     const [gaps, setGaps] = useState<InvoiceGap[]>([]);
     const [selectedGap, setSelectedGap] = useState<number | null>(null);
     const [manualNum, setManualNum] = useState('');
@@ -225,44 +224,133 @@ const FixWizard: React.FC<{
     const [loadingGaps, setLoadingGaps] = useState(false);
     const [fixingId, setFixingId] = useState<string | null>(null);
     const [successId, setSuccessId] = useState<string | null>(null);
+    
+    // Recovery State for Year Closed
+    const [overrideDate, setOverrideDate] = useState(new Date().toISOString().split('T')[0]);
+    const [retryContext, setRetryContext] = useState<any>(null); // Stores args to retry
+
     const handleSelectIssue = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', targetInvoices?: Invoice[], targetTransactionId?: string) => {
-        if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
-            setFixingId(issue.id);
-            try { await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore collegamento cassa."); setFixingId(null); }
-            return;
-        }
-        if (strategy === 'link' && issue.type === 'missing_invoice' && targetTransactionId) {
-            setFixingId(issue.id);
-            try { await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore collegamento cassa."); setFixingId(null); }
-            return;
-        }
-        if (strategy === 'link' && targetInvoices) {
-            const ids = targetInvoices.map(i => i.id);
-            const suggestion = issue.suggestions?.find(s => s.invoices.length === targetInvoices.length && s.invoices.every(inv => ids.includes(inv.id)));
-            const realGap = suggestion ? suggestion.gap : 0;
-            if (realGap > 0.1) { setPendingSelection({ issue, invoices: targetInvoices, gap: realGap }); setStep('adjustment_confirm'); } else { setFixingId(issue.id); try { await onFix(issue, 'link', undefined, ids); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore riconciliazione."); setFixingId(null); } }
-        } else if (strategy === 'cash') {
-            setFixingId(issue.id); try { await onFix(issue, strategy); setSuccessId(issue.id); setFixingId(null); setTimeout(() => setSuccessId(null), 1800); } catch (e) { alert("Errore cassa."); setFixingId(null); }
-        } else {
-            setActiveIssue(issue); setLoadingGaps(true); setStep('invoice_wizard');
-            const year = new Date(issue.date).getFullYear();
-            const yearGaps = await getInvoiceNumberGaps(year);
-            const issueDate = new Date(issue.date).getTime();
-            const enrichedGaps = yearGaps.map(g => {
-                let rec = false;
-                if (g.prevDate && g.nextDate) { rec = issueDate >= new Date(g.prevDate).getTime() && issueDate <= new Date(g.nextDate).getTime(); } else if (!g.prevDate && g.nextDate) { rec = issueDate <= new Date(g.nextDate).getTime(); } else if (g.prevDate && !g.nextDate) { rec = issueDate >= new Date(g.prevDate).getTime(); }
-                return { ...g, recommended: rec };
-            });
-            setGaps(enrichedGaps); setLoadingGaps(false);
+        // Reset recovery state
+        setOverrideDate(new Date().toISOString().split('T')[0]);
+        setRetryContext(null);
+
+        try {
+            if (strategy === 'link' && issue.type === 'missing_transaction' && targetTransactionId) {
+                setFixingId(issue.id);
+                await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId);
+                setSuccessId(issue.id);
+                setTimeout(() => setSuccessId(null), 1800);
+            }
+            else if (strategy === 'link' && issue.type === 'missing_invoice' && targetTransactionId) {
+                setFixingId(issue.id);
+                await onFix(issue, 'link', undefined, undefined, undefined, targetTransactionId);
+                setSuccessId(issue.id);
+                setTimeout(() => setSuccessId(null), 1800);
+            }
+            else if (strategy === 'link' && targetInvoices) {
+                const ids = targetInvoices.map(i => i.id);
+                const suggestion = issue.suggestions?.find(s => s.invoices.length === targetInvoices.length && s.invoices.every(inv => ids.includes(inv.id)));
+                const realGap = suggestion ? suggestion.gap : 0;
+                
+                if (realGap > 0.1) { 
+                    setPendingSelection({ issue, invoices: targetInvoices, gap: realGap, strategy: 'link' }); 
+                    setStep('adjustment_confirm'); 
+                } else { 
+                    setFixingId(issue.id); 
+                    await onFix(issue, 'link', undefined, ids); 
+                    setSuccessId(issue.id); 
+                    setTimeout(() => setSuccessId(null), 1800); 
+                }
+            } 
+            else if (strategy === 'cash') {
+                setFixingId(issue.id); 
+                await onFix(issue, strategy); 
+                setSuccessId(issue.id); 
+                setTimeout(() => setSuccessId(null), 1800); 
+            } 
+            else {
+                setActiveIssue(issue); 
+                setLoadingGaps(true); 
+                setStep('invoice_wizard');
+                const year = new Date(issue.date).getFullYear();
+                const yearGaps = await getInvoiceNumberGaps(year);
+                const issueDate = new Date(issue.date).getTime();
+                const enrichedGaps = yearGaps.map(g => {
+                    let rec = false;
+                    if (g.prevDate && g.nextDate) { rec = issueDate >= new Date(g.prevDate).getTime() && issueDate <= new Date(g.nextDate).getTime(); } else if (!g.prevDate && g.nextDate) { rec = issueDate <= new Date(g.nextDate).getTime(); } else if (g.prevDate && !g.nextDate) { rec = issueDate >= new Date(g.prevDate).getTime(); }
+                    return { ...g, recommended: rec };
+                });
+                setGaps(enrichedGaps); 
+                setLoadingGaps(false);
+            }
+        } catch (e: any) {
+            console.error("Fix Integrity Error:", e);
+            if (e.message === "FISCAL_YEAR_CLOSED") {
+                // Save context for retry
+                setRetryContext({ issue, strategy, targetInvoices, targetTransactionId });
+                setStep('year_closed_override');
+            } else {
+                alert("Errore: " + e.message);
+            }
+        } finally {
+            setFixingId(null);
         }
     };
-    const handleConfirmAdjustment = async () => {
+
+    const handleRetryWithOverride = async () => {
+        if (!retryContext) return;
+        setFixingId(retryContext.issue.id);
+        try {
+            if (retryContext.strategy === 'link' && pendingSelection) {
+                // Special case for adjustment retry
+                await handleConfirmAdjustment(overrideDate);
+            } else if (retryContext.strategy === 'link' && retryContext.targetInvoices) {
+                 const ids = retryContext.targetInvoices.map((i: any) => i.id);
+                 await onFix(retryContext.issue, 'link', undefined, ids, undefined, undefined, overrideDate);
+            } else if (retryContext.strategy === 'cash') {
+                 await onFix(retryContext.issue, 'cash', undefined, undefined, undefined, undefined, overrideDate);
+            }
+            // Add other cases if needed (e.g. simple link)
+            
+            setSuccessId(retryContext.issue.id);
+            setTimeout(() => { setSuccessId(null); setStep('list'); setRetryContext(null); }, 1800);
+        } catch (e: any) {
+            alert("Errore anche con data override: " + e.message);
+        } finally {
+            setFixingId(null);
+        }
+    };
+
+    const handleConfirmAdjustment = async (dateOverride?: string) => {
         if (!pendingSelection) return;
         const { issue, invoices, gap } = pendingSelection;
         setFixingId(issue.id);
-        try { await onFix(issue, 'link', undefined, invoices.map(i => i.id), { amount: gap, notes: `Abbuono Fiscale: ${gap}€.` }); setSuccessId(issue.id); setFixingId(null); setTimeout(() => { setSuccessId(null); setStep('list'); setPendingSelection(null); }, 1800); } catch (e) { alert("Errore regolarizzazione."); setFixingId(null); }
+        try { 
+            await onFix(
+                issue, 
+                'link', 
+                undefined, 
+                invoices.map(i => i.id), 
+                { amount: gap, notes: `Abbuono Fiscale: ${gap}€.` },
+                undefined,
+                dateOverride
+            ); 
+            setSuccessId(issue.id); 
+            setTimeout(() => { setSuccessId(null); setStep('list'); setPendingSelection(null); }, 1800); 
+        } catch (e: any) { 
+            if (e.message === "FISCAL_YEAR_CLOSED") {
+                setRetryContext({ issue, strategy: 'link', pendingSelectionData: pendingSelection }); // Mark logic path
+                setStep('year_closed_override');
+            } else {
+                alert("Errore regolarizzazione."); 
+            }
+        } finally {
+            setFixingId(null); 
+        }
     };
+
     useEffect(() => { if (manualNum && activeIssue) { const timer = setTimeout(async () => { const year = new Date(activeIssue.date).getFullYear(); const taken = await isInvoiceNumberTaken(year, parseInt(manualNum)); setIsDuplicate(taken); }, 500); return () => clearTimeout(timer); } }, [manualNum, activeIssue]);
+    
     const handleConfirmInvoice = async () => {
         if (!activeIssue) return;
         const numToUse = selectedGap !== null ? selectedGap : parseInt(manualNum);
@@ -270,8 +358,21 @@ const FixWizard: React.FC<{
         const year = new Date(activeIssue.date).getFullYear();
         const finalString = `FT-${year}-${String(numToUse).padStart(3, '0')}`;
         setFixingId(activeIssue.id);
-        try { await onFix(activeIssue, 'invoice', finalString); setSuccessId(activeIssue.id); setFixingId(null); setTimeout(() => { setStep('list'); setActiveIssue(null); setSuccessId(null); }, 1800); } catch (e) { alert("Errore salvataggio."); setFixingId(null); }
+        try { 
+            await onFix(activeIssue, 'invoice', finalString); 
+            setSuccessId(activeIssue.id); 
+            setTimeout(() => { setStep('list'); setActiveIssue(null); setSuccessId(null); }, 1800); 
+        } catch (e: any) { 
+            if (e.message === "FISCAL_YEAR_CLOSED") {
+                 alert("Impossibile inserire fatture in un anno chiuso. Emetti una fattura ordinaria nell'anno corrente.");
+            } else {
+                alert("Errore salvataggio."); 
+            }
+        } finally {
+            setFixingId(null); 
+        }
     };
+
     return (
         <div className="flex flex-col h-[85vh]">
             <div className="p-6 border-b bg-amber-50 flex-shrink-0 flex justify-between items-center"><div><h3 className="text-xl font-bold text-amber-900">Fiscal Doctor</h3><p className="text-sm text-amber-700">Analisi Automatica & Smart Identity Matching.</p></div><span className="text-2xl">🩺</span></div>
@@ -322,7 +423,34 @@ const FixWizard: React.FC<{
                         })}
                     </div>
                 ) : step === 'adjustment_confirm' ? (
-                    <div className="animate-fade-in p-4 text-center py-10"><div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">⚖️</div><h3 className="text-xl font-black text-slate-800 mb-2">Conferma Regolazione</h3><p className="text-sm text-slate-500 mb-6 px-4">L'importo dei documenti è inferiore a quello dell'iscrizione. Vuoi registrare la differenza di <strong className="text-red-600">{pendingSelection?.gap.toFixed(2)}€</strong> come Abbuono Fiscale?</p><div className="flex flex-col gap-3"><button onClick={handleConfirmAdjustment} disabled={fixingId === pendingSelection?.issue.id} className="w-full md-btn md-btn-raised bg-red-600 text-white font-bold uppercase tracking-widest text-xs">Sì, Registra Abbuono e Collega</button><button onClick={() => { setStep('list'); setPendingSelection(null); }} className="md-btn md-btn-flat">Indietro</button></div></div>
+                    <div className="animate-fade-in p-4 text-center py-10"><div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">⚖️</div><h3 className="text-xl font-black text-slate-800 mb-2">Conferma Regolazione</h3><p className="text-sm text-slate-500 mb-6 px-4">L'importo dei documenti è inferiore a quello dell'iscrizione. Vuoi registrare la differenza di <strong className="text-red-600">{pendingSelection?.gap.toFixed(2)}€</strong> come Abbuono Fiscale?</p><div className="flex flex-col gap-3"><button onClick={() => handleConfirmAdjustment()} disabled={fixingId === pendingSelection?.issue.id} className="w-full md-btn md-btn-raised bg-red-600 text-white font-bold uppercase tracking-widest text-xs">Sì, Registra Abbuono e Collega</button><button onClick={() => { setStep('list'); setPendingSelection(null); }} className="md-btn md-btn-flat">Indietro</button></div></div>
+                ) : step === 'year_closed_override' ? (
+                    <div className="animate-fade-in p-6 bg-amber-50 rounded-xl border border-amber-200 text-center">
+                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">🔒</div>
+                        <h3 className="text-lg font-black text-slate-800 mb-2">Anno Fiscale Chiuso</h3>
+                        <p className="text-sm text-slate-600 mb-6 leading-relaxed">
+                            L'iscrizione originale risale a un periodo fiscale già chiuso. Non è possibile registrare movimenti retroattivi.
+                            <br/><br/>
+                            Vuoi registrare questa operazione come <strong>Recupero Crediti / Abbuono</strong> con data odierna?
+                        </p>
+                        
+                        <div className="bg-white p-4 rounded-xl border border-amber-100 mb-6 text-left">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Data Contabile Registrazione</label>
+                            <input 
+                                type="date" 
+                                value={overrideDate} 
+                                onChange={e => setOverrideDate(e.target.value)} 
+                                className="w-full md-input font-bold text-slate-800"
+                            />
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={() => { setStep('list'); setRetryContext(null); }} className="flex-1 md-btn md-btn-flat">Annulla</button>
+                            <button onClick={handleRetryWithOverride} className="flex-1 md-btn md-btn-raised bg-amber-500 text-white font-bold hover:bg-amber-600 shadow-lg">
+                                Conferma e Procedi
+                            </button>
+                        </div>
+                    </div>
                 ) : (
                     <div className="space-y-6 animate-fade-in"><div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100"><h4 className="text-sm font-bold text-indigo-900 mb-1">Recupero Numerazione: {activeIssue?.entityName}</h4><p className="text-xs text-indigo-700 leading-relaxed">Seleziona un progressivo mancante.</p></div>{loadingGaps ? <div className="py-10 flex justify-center"><Spinner /></div> : (<div className="space-y-4"><div><label className="block text-xs font-bold text-gray-500 uppercase mb-2">Buchi Trovati</label><div className="grid grid-cols-2 sm:grid-cols-3 gap-3">{gaps.map(g => (<button key={g.number} onClick={() => { setSelectedGap(g.number); setManualNum(''); }} className={`p-3 border rounded-xl text-left transition-all ${selectedGap === g.number ? 'ring-4 ring-indigo-500 bg-indigo-600 border-indigo-600 text-white shadow-xl' : 'bg-white border-gray-200 hover:border-indigo-300'}`}><span className="font-mono font-bold text-base">#{g.number}</span></button>))}</div></div></div>)}</div>
                 )}
@@ -344,7 +472,6 @@ const TAB_LABELS = {
 };
 
 const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
-    // ... (State and useEffects) ...
     const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
     const [overviewYear, setOverviewYear] = useState<number>(new Date().getFullYear());
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -368,21 +495,22 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
     const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+    const [invoiceToDelete, setInvoiceToDelete] = useState<string | null>(null);
     const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
     const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+    const [quoteToDelete, setQuoteToDelete] = useState<string | null>(null);
     const [quoteToConvert, setQuoteToConvert] = useState<Quote | null>(null);
     const [quoteToActivate, setQuoteToActivate] = useState<Quote | null>(null);
 
     // End of Month Check for Alert
     const isLateMonth = new Date().getDate() > 27;
     
-    // NEW: Smart check if rent is already paid for current month
     const isRentPaidForThisMonth = useMemo(() => {
         const now = new Date();
         return transactions.some(t => 
             !t.isDeleted &&
             t.category === TransactionCategory.Nolo &&
-            t.relatedDocumentId?.startsWith('AUTO-RENT') && // Match AUTO-RENT tag
+            t.relatedDocumentId?.startsWith('AUTO-RENT') &&
             new Date(t.date).getMonth() === now.getMonth() &&
             new Date(t.date).getFullYear() === now.getFullYear()
         );
@@ -393,10 +521,15 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [t, i, q, e, s, c, ml, info, issues] = await Promise.all([
-                getTransactions(), getInvoices(), getQuotes(), getAllEnrollments(), getSuppliers(), getClients(), getLessons(), getCompanyInfo(), runFinancialHealthCheck()
+            // First fetch data that doesn't depend on analysis
+            const [t, i, q, e, s, c, ml, info] = await Promise.all([
+                getTransactions(), getInvoices(), getQuotes(), getAllEnrollments(), getSuppliers(), getClients(), getLessons(), getCompanyInfo()
             ]);
-            setTransactions(t || []); setInvoices(i || []); setQuotes(q || []); setEnrollments(e || []); setSuppliers(s || []); setClients(c || []); setManualLessons(ml || []); setCompanyInfo(info || null); setIntegrityIssues(issues || []);
+            setTransactions(t || []); setInvoices(i || []); setQuotes(q || []); setEnrollments(e || []); setSuppliers(s || []); setClients(c || []); setManualLessons(ml || []); setCompanyInfo(info || null);
+            
+            // Then run health check passing the data directly
+            const issues = await runFinancialHealthCheck(e || [], i || [], t || [], c || []);
+            setIntegrityIssues(issues || []);
         } finally { setLoading(false); }
     }, []);
 
@@ -458,10 +591,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const locStats: Record<string, { revenue: number, rent: number, uniqueLessonKeys: Set<string> }> = {};
         locationsMap.forEach((_, id) => locStats[id] = { revenue: 0, rent: 0, uniqueLessonKeys: new Set<string>() });
 
-        // ACTIVITY-BASED ALLOCATION ENGINE
         const globalUniqueLessons = new Set<string>();
 
-        // A. Standard B2C Slots (Raggruppati per slot orario: 10 allievi = 1 slot)
         enrollments.forEach(enr => {
             if (!enr.isQuoteBased && enr.locationId && locStats[enr.locationId]) {
                 (enr.appointments || []).forEach(app => {
@@ -474,7 +605,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             }
         });
 
-        // B. Institutional Projects (Sedi Progetto)
         manualLessons.forEach(ml => {
             if (new Date(ml.date).getFullYear() === controllingYear) {
                 let targetLocId = "";
@@ -483,8 +613,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 }
 
                 if (targetLocId && locStats[targetLocId]) {
-                    // Per le lezioni manuali (extra), consideriamo attività se ci sono partecipanti
-                    // O se è un evento extra manuale (es. workshop aperto)
                     const lessonKey = `${ml.date.split('T')[0]}_${ml.startTime}_${targetLocId}`;
                     locStats[targetLocId].uniqueLessonKeys.add(lessonKey);
                     globalUniqueLessons.add(lessonKey);
@@ -520,124 +648,249 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
         return Array.from(locationsMap.entries()).map(([id, info]) => {
             const stats = locStats[id];
-            const rev = stats.revenue;
-            const locUniqueCount = stats.uniqueLessonKeys.size;
+            const lessonsCount = stats.uniqueLessonKeys.size;
             
-            // ACTIVITY-BASED COSTING UPDATE:
-            // Se la sede non ha prodotto lezioni (locUniqueCount === 0), azzeriamo il costo nolo
-            // Questo riflette la logica che una sede "spenta" non dovrebbe pesare sul ROI operativo
-            const rentCost = locUniqueCount > 0 ? stats.rent : 0;
-
-            const logisticsShare = (totalAutoCosts / totalUniqueLessonsInYear) * locUniqueCount;
-            const overheadShare = totalRevenueForYear > 0 ? (totalCommonExpenses * (rev / totalRevenueForYear)) : (totalCommonExpenses / locationsMap.size);
-            const totalLocCosts = rentCost + logisticsShare + overheadShare;
-
+            const logisticsShare = totalUniqueLessonsInYear > 0 ? (totalAutoCosts / totalUniqueLessonsInYear) * lessonsCount : 0;
+            const revenueShare = totalRevenueForYear > 0 ? (stats.revenue / totalRevenueForYear) : 0;
+            const overheadShare = totalCommonExpenses * revenueShare;
+            const totalCosts = stats.rent + logisticsShare + overheadShare;
+            
             return {
+                id: info.id,
                 name: info.name,
                 color: info.color,
-                revenue: rev,
-                costs: totalLocCosts,
+                revenue: stats.revenue,
+                costs: totalCosts,
                 breakdown: {
-                    rent: rentCost,
+                    rent: stats.rent,
                     logistics: logisticsShare,
                     overhead: overheadShare
                 },
-                costPerLesson: { 
-                    value: locUniqueCount > 0 ? (rentCost + logisticsShare) / locUniqueCount : 0, 
-                    min: 0, max: 0, avg: 0 
-                },
-                costPerStudentPerLesson: 0, 
+                costPerLesson: { value: lessonsCount > 0 ? totalCosts / lessonsCount : 0, min:0, max:0, avg:0 },
                 costPerStudent: 0, 
-                studentBasedCosts: 0,
-                hasActivity: rev > 0 || rentCost > 0 || locUniqueCount > 0
+                costPerStudentPerLesson: 0,
+                studentBasedCosts: 0
             };
-        }).filter(sede => sede.hasActivity);
+        });
+    }, [enrollments, suppliers, transactions, controllingYear, manualLessons]);
 
-    }, [suppliers, transactions, enrollments, manualLessons, controllingYear]);
-
-    // ... (Other functions remain unchanged) ...
-    const reverseEngineering = useMemo(() => { 
-        const compositeTaxRate = COEFF_REDDITIVITA * (INPS_RATE + TAX_RATE_STARTUP); 
-        const netRatio = 1 - compositeTaxRate; 
-        const annualNetTarget = (Number(targetMonthlyNet) || 0) * 12; 
-        const grossNeeded = annualNetTarget / (netRatio || 1); 
-        const currentGross = stats.revenue; 
-        const gap = Math.max(0, grossNeeded - currentGross);
-        const activeEnr = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
-        const totalValue = activeEnr.reduce((acc, e) => acc + (e.price || 0), 0);
-        const totalLessons = activeEnr.reduce((acc, e) => acc + (e.lessonsTotal || 0), 0);
-        const realAveragePrice = totalLessons > 0 ? totalValue / totalLessons : 25;
-        const studentsNeeded = Math.ceil(gap / (realAveragePrice * 12));
-        const recommendedPrice = totalLessons > 0 ? grossNeeded / totalLessons : realAveragePrice;
-        return { annualNetTarget, grossNeeded, gap, realAveragePrice, studentsNeeded, recommendedPrice, advice: gap > 0 ? `Per coprire il gap di ${gap.toFixed(0)}€ hai due strade: acquisire nuovi allievi o alzare i listini.` : "Obiettivo annuale raggiunto con il fatturato attuale!" }; 
-    }, [targetMonthlyNet, stats.revenue, enrollments]);
-
-    const simulatorData = useMemo(() => { const tax2025 = stats.totalInpsTax; return { tranche1: tax2025 * 1.5, tranche2: tax2025 * 0.5, monthlyInstallment: (tax2025 * 1.5) / 6, savingsPlan: ['GEN', 'FEB', 'MAR', 'APR', 'MAG', 'GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV', 'DIC'].map((m) => ({ month: m, amount: (tax2025 * 2) / 12 })), }; }, [stats]);
-
-    const handlePrint = async (doc: Invoice | Quote) => { const client = clients.find(c => c.id === doc.clientId); await generateDocumentPDF(doc, 'invoiceNumber' in doc ? 'Fattura' : 'Preventivo', companyInfo, client); };
-    const handleWhatsApp = (item: any) => { const c = clients.find(cl => cl.id === item.clientId); if (c?.phone) window.open(`https://wa.me/${c.phone.replace(/\D/g, '')}?text=${encodeURIComponent('Le inviamo riferimento per il pagamento.')}`, '_blank'); else alert("Numero non trovato."); };
-    const handleSaveTransaction = async (t: any) => { setLoading(true); try { if ('id' in t) await updateTransaction(t.id, t); else await addTransaction(t); setIsTransactionModalOpen(false); await fetchData(); } finally { setLoading(false); } };
-    const handleEditItem = (item: any) => { if ('invoiceNumber' in item) { setEditingInvoice(item); setIsInvoiceModalOpen(true); } else if ('quoteNumber' in item) { setEditingQuote(item); setIsQuoteModalOpen(true); } else { setEditingTransaction(item); setIsTransactionModalOpen(true); } };
-    const handleSaveInvoice = async (data: any) => { setLoading(true); try { if (editingInvoice?.id) await updateInvoice(editingInvoice.id, data); else await addInvoice(data); setIsInvoiceModalOpen(false); await fetchData(); } finally { setLoading(false); } };
-    const handleSaveQuote = async (data: any) => { setLoading(true); try { if ('id' in data) await updateQuote(data.id, data); else await addQuote(data); setIsQuoteModalOpen(false); await fetchData(); } finally { setLoading(false); } };
-    const handleWizardFix = async (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' = 'invoice', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string) => { await fixIntegrityIssue(issue, strategy, manualNum, targetInvoiceIds, adjustment, targetTransactionId); await fetchData(); };
+    // Handlers
+    const handleSaveTransaction = async (t: TransactionInput | Transaction) => {
+        try { if ('id' in t) await updateTransaction(t.id, t); else await addTransaction(t as TransactionInput); setIsTransactionModalOpen(false); fetchData(); } catch (e) { alert("Errore salvataggio transazione."); }
+    };
+    const handleDeleteTransaction = async () => { if (transactionToDelete) { await deleteTransaction(transactionToDelete); setTransactionToDelete(null); fetchData(); } };
     
-    const confirmDelete = async () => { if (transactionToDelete) { setLoading(true); try { if (activeTab === 'transactions') await deleteTransaction(transactionToDelete); else if (activeTab === 'invoices' || activeTab === 'archive') await deleteInvoice(transactionToDelete); else if (activeTab === 'quotes') await deleteQuote(transactionToDelete); await fetchData(); } finally { setLoading(false) ; setTransactionToDelete(null); } } };
-    const processConversion = async () => { if (quoteToConvert) { setLoading(true); try { await convertQuoteToInvoice(quoteToConvert.id); await fetchData(); } finally { setLoading(false); setQuoteToConvert(null); } } };
+    const handleSaveInvoice = async (inv: InvoiceInput) => {
+        try { if (editingInvoice?.id) await updateInvoice(editingInvoice.id, inv); else await addInvoice(inv); setIsInvoiceModalOpen(false); fetchData(); } catch (e) { alert("Errore salvataggio fattura."); }
+    };
+    const handleDeleteInvoice = async () => { if (invoiceToDelete) { await deleteInvoice(invoiceToDelete); setInvoiceToDelete(null); fetchData(); } };
+
+    const handleSaveQuote = async (q: QuoteInput | Quote) => {
+        try { if ('id' in q) await updateQuote(q.id, q); else await addQuote(q as QuoteInput); setIsQuoteModalOpen(false); fetchData(); } catch (e) { alert("Errore salvataggio preventivo."); }
+    };
+    const handleDeleteQuote = async () => { if (quoteToDelete) { await deleteQuote(quoteToDelete); setQuoteToDelete(null); fetchData(); } };
+
+    const handleConvertQuote = async () => {
+        if (!quoteToConvert) return;
+        try {
+            await convertQuoteToInvoice(quoteToConvert.id);
+            alert("Preventivo convertito in fattura!");
+            setQuoteToConvert(null);
+            fetchData();
+        } catch (e) {
+            alert("Errore conversione: " + e);
+        }
+    };
+
+    const handlePrint = async (item: Invoice | Quote) => {
+        const type = 'invoiceNumber' in item ? 'Fattura' : 'Preventivo';
+        const client = clients.find(c => c.id === item.clientId);
+        await generateDocumentPDF(item, type, companyInfo, client);
+    };
+
+    const handleWhatsApp = (item: any) => {
+        const number = item.invoiceNumber || item.quoteNumber || 'Documento';
+        const text = `Ciao! Ecco il documento ${number}.`;
+        const encoded = encodeURIComponent(text);
+        window.open(`https://wa.me/?text=${encoded}`, '_blank');
+    };
+
+    const handleSealSDI = async (item: Invoice) => {
+        const code = prompt("Inserisci Codice SDI o PEC per confermare l'invio:", item.sdiId || item.sdiCode || '');
+        if (code) {
+            await updateInvoice(item.id, { status: DocumentStatus.SealedSDI, sdiId: code });
+            fetchData();
+        }
+    };
+
+    // New wrapper handlers to open modals
+    const handleEditTransaction = (t: any) => {
+        setEditingTransaction(t as Transaction);
+        setIsTransactionModalOpen(true);
+    };
+
+    const handleEditInvoice = (i: any) => {
+        setEditingInvoice(i as Invoice);
+        setIsInvoiceModalOpen(true);
+    };
+
+    const handleEditQuote = (q: any) => {
+        setEditingQuote(q as Quote);
+        setIsQuoteModalOpen(true);
+    };
+
+    // Handle fiscal gap fill request from FiscalYearManager
+    const handleGapFill = (year: number, number: number) => {
+        // Formatta il numero es. FT-2025-005
+        const forcedNumber = `FT-${year}-${String(number).padStart(3, '0')}`;
+        
+        // Crea una fattura parziale per l'editor
+        const skeletonInvoice: any = {
+            invoiceNumber: forcedNumber,
+            issueDate: new Date().toISOString(),
+            status: DocumentStatus.Draft,
+            paymentMethod: PaymentMethod.BankTransfer,
+            isGhost: false,
+            isDeleted: false,
+            items: [],
+            totalAmount: 0
+        };
+        
+        setEditingInvoice(skeletonInvoice);
+        setIsInvoiceModalOpen(true);
+    };
+
+    // Calculate Simulator Data for CFO
+    const simulatorData = useMemo(() => {
+        const months = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+        const monthlySavings = (stats.totalAll || 0) / 12;
+        const savingsPlan = months.map(m => ({ month: m, amount: monthlySavings }));
+        
+        // Mock Tranches
+        const totalTax = stats.totalAll || 0;
+        const tranche1 = totalTax * 0.4; // Giugno (Saldo + I Acconto)
+        const tranche2 = totalTax * 0.6; // Nov (II Acconto)
+
+        return { savingsPlan, tranche1, tranche2 };
+    }, [stats]);
+
+    // Reverse Engineering Logic
+    const reverseEngineering = useMemo(() => {
+        const desiredAnnualNet = targetMonthlyNet * 12;
+        // Formula: Revenue - Expenses - Taxes = Net
+        // We assume expenses scale roughly or are fixed? Let's assume fixed expenses from current stats to simplify
+        // Revenue * (1 - tax_rate) - Expenses = Net
+        // Revenue = (Net + Expenses) / (1 - tax_rate_approx)
+        
+        // Approx Tax Rate on Revenue (Forfettario 5% + INPS ~26% on 78% profitability)
+        // Effective Tax Load ~ 24% of Revenue
+        const effectiveTaxRate = 0.24; 
+        
+        const grossNeeded = (desiredAnnualNet + stats.expenses) / (1 - effectiveTaxRate);
+        const gap = Math.max(0, grossNeeded - stats.revenue);
+        
+        // Unit Economics
+        const totalLessons = enrollments.reduce((acc, enr) => acc + (enr.status === EnrollmentStatus.Active ? enr.lessonsTotal : 0), 0);
+        const activeStudents = enrollments.filter(e => e.status === EnrollmentStatus.Active).length;
+        const avgPricePerLesson = totalLessons > 0 ? (stats.revenue / totalLessons) : 0; // Very rough
+        
+        // Advice generation
+        let advice = "Sei sulla buona strada.";
+        if (gap > 0) {
+            advice = `Per raggiungere ${targetMonthlyNet}€ netti al mese, ti mancano circa ${gap.toLocaleString()}€ di fatturato annuo.`;
+        }
+
+        const studentsNeeded = activeStudents > 0 ? Math.ceil(gap / (stats.revenue / activeStudents)) : 0;
+        const recommendedPrice = totalLessons > 0 ? (grossNeeded / totalLessons) : 0;
+
+        return { grossNeeded, gap, advice, studentsNeeded, recommendedPrice, realAveragePrice: avgPricePerLesson };
+    }, [stats, targetMonthlyNet, enrollments]);
 
     return (
-        <div className="animate-fade-in pb-20">
-            {integrityIssues.length > 0 && (
-                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl shadow-sm flex flex-col md:flex-row justify-between items-center animate-slide-up">
-                    <div className="flex items-center gap-3 mb-3 md:mb-0"><div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-xl shadow-inner">🩺</div><div><h4 className="text-sm font-bold text-amber-900 uppercase tracking-tighter">Fiscal Doctor: {integrityIssues.length} Anomalie Rilevate</h4><p className="text-xs text-amber-700">Riconciliazione guidata.</p></div></div>
-                    <button onClick={() => setIsFixWizardOpen(true)} className="md-btn md-btn-sm bg-amber-600 text-white font-bold px-6 shadow-md hover:bg-amber-700 transition-colors uppercase text-[10px]">Apri Medico Fiscale</button>
+        <div className="pb-20">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold">Finanza</h1>
+                    <p className="text-gray-500">Controllo di gestione e fatturazione.</p>
                 </div>
-            )}
-            <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-6 gap-4">
-                <div><h1 className="text-3xl font-black text-slate-900">Finanza Enterprise</h1></div>
                 <div className="flex gap-2">
-                    <button onClick={() => setIsSyncModalOpen(true)} className={`md-btn md-btn-flat border ${showRentAlert ? 'border-red-500 text-red-600 bg-red-50 animate-pulse' : 'border-indigo-200 bg-white'}`}>Sync Noli {showRentAlert && '⚠️'}</button>
-                    <button onClick={() => { if (activeTab === 'quotes') setIsQuoteModalOpen(true); else if (activeTab === 'invoices') setIsInvoiceModalOpen(true); else setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> {activeTab === 'quotes' ? 'Preventivo' : (activeTab === 'invoices' ? 'Fattura' : 'Voce')}</button>
+                    {activeTab === 'transactions' && <button onClick={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center"><PlusIcon /> <span className="ml-2">Nuova Voce</span></button>}
+                    {activeTab === 'invoices' && <button onClick={() => { setEditingInvoice({} as Invoice); setIsInvoiceModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary flex items-center"><PlusIcon /> <span className="ml-2">Nuova Fattura</span></button>}
+                    {activeTab === 'quotes' && <button onClick={() => { setEditingQuote(null); setIsQuoteModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary flex items-center"><PlusIcon /> <span className="ml-2">Nuovo Preventivo</span></button>}
+                    
+                    {integrityIssues.length > 0 && <button onClick={() => setIsFixWizardOpen(true)} className="md-btn md-btn-sm bg-red-100 text-red-600 border border-red-200 hover:bg-red-200 animate-pulse">🩺 {integrityIssues.length} Anomalie</button>}
+                    {showRentAlert && <button onClick={() => setIsSyncModalOpen(true)} className="md-btn md-btn-sm bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-200">🏠 Noli da Saldare</button>}
                 </div>
             </div>
-            <div className="border-b border-gray-200 mb-8"><nav className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">{Object.entries(TAB_LABELS).map(([k, v]) => ( <button key={k} onClick={() => setActiveTab(k as any)} className={`flex-shrink-0 py-2 px-4 rounded-full text-sm font-bold transition-all whitespace-nowrap mb-2 ${activeTab === k ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200 uppercase'}`}>{v}</button> ))}</nav></div>
-            {loading ? <div className="flex justify-center py-20"><Spinner /></div> : (
-                <div className="space-y-8">
-                    {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} invoices={invoices} overviewYear={overviewYear} setOverviewYear={setOverviewYear} />}
-                    {activeTab === 'cfo' && <FinanceCFO stats={stats} simulatorData={simulatorData} reverseEngineering={reverseEngineering} targetMonthlyNet={targetMonthlyNet} setTargetMonthlyNet={setTargetMonthlyNet} />}
-                    {activeTab === 'controlling' && <FinanceControlling roiSedi={roiSedi} onSelectLocation={setSelectedLocationROI} year={controllingYear} onYearChange={setControllingYear} />}
-                    {activeTab === 'fiscal_closure' && <FiscalYearManager transactions={transactions} invoices={invoices} />}
-                    {['transactions', 'invoices', 'archive', 'quotes'].includes(activeTab) && 
-                        <FinanceListView 
-                            activeTab={activeTab as any} 
-                            transactions={transactions} 
-                            invoices={invoices} 
-                            quotes={quotes} 
-                            suppliers={suppliers} 
-                            enrollments={enrollments} // Pass enrollments prop
-                            filters={filters} 
-                            setFilters={setFilters} 
-                            onEdit={handleEditItem} 
-                            onDelete={setTransactionToDelete} 
-                            onPrint={handlePrint} 
-                            onSeal={inv => updateInvoice(inv.id, {status: DocumentStatus.SealedSDI})} 
-                            onWhatsApp={handleWhatsApp} 
-                            onConvert={setQuoteToConvert} 
-                            onActivate={setQuoteToActivate} 
-                        />
-                    }
-                </div>
+            
+            {/* Tabs */}
+            <div className="border-b border-gray-200 mb-6 -mx-4 md:mx-0">
+                <nav className="flex space-x-2 overflow-x-auto scrollbar-hide px-4 md:px-0 pb-1">
+                    {Object.entries(TAB_LABELS).map(([key, label]) => (
+                        <button key={key} onClick={() => setActiveTab(key as any)} className={`flex-shrink-0 py-2 px-4 rounded-full text-sm font-bold transition-all whitespace-nowrap mb-2 ${activeTab === key ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'}`}>
+                            {label}
+                        </button>
+                    ))}
+                </nav>
+            </div>
+
+            {/* Content based on activeTab */}
+            {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} invoices={invoices} overviewYear={overviewYear} setOverviewYear={setOverviewYear} />}
+            {activeTab === 'cfo' && <FinanceCFO stats={stats} simulatorData={simulatorData} reverseEngineering={reverseEngineering} targetMonthlyNet={targetMonthlyNet} setTargetMonthlyNet={setTargetMonthlyNet} />}
+            {activeTab === 'controlling' && <FinanceControlling roiSedi={roiSedi} onSelectLocation={setSelectedLocationROI} year={controllingYear} onYearChange={setControllingYear} />}
+            {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'archive' || activeTab === 'quotes') && (
+                <FinanceListView 
+                    activeTab={activeTab} 
+                    transactions={transactions} 
+                    invoices={invoices} 
+                    quotes={quotes} 
+                    suppliers={suppliers} 
+                    enrollments={enrollments} // Pass enrollments
+                    filters={filters} 
+                    setFilters={setFilters}
+                    onEdit={activeTab === 'transactions' ? handleEditTransaction : activeTab === 'quotes' ? handleEditQuote : handleEditInvoice}
+                    onDelete={activeTab === 'transactions' ? setTransactionToDelete : activeTab === 'quotes' ? setQuoteToDelete : setInvoiceToDelete}
+                    onPrint={handlePrint}
+                    onSeal={handleSealSDI}
+                    onWhatsApp={handleWhatsApp}
+                    onConvert={activeTab === 'quotes' ? setQuoteToConvert : undefined}
+                    onActivate={activeTab === 'quotes' ? setQuoteToActivate : undefined}
+                />
             )}
-            {/* ... Modals (unchanged) ... */}
-            {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="lg"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onComplete={() => { fetchData(); }} /></Modal>}
-            {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="2xl"><FixWizard issues={integrityIssues} onFix={handleWizardFix} onClose={() => setIsFixWizardOpen(false)} /></Modal>}
+            {activeTab === 'fiscal_closure' && (
+                <FiscalYearManager 
+                    transactions={transactions} 
+                    invoices={invoices} 
+                    onRequestInvoiceCreation={handleGapFill}
+                />
+            )}
+
+            {/* Modals */}
+            {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="xl"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onComplete={fetchData} enrollments={enrollments} /></Modal>}
+            {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="2xl"><FixWizard issues={integrityIssues} onFix={fixIntegrityIssue} onClose={() => { setIsFixWizardOpen(false); fetchData(); }} /></Modal>}
+            
             {isTransactionModalOpen && <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg"><TransactionForm transaction={editingTransaction} suppliers={suppliers} onSave={handleSaveTransaction} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
             {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {} as Invoice} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
-            {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="xl"><QuoteForm quote={editingQuote} clients={clients} companyInfo={companyInfo} onSave={handleSaveQuote} onCancel={() => setIsQuoteModalOpen(false)} /></Modal>}
+            {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="2xl"><QuoteForm quote={editingQuote} clients={clients} companyInfo={companyInfo} onSave={handleSaveQuote} onCancel={() => setIsQuoteModalOpen(false)} /></Modal>}
             {selectedLocationROI && <LocationDetailModal data={selectedLocationROI} onClose={() => setSelectedLocationROI(null)} />}
-            {quoteToActivate && <Modal onClose={() => setQuoteToActivate(null)} size="xl"><InstitutionalWizard quote={quoteToActivate} suppliers={suppliers} onClose={() => setQuoteToActivate(null)} onComplete={() => { setQuoteToActivate(null); fetchData(); }} /></Modal>}
-            <ConfirmModal isOpen={!!transactionToDelete} onClose={() => setTransactionToDelete(null)} onConfirm={confirmDelete} title="Elimina" message="Sei sicuro?" isDangerous={true} />
-            <ConfirmModal isOpen={!!quoteToConvert} onClose={() => setQuoteToConvert(null)} onConfirm={processConversion} title="Converti" message="Convertire in fattura?" />
+            
+            {/* New: Institutional Activation Wizard */}
+            {quoteToActivate && (
+                <Modal onClose={() => setQuoteToActivate(null)} size="2xl">
+                    <InstitutionalWizard 
+                        quote={quoteToActivate} 
+                        suppliers={suppliers}
+                        onClose={() => setQuoteToActivate(null)}
+                        onComplete={() => { setQuoteToActivate(null); fetchData(); alert("Progetto Attivato! Vai a Iscrizioni per gestirlo."); }}
+                    />
+                </Modal>
+            )}
+
+            <ConfirmModal isOpen={!!transactionToDelete} onClose={() => setTransactionToDelete(null)} onConfirm={handleDeleteTransaction} title="Elimina Transazione" message="Sei sicuro?" isDangerous={true} />
+            <ConfirmModal isOpen={!!invoiceToDelete} onClose={() => setInvoiceToDelete(null)} onConfirm={handleDeleteInvoice} title="Elimina Fattura" message="Sei sicuro? Il numero verrà perso." isDangerous={true} />
+            <ConfirmModal isOpen={!!quoteToDelete} onClose={() => setQuoteToDelete(null)} onConfirm={handleDeleteQuote} title="Elimina Preventivo" message="Sei sicuro?" isDangerous={true} />
+            <ConfirmModal isOpen={!!quoteToConvert} onClose={() => setQuoteToConvert(null)} onConfirm={handleConvertQuote} title="Converti in Fattura" message="Verrà generata una nuova fattura dai dati del preventivo. Confermi?" />
         </div>
     );
 };

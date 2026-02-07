@@ -1,13 +1,16 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 import { applyTheme, getSavedTheme } from './utils/theme';
 
-// Inizializza il tema immediatamente all'avvio dell'applicazione per evitare FOUC
-// e garantire che la pagina di Login abbia i colori corretti.
-const savedTheme = getSavedTheme();
-applyTheme(savedTheme.primary, savedTheme.bg);
+// Inizializza il tema immediatamente all'avvio dell'applicazione.
+try {
+  const savedTheme = getSavedTheme();
+  applyTheme(savedTheme.primary, savedTheme.bg);
+} catch (e: any) {
+  console.error("Theme Init Error: " + e.message);
+}
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -15,8 +18,17 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
+// Hide visual boot monitor if present
+setTimeout(() => {
+    const monitor = document.getElementById('boot-monitor');
+    if (monitor) monitor.style.display = 'none';
+}, 500);
+
 root.render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );

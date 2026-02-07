@@ -1,6 +1,6 @@
 
 // FIX: Corrected Firebase import path.
-import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, doc, getDocs, writeBatch } from '@firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase/config';
 import { Client, ClientType, ParentClientInput, InstitutionalClientInput, SupplierInput, Supplier, EnrollmentInput, EnrollmentStatus, PaymentMethod } from '../types';
@@ -378,6 +378,7 @@ export const importEnrollmentsFromExcel = async (file: File): Promise<ImportResu
 
                 const enrollmentInput: EnrollmentInput = {
                     clientId,
+                    clientType: existingClient ? existingClient.clientType : ClientType.Parent,
                     childId: `import-${Date.now()}-${i}`,
                     childName: String(row.ChildName),
                     isAdult: false,

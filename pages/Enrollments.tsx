@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client, InstitutionalClient, Transaction, Quote } from '../types';
 import { getClients } from '../services/parentService';
@@ -636,12 +635,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
                                                                     return (
                                                                         <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-4 transition-all hover:shadow-md cursor-grab ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
-                                                                            <div className="flex justify-between items-start mb-2">
-                                                                                <div>
+                                                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 gap-2">
+                                                                                <div className="min-w-0 w-full md:w-auto">
                                                                                     <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2"><span className="truncate">{enr.childName}</span>{childAge && <span className="bg-gray-100 text-black text-[10px] font-bold px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap">{childAge}</span>}</h4>
                                                                                     {isInst && <span className="text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
                                                                                 </div>
-                                                                                <div className="flex gap-1">
+                                                                                <div className="flex gap-1 self-end md:self-auto flex-shrink-0">
                                                                                     {/* Financial Wizard Trigger */}
                                                                                     <button onClick={() => setFinancialWizardTarget(enr)} className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`} title="Gestione Finanziaria / Wizard"><span className="font-bold text-xs">€</span></button>
                                                                                     <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 flex-shrink-0 ml-1"><PencilIcon/></button>

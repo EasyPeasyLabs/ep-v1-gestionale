@@ -5,7 +5,11 @@ import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 import { getMessaging } from "firebase/messaging";
 
-// Configurazione Firebase
+// Helper for boot monitor
+const logToScreen = (window as any).logToScreen || console.log;
+
+logToScreen("Configuring Firebase...", "info");
+
 const env = (import.meta as any).env || {};
 
 const firebaseConfig = {
@@ -17,21 +21,29 @@ const firebaseConfig = {
   appId: env.VITE_FIREBASE_APP_ID || "1:332612800443:web:d5d434d38a78020dd57e9e"
 };
 
-if (!firebaseConfig.apiKey) {
-    console.error("ERRORE CRITICO: Configurazione Firebase mancante.");
+let app, db, auth, storage, messaging;
+
+try {
+    if (!firebaseConfig.apiKey) {
+        throw new Error("ERRORE CRITICO: Configurazione Firebase mancante.");
+    }
+
+    // Initialize Firebase
+    app = initializeApp(firebaseConfig);
+    logToScreen("Firebase App Initialized.", "success");
+
+    db = initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+        ignoreUndefinedProperties: true
+    });
+    logToScreen("Firestore Initialized.", "success");
+
+    auth = getAuth(app);
+    storage = getStorage(app);
+    messaging = getMessaging(app);
+} catch (e: any) {
+    logToScreen("FIREBASE INIT ERROR: " + e.message, "error");
+    console.error(e);
 }
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-
-// Ottimizzazione per AI Studio: experimentalForceLongPolling previene i timeout dei WebSockets
-// ignoreUndefinedProperties previene errori durante il salvataggio di oggetti parziali
-export const db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    experimentalForceLongPolling: true,
-    ignoreUndefinedProperties: true
-});
-
-export const auth = getAuth(app);
-export const storage = getStorage(app);
-export const messaging = getMessaging(app);
+export { app, db, auth, storage, messaging };

@@ -114,8 +114,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                     locationName: loc.name,
                     locationColor: loc.color,
                     description: `${projectName} (${added + 1}/${genCount})`,
-                    // Temporary ID for UI key only, not for DB
-                    // Note: LessonInput doesn't strictly have ID, we manage it in rendering
+                    attendees: [] // Required by LessonInput
                 });
                 added++;
             }

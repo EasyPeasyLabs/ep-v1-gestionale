@@ -1,11 +1,10 @@
-
 import React, { useState } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from '@firebase/auth';
 import { auth } from '../firebase/config';
 import Spinner from '../components/Spinner';
 
 const LoginPage: React.FC = () => {
-    const [email, setEmail] = useState('labeasypeasy@gmail.com');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -22,13 +21,25 @@ const LoginPage: React.FC = () => {
                 await signInWithEmailAndPassword(auth, email, password);
             }
         } catch (err: any) {
-            console.error(err);
-            if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+            // Log full error for debugging if not a standard auth error
+            const errorCode = err.code;
+            const isCredError = errorCode === 'auth/invalid-credential' || 
+                                errorCode === 'auth/user-not-found' || 
+                                errorCode === 'auth/wrong-password' || 
+                                errorCode === 'auth/invalid-login-credentials';
+
+            if (!isCredError) {
+                console.error("Auth Error:", err);
+            }
+
+            if (isCredError) {
                 setError('Credenziali non valide. Controlla email e password.');
-            } else if (err.code === 'auth/email-already-in-use') {
+            } else if (errorCode === 'auth/email-already-in-use') {
                 setError('Email già registrata. Prova ad accedere.');
-            } else if (err.code === 'auth/weak-password') {
+            } else if (errorCode === 'auth/weak-password') {
                 setError('La password deve essere di almeno 6 caratteri.');
+            } else if (errorCode === 'auth/too-many-requests') {
+                setError('Troppi tentativi falliti. Riprova più tardi.');
             } else {
                 setError('Errore durante l\'autenticazione. Riprova.');
             }

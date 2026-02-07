@@ -7,333 +7,64 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="manifest" href="/manifest.json">
     <title>EP v.1 - Gestionale</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
           extend: {
             colors: {
-              // Palette "EasyPeasy" Enterprise v2
-              gray: {
-                50: '#F6F8FA', // Main Background
-                100: '#F3F4F6',
-                200: '#E5E7EB',
-                300: '#D1D5DB',
-                400: '#9CA3AF',
-                500: '#6B7280',
-                600: '#4B5563',
-                700: '#374151',
-                800: '#1F2937',
-                900: '#111827',
-              },
-              // Primary remapped to Brand Gray (#3c3c52)
-              indigo: {
-                50: '#F2F2F5', 
-                100: '#E6E6EA',
-                200: '#C8C8D0',
-                300: '#A9A9B6',
-                400: '#75758A',
-                500: '#3C3C52', // Main Brand Color (Dark Gray/Blue)
-                600: '#323244',
-                700: '#282836',
-                800: '#1E1E29',
-                900: '#14141B',
-              },
-              // Accent Color
-              amber: {
-                50: '#FFFAEB',
-                100: '#FEF3C7',
-                200: '#FDE68A',
-                300: '#FCD34D',
-                400: '#FFBF00', // Brand Accent (Amber)
-                500: '#F59E0B',
-                600: '#D97706',
-              },
-              brand: {
-                primary: '#3C3C52',
-                accent: '#FFBF00',
-                text: '#1A1A1A'
-              }
+              gray: { 50: '#F6F8FA', 100: '#F3F4F6', 200: '#E5E7EB', 300: '#D1D5DB', 400: '#9CA3AF', 500: '#6B7280', 600: '#4B5563', 700: '#374151', 800: '#1F2937', 900: '#111827' },
+              indigo: { 50: '#F2F2F5', 100: '#E6E6EA', 500: '#3C3C52', 600: '#323244', 700: '#282836' },
+              amber: { 50: '#FFFAEB', 100: '#FEF3C7', 400: '#FFBF00', 500: '#F59E0B' },
             },
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              display: ['Inter', 'sans-serif'], 
-            },
-            borderRadius: {
-              '3xl': '24px',
-              '4xl': '32px', 
-            },
-            keyframes: {
-              'neon-pulse': {
-                '0%, 100%': { boxShadow: 'inset 0 0 0 4px #FACC15' }, // Giallo Ocra Base (Yellow-400)
-                '50%': { boxShadow: 'inset 0 0 15px 4px #CCFF00' },   // Giallo Lime Fluo Glow
-              }
-            },
-            animation: {
-              'neon-pulse': 'neon-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            }
+            fontFamily: { sans: ['Inter', 'sans-serif'] },
+            animation: { 'neon-pulse': 'neon-pulse 2s infinite' },
+            keyframes: { 'neon-pulse': { '0%, 100%': { boxShadow: 'inset 0 0 0 4px #FACC15' }, '50%': { boxShadow: 'inset 0 0 15px 4px #CCFF00' } } }
           }
         }
       }
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-      :root {
-        /* Dashboard Palette */
-        --md-bg-light: #F6F8FA; 
-        --md-bg-card: #FFFFFF;
-        
-        --md-primary: #3C3C52; /* Brand Gray */
-        --md-accent: #FFBF00;  /* Brand Amber */
-        
-        --md-text-primary: #1A1A1A; 
-        --md-text-secondary: #6B7280; 
-        
-        --md-border-radius: 24px; 
-        --md-shadow: 0px 2px 12px rgba(0, 0, 0, 0.04); 
-      }
-
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: var(--md-bg-light);
-        color: var(--md-text-primary);
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-        overscroll-behavior-y: none;
-      }
-      
-      /* Scrollbar Customization - Expand on Hover/Touch */
-      ::-webkit-scrollbar {
-          width: 14px;  /* Area totale sensibile più larga per il tocco */
-          height: 14px;
-      }
-      ::-webkit-scrollbar-track {
-          background: transparent;
-      }
-      ::-webkit-scrollbar-thumb {
-          background-color: #D1D5DB;
-          border-radius: 20px;
-          /* Trucco per renderla visivamente sottile a riposo senza cambiare width */
-          border: 5px solid transparent; 
-          background-clip: content-box; 
-          transition: background-color 0.2s, border-width 0.2s;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-          background-color: #9CA3AF;
-          /* Si "allarga" visivamente riducendo il bordo trasparente */
-          border: 2px solid transparent; 
-      }
-
-      .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-      }
-      .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-      }
-
-      /* --- COMPONENTI --- */
-
-      .md-card {
-        background-color: var(--md-bg-card);
-        border-radius: var(--md-border-radius);
-        border: 1px solid #E5E7EB; 
-        box-shadow: var(--md-shadow);
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-      }
-      .md-card.cursor-pointer:hover {
-        transform: translateY(-3px);
-        box-shadow: 0px 12px 24px rgba(0, 0, 0, 0.06);
-        border-color: #D1D5DB;
-      }
-
-      .md-input-group {
-        position: relative;
-        margin-bottom: 1.5rem; /* Reduced spacing thanks to outlined labels */
-      }
-      
-      .md-input {
-        display: block;
-        width: 100%;
-        border: 1px solid #E5E7EB; 
-        border-radius: 16px; 
-        background-color: #F9FAFB; 
-        padding: 14px 16px; 
-        font-size: 0.95rem;
-        color: var(--md-text-primary);
-        transition: all 0.2s ease;
-        outline: none;
-        font-weight: 500;
-      }
-      .md-input:focus {
-        background-color: #FFFFFF;
-        border-color: var(--md-primary);
-        box-shadow: 0 0 0 3px rgba(60, 60, 82, 0.1); 
-      }
-      .md-input::placeholder { color: transparent; }
-      
-      .md-input-label {
-        position: absolute;
-        top: 14px;
-        left: 16px;
-        color: var(--md-text-secondary);
-        transition: all 0.2s ease;
-        pointer-events: none;
-        font-size: 0.95rem;
-        font-weight: 500;
-        padding: 0 4px; /* Space for outline cut */
-        background-color: transparent;
-        border-radius: 4px;
-      }
-      
-      .md-input:focus ~ .md-input-label,
-      .md-input:not(:placeholder-shown) ~ .md-input-label {
-        top: -10px; /* Sits on the border */
-        left: 12px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: var(--md-text-primary);
-        background-color: #FFFFFF; /* Masks the border */
-        z-index: 10;
-      }
-      
-      select.md-input ~ .md-input-label,
-      input[type="date"].md-input ~ .md-input-label,
-      input[type="time"].md-input ~ .md-input-label {
-        top: -10px;
-        left: 12px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: var(--md-text-primary);
-        background-color: #FFFFFF;
-        z-index: 10;
-      }
-
-      .md-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 24px;
-        height: 48px;
-        border-radius: 16px;
-        border: none;
-        font-family: 'Inter', sans-serif;
-        font-size: 14px;
-        font-weight: 700;
-        letter-spacing: 0.01em;
-        cursor: pointer;
-        outline: none;
-        position: relative;
-        overflow: hidden;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        user-select: none;
-      }
-      .md-btn:active:not(:disabled) { transform: scale(0.96); }
-      .md-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-      .md-btn-raised { box-shadow: 0 4px 14px rgba(0,0,0,0.08); }
-      .md-btn-raised:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(0,0,0,0.12); transform: translateY(-1px); }
-
-      /* Primary = Brand Gray */
-      .md-btn-primary { 
-        background-color: var(--md-primary);
-        color: #FFFFFF; 
-      }
-      .md-btn-primary:hover:not(:disabled) {
-         background-color: #282836;
-      }
-      
-      .md-btn-green { 
-        background-color: #10B981; 
-        color: #FFFFFF; 
-      }
-
-      .md-btn-red { 
-        background-color: #EF4444; 
-        color: #FFFFFF; 
-      }
-      
-      .md-btn-flat { background-color: transparent; color: var(--md-text-secondary); font-weight: 600; }
-      .md-btn-flat:hover:not(:disabled) { background-color: rgba(0,0,0,0.03); color: var(--md-text-primary); }
-
-      .md-btn-sm { height: 36px; padding: 0 16px; font-size: 12px; border-radius: 12px; }
-
-      .md-icon-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: #F3F4F6;
-        border: none;
-        padding: 10px;
-        border-radius: 12px;
-        cursor: pointer;
-        outline: none;
-        transition: all 0.2s ease;
-        color: var(--md-text-primary);
-      }
-      .md-icon-btn:hover:not(:disabled) { background-color: #E5E7EB; color: var(--md-primary); transform: scale(1.05); }
-      
-      .text-navy-700 { color: #1A1A1A; }
-      .text-gray-400 { color: #9CA3AF; }
-
-      @keyframes fade-in-down {
-        from { opacity: 0; transform: translateY(-10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
+      :root { --md-bg-light: #F6F8FA; --md-primary: #3C3C52; --md-text-primary: #1A1A1A; }
+      body { font-family: 'Inter', sans-serif; background-color: var(--md-bg-light); color: var(--md-text-primary); }
+      .md-card { background: white; border-radius: 24px; border: 1px solid #E5E7EB; box-shadow: 0 2px 12px rgba(0,0,0,0.04); }
+      .md-input { width: 100%; border: 1px solid #E5E7EB; border-radius: 16px; background: #F9FAFB; padding: 14px 16px; outline: none; }
+      .md-input:focus { background: white; border-color: var(--md-primary); box-shadow: 0 0 0 3px rgba(60,60,82,0.1); }
+      .md-btn { display: inline-flex; align-items: center; justify-content: center; padding: 0 24px; height: 48px; border-radius: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+      .md-btn-primary { background: var(--md-primary); color: white; }
+      .md-btn-flat { background: transparent; color: #6B7280; }
+      .md-icon-btn { display: inline-flex; align-items: center; justify-content: center; background: #F3F4F6; border: none; padding: 10px; border-radius: 12px; cursor: pointer; }
       .animate-fade-in-down { animation: fade-in-down 0.3s ease-out forwards; }
-      
-      @keyframes slide-up {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      .animate-slide-up { animation: slide-up 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-
-      /* LOGICA SEDI DISMESSE */
-      .bg-zebra {
-        background-image: repeating-linear-gradient(
-          45deg,
-          rgba(255, 255, 255, 0.05),
-          rgba(255, 255, 255, 0.05) 10px,
-          rgba(0, 0, 0, 0.1) 10px,
-          rgba(0, 0, 0, 0.1) 20px
-        );
-      }
-      .grayscale-ghost {
-        filter: grayscale(0.8);
-        opacity: 0.6;
-        border-style: dashed !important;
-      }
-
+      @keyframes fade-in-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
-    "chart.js": "https://aistudiocdn.com/chart.js@^4.5.1",
-    "xlsx": "https://cdn.jsdelivr.net/npm/xlsx/xlsx.mjs",
-    "jspdf": "https://esm.sh/jspdf@2.5.1",
-    "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2",
-    "@firebase/auth": "https://aistudiocdn.com/@firebase/auth@^1.11.1",
-    "@firebase/app": "https://aistudiocdn.com/@firebase/app@^0.14.6",
-    "@firebase/firestore": "https://aistudiocdn.com/@firebase/firestore@^4.9.2",
-    "@firebase/storage": "https://aistudiocdn.com/@firebase/storage@^0.14.0",
-    "@firebase/messaging": "https://aistudiocdn.com/@firebase/messaging@^0.12.23",
-    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
-    "chart.js/": "https://aistudiocdn.com/chart.js@^4.5.1/",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "vite": "https://esm.sh/vite@^7.3.0"
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "@firebase/auth": "https://esm.sh/@firebase/auth@^1.12.0",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5",
+    "jspdf": "https://esm.sh/jspdf@^4.1.0",
+    "firebase/": "https://esm.sh/firebase@^12.9.0/",
+    "@firebase/firestore": "https://esm.sh/@firebase/firestore@^4.11.0",
+    "react-dom": "https://esm.sh/react-dom@^19.2.4",
+    "jspdf-autotable": "https://esm.sh/jspdf-autotable@^5.0.7",
+    "@firebase/messaging": "https://esm.sh/@firebase/messaging@^0.12.23",
+    "@firebase/storage": "https://esm.sh/@firebase/storage@^0.14.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.3",
+    "chart.js/": "https://esm.sh/chart.js@^4.5.1/"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body>
+<body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-  </body>
+</body>
 </html>
+    

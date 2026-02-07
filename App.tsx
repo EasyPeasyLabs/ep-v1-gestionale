@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, type User } from 'firebase/auth';
+import { onAuthStateChanged, type User } from '@firebase/auth';
 import { auth } from './firebase/config';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
+import ErrorBoundary from './components/ErrorBoundary'; // Import Safety Feature
 import Dashboard from './pages/Dashboard';
 import Clients from './pages/Clients';
 import Suppliers from './pages/Suppliers';
@@ -35,17 +35,37 @@ const App: React.FC = () => {
   const [pageParams, setPageParams] = useState<any>(null); 
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoadingAuth(false);
-      if (currentUser) {
-          requestNotificationPermission(currentUser.uid);
-      }
-    });
-    return () => unsubscribe();
+    // GUARD CLAUSE: Se Firebase non è inizializzato (es. config mancante), non crashare.
+    if (!auth) {
+        const msg = 'Firebase Auth non è inizializzato. Controlla le API Key nel file .env o config.ts.';
+        console.error('CRITICAL: ' + msg);
+        setAuthError(msg);
+        setLoadingAuth(false);
+        return;
+    }
+
+    try {
+        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+          setUser(currentUser);
+          setLoadingAuth(false);
+          if (currentUser) {
+              requestNotificationPermission(currentUser.uid).catch(err => console.warn('Notif Error:', err));
+          }
+        }, (error) => {
+            console.error("Auth Error: " + error.message);
+            setAuthError(error.message);
+            setLoadingAuth(false);
+        });
+        return () => unsubscribe();
+    } catch (e: any) {
+        console.error("Critical Auth Setup Error: " + e.message);
+        setAuthError(e.message);
+        setLoadingAuth(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -61,39 +81,12 @@ const App: React.FC = () => {
                       document.head.appendChild(link);
                   }
                   link.href = info.logoBase64;
-                  let appleLink = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement;
-                  if (!appleLink) {
-                      appleLink = document.createElement('link');
-                      appleLink.rel = 'apple-touch-icon';
-                      document.head.appendChild(appleLink);
-                  }
-                  appleLink.href = info.logoBase64;
-                  const manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement;
-                  if (manifestLink) {
-                      const dynamicManifest = {
-                          short_name: "EP v1",
-                          name: "EP v1",
-                          gcm_sender_id: "103953800507",
-                          start_url: ".",
-                          display: "standalone",
-                          theme_color: "#4318FF", 
-                          background_color: "#F4F7FE", 
-                          icons: [
-                              { src: info.logoBase64, type: "image/png", sizes: "192x192", purpose: "any maskable" },
-                              { src: info.logoBase64, type: "image/png", sizes: "512x512", purpose: "any maskable" }
-                          ]
-                      };
-                      const stringManifest = JSON.stringify(dynamicManifest);
-                      const blob = new Blob([stringManifest], {type: 'application/json'});
-                      const manifestURL = URL.createObjectURL(blob);
-                      manifestLink.href = manifestURL;
-                  }
               }
           } catch (e) {
               console.error("Errore aggiornamento icona app:", e);
           }
       };
-      updateAppIdentity();
+      if (user) updateAppIdentity();
       window.addEventListener('EP_DataUpdated', updateAppIdentity);
       return () => window.removeEventListener('EP_DataUpdated', updateAppIdentity);
   }, [user]);
@@ -107,43 +100,79 @@ const App: React.FC = () => {
     if (!user) return null; 
     return (
         <div key={currentPage} className="animate-slide-up h-full">
-            {(() => {
-                switch (currentPage) {
-                  case 'Dashboard': return <Dashboard setCurrentPage={handleNavigation} />;
-                  case 'Enrollments': return <Enrollments initialParams={pageParams} />;
-                  case 'EnrollmentArchive': return <EnrollmentArchive />;
-                  case 'Attendance': return <Attendance initialParams={pageParams} />;
-                  case 'AttendanceArchive': return <AttendanceArchive />;
-                  case 'Activities': return <Activities />;
-                  case 'ActivityLog': return <ActivityLog />;
-                  case 'Homeworks': return <Homeworks />;
-                  case 'Initiatives': return <Initiatives />;
-                  case 'Clients': return <Clients initialParams={pageParams} />;
-                  case 'ClientSituation': return <ClientSituation initialParams={pageParams} />; 
-                  case 'Suppliers': return <Suppliers />;
-                  case 'Calendar': return <Calendar />;
-                  case 'CRM': return <CRM />;
-                  case 'Finance': return <Finance initialParams={pageParams} onNavigate={handleNavigation} />;
-                  case 'Settings': return <Settings />;
-                  case 'NotificationPlanning': return <NotificationPlanning />;
-                  case 'Profile': return <Profile user={user} />;
-                  case 'Manual': return <Manual />;
-                  default: return <Dashboard setCurrentPage={handleNavigation} />;
-                }
-            })()}
+            {/* Protezione livello pagina */}
+            <ErrorBoundary>
+                {(() => {
+                    switch (currentPage) {
+                      case 'Dashboard': return <Dashboard setCurrentPage={handleNavigation} />;
+                      case 'Enrollments': return <Enrollments initialParams={pageParams} />;
+                      case 'EnrollmentArchive': return <EnrollmentArchive />;
+                      case 'Attendance': return <Attendance initialParams={pageParams} />;
+                      case 'AttendanceArchive': return <AttendanceArchive />;
+                      case 'Activities': return <Activities />;
+                      case 'ActivityLog': return <ActivityLog />;
+                      case 'Homeworks': return <Homeworks />;
+                      case 'Initiatives': return <Initiatives />;
+                      case 'Clients': return <Clients initialParams={pageParams} />;
+                      case 'ClientSituation': return <ClientSituation initialParams={pageParams} />; 
+                      case 'Suppliers': return <Suppliers />;
+                      case 'Calendar': return <Calendar />;
+                      case 'CRM': return <CRM />;
+                      case 'Finance': return <Finance initialParams={pageParams} onNavigate={handleNavigation} />;
+                      case 'Settings': return <Settings />;
+                      case 'NotificationPlanning': return <NotificationPlanning />;
+                      case 'Profile': return <Profile user={user} />;
+                      case 'Manual': return <Manual />;
+                      default: return <Dashboard setCurrentPage={handleNavigation} />;
+                    }
+                })()}
+            </ErrorBoundary>
         </div>
     );
   };
 
-  if (loadingAuth) return <FullScreenSpinner />;
-  if (!user) return <LoginPage />;
+  if (loadingAuth) {
+      return <FullScreenSpinner />;
+  }
+
+  // Visualizzazione Errore Critico di Configurazione
+  if (authError) {
+      return (
+          <div className="flex items-center justify-center h-screen bg-red-50 p-8 text-center">
+              <div className="max-w-md bg-white p-8 rounded-2xl shadow-xl border-l-4 border-red-500">
+                  <h1 className="text-2xl font-bold text-red-600 mb-4">Errore di Sistema</h1>
+                  <p className="text-gray-700 mb-4">Impossibile connettersi ai servizi di autenticazione.</p>
+                  <code className="block bg-gray-100 p-4 rounded text-xs text-red-800 font-mono mb-4 text-left overflow-auto">
+                      {authError}
+                  </code>
+                  <button onClick={() => window.location.reload()} className="md-btn md-btn-primary w-full">Riprova</button>
+              </div>
+          </div>
+      );
+  }
+  
+  if (!user) {
+      return <LoginPage />;
+  }
 
   return (
     <div className="flex h-screen h-[100dvh] w-full text-gray-800 font-sans overflow-hidden" style={{ backgroundColor: 'var(--md-bg-light)' }}>
-      <NotificationScheduler />
-      <Sidebar user={user} currentPage={currentPage} setCurrentPage={(page) => handleNavigation(page)} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      {/* Protezione Background Services */}
+      <ErrorBoundary>
+        <NotificationScheduler />
+      </ErrorBoundary>
+
+      {/* Protezione Sidebar */}
+      <ErrorBoundary>
+        <Sidebar user={user} currentPage={currentPage} setCurrentPage={(page) => handleNavigation(page)} isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+      </ErrorBoundary>
+
       <div className="flex-1 flex flex-col overflow-hidden relative w-full">
-        <Header user={user} setCurrentPage={(page) => handleNavigation(page)} onNavigate={handleNavigation} onMenuClick={() => setIsSidebarOpen(true)} />
+        {/* Protezione Header */}
+        <ErrorBoundary>
+            <Header user={user} setCurrentPage={(page) => handleNavigation(page)} onNavigate={handleNavigation} onMenuClick={() => setIsSidebarOpen(true)} />
+        </ErrorBoundary>
+        
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 scroll-smooth pb-24 md:pb-8 touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
           {renderContent()}
         </main>

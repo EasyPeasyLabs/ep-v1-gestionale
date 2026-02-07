@@ -1,9 +1,7 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import { FiscalYear, Transaction, Invoice, DocumentStatus, TransactionType } from '../../types';
+import { FiscalYear, Transaction, Invoice, DocumentStatus, TransactionType, InvoiceInput, PaymentMethod } from '../../types';
 import { getFiscalYears, closeFiscalYear, reopenFiscalYear } from '../../services/fiscalYearService';
-import { addInvoice, updateInvoice } from '../../services/financeService'; // Import per le azioni di fix
-import Spinner from '../Spinner';
+import { addInvoice } from '../../services/financeService'; 
 import ConfirmModal from '../ConfirmModal';
 import HelpIcon from '../icons/HelpIcon';
 import PlusIcon from '../icons/PlusIcon';
@@ -13,9 +11,10 @@ import TrashIcon from '../icons/TrashIcon';
 interface FiscalYearManagerProps {
     transactions: Transaction[];
     invoices: Invoice[];
+    onRequestInvoiceCreation?: (year: number, number: number) => void;
 }
 
-const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, invoices }) => {
+const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, invoices, onRequestInvoiceCreation }) => {
     const [years, setYears] = useState<FiscalYear[]>([]);
     const [loading, setLoading] = useState(true);
     // Default to current year, but at least 2025
@@ -86,8 +85,6 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
             // Check sequenza
             for (let i = 0; i < numbers.length - 1; i++) {
                 if (numbers[i + 1] !== numbers[i] + 1) {
-                    // Trovato un salto tra numbers[i] e numbers[i+1]
-                    // Esempio: ho 5 e 7. Il buco è 6.
                     for (let missing = numbers[i] + 1; missing < numbers[i+1]; missing++) {
                         gaps.push(missing);
                     }
@@ -142,15 +139,50 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
         }
     };
 
-    // Placeholder actions for the fix buttons (Logic backend explained in chat, here just alerts)
-    const handleFixGap = (method: 'fill' | 'shift' | 'void', gapNumber: number) => {
+    const handleFixGap = async (method: 'fill' | 'shift' | 'void', gapNumber: number) => {
         if (method === 'fill') {
-            alert(`Apertura form creazione fattura forzata al numero ${gapNumber}... (Mock)`);
+            if (onRequestInvoiceCreation) {
+                onRequestInvoiceCreation(selectedYear, gapNumber);
+            } else {
+                alert("Funzionalità non disponibile in questo contesto.");
+            }
         } else if (method === 'shift') {
-            alert(`Avvio procedura rinumerazione a cascata per coprire il buco ${gapNumber}... (Mock)`);
+            alert(`Avvio procedura rinumerazione a cascata per coprire il buco ${gapNumber}... (Feature in arrivo)`);
         } else if (method === 'void') {
-            if(confirm(`Creare una fattura tecnica annullata numero ${gapNumber}?`)) {
-                alert(`Generata fattura ${gapNumber} con importo 0€ e stato Annullata.`);
+            if(confirm(`Creare una fattura tecnica annullata numero ${gapNumber} per l'anno ${selectedYear}?`)) {
+                setLoading(true);
+                try {
+                    const invoiceNumber = `FT-${selectedYear}-${String(gapNumber).padStart(3, '0')}`;
+                    const voidInvoice: InvoiceInput = {
+                        invoiceNumber: invoiceNumber,
+                        issueDate: `${selectedYear}-12-31`, // Date set to end of fiscal year
+                        dueDate: `${selectedYear}-12-31`,
+                        clientId: 'system_void_fix',
+                        clientName: 'SISTEMA - RECUPERO NUMERAZIONE',
+                        status: DocumentStatus.Cancelled,
+                        paymentMethod: PaymentMethod.Other,
+                        items: [{
+                            description: "Giustificativo buco numerazione",
+                            quantity: 1,
+                            price: 0,
+                            notes: "Generata automaticamente per continuità fiscale"
+                        }],
+                        totalAmount: 0,
+                        hasStampDuty: false,
+                        isGhost: false,
+                        isDeleted: false
+                    };
+
+                    await addInvoice(voidInvoice);
+                    await loadData();
+                    window.dispatchEvent(new Event('EP_DataUpdated'));
+                    alert(`Generata fattura ${invoiceNumber} con stato Annullata.`);
+                } catch (e) {
+                    console.error(e);
+                    alert("Errore durante la creazione della fattura tecnica.");
+                } finally {
+                    setLoading(false);
+                }
             }
         }
     };
@@ -263,7 +295,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                                     Ideale se devi ancora emettere una fattura per quel periodo. 
                                     Il sistema apre l'editor forzando il numero mancante (es. #{simulation.gaps[0]}).
                                     <br/><br/>
-                                    <span className="text-yellow-300">ATTENZIONE:</span> La data dovrà essere coerente con la sequenza cronologica (tra la fattura precedente e quella successiva).
+                                    <span className="text-yellow-300">ATTENZIONE:</span> La data dovrà essere coerente con la sequenza cronologica.
                                 </div>
                             )}
 
@@ -291,9 +323,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                                 <div className="absolute left-0 right-0 top-full mt-2 z-10 bg-indigo-900 text-white text-xs p-3 rounded-lg shadow-xl mx-2 animate-fade-in-down">
                                     <strong className="block mb-1 text-indigo-200 uppercase">Dettaglio Opzione</strong>
                                     Consigliato se hai creato fatture successive in Bozza per errore saltando un numero.
-                                    Il sistema rinomina automaticamente a cascata (es. la #8 diventa #7, la #9 diventa #8).
-                                    <br/><br/>
-                                    <span className="text-yellow-300">ATTENZIONE:</span> Disponibile solo se le fatture successive non sono ancora state inviate o sigillate SDI.
+                                    Il sistema rinomina automaticamente a cascata (es. la #8 diventa #7).
                                 </div>
                             )}
 
@@ -320,9 +350,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                             {activeHelp === 3 && (
                                 <div className="absolute left-0 right-0 top-full mt-2 z-10 bg-red-900 text-white text-xs p-3 rounded-lg shadow-xl mx-2 animate-fade-in-down">
                                     <strong className="block mb-1 text-red-200 uppercase">Dettaglio Opzione</strong>
-                                    Soluzione di emergenza. Il sistema genera una fattura tecnica a importo 0€ col numero mancante, la marca immediatamente come "Annullata" e inserisce una nota giustificativa interna.
-                                    <br/><br/>
-                                    Serve a garantire la continuità numerica richiesta dal fisco senza alterare i bilanci.
+                                    Soluzione di emergenza. Il sistema genera una fattura tecnica a importo 0€ col numero mancante, la marca immediatamente come "Annullata".
                                 </div>
                             )}
 

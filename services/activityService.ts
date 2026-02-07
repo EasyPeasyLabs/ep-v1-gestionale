@@ -1,5 +1,6 @@
+
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, where, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, where, writeBatch } from '@firebase/firestore';
 import { Activity, ActivityInput, LessonActivity } from '../types';
 
 // --- Activities (Libreria) ---

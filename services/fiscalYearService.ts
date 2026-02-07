@@ -1,6 +1,6 @@
 
 import { db, auth } from '../firebase/config';
-import { collection, doc, getDoc, setDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, getDocs, query, orderBy } from '@firebase/firestore';
 import { FiscalYear } from '../types';
 
 const fiscalCollectionRef = collection(db, 'fiscal_years');

@@ -15,7 +15,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 
 // Mappa Icone per Tipo
-const getIconForType = (type: NotificationType, isCustom?: boolean) => {
+const getIconForType = (type: string, isCustom?: boolean) => {
     if (isCustom) return <span className="text-teal-500"><BellIcon /></span>;
     switch (type) {
         case 'payment_required': return <span className="text-red-500"><ExclamationIcon /></span>;

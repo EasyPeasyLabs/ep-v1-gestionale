@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from '@firebase/firestore';
 import { UserPreferences, FocusConfig } from '../types';
 
 const COLLECTION_NAME = 'user_preferences';

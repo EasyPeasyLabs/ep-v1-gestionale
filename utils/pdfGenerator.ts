@@ -39,47 +39,70 @@ const loadImage = async (url: string): Promise<string> => {
     }
 };
 
+const footerText = "Operazione effettuata ai sensi dell'articolo 1, commi da 54 a 89, della Legge n. 190/2014 (Regime Forfettario).\nImposta di bollo da 2€ assolta sull'originale per importi superiori a 77,47€ se dovuta.";
+
 export const generateDocumentPDF = async (
     doc: Invoice | Quote,
     type: 'Fattura' | 'Preventivo',
-    // FIX: Explicitly marked as optional with ? to resolve call site mismatches where only 2-3 args might be expected
     companyInfo?: CompanyInfo | null,
     client?: Client | undefined,
-    previewMode: boolean = false // New Parameter
-): Promise<string | void> => { // Returns string (URL) if previewMode is true
+    previewMode: boolean = false
+): Promise<string | void> => { 
     const docPdf = new jsPDF();
     
-    // Colors
-    const primaryColor = [63, 81, 181] as [number, number, number]; // Indigo
-    const grayColor = [117, 117, 117] as [number, number, number];
-    const lightGrayColor = [220, 220, 220] as [number, number, number];
-    const labelColor = [100, 100, 100] as [number, number, number]; // Grigio scuro per etichette
+    // Colors Palette (Enterprise)
+    const blackColor = [0, 0, 0] as [number, number, number]; // Pure Black for text
+    const grayColor = [100, 100, 100] as [number, number, number]; // Secondary Text
+    const lightGrayColor = [230, 230, 230] as [number, number, number]; // Borders
+    const headerTableColor = [50, 50, 60] as [number, number, number]; // Dark Slate for main table header
+    const blockHeaderColor = [100, 100, 100] as [number, number, number]; // Dark Gray for block headers
 
-    // --- GRID LAYOUT CONSTANTS (Compact 2x5) ---
+    // --- GRID LAYOUT CONSTANTS ---
     const marginX = 14;
     const pageWidth = docPdf.internal.pageSize.getWidth();
+    const pageHeight = docPdf.internal.pageSize.height;
     const rightAlignX = pageWidth - marginX;
+    const contentWidth = pageWidth - (marginX * 2);
     
-    // Column X positions
-    // Col 1: Logo / Label (Starts at marginX = 14)
-    // Col 2: Data (Starts after logo width + gap)
-    const logoSize = 20;
-    const col2X = marginX + logoSize + 4; // 14 + 20 + 4 = 38
-    
+    // Safety Limits
+    const footerHeight = 25; // Space reserved for legal footer
+    const safePageLimit = pageHeight - footerHeight;
+    const pageTopMargin = 20;
+
     // Row Y Positions
-    const row1Y = 10;       // Top Row (Logo Start)
-    // Spostiamo la linea divisoria più in basso per farci stare i dati del documento
+    const row1Y = 10;       
     const dividerY = 40;    
-    const row2Y = 45;       // Second Row (Client Data)
+    const row2Y = 45;       
 
     // ============================================================
-    // RIGA 1
-    // Col 1: Logo (20x20)
-    // Col 2: Dati Aziendali
-    // Col 5: Nome Documento + Dati (Right Aligned)
+    // HELPER: PAGE BREAK CHECKER
+    // ============================================================
+    let currentY = 0;
+
+    const checkPageBreak = (neededHeight: number) => {
+        if (currentY + neededHeight > safePageLimit) {
+            docPdf.addPage();
+            currentY = pageTopMargin;
+            return true;
+        }
+        return false;
+    };
+
+    const drawBlockHeader = (label: string) => {
+        docPdf.setFillColor(...blockHeaderColor);
+        docPdf.rect(marginX, currentY, contentWidth, 5, 'F'); 
+        docPdf.setTextColor(255, 255, 255);
+        docPdf.setFont("helvetica", "bold");
+        docPdf.setFontSize(9);
+        docPdf.text(label.toUpperCase(), marginX + 2, currentY + 3.5);
+        currentY += 5; // Advance cursor past header
+    };
+
+    // ============================================================
+    // RIGA 1: HEADER
     // ============================================================
     
-    // --- Col 1: Logo ---
+    // --- Logo ---
     try {
         let logoData = '';
         if (companyInfo?.logoBase64) {
@@ -92,34 +115,31 @@ export const generateDocumentPDF = async (
         if (logoData) {
             const isJpeg = logoData.substring(0, 30).includes('image/jpeg');
             const format = isJpeg ? 'JPEG' : 'PNG';
-            docPdf.addImage(logoData, format, marginX, row1Y, logoSize, logoSize);
+            docPdf.addImage(logoData, format, marginX, row1Y, 20, 20);
         }
     } catch (e) {
         console.warn("Logo processing error", e);
     }
 
-    // --- Col 2: Dati Aziendali (Custom Layout) ---
-    // Logo Y range: 10 (Top) to 30 (Bottom)
-    
-    if (companyInfo) {
-        docPdf.setTextColor(0, 0, 0);
+    const col2X = marginX + 20 + 4; 
 
-        // 1. Denominazione (Allineata in alto col logo)
-        // Font Size 12 fa sì che la baseline a row1Y + 4 (14) porti il "tetto" delle maiuscole a circa 10 (Top Logo)
+    // --- Dati Aziendali ---
+    if (companyInfo) {
+        docPdf.setTextColor(...blackColor);
+
+        // Denominazione
         if (companyInfo.denomination) {
             docPdf.setFontSize(12); 
             docPdf.setFont("helvetica", "bold");
             docPdf.text(companyInfo.denomination.toUpperCase(), col2X, row1Y + 4);
         }
         
-        // 2. Nome (Spaziato dalla denominazione)
-        // Baseline a 20. Grande gap rispetto alla riga sopra.
+        // Nome
         docPdf.setFontSize(10);
         docPdf.setFont("helvetica", "normal");
         docPdf.text(companyInfo.name, col2X, row1Y + 10); 
 
-        // 3. Indirizzo (Intermedio)
-        // Baseline a 25.
+        // Indirizzo
         docPdf.setFontSize(8);
         docPdf.setTextColor(...grayColor);
         
@@ -128,38 +148,33 @@ export const generateDocumentPDF = async (
             const zip = companyInfo.zipCode ? `${companyInfo.zipCode} ` : '';
             const prov = companyInfo.province ? ` (${companyInfo.province})` : '';
             const city = companyInfo.city || '';
-            // If address doesn't contain city info already, append it
             if (!fullAddress.includes(city)) {
                 fullAddress = `${fullAddress}, ${zip}${city}${prov}`;
             }
         }
 
         docPdf.text(`${fullAddress} - P.IVA: ${companyInfo.vatNumber}`, col2X, row1Y + 15);
-        
-        // 4. Contatti (Allineati col bordo basso del logo)
-        // Baseline a 30 (row1Y + logoSize).
         docPdf.text(`${companyInfo.email} - ${companyInfo.phone}`, col2X, row1Y + 20);
 
     } else {
         docPdf.setFontSize(8);
+        docPdf.setTextColor(...blackColor);
         docPdf.text("Dati Aziendali non configurati", col2X, row1Y + 5);
     }
 
-    // --- Col 5: Dati Documento (Right Aligned) ---
-    // TITOLO
+    // --- Dati Documento (Right Aligned) ---
     docPdf.setFontSize(16);
-    docPdf.setTextColor(...primaryColor);
+    docPdf.setTextColor(...blackColor);
     docPdf.setFont("helvetica", "bold");
     const title = type === 'Fattura' && (doc as Invoice).isGhost ? 'FATTURA PRO-FORMA' : type.toUpperCase();
     docPdf.text(title, rightAlignX, row1Y + 8, { align: 'right' });
 
-    // DETTAGLI (Sotto il titolo, sopra la linea)
     let docDataY = row1Y + 14;
     const docNumber = type === 'Fattura' ? (doc as Invoice).invoiceNumber : (doc as Quote).quoteNumber;
     const issueDate = formatDate(doc.issueDate);
     
     docPdf.setFontSize(9);
-    docPdf.setTextColor(0, 0, 0);
+    docPdf.setTextColor(...blackColor);
     docPdf.setFont("helvetica", "normal");
 
     // Numero
@@ -175,47 +190,38 @@ export const generateDocumentPDF = async (
     docPdf.text(issueDate, rightAlignX, docDataY, { align: 'right' });
     docDataY += 4;
     
-    // SDI (Solo Fatture)
+    // SDI
     if (type === 'Fattura' && (doc as Invoice).sdiCode) {
         docPdf.setFont("helvetica", "normal");
         docPdf.text(`SDI/PEC:`, rightAlignX - 35, docDataY, { align: 'left'});
         docPdf.text((doc as Invoice).sdiCode || '', rightAlignX, docDataY, { align: 'right' });
     }
 
-
-    // ============================================================
-    // DIVISORE (Sottile)
-    // ============================================================
+    // Divisore
     docPdf.setDrawColor(...lightGrayColor);
     docPdf.setLineWidth(0.1);
     docPdf.line(marginX, dividerY, rightAlignX, dividerY);
 
 
     // ============================================================
-    // RIGA 2
-    // Col 1: Etichetta "CLIENTE" (Grigio, Small, Bold)
-    // Col 2: Dati Cliente
+    // RIGA 2: CLIENTE
     // ============================================================
 
-    // --- Col 1: Etichetta ---
     docPdf.setFontSize(7);
-    docPdf.setTextColor(...labelColor);
+    docPdf.setTextColor(...grayColor);
     docPdf.setFont("helvetica", "bold");
-    // Determina etichetta corretta
-    const labelText = "CLIENTE"; 
-    docPdf.text(labelText, marginX, row2Y); // Allineato alla baseline del nome
+    docPdf.text("CLIENTE", marginX, row2Y); 
 
-    // --- Col 2: Dati Cliente ---
     let clientY = row2Y;
     docPdf.setFontSize(9);
-    docPdf.setTextColor(0, 0, 0);
+    docPdf.setTextColor(...blackColor);
     
     if (client) {
         docPdf.setFont("helvetica", "bold");
         if (client.clientType === ClientType.Parent) {
             const p = client as ParentClient;
-            docPdf.text(`${p.firstName} ${p.lastName}`, col2X, clientY); // Nome
-            clientY += 6; // Maggiore spazio dopo il nome
+            docPdf.text(`${p.firstName} ${p.lastName}`, col2X, clientY);
+            clientY += 6; 
             docPdf.setFont("helvetica", "normal");
             docPdf.text(p.address, col2X, clientY);
             clientY += 4;
@@ -225,7 +231,7 @@ export const generateDocumentPDF = async (
         } else {
             const i = client as InstitutionalClient;
             docPdf.text(i.companyName, col2X, clientY);
-            clientY += 6; // Maggiore spazio dopo la ragione sociale
+            clientY += 6; 
             docPdf.setFont("helvetica", "normal");
             docPdf.text(i.address, col2X, clientY);
             clientY += 4;
@@ -243,9 +249,8 @@ export const generateDocumentPDF = async (
     // TABELLA ARTICOLI
     // ============================================================
     
-    const tableStartY = 85; // Start closer to header
-
-    // NOTE: Updated PDF logic to reflect row discounts if present
+    currentY = 85; // Starting Y for table
+    
     const tableColumn = ["Descrizione", "Quantità", "Prezzo Unit.", "Totale"];
     let tableRows: any[] = [];
 
@@ -253,7 +258,7 @@ export const generateDocumentPDF = async (
         tableRows.push([{
             content: `Rif. ns. documento ${(doc as Invoice).relatedQuoteNumber}`,
             colSpan: 4,
-            styles: { fontStyle: 'italic', textColor: [100, 100, 100], fillColor: [248, 248, 248], halign: 'left' }
+            styles: { fontStyle: 'italic', textColor: [100, 100, 100], fillColor: [250, 250, 250], halign: 'left' }
         }]);
     }
 
@@ -261,11 +266,8 @@ export const generateDocumentPDF = async (
 
     const itemRows = doc.items.map((item: DocumentItem) => {
         const desc = item.notes ? `${item.description}\n${item.notes}` : item.description;
-        
         const gross = item.quantity * item.price;
         let discountAmount = 0;
-        
-        // Calculate Discount logic for PDF view
         if (item.discount) {
             if (item.discountType === 'percent') {
                 discountAmount = gross * (item.discount / 100);
@@ -280,178 +282,218 @@ export const generateDocumentPDF = async (
             desc,
             item.quantity,
             formatCurrency(item.price),
-            formatCurrency(net) // Show net total
+            formatCurrency(net)
         ];
     });
 
     tableRows = [...tableRows, ...itemRows];
 
     autoTable(docPdf, {
-        startY: tableStartY,
+        startY: currentY,
         head: [tableColumn],
         body: tableRows,
         theme: 'grid',
-        headStyles: { fillColor: primaryColor, textColor: 255, fontSize: 9 },
-        bodyStyles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { 
+            fillColor: headerTableColor, 
+            textColor: 255, 
+            fontSize: 9,
+            fontStyle: 'bold' 
+        },
+        bodyStyles: { 
+            fontSize: 9, 
+            textColor: [0, 0, 0], 
+            cellPadding: 4 
+        },
         columnStyles: {
             0: { cellWidth: 'auto' },
             1: { cellWidth: 20, halign: 'center' },
             2: { cellWidth: 30, halign: 'right' },
             3: { cellWidth: 30, halign: 'right' }
         },
+        margin: { bottom: footerHeight + 10 } // Ensure table doesn't hit footer
     });
 
-    // --- TOTALS SECTION ---
-    let finalY = (docPdf as any).lastAutoTable?.finalY || tableStartY;
+    currentY = (docPdf as any).lastAutoTable?.finalY || currentY;
+
+    // ============================================================
+    // SEZIONE TOTALI
+    // ============================================================
     
-    // Apply Global Discount
+    // Calcoli
     let globalDiscountVal = 0;
     if ('globalDiscount' in doc && doc.globalDiscount) {
         const inv = doc as Invoice;
         if (inv.globalDiscountType === 'percent') {
-            // FIX TS18048: Handle possible undefined
             globalDiscountVal = calculatedSubtotal * ((inv.globalDiscount || 0) / 100);
         } else {
             globalDiscountVal = inv.globalDiscount || 0;
         }
     }
-
     const taxable = calculatedSubtotal - globalDiscountVal;
-    const stampDuty = (type === 'Fattura' && (doc as Invoice).hasStampDuty) ? 2.00 : 0;
+    let stampDuty = 0;
+    if (type === 'Preventivo' && 'installments' in doc && doc.installments && doc.installments.length > 0) {
+        stampDuty = (doc as Quote).installments.reduce((sum, i) => sum + (i.hasStampDuty ? 2.00 : 0), 0);
+    } else {
+        stampDuty = (doc.hasStampDuty) ? 2.00 : 0;
+    }
     const grandTotal = taxable + stampDuty;
 
-    // Spacing before totals
-    finalY += 5;
+    // STIMA ALTEZZA TOTALI: circa 35mm
+    const totalsBlockHeight = 35;
+    checkPageBreak(totalsBlockHeight);
 
+    currentY += 5;
+    
     docPdf.setFont("helvetica", "normal");
     docPdf.setFontSize(10);
-    
-    // Show Subtotal if discounts applied
+    docPdf.setTextColor(...blackColor);
+    const labelX = 135;
+
+    // Subtotal / Discount
     if (globalDiscountVal > 0) {
-        docPdf.text(`Imponibile Lordo:`, 140, finalY + 5);
-        docPdf.text(`${formatCurrency(calculatedSubtotal)}`, rightAlignX, finalY + 5, { align: 'right' });
+        docPdf.text(`Imponibile Lordo:`, labelX, currentY + 5);
+        docPdf.text(`${formatCurrency(calculatedSubtotal)}`, rightAlignX, currentY + 5, { align: 'right' });
         
-        docPdf.setTextColor(200, 0, 0); // Red for discount
-        docPdf.text(`Sconto Globale:`, 140, finalY + 10);
-        docPdf.text(`-${formatCurrency(globalDiscountVal)}`, rightAlignX, finalY + 10, { align: 'right' });
-        docPdf.setTextColor(0, 0, 0);
-        finalY += 10;
+        docPdf.setTextColor(200, 0, 0); 
+        docPdf.text(`Sconto Globale:`, labelX, currentY + 10);
+        docPdf.text(`-${formatCurrency(globalDiscountVal)}`, rightAlignX, currentY + 10, { align: 'right' });
+        docPdf.setTextColor(...blackColor);
+        currentY += 10;
     }
 
-    docPdf.text(`Imponibile Netto:`, 140, finalY + 5);
-    docPdf.text(`${formatCurrency(taxable)}`, rightAlignX, finalY + 5, { align: 'right' });
+    docPdf.text(`Imponibile Netto:`, labelX, currentY + 5);
+    docPdf.text(`${formatCurrency(taxable)}`, rightAlignX, currentY + 5, { align: 'right' });
 
-    if (type === 'Fattura' && (doc as Invoice).hasStampDuty) {
-        docPdf.text(`Bollo Virtuale:`, 140, finalY + 10);
-        docPdf.text(`${formatCurrency(stampDuty)}`, rightAlignX, finalY + 10, { align: 'right' });
-        finalY += 5;
+    if (stampDuty > 0) {
+        docPdf.text(`Bollo Virtuale:`, labelX, currentY + 10);
+        docPdf.text(`${formatCurrency(stampDuty)}`, rightAlignX, currentY + 10, { align: 'right' });
+        currentY += 5;
     }
 
-    // Divider line for Total
+    // Totale Line
     docPdf.setDrawColor(200, 200, 200);
-    docPdf.line(140, finalY + 13, rightAlignX, finalY + 13);
+    docPdf.line(labelX, currentY + 13, rightAlignX, currentY + 13);
 
     docPdf.setFont("helvetica", "bold");
     docPdf.setFontSize(12);
-    docPdf.text(`TOTALE:`, 140, finalY + 20);
-    docPdf.text(`${formatCurrency(grandTotal)}`, rightAlignX, finalY + 20, { align: 'right' });
+    docPdf.text(`TOTALE:`, labelX, currentY + 20);
+    docPdf.text(`${formatCurrency(grandTotal)}`, rightAlignX, currentY + 20, { align: 'right' });
 
-    // --- PAYMENT DEADLINE ---
+    // Expiry
     docPdf.setFontSize(9);
     docPdf.setFont("helvetica", "normal");
     docPdf.setTextColor(...grayColor);
     const expiryDate = type === 'Fattura' ? formatDate((doc as Invoice).dueDate) : formatDate((doc as Quote).expiryDate);
     const deadlineLabel = type === 'Fattura' ? "Scadenza:" : "Valido fino al:";
-    docPdf.text(`${deadlineLabel} ${expiryDate}`, rightAlignX, finalY + 26, { align: 'right' });
+    docPdf.text(`${deadlineLabel} ${expiryDate}`, rightAlignX, currentY + 26, { align: 'right' });
 
-    // --- FOOTER INFO (Payment & Notes) ---
-    finalY += 35; 
-    
-    // Check page break for footer
-    if (finalY > docPdf.internal.pageSize.height - 50) {
-        docPdf.addPage();
-        finalY = 20;
-    }
+    currentY += 30; // Move past totals
 
-    docPdf.setTextColor(0, 0, 0);
-    docPdf.setFontSize(10);
+    // ============================================================
+    // FOOTER BLOCKS (Payment, Installments, Notes)
+    // ============================================================
     
-    // Payment Method
+    // 1. PAYMENT METHOD
     if ('paymentMethod' in doc && doc.paymentMethod) {
-        docPdf.setFont("helvetica", "bold");
-        docPdf.text("Modalità di Pagamento:", marginX, finalY);
+        // Est: Header 5mm + Text 5mm + Padding 5mm
+        const paymentBlockHeight = 15;
+        checkPageBreak(paymentBlockHeight);
+        
+        drawBlockHeader("MODALITÀ E TERMINI DI PAGAMENTO");
+        
+        docPdf.setTextColor(0, 0, 0);
         docPdf.setFont("helvetica", "normal");
-        docPdf.text(`${doc.paymentMethod}`, marginX + 45, finalY);
+        docPdf.setFontSize(9);
+        docPdf.text(doc.paymentMethod, marginX, currentY + 4);
+        
+        currentY += 8; // Spacing
     }
 
-    // Installments Table
+    // 2. INSTALLMENTS
     if ('installments' in doc && doc.installments && doc.installments.length > 0) {
-        finalY += 8;
-        docPdf.setFont("helvetica", "bold");
-        docPdf.setFontSize(9);
-        docPdf.text("Piano Rateale", marginX, finalY);
+        const rowsCount = (doc as Quote).installments.length;
+        // Est: Header 5mm + Table (Rows * 7mm) + Header Table 7mm + Padding
+        const estimatedTableHeight = 12 + (rowsCount * 7); 
         
-        const quoteDoc = doc as Quote;
-        const instRows = quoteDoc.installments.map((inst: Installment) => [
+        checkPageBreak(estimatedTableHeight);
+
+        drawBlockHeader("PIANO RATEALE");
+
+        const instRows = (doc as Quote).installments.map((inst: Installment) => [
             inst.description,
-            formatDate(inst.dueDate),
+            formatDate(inst.dueDate), 
+            inst.collectionDate ? formatDate(inst.collectionDate) : '-',
             formatCurrency(inst.amount),
             inst.isPaid ? 'Saldato' : 'Da Saldare'
         ]);
 
         autoTable(docPdf, {
-            startY: finalY + 2,
-            head: [['Descrizione', 'Scadenza', 'Importo', 'Stato']],
+            startY: currentY, // Start exactly where header ended
+            head: [['Descrizione', 'Data FT', 'Data Pag.', 'Importo', 'Stato']],
             body: instRows,
             theme: 'plain',
-            styles: { fontSize: 8, cellPadding: 1 },
-            headStyles: { fontStyle: 'bold', textColor: [100,100,100] },
-            columnStyles: { 2: { halign: 'right' } },
-            margin: { left: marginX, right: 120 } // Keep it compact on left
+            styles: { 
+                fontSize: 8, 
+                cellPadding: 2, 
+                textColor: [0, 0, 0],
+                valign: 'middle',
+                lineWidth: { bottom: 0.1 },
+                lineColor: [230, 230, 230]
+            },
+            headStyles: { 
+                textColor: [0, 0, 0], 
+                fontStyle: 'bold',
+                fillColor: [255, 255, 255], 
+                lineWidth: { bottom: 0.5 }, 
+                lineColor: [100, 100, 100]
+            },
+            columnStyles: { 
+                3: { halign: 'right', fontStyle: 'bold' },
+                4: { halign: 'center' } 
+            },
+            margin: { left: marginX, right: marginX, bottom: footerHeight }
         });
-        finalY = (docPdf as any).lastAutoTable?.finalY || finalY;
+        
+        currentY = (docPdf as any).lastAutoTable?.finalY + 8;
     }
 
-    // --- NOTES BOX ---
+    // 3. NOTES
     if (doc.notes && doc.notes.trim().length > 0) {
-        finalY += 10;
-        if (finalY > docPdf.internal.pageSize.height - 40) {
-            docPdf.addPage();
-            finalY = 20;
-        }
-
-        // Light background box for notes
-        docPdf.setFillColor(250, 250, 250); 
-        docPdf.setDrawColor(230, 230, 230);
-        docPdf.rect(marginX, finalY, 180, 20, 'FD');
-
-        docPdf.setFont("helvetica", "bold");
-        docPdf.setFontSize(8);
-        docPdf.setTextColor(80, 80, 80);
-        docPdf.text("NOTE:", marginX + 2, finalY + 5);
-        
+        // Calculate needed height for notes
         docPdf.setFont("helvetica", "normal");
-        docPdf.setTextColor(0, 0, 0);
-        const splitNotes = docPdf.splitTextToSize(doc.notes, 175);
-        docPdf.text(splitNotes, marginX + 2, finalY + 10);
+        docPdf.setFontSize(8);
+        const splitNotes = docPdf.splitTextToSize(doc.notes, contentWidth);
+        const notesTextHeight = (splitNotes.length * 3.5);
+        const notesBlockHeight = 5 + notesTextHeight + 5; // Header + Text + Padding
         
-        finalY += 25;
+        checkPageBreak(notesBlockHeight);
+
+        drawBlockHeader("NOTE");
+
+        docPdf.setTextColor(0, 0, 0);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.setFontSize(8);
+        docPdf.text(splitNotes, marginX, currentY + 3);
+        
+        currentY += notesTextHeight + 5;
     }
 
-    // Legal Footer
-    // (Testo già presente nei PDF, ma ridondante se presente nelle note. Lo lasciamo come fallback)
-    const footerText = "Operazione senza applicazione dell’IVA ai sensi dell’art. 1, commi da 54 a 89, Legge n. 190/2014.\nOperazione non soggetta a ritenuta alla fonte a titolo di acconto ai sensi dell’art. 1, comma 67, Legge n. 190/2014.";
-    
-    const pageHeight = docPdf.internal.pageSize.height;
-    
-    // Ensure footer is at bottom
-    docPdf.setFontSize(7);
-    docPdf.setTextColor(...grayColor);
-    const splitFooter = docPdf.splitTextToSize(footerText, 180);
-    docPdf.text(splitFooter, marginX, pageHeight - 15);
+    // ============================================================
+    // LEGAL FOOTER (Repeated on all pages if possible, here simple bottom)
+    // ============================================================
+    const pageCount = docPdf.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        docPdf.setPage(i);
+        const splitFooter = docPdf.splitTextToSize(footerText, contentWidth);
+        docPdf.setFontSize(7);
+        docPdf.setTextColor(...grayColor);
+        docPdf.text(splitFooter, marginX, pageHeight - 12);
+        
+        // Page Number
+        docPdf.text(`Pagina ${i} di ${pageCount}`, rightAlignX, pageHeight - 12, { align: 'right' });
+    }
 
     if (previewMode) {
-        // FIX TS2322: output('bloburl') might return URL type in recent definitions, cast to string
         return String(docPdf.output('bloburl'));
     }
 

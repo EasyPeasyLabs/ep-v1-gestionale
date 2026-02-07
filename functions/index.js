@@ -15,33 +15,32 @@ exports.checkPeriodicNotifications = onSchedule({
     
     // 1. Calcola Ora e Giorno corrente in Italia
     const now = new Date();
-    const options = { timeZone: "Europe/Rome", hour12: false };
-    const currentHour = now.toLocaleTimeString("it-IT", { ...options, hour: "2-digit", minute: "2-digit" });
+    // Convert to Rome Timezone Object to ensure correct hour/day even if server is UTC
+    const romeTimeStr = now.toLocaleString("en-US", { timeZone: "Europe/Rome" });
+    const romeTime = new Date(romeTimeStr);
     
-    const dayString = now.toLocaleString("en-US", { ...options, weekday: 'short' });
-    const dayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
-    const currentDay = dayMap[dayString];
+    const currentHour = romeTime.getHours().toString().padStart(2, '0') + ':' + romeTime.getMinutes().toString().padStart(2, '0');
+    const currentDay = romeTime.getDay(); // 0 = Sunday, 1 = Monday, ... (Standard JS)
 
-    console.log(`[DEBUG v3] Server Time: ${now.toISOString()} | Rome: ${currentHour} | Day Index: ${currentDay}`);
+    console.log(`[DEBUG v4] Rome Time: ${romeTime.toISOString()} | Hour: ${currentHour} | Day Index: ${currentDay}`);
 
-    const sendPromises = [];
-    const notificationsToSend = []; // Array misto: { tokens: [], title, body, icon, tag }
+    const notificationsToSend = []; 
 
     // --- STEP A: RECUPERA TOKEN UTENTI ---
-    const userTokensMap = {};
     const allTokens = [];
     
-    const tokensSnapshot = await db.collection('fcm_tokens').get();
-    tokensSnapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.token) {
-            allTokens.push(data.token);
-            if (data.userId) {
-                if (!userTokensMap[data.userId]) userTokensMap[data.userId] = [];
-                userTokensMap[data.userId].push(data.token);
+    try {
+        const tokensSnapshot = await db.collection('fcm_tokens').get();
+        tokensSnapshot.forEach(doc => {
+            const data = doc.data();
+            if (data.token) {
+                allTokens.push(data.token);
             }
-        }
-    });
+        });
+    } catch (e) {
+        console.error("Error fetching tokens:", e);
+        return;
+    }
 
     if (allTokens.length === 0) {
         console.log("[DEBUG] Nessun token registrato.");
@@ -49,215 +48,162 @@ exports.checkPeriodicNotifications = onSchedule({
     }
 
     // --- STEP B: CHECK RULES (NUOVO SISTEMA) ---
-    const rulesSnapshot = await db.collection('notification_rules').where('enabled', '==', true).get();
-    
-    if (rulesSnapshot.empty) {
-        console.log("[DEBUG] Nessuna regola attiva trovata.");
-    }
-
-    for (const doc of rulesSnapshot.docs) {
-        const rule = doc.data();
+    try {
+        const rulesSnapshot = await db.collection('notification_rules').where('enabled', '==', true).get();
         
-        // Verifica Giorno e Ora
-        if (rule.days.includes(currentDay) && rule.time === currentHour) {
-            console.log(`[DEBUG] MATCH REGOLA: ${rule.label} (${rule.id})`);
+        if (rulesSnapshot.empty) {
+            console.log("[DEBUG] Nessuna regola attiva trovata.");
+        }
+
+        for (const doc of rulesSnapshot.docs) {
+            const rule = doc.data();
             
-            // ESECUZIONE LOGICA SPECIFICA PER TIPO
-            let count = 0;
-            let messageBody = rule.description;
-            let shouldSend = false;
+            // Verifica Giorno e Ora
+            // rule.days deve essere array di interi [0..6]
+            if (rule.days && rule.days.includes(currentDay) && rule.time === currentHour) {
+                console.log(`[DEBUG] MATCH REGOLA: ${rule.label} (${rule.id})`);
+                
+                let count = 0;
+                let messageBody = rule.description;
+                let shouldSend = false;
 
-            try {
-                if (rule.isCustom) {
-                    // REGOLA PERSONALIZZATA (Promemoria)
-                    // Non fa query, invia direttamente il messaggio configurato
-                    shouldSend = true;
-                    // messageBody è già settato dalla description della regola
-                } 
-                else if (rule.id === 'payment_required') {
-                    // Conta iscrizioni Pending
-                    const snap = await db.collection('enrollments').where('status', '==', 'Pending').get();
-                    count = snap.size;
-                    if (count > 0) {
-                        messageBody = `Ci sono ${count} iscrizioni in attesa di pagamento.`;
+                try {
+                    if (rule.isCustom) {
+                        // REGOLA PERSONALIZZATA (Promemoria)
                         shouldSend = true;
+                    } 
+                    else if (rule.id === 'payment_required') {
+                        const snap = await db.collection('enrollments').where('status', '==', 'Pending').get();
+                        count = snap.size;
+                        if (count > 0) {
+                            messageBody = `Ci sono ${count} iscrizioni in attesa di pagamento.`;
+                            shouldSend = true;
+                        }
+                    } 
+                    else if (rule.id === 'expiry') {
+                        const snap = await db.collection('enrollments').where('status', '==', 'Active').get();
+                        const nextWeek = new Date(romeTime);
+                        nextWeek.setDate(romeTime.getDate() + 7);
+                        
+                        count = snap.docs.filter(d => {
+                            const end = new Date(d.data().endDate);
+                            return end >= romeTime && end <= nextWeek;
+                        }).length;
+                        
+                        if (count > 0) {
+                            messageBody = `${count} iscrizioni scadranno nei prossimi 7 giorni.`;
+                            shouldSend = true;
+                        }
                     }
-                } 
-                else if (rule.id === 'expiry') {
-                    // Conta scadenze prossime (es. 7 giorni)
-                    const snap = await db.collection('enrollments').where('status', '==', 'Active').get();
-                    const nextWeek = new Date(now);
-                    nextWeek.setDate(now.getDate() + 7);
-                    
-                    count = snap.docs.filter(d => {
-                        const end = new Date(d.data().endDate);
-                        return end >= now && end <= nextWeek;
-                    }).length;
-                    
-                    if (count > 0) {
-                        messageBody = `${count} iscrizioni scadranno nei prossimi 7 giorni.`;
-                        shouldSend = true;
-                    }
-                }
-                else if (rule.id === 'balance_due') {
-                    // Fatture di acconto vecchie > 30gg
-                    const snap = await db.collection('invoices')
-                        .where('isGhost', '==', true)
-                        .where('status', '==', 'Draft')
-                        .where('isDeleted', '==', false)
-                        .get();
-                    
-                    const thirtyDaysAgo = new Date(now);
-                    thirtyDaysAgo.setDate(now.getDate() - 30);
-                    
-                    count = snap.docs.filter(d => {
-                        const created = new Date(d.data().issueDate);
-                        return created <= thirtyDaysAgo;
-                    }).length;
+                    else if (rule.id === 'balance_due') {
+                        const snap = await db.collection('invoices')
+                            .where('isGhost', '==', true)
+                            .where('status', '==', 'Draft')
+                            .where('isDeleted', '==', false)
+                            .get();
+                        
+                        const thirtyDaysAgo = new Date(romeTime);
+                        thirtyDaysAgo.setDate(romeTime.getDate() - 30);
+                        
+                        count = snap.docs.filter(d => {
+                            const created = new Date(d.data().issueDate);
+                            return created <= thirtyDaysAgo;
+                        }).length;
 
-                    if (count > 0) {
-                        messageBody = `${count} acconti attendono il saldo da oltre 30 giorni.`;
-                        shouldSend = true;
+                        if (count > 0) {
+                            messageBody = `${count} acconti attendono il saldo da oltre 30 giorni.`;
+                            shouldSend = true;
+                        }
                     }
-                }
-                else if (rule.id === 'low_lessons') {
-                    // Lezioni residue <= 2
-                    const snap = await db.collection('enrollments').where('status', '==', 'Active').get();
-                    count = snap.docs.filter(d => (d.data().lessonsRemaining || 0) <= 2).length;
-                    
-                    if (count > 0) {
-                        messageBody = `${count} allievi hanno quasi finito le lezioni.`;
-                        shouldSend = true;
+                    else if (rule.id === 'low_lessons') {
+                        const snap = await db.collection('enrollments').where('status', '==', 'Active').get();
+                        count = snap.docs.filter(d => (d.data().lessonsRemaining || 0) <= 2).length;
+                        
+                        if (count > 0) {
+                            messageBody = `${count} allievi hanno quasi finito le lezioni.`;
+                            shouldSend = true;
+                        }
                     }
-                }
-                else if (rule.id === 'institutional_billing') {
-                    // Billing enti
-                    const snap = await db.collection('quotes').where('status', '==', 'Paid').get();
-                    let dueCount = 0;
-                    const threshold = new Date(now);
-                    threshold.setDate(now.getDate() + 45); 
+                    else if (rule.id === 'institutional_billing') {
+                        const snap = await db.collection('quotes').where('status', '==', 'Paid').get();
+                        let dueCount = 0;
+                        const threshold = new Date(romeTime);
+                        threshold.setDate(romeTime.getDate() + 45); 
 
-                    snap.docs.forEach(qDoc => {
-                        const installments = qDoc.data().installments || [];
-                        installments.forEach(inst => {
-                            if (!inst.isPaid) {
-                                const due = new Date(inst.dueDate);
-                                if (due >= now && due <= threshold) dueCount++;
+                        snap.docs.forEach(qDoc => {
+                            const installments = qDoc.data().installments || [];
+                            installments.forEach(inst => {
+                                if (!inst.isPaid) {
+                                    const due = new Date(inst.dueDate);
+                                    if (due >= romeTime && due <= threshold) dueCount++;
+                                }
+                            });
+                        });
+                        count = dueCount;
+                        if (count > 0) {
+                            messageBody = `${count} rate di progetti istituzionali in scadenza a breve.`;
+                            shouldSend = true;
+                        }
+                    }
+
+                    // Preparazione messaggio
+                    if (shouldSend && rule.pushEnabled) {
+                        notificationsToSend.push({
+                            title: `EP Alert: ${rule.label}`,
+                            body: messageBody,
+                            data: { 
+                                link: '/',
+                                ruleId: rule.id
                             }
                         });
-                    });
-                    count = dueCount;
-                    if (count > 0) {
-                        messageBody = `${count} rate di progetti istituzionali in scadenza a breve.`;
-                        shouldSend = true;
-                    }
-                }
+                    } 
 
-                // INVIO SE ABILITATO E TRIGGERATO
-                if (shouldSend && rule.pushEnabled) {
-                    notificationsToSend.push({
-                        tokens: allTokens, // Broadcast agli admin
-                        title: `EP Alert: ${rule.label}`,
-                        body: messageBody,
-                        tag: `rule-${rule.id}`,
-                        icon: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png'
-                    });
-                } else if (shouldSend && !rule.pushEnabled) {
-                    console.log(`[DEBUG] Match trovato ma PUSH disabilitato per ${rule.id}`);
+                } catch (err) {
+                    console.error(`[ERROR] Errore logica regola ${rule.id}:`, err);
                 }
-
-            } catch (err) {
-                console.error(`[ERROR] Errore esecuzione regola ${rule.id}:`, err);
             }
         }
+    } catch (e) {
+        console.error("Error processing rules:", e);
     }
 
-    // --- STEP C: FOCUS MODE ---
-    const prefsSnapshot = await db.collection('user_preferences')
-        .where('focusConfig.enabled', '==', true)
-        .get();
-
-    prefsSnapshot.forEach(doc => {
-        const prefs = doc.data();
-        const config = prefs.focusConfig;
-        const userId = doc.id; 
+    // --- STEP C: INVIO MASSIVO ---
+    if (notificationsToSend.length > 0 && allTokens.length > 0) {
+        const messages = [];
         
-        const dayMatch = config.days.some(d => String(d) === String(currentDay));
-        const timeMatch = config.time === currentHour;
-
-        if (dayMatch && timeMatch) {
-            const targetTokens = userTokensMap[userId];
-            if (targetTokens && targetTokens.length > 0) {
-                notificationsToSend.push({
-                    tokens: targetTokens,
-                    title: "🔔 Focus Mode",
-                    body: "Briefing quotidiano pronto. Tocca per aprire.",
-                    tag: 'focus-mode',
-                    icon: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png'
-                });
-            }
-        }
-    });
-
-    if (notificationsToSend.length === 0) {
-        console.log("[DEBUG] Nessuna notifica da inviare.");
-        return;
-    }
-
-    // --- STEP D: INVIO ---
-    for (const notif of notificationsToSend) {
-        const message = {
-            notification: {
-                title: notif.title,
-                body: notif.body,
-            },
-            webpush: {
-                headers: { Urgency: "high" },
-                notification: {
-                    icon: notif.icon,
-                    tag: notif.tag,
-                    renotify: true,
-                    requireInteraction: true
-                },
-                fcm_options: { link: "https://ep-v1-gestionale.vercel.app/" }
-            },
-            tokens: notif.tokens
-        };
-
-        sendPromises.push(messaging.sendEachForMulticast(message));
-    }
-
-    // --- STEP E: PULIZIA ---
-    try {
-        const responses = await Promise.all(sendPromises);
-        const failedTokens = new Set(); 
-
-        responses.forEach((resp, idx) => {
-            if (resp.failureCount > 0) {
-                const usedTokens = notificationsToSend[idx].tokens;
-                resp.responses.forEach((r, tokenIdx) => {
-                    if (!r.success) {
-                        const errCode = r.error.code;
-                        if (errCode === 'messaging/invalid-registration-token' || 
-                            errCode === 'messaging/registration-token-not-registered') {
-                            failedTokens.add(usedTokens[tokenIdx]);
+        // Crea un messaggio per ogni combinazione (Notifica x Token)
+        // Nota: FCM Multicast è meglio, ma qui usiamo sendAll per chiarezza
+        notificationsToSend.forEach(note => {
+            allTokens.forEach(token => {
+                messages.push({
+                    token: token,
+                    notification: {
+                        title: note.title,
+                        body: note.body,
+                    },
+                    data: note.data,
+                    webpush: {
+                        fcmOptions: {
+                            link: note.data.link
+                        },
+                        notification: {
+                            icon: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png',
+                            badge: 'https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png'
                         }
                     }
                 });
-            }
+            });
         });
 
-        if (failedTokens.size > 0) {
-            console.log(`[DEBUG] Pulizia ${failedTokens.size} token invalidi.`);
-            const batch = db.batch();
-            failedTokens.forEach(t => {
-                const ref = db.collection('fcm_tokens').doc(t);
-                batch.delete(ref);
-            });
-            await batch.commit();
+        if (messages.length > 0) {
+            try {
+                // Batch send (max 500 per batch recommended, simplified here)
+                const response = await messaging.sendEach(messages);
+                console.log(`[SUCCESS] Inviati ${response.successCount} messaggi. Falliti: ${response.failureCount}`);
+            } catch (e) {
+                console.error("[ERROR] Invio FCM fallito:", e);
+            }
         }
-        console.log(`[SUCCESS] Inviate ${notificationsToSend.length} notifiche.`);
-    } catch (error) {
-        console.error("[ERROR] Critical send error:", error);
     }
 });
+    
