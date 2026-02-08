@@ -77,16 +77,20 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - Integrazione Cloud Storage per invio allegati (file e link) nelle comunicazioni massive.
 
 ### Milestone Febbraio 2026
-- **18/02 (Mattina):** **Notification Engine Upgrade & Localization.**
+- **05/02 (Mattina):** **Notification Engine Upgrade & Localization.**
     - Implementazione regole di notifica personalizzate (Custom Rules) per task ricorrenti non legati agli allievi.
     - **UX Localization:** Adattamento dell'interfaccia "Pianificazione Avvisi" alla settimana italiana (Lunedì-Domenica) tramite mapping visivo, mantenendo la compatibilità tecnica internazionale (0=Dom) per il backend Cloud Functions.
-- **18/02 (Pomeriggio):** **Client 360° View.**
+- **05/02 (Pomeriggio):** **Client 360° View.**
     - Rilascio del modulo "Situazione Clienti": dashboard unificata per l'analisi finanziaria e anagrafica del singolo cliente.
     - **Financial Aggregation Logic:** Algoritmo di aggregazione che incrocia dati da 4 collezioni (Clients, Enrollments, Invoices, Transactions) per mostrare lo stato dei pagamenti e rilevare elementi orfani in tempo reale.
-- **18/02 (Sera):** **UX Refinements (Registro Presenze).**
+- **05/02 (Sera):** **UX Refinements (Registro Presenze).**
     - **Grouped Time Slots:** Nuova visualizzazione gerarchica nel registro presenze (Sede -> Giorno -> Slot Orario) per migliorare la leggibilità e l'operatività.
     - **Bulk Actions:** Introduzione di azioni massive per slot orario ("Tutti Presenti" / "Tutti Assenti") e refactoring del Wizard Assenze per supportare input multipli.
     - **Box Liberation Strategy:** Risoluzione conflitti di clipping CSS sui menu a discesa delle card presenze, rimuovendo `overflow-hidden` dai contenitori e gestendo manualmente il `border-radius` per mantenere il design pulito.
+- **08/02 (Mattina):** **Deployment & Performance Fix.**
+    - Risoluzione critica del conflitto di build Tailwind su Vercel: migrazione definitiva da CDN+Inline styles a pipeline standard Vite+PostCSS.
+    - Ottimizzazione della configurazione `tailwind.config.js` per escludere `node_modules` dalla scansione (fix warning di performance).
+    - Ripristino dell'architettura CSS modulare (`index.css`) per garantire stabilità in produzione.
 
 ---
 
@@ -97,4 +101,4 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 18 Febbraio 2026.*
+*Documentazione aggiornata al 08 Febbraio 2026.*
