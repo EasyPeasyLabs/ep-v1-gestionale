@@ -1,3 +1,4 @@
+
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
@@ -46,5 +47,73 @@ self.addEventListener('notificationclick', function(event) {
         return clients.openWindow(urlToOpen);
       }
     })
+  );
+});
+
+// --- PWA OFFLINE CACHING ---
+const CACHE_NAME = 'ep-v1-cache-v1';
+const urlsToCache = [
+  './',
+  './index.html',
+  './lemon_logo_150px.png',
+  './manifest.json'
+];
+
+// Install: Pre-cache critical assets
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('[SW] Opened cache');
+        return cache.addAll(urlsToCache);
+      })
+  );
+});
+
+// Activate: Clean up old caches
+self.addEventListener('activate', (event) => {
+  const cacheWhitelist = [CACHE_NAME];
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheWhitelist.indexOf(cacheName) === -1) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
+
+// Fetch: Network First, Fallback to Cache
+self.addEventListener('fetch', (event) => {
+  // Ignora richieste non-GET o verso estensioni chrome
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) return;
+
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        // Se la risposta è valida, la cloniamo nella cache e la restituiamo
+        if (!response || response.status !== 200 || response.type !== 'basic') {
+          return response;
+        }
+        const responseToCache = response.clone();
+        caches.open(CACHE_NAME)
+          .then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        return response;
+      })
+      .catch(() => {
+        // Se la rete fallisce (offline), cerchiamo nella cache
+        return caches.match(event.request)
+          .then((response) => {
+             if (response) {
+                 return response;
+             }
+             // Fallback opzionale per navigazione (es. offline.html) se necessario
+          });
+      })
   );
 });
