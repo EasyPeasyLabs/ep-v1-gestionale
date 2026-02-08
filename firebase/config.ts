@@ -1,6 +1,6 @@
 
 import { initializeApp, FirebaseApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, Firestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, Firestore, clearIndexedDbPersistence } from "firebase/firestore";
 import { getAuth, Auth } from "firebase/auth";
 import { getStorage, FirebaseStorage } from "firebase/storage";
 import { getMessaging, Messaging } from "firebase/messaging";
@@ -36,18 +36,33 @@ try {
     app = initializeApp(firebaseConfig);
     logToScreen("Firebase App Initialized.", "success");
 
-    db = initializeFirestore(app, {
-        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-        ignoreUndefinedProperties: true
-    });
-    logToScreen("Firestore Initialized.", "success");
+    // Initialize Firestore with Robust Cache Handling
+    try {
+        db = initializeFirestore(app, {
+            localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+            ignoreUndefinedProperties: true
+        });
+        logToScreen("Firestore Initialized.", "success");
+    } catch (err: any) {
+        if (err.code === 'failed-precondition') {
+            console.warn("Firestore persistence failed. Clearing cache and retrying...");
+            // Non possiamo chiamare clearIndexedDbPersistence su un'istanza non inizializzata facilmente,
+            // ma l'errore 'failed-precondition' spesso richiede un reload o un'inizializzazione senza persistenza.
+            // Fallback: Memory Cache implicita se la persistenza fallisce.
+            db = initializeFirestore(app, {
+               ignoreUndefinedProperties: true
+            });
+        } else {
+            throw err;
+        }
+    }
 
     auth = getAuth(app);
     storage = getStorage(app);
     messaging = getMessaging(app);
 } catch (e: any) {
     logToScreen("FIREBASE INIT ERROR: " + e.message, "error");
-    console.error(e);
+    console.error("Firebase Init Error:", e);
 }
 
 export { app, db, auth, storage, messaging };

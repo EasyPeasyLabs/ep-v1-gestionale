@@ -1,7 +1,9 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+// import './index.css'; // Removed to prevent 404 errors, styles are now in index.html
 import { applyTheme, getSavedTheme } from './utils/theme';
 
 // Inizializza il tema immediatamente all'avvio dell'applicazione.

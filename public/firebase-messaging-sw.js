@@ -2,7 +2,6 @@
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
 
-// Configurazione Firebase sincronizzata con ep-gestionale-v1
 const firebaseConfig = {
   apiKey: "AIzaSyDON9vmJzNvYH7Eqw3c2KlpgOjr3ToIJhM",
   authDomain: "ep-gestionale-v1.firebaseapp.com",
@@ -17,15 +16,12 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function(payload) {
-  console.log('[firebase-messaging-sw.js] Background message received:', payload);
-  
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: './lemon_logo_150px.png', 
-    badge: './lemon_logo_150px.png',
-    data: payload.data,
-    tag: 'ep-notification-background'
+    icon: '/lemon_logo_150px.png',
+    badge: '/lemon_logo_150px.png',
+    data: payload.data
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
@@ -33,8 +29,7 @@ messaging.onBackgroundMessage(function(payload) {
 
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();
-  const urlToOpen = event.notification.data?.link || './';
-
+  const urlToOpen = event.notification.data?.link || '/';
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
       for (let i = 0; i < windowClients.length; i++) {
@@ -50,27 +45,27 @@ self.addEventListener('notificationclick', function(event) {
   );
 });
 
-// --- PWA OFFLINE CACHING ---
-const CACHE_NAME = 'ep-v1-cache-v1';
+// --- PWA CACHING STRATEGY ---
+const CACHE_NAME = 'ep-v1-cache-v2';
 const urlsToCache = [
-  './',
-  './index.html',
-  './lemon_logo_150px.png',
-  './manifest.json'
+  '/',
+  '/index.html',
+  '/manifest.json'
+  // Removed explicit image cache here to prevent installation failure if image is missing.
+  // The browser will cache it naturally via fetch handler if it exists.
 ];
 
-// Install: Pre-cache critical assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
-        console.log('[SW] Opened cache');
-        return cache.addAll(urlsToCache);
+        return cache.addAll(urlsToCache).catch(err => {
+            console.warn("SW: Failed to cache some static assets", err);
+        });
       })
   );
 });
 
-// Activate: Clean up old caches
 self.addEventListener('activate', (event) => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
@@ -86,34 +81,29 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch: Network First, Fallback to Cache
 self.addEventListener('fetch', (event) => {
-  // Ignora richieste non-GET o verso estensioni chrome
+  // Solo richieste GET http/https
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) return;
 
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Se la risposta è valida, la cloniamo nella cache e la restituiamo
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
+        // Clona risposta valida nella cache
+        if (response && response.status === 200 && response.type === 'basic') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+            });
         }
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME)
-          .then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
         return response;
       })
       .catch(() => {
-        // Se la rete fallisce (offline), cerchiamo nella cache
-        return caches.match(event.request)
-          .then((response) => {
-             if (response) {
-                 return response;
-             }
-             // Fallback opzionale per navigazione (es. offline.html) se necessario
-          });
+        // Fallback offline
+        return caches.match(event.request).then(response => {
+            if (response) return response;
+            // Opzionale: Ritorna offline.html se è una navigazione
+            return null;
+        });
       })
   );
 });

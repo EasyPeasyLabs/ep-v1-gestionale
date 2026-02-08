@@ -82,7 +82,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
                 type: 'payment_required',
                 message: `Iscrizione in attesa di pagamento: ${enr.childName} (${parentName}) - Residuo: ${gap.toFixed(2)}€`,
                 clientId: enr.clientId,
-                date: new Date().toISOString(),
+                date: enr.startDate, // Use Start Date as trigger date
                 linkPage: 'Enrollments',
                 filterContext: { status: 'pending', searchTerm: enr.childName }
             });
@@ -98,18 +98,27 @@ export const getNotifications = async (): Promise<Notification[]> => {
                     type: 'expiry',
                     message: `L'iscrizione di ${enr.childName} (${parentName}) scade tra ${diffDays} giorni.`,
                     clientId: enr.clientId,
-                    date: new Date().toISOString(),
+                    date: enr.endDate, // Use End Date as trigger date
                     linkPage: 'Enrollments',
                     filterContext: { status: 'active', searchTerm: enr.childName }
                 });
             }
             if (enr.lessonsRemaining > 0 && enr.lessonsRemaining <= 2) {
+                let lastLessonDate = new Date().toISOString();
+                // Try to find the last attended lesson date to use as reference
+                if (enr.appointments && enr.appointments.length > 0) {
+                    const attended = enr.appointments
+                        .filter(a => a.status === 'Present')
+                        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    if (attended.length > 0) lastLessonDate = attended[0].date;
+                }
+
                 notifications.push({
                     id: `enr-low-${enr.id}`,
                     type: 'low_lessons',
                     message: `Restano solo ${enr.lessonsRemaining} lezioni per ${enr.childName} (${parentName}).`,
                     clientId: enr.clientId,
-                    date: new Date().toISOString(),
+                    date: lastLessonDate, // Use last lesson or today
                     linkPage: 'Enrollments',
                     filterContext: { status: 'active', searchTerm: enr.childName }
                 });
@@ -133,7 +142,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
                     type: 'invoice_emission',
                     message: `EMETTI ORA: È arrivata la data per la fattura programata di ${inv.clientName} (${inv.totalAmount.toFixed(2)}€).`,
                     clientId: inv.clientId,
-                    date: new Date().toISOString(),
+                    date: inv.issueDate, // Use scheduled Issue Date
                     linkPage: 'Finance',
                     filterContext: { tab: 'invoices', searchTerm: inv.clientName }
                 });
@@ -152,7 +161,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
                     type: 'payment_collection',
                     message: `VERIFICA INCASSO: La fattura ${inv.invoiceNumber} di ${inv.clientName} scade oggi o è scaduta.`,
                     clientId: inv.clientId,
-                    date: new Date().toISOString(),
+                    date: inv.dueDate, // Use Due Date
                     linkPage: 'Finance',
                     filterContext: { tab: 'invoices', searchTerm: inv.invoiceNumber }
                 });
@@ -166,12 +175,15 @@ export const getNotifications = async (): Promise<Notification[]> => {
             const createdDate = new Date(inv.issueDate);
             const daysSinceCreation = Math.floor((today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
             if (daysSinceCreation >= 30) {
+                const triggerDate = new Date(createdDate);
+                triggerDate.setDate(triggerDate.getDate() + 30);
+
                 notifications.push({
                     id: `inv-balance-${inv.id}`,
                     type: 'balance_due',
                     message: `SALDO DOVUTO: Sono passati 30gg dall'acconto di ${inv.clientName}. Saldo: ${inv.totalAmount.toFixed(2)}€.`,
                     clientId: inv.clientId,
-                    date: new Date().toISOString(),
+                    date: triggerDate.toISOString(), // Use 30-day threshold date
                     linkPage: 'Finance',
                     filterContext: { tab: 'invoices', searchTerm: inv.clientName }
                 });
@@ -187,7 +199,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
                 type: 'expiry',
                 message: `Fattura Scaduta ${inv.invoiceNumber} (${inv.totalAmount.toFixed(2)}€) - ${inv.clientName}`,
                 clientId: inv.clientId,
-                date: new Date().toISOString(),
+                date: inv.dueDate, // Use Due Date
                 linkPage: 'Finance',
                 filterContext: { tab: 'invoices', invoiceStatus: DocumentStatus.Overdue }
             });
@@ -213,7 +225,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
                 type: 'sdi_deadline',
                 message: `SDI: Registra fattura ${inv.invoiceNumber} entro ${daysLeft} giorni!`,
                 clientId: inv.clientId,
-                date: new Date().toISOString(),
+                date: deadline.toISOString(), // Use Legal Deadline Date
                 linkPage: 'Finance',
                 filterContext: { tab: 'invoices', invoiceStatus: DocumentStatus.PendingSDI }
             });

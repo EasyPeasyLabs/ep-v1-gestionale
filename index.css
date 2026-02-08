@@ -1,0 +1,99 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { 
+    --md-bg-light: #F6F8FA; 
+    --md-primary: #3C3C52; 
+    --md-text-primary: #1A1A1A; 
+    --md-divider: #E5E7EB;
+  }
+  
+  body { 
+    font-family: 'Inter', sans-serif; 
+    background-color: var(--md-bg-light); 
+    color: var(--md-text-primary); 
+  }
+}
+
+@layer components {
+  .md-card { 
+    @apply bg-white rounded-3xl border border-gray-200 shadow-sm transition-all duration-200;
+  }
+  
+  .md-input { 
+    @apply w-full border border-gray-200 rounded-2xl bg-gray-50 px-4 py-3 outline-none transition-all focus:bg-white focus:border-[#3C3C52] focus:ring-2 focus:ring-[#3C3C52]/10;
+  }
+  
+  .md-btn { 
+    @apply inline-flex items-center justify-center px-6 h-12 rounded-2xl font-bold cursor-pointer transition-all active:scale-95;
+  }
+  
+  .md-btn-primary { 
+    @apply bg-[#3C3C52] text-white shadow-lg shadow-[#3C3C52]/20 hover:bg-[#323244];
+  }
+  
+  .md-btn-flat { 
+    @apply bg-transparent text-gray-500 hover:bg-gray-100;
+  }
+
+  .md-btn-green {
+    @apply bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600;
+  }
+
+  .md-btn-red {
+    @apply bg-red-500 text-white shadow-lg shadow-red-500/20 hover:bg-red-600;
+  }
+
+  .md-btn-sm {
+    @apply h-9 px-4 text-xs;
+  }
+  
+  .md-icon-btn { 
+    @apply inline-flex items-center justify-center bg-gray-100 border-0 p-2.5 rounded-xl cursor-pointer hover:bg-gray-200 transition-colors;
+  }
+
+  /* Input Group Helpers */
+  .md-input-group {
+    @apply relative mb-4;
+  }
+
+  .md-input-label {
+    @apply absolute -top-2 left-3 bg-white px-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider transition-all;
+  }
+}
+
+/* Utilities */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.animate-fade-in { animation: fade-in 0.3s ease-out forwards; }
+.animate-slide-up { animation: slide-up 0.4s ease-out forwards; }
+.animate-fade-in-down { animation: fade-in-down 0.3s ease-out forwards; }
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-in-down { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
