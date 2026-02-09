@@ -4,8 +4,10 @@ import { Notification } from '../types';
 import Spinner from './Spinner';
 import ClockIcon from './icons/ClockIcon';
 import ExclamationIcon from './icons/ExclamationIcon';
+import { syncDismissedNotifications } from '../services/profileService';
 
 interface NotificationsDropdownProps {
+    userId: string;
     notifications: Notification[];
     loading: boolean;
     onNotificationClick: (notification: Notification) => void;
@@ -23,24 +25,33 @@ const formatDate = (dateString: string) => {
     });
 };
 
-const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notifications, loading, onNotificationClick }) => {
+const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ userId, notifications, loading, onNotificationClick }) => {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
     
-    const handleDismiss = () => {
-        const currentIgnored = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
-        
+    const handleDismiss = async () => {
+        setIsSaving(true);
         let idsToDismiss: string[] = [];
+        
         if (selectedIds.length > 0) {
             idsToDismiss = selectedIds;
         } else {
             idsToDismiss = notifications.map(n => n.id);
         }
 
-        localStorage.setItem('ep_ignored_notifications', JSON.stringify([...currentIgnored, ...idsToDismiss]));
-        
-        setSelectedIds([]);
-        // Triggera evento per aggiornare (trucchetto per refreshare Header)
-        window.dispatchEvent(new Event('EP_DataUpdated'));
+        try {
+            // Save to Firestore via Profile Service
+            await syncDismissedNotifications(userId, idsToDismiss);
+            
+            // Clear selection and refresh UI
+            setSelectedIds([]);
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch (e) {
+            console.error("Failed to dismiss notifications:", e);
+            alert("Errore durante il salvataggio. Riprova.");
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const toggleSelection = (id: string) => {
@@ -59,8 +70,12 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ notificat
             <div className="px-4 py-2 border-b flex justify-between items-center">
                 <h3 className="text-sm font-semibold text-slate-700">Notifiche</h3>
                 {notifications.length > 0 && (
-                    <button onClick={handleDismiss} className="text-[10px] text-indigo-600 font-bold hover:underline">
-                        {selectedIds.length > 0 ? `Segna letti (${selectedIds.length})` : 'Segna tutti letti'}
+                    <button 
+                        onClick={handleDismiss} 
+                        disabled={isSaving}
+                        className="text-[10px] text-indigo-600 font-bold hover:underline disabled:opacity-50"
+                    >
+                        {isSaving ? <Spinner /> : (selectedIds.length > 0 ? `Segna letti (${selectedIds.length})` : 'Segna tutti letti')}
                     </button>
                 )}
             </div>

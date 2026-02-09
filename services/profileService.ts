@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { UserPreferences, FocusConfig } from '../types';
 
 const COLLECTION_NAME = 'user_preferences';
@@ -36,5 +36,21 @@ export const markFocusAsSeen = async (userId: string): Promise<void> => {
         await setDoc(docRef, { lastFocusDate: todayStr }, { merge: true });
     } catch (error) {
         console.error("Error marking focus as seen:", error);
+    }
+};
+
+export const syncDismissedNotifications = async (userId: string, notificationIds: string[]): Promise<void> => {
+    try {
+        const docRef = doc(db, COLLECTION_NAME, userId);
+        // Use arrayUnion to add new IDs without overwriting existing ones
+        // Note: Firestore arrayUnion accepts variable arguments, so we spread the array
+        if (notificationIds.length > 0) {
+            await setDoc(docRef, { 
+                dismissedNotificationIds: arrayUnion(...notificationIds) 
+            }, { merge: true });
+        }
+    } catch (error) {
+        console.error("Error syncing dismissed notifications:", error);
+        throw error;
     }
 };

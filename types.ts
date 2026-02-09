@@ -596,6 +596,7 @@ export interface FocusConfig {
 export interface UserPreferences {
     focusConfig?: FocusConfig;
     lastFocusDate?: string;
+    dismissedNotificationIds?: string[]; // IDs of notifications marked as read/done
 }
 
 export interface FiscalYear {

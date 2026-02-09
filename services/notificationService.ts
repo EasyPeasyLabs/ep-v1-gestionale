@@ -3,6 +3,8 @@ import { getAllEnrollments } from './enrollmentService';
 import { getClients } from './parentService';
 import { getInvoices, getQuotes, getTransactions, checkAndSetOverdueInvoices } from './financeService';
 import { getFiscalYears } from './fiscalYearService';
+import { getUserPreferences } from './profileService';
+import { auth } from '../firebase/config';
 import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient, DocumentStatus, TransactionStatus, Quote } from '../types';
 
 // Helper per calcolare data meno 30 giorni lavorativi (circa 42 giorni solari)
@@ -15,7 +17,22 @@ const getBillingDeadlineThreshold = () => {
 
 export const getNotifications = async (): Promise<Notification[]> => {
     await checkAndSetOverdueInvoices();
-    const ignoredIds = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
+    
+    // FETCH IGNORED IDs FROM FIRESTORE (Cloud Sync)
+    let ignoredIds: string[] = [];
+    if (auth.currentUser) {
+        try {
+            const prefs = await getUserPreferences(auth.currentUser.uid);
+            ignoredIds = prefs.dismissedNotificationIds || [];
+        } catch (e) {
+            console.warn("Failed to fetch notification preferences:", e);
+            // Fallback to local storage if cloud fetch fails (offline mode support)
+            ignoredIds = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
+        }
+    } else {
+        // Fallback for non-authenticated state (should likely not happen in main app flow)
+        ignoredIds = JSON.parse(localStorage.getItem('ep_ignored_notifications') || '[]');
+    }
     
     // 1. Fetch Anni Fiscali Chiusi
     const fiscalYears = await getFiscalYears();

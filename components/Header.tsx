@@ -336,6 +336,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
             </button>
              {notificationsOpen && (
                 <NotificationsDropdown
+                    userId={user.uid} // Pass the user ID here
                     notifications={notifications}
                     loading={loadingNotifications}
                     onNotificationClick={(notif) => {
