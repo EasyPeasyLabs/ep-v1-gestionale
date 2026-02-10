@@ -7,6 +7,8 @@ import { getSuppliers } from '../services/supplierService';
 import { getCommunicationLogs, logCommunication, deleteCommunicationLog, getCampaigns, addCampaign, updateCampaign, deleteCampaign, updateCommunicationLog } from '../services/crmService';
 import { getCommunicationTemplates, getCompanyInfo } from '../services/settingsService';
 import { uploadCampaignFile, uploadCommunicationAttachment } from '../services/storageService';
+import { syncDismissedNotifications, getUserPreferences } from '../services/profileService'; // Added Cloud Sync
+import { auth } from '../firebase/config'; // Added Auth
 import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -554,15 +556,31 @@ const CRM: React.FC = () => {
     const [selectedAlertIds, setSelectedAlertIds] = useState<string[]>([]); // For Bulk Actions
 
     // Persistent State for Dismissed/Handled Items
-    const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
-        try {
-            return JSON.parse(localStorage.getItem('ep_crm_dismissed_ids') || '[]');
-        } catch { return []; }
-    });
+    // Use Firestore synced preference instead of just local
+    const [dismissedIds, setDismissedIds] = useState<string[]>([]);
 
     useEffect(() => {
-        localStorage.setItem('ep_crm_dismissed_ids', JSON.stringify(dismissedIds));
-    }, [dismissedIds]);
+        // Sync Initial Dismissed State from Firestore or LocalStorage
+        const loadPreferences = async () => {
+            if (auth.currentUser) {
+                try {
+                    const prefs = await getUserPreferences(auth.currentUser.uid);
+                    if (prefs.dismissedNotificationIds) {
+                        setDismissedIds(prefs.dismissedNotificationIds);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn("CRM: Failed to load cloud preferences, falling back to local.");
+                }
+            }
+            // Fallback
+            try {
+                const local = JSON.parse(localStorage.getItem('ep_crm_dismissed_ids') || '[]');
+                setDismissedIds(local);
+            } catch { setDismissedIds([]); }
+        };
+        loadPreferences();
+    }, []);
 
     // UI State for Modals
     const [isFreeCommOpen, setIsFreeCommOpen] = useState(false);
@@ -869,9 +887,14 @@ const CRM: React.FC = () => {
                 type: 'manual'
             });
 
-            // Update persistent dismissed state
+            // Update persistent dismissed state (Cloud Sync)
             const newDismissed = items.map(i => i.id);
             setDismissedIds(prev => [...prev, ...newDismissed]);
+            
+            // Sync to Firestore if authenticated
+            if (auth.currentUser) {
+                await syncDismissedNotifications(auth.currentUser.uid, newDismissed);
+            }
 
             // Deselect handled items if they were selected
             setSelectedAlertIds(prev => prev.filter(id => !newDismissed.includes(id)));

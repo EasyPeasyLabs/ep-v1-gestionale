@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
@@ -8,7 +7,7 @@ import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
 import { getUserPreferences, markFocusAsSeen } from '../services/profileService';
 import { auth } from '../firebase/config';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment, FocusConfig } from '../types';
+import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
@@ -19,7 +18,6 @@ import CalendarIcon from '../components/icons/CalendarIcon';
 import FocusModeConfigModal from '../components/FocusModeConfigModal';
 import FocusModePopup from '../components/FocusModePopup';
 
-// Helper per calcolo rating carburante
 const calculateFuelRating = (distance: number) => {
     if (distance <= 5) return 5;
     if (distance <= 15) return 4;
@@ -28,7 +26,6 @@ const calculateFuelRating = (distance: number) => {
     return 1;
 };
 
-// Helper per data locale YYYY-MM-DD
 const toLocalISOString = (date: Date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -36,7 +33,6 @@ const toLocalISOString = (date: Date) => {
     return `${year}-${month}-${day}`;
 };
 
-// --- NEW STAT CARD (VERTICAL STACK STYLE) ---
 const StatCard: React.FC<{ 
     title: string; 
     value: string | React.ReactNode; 
@@ -45,16 +41,15 @@ const StatCard: React.FC<{
     onClick?: () => void;
     icon: React.ReactNode;
     isAlert?: boolean;
-    headerAction?: React.ReactNode; // New Prop for Header Action
+    headerAction?: React.ReactNode; 
 }> = ({ title, value, valueLabel, subtext, onClick, icon, isAlert, headerAction }) => (
   <div 
-    className={`md-card p-5 flex flex-col gap-4 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer' : ''}`} 
+    className={`bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
     onClick={onClick}
   >
-    {/* Header: Icon + Title on the same line */}
     <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 transition-transform group-hover:scale-110 shadow-sm
-            ${isAlert ? 'bg-amber-400 text-gray-900' : 'bg-[#3C3C52] text-white'}`}>
+            ${isAlert ? 'bg-amber-400 text-gray-900' : 'bg-indigo-500 text-white'}`}>
             {icon}
         </div>
         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight flex-1">
@@ -67,7 +62,6 @@ const StatCard: React.FC<{
         )}
     </div>
     
-    {/* Data Area: Full width below header */}
     <div className="flex-1 min-w-0 z-10 flex flex-col justify-center">
         <div className="flex items-baseline gap-2 mb-1">
             <span className="text-3xl font-black text-gray-900 leading-none">{value}</span>
@@ -82,7 +76,6 @@ const StatCard: React.FC<{
   </div>
 );
 
-// Rating Card Component (unchanged)
 const RatingCard: React.FC<{
     title: string;
     average: number;
@@ -91,7 +84,7 @@ const RatingCard: React.FC<{
     details: { label: string; value: number }[];
     summary?: string;
 }> = ({ title, average, count, icon, details, summary }) => (
-    <div className="md-card p-6 flex flex-col h-full border border-gray-200">
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full">
         <div className="flex justify-between items-start mb-4">
             <div>
                 <h3 className="text-lg font-bold text-gray-900">{title}</h3>
@@ -142,7 +135,6 @@ const RatingCard: React.FC<{
     </div>
 );
 
-// Location Occupancy Interface (unchanged)
 interface LocationOccupancy {
     key: string;
     locationName: string;
@@ -176,7 +168,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [weekDays, setWeekDays] = useState<{date: Date, count: number, dayName: string}[]>([]);
   const [saturationYear, setSaturationYear] = useState<number>(new Date().getFullYear());
 
-  // Focus Mode State
   const [isFocusConfigOpen, setIsFocusConfigOpen] = useState(false);
   const [showFocusPopup, setShowFocusPopup] = useState(false);
 
@@ -201,14 +192,14 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setManualLessonsData(manualLessons);
         setNotifications(notifs);
 
-        // Weekly Calendar Logic (Unique Slots)
         const now = new Date();
         const startOfWeek = new Date(now);
         const day = startOfWeek.getDay();
-        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); 
+        const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Monday
         startOfWeek.setDate(diff);
         startOfWeek.setHours(0,0,0,0);
 
+        // Consideriamo anche le Pending perché spesso la lezione si fa prima del saldo
         const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
 
         const daysData = [];
@@ -219,18 +210,21 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             currentDay.setDate(startOfWeek.getDate() + i);
             const currentDayStr = toLocalISOString(currentDay);
             
+            // Usiamo un Set per contare gli "Slot Occupati" univoci
+            // Chiave = Orario_Location. 
+            // Se 3 bambini fanno lezione alle 16:00 in Sala A, conta come 1 slot occupato/lezione erogata.
+            // Esattamente come visualizzato nel Calendario.
             const uniqueSlots = new Set<string>();
 
-            // 1. Process Enrollments
+            // 1. Appuntamenti da Iscrizioni
             activeOrPendingEnrollments.forEach(enr => {
                 if(enr.appointments) {
                     enr.appointments.forEach(app => {
-                         // Fix Date Comparison: Convert app date to local YYYY-MM-DD
                          const appDateObj = new Date(app.date);
                          const appDateStr = toLocalISOString(appDateObj);
                          
+                         // Conta solo se la data corrisponde e non è sospesa
                          if(appDateStr === currentDayStr && app.status !== 'Suspended') {
-                             // Unique Key: Time + LocationName
                              const loc = (app.locationName || enr.locationName || 'N/D').trim();
                              const key = `${app.startTime}_${loc}`;
                              uniqueSlots.add(key);
@@ -239,15 +233,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 }
             });
 
-            // 2. Process Manual Lessons
+            // 2. Lezioni Manuali (Extra)
             manualLessons.forEach(ml => {
-                // Fix Date Comparison
                 const mlDateObj = new Date(ml.date);
                 const mlDateStr = toLocalISOString(mlDateObj);
 
                 if(mlDateStr === currentDayStr) {
                     if (ml.description && ml.description.startsWith('[SOSPESO]')) return;
-                    // Unique Key: Time + LocationName
                     const loc = (ml.locationName || 'N/D').trim();
                     const key = `${ml.startTime}_${loc}`;
                     uniqueSlots.add(key);
@@ -257,8 +249,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             daysData.push({ date: currentDay, count: uniqueSlots.size, dayName: dayNames[i] });
         }
         setWeekDays(daysData);
-
-        // --- CHECK FOCUS MODE TRIGGER (Async Cloud Check) ---
         checkFocusModeTrigger();
 
       } catch (error) {
@@ -287,20 +277,16 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           const todayStr = now.toISOString().split('T')[0];
           const lastSeen = prefs.lastFocusDate;
 
-          // 1. Check if seen today
           if (lastSeen === todayStr) return;
 
-          // 2. Check Day
-          const currentDay = now.getDay(); // 0=Dom, 1=Lun
+          const currentDay = now.getDay(); 
           if (!config.days.includes(currentDay)) return;
 
-          // 3. Check Time
           const [targetHour, targetMinute] = config.time.split(':').map(Number);
           const currentHour = now.getHours();
           const currentMinute = now.getMinutes();
 
           if (currentHour > targetHour || (currentHour === targetHour && currentMinute >= targetMinute)) {
-              // Trigger!
               setShowFocusPopup(true);
           }
 
@@ -317,7 +303,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       }
   };
 
-  // --- 1. METRICHE CLIENTI ---
   const advancedMetrics = useMemo(() => {
       const totalCensus = clientsData.length;
       const today = new Date();
@@ -368,7 +353,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       return { totalCensus, activeCount, enthusiasticCount };
   }, [clientsData, allEnrollments, suppliersData]);
 
-  // --- 2. METRICHE LEZIONI MESE (LOGICA SLOT ORARI REALI) ---
   const lessonsMetrics = useMemo(() => {
       const now = new Date();
       const currentMonth = now.getMonth();
@@ -376,32 +360,23 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       const todayStr = toLocalISOString(now);
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
-      // Sets per tracciare gli Slot Unici (Standard)
       const uniqueSlots = new Set<string>();
       const doneSlots = new Set<string>();
 
-      // 1. Processa Iscrizioni (Lezioni Standard)
       allEnrollments.forEach(enr => {
           if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
               if (enr.appointments) {
                   enr.appointments.forEach(app => {
-                      // EXCLUDE SUSPENDED LESSONS
                       if (app.status === 'Suspended') return;
 
                       const d = new Date(app.date);
                       if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                          // Chiave univoca per lo slot: Data (YYYY-MM-DD) + Ora + Sede (NOME, non ID)
                           const dateKey = toLocalISOString(d);
                           const locKey = (app.locationName || enr.locationName || 'N/D').trim();
                           const slotKey = `${dateKey}_${app.startTime}_${locKey}`;
                           
                           uniqueSlots.add(slotKey);
 
-                          // Logica "Fatto": 
-                          // 1. Status 'Present' (vince su tutto)
-                          // 2. Data passata (ieri o prima)
-                          // 3. Data oggi MA orario fine passato
-                          
                           let isDone = false;
                           
                           if (app.status === 'Present') {
@@ -425,7 +400,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           }
       });
 
-      // 2. Processa Lezioni Extra (Manuali)
       let extraTotal = 0;
       let extraDone = 0;
 
@@ -455,7 +429,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           }
       });
 
-      // Totali Combinati
       const totalCount = uniqueSlots.size + extraTotal;
       const doneCount = doneSlots.size + extraDone;
       const upcomingCount = totalCount - doneCount;
@@ -468,36 +441,24 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       };
   }, [allEnrollments, manualLessonsData]);
 
-  // --- 3. METRICHE FORNITORI ---
   const supplierMetrics = useMemo(() => {
       const totalCensus = suppliersData.length;
-      
-      // Filtra esclusione "Simona Puddu"
       const relevantSuppliers = suppliersData.filter(s => !s.companyName.toLowerCase().includes('simona puddu'));
-      
       let activeCount = 0;
       let closedCount = 0;
       const now = new Date();
 
       relevantSuppliers.forEach(s => {
           if (!s.locations || s.locations.length === 0) {
-              // Consideriamo chiuso se non ha sedi o sono tutte chiuse
               closedCount++;
               return;
           }
-
-          // Un fornitore è attivo se ha ALMENO una sede aperta
           const hasActiveLocation = s.locations.some((l: any) => {
-              if (!l.closedAt) return true; // Aperta
+              if (!l.closedAt) return true; 
               const closeDate = new Date(l.closedAt);
-              return closeDate > now; // Chiusura futura -> Aperta oggi
+              return closeDate > now; 
           });
-
-          if (hasActiveLocation) {
-              activeCount++;
-          } else {
-              closedCount++;
-          }
+          if (hasActiveLocation) activeCount++; else closedCount++;
       });
 
       return { totalCensus, activeCount, closedCount };
@@ -590,7 +551,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   }, []);
 
   const ratings = useMemo(() => {
-      // Simplification of logic for brevity, assumes data is correct
       let pCount = 0; let pSums = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
       let cCount = 0; let cSums = { learning: 0, behavior: 0, attendance: 0, hygiene: 0 };
       let sCount = 0; let sSums = { responsiveness: 0, partnership: 0, negotiation: 0 };
@@ -682,16 +642,16 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             <p className="mt-1 text-gray-500 font-medium">Benvenuta, Ilaria! Ecco una panoramica.</p>
           </div>
           
-          <div className="bg-white rounded-xl p-1.5 flex shadow-sm border border-gray-100">
+          <div className="bg-white rounded-xl p-1.5 flex shadow-sm border border-gray-200">
               <button 
                 onClick={() => setActiveTab('overview')}
-                className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-[#3C3C52] text-white shadow-md' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
+                className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'overview' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
               >
                 Panoramica
               </button>
               <button 
                 onClick={() => setActiveTab('ratings')}
-                className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'ratings' ? 'bg-[#3C3C52] text-white shadow-md' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
+                className={`px-5 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'ratings' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'}`}
               >
                 Qualità & Rating
               </button>
@@ -808,10 +768,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     
                     {/* COL 1: Calendario Settimanale */}
-                    <div className="md-card p-6">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-gray-800">Attività Settimanale</h3>
-                            <button className="p-2 bg-gray-50 rounded-lg text-[#3C3C52] hover:bg-gray-100"><CalendarIcon /></button>
+                            <button className="p-2 bg-gray-50 rounded-lg text-indigo-600 hover:bg-gray-100"><CalendarIcon /></button>
                         </div>
                         {(() => {
                             const maxWeekly = Math.max(...weekDays.map(d => d.count), 1);
@@ -827,11 +787,11 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                                                 </span>
                                                 <div className="relative w-full flex justify-center items-end h-32 bg-gray-50 rounded-xl overflow-hidden group-hover:bg-gray-100 transition-colors">
                                                     <div 
-                                                        className={`w-4 rounded-full transition-all duration-700 ease-out ${isToday ? 'bg-[#3C3C52] shadow-lg' : 'bg-gray-300 group-hover:bg-indigo-300'}`}
+                                                        className={`w-4 rounded-full transition-all duration-700 ease-out ${isToday ? 'bg-indigo-600 shadow-lg shadow-indigo-200' : 'bg-gray-300 group-hover:bg-indigo-300'}`}
                                                         style={{ height: `${heightPercent}%`, marginBottom: '8px' }}
                                                     ></div>
                                                 </div>
-                                                <div className={`text-xs font-bold ${isToday ? 'text-[#3C3C52]' : 'text-gray-400'}`}>{day.dayName}</div>
+                                                <div className={`text-xs font-bold ${isToday ? 'text-indigo-600' : 'text-gray-400'}`}>{day.dayName}</div>
                                             </div>
                                         );
                                     })}
@@ -841,7 +801,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     </div>
 
                     {/* COL 2: Saturazione Aule */}
-                    <div className="md-card p-6 flex flex-col">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-gray-800">Saturazione</h3>
                             <div className="flex items-center gap-2 bg-gray-50 rounded-lg p-1">
@@ -901,10 +861,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     </div>
 
                     {/* COL 3: Avvisi (Added ID for scrolling) */}
-                    <div id="alerts-section" className="md-card p-6 flex flex-col scroll-mt-24">
+                    <div id="alerts-section" className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col scroll-mt-24">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-gray-800">Avvisi ({notifications.length})</h3>
-                            <button className="text-[#3C3C52] bg-gray-100 p-2 rounded-lg hover:bg-gray-200"><ClockIcon /></button>
+                            <button className="text-indigo-600 bg-indigo-50 p-2 rounded-lg hover:bg-indigo-100"><ClockIcon /></button>
                         </div>
                         <div className="flex-grow overflow-y-auto max-h-80 custom-scrollbar pr-1">
                             {notifications.length === 0 ? (
@@ -973,7 +933,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-                    <div className="md-card p-6 flex flex-col h-96">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col h-96">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-lg font-bold text-gray-800">🏆 Top 5</h3>
                             <div className="flex bg-gray-50 p-1 rounded-xl">

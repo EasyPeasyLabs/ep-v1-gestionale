@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Page } from '../types';
 import type { User } from 'firebase/auth';
@@ -159,7 +158,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                     className="w-16 h-16 object-contain mb-2" 
                  />
              ) : (
-                 <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white font-black text-xl mb-2">ep</div>
+                 <div className="w-12 h-12 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-xl mb-2 shadow-lg shadow-indigo-200">ep</div>
              )}
              <div className="text-center">
                 <h1 className="text-2xl font-black tracking-wide text-gray-900 leading-none">easypeasy</h1> 
@@ -183,7 +182,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                                 }`}
                         >
                             <div className="flex items-center">
-                                <span className={`mr-4 transition-colors ${isActiveParent ? 'text-[#3C3C52]' : 'text-gray-300 group-hover:text-[#3C3C52]'}`}>
+                                <span className={`mr-4 transition-colors ${isActiveParent ? 'text-indigo-600' : 'text-gray-300 group-hover:text-indigo-600'}`}>
                                     {item.icon}
                                 </span>
                                 {item.label}
@@ -228,7 +227,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                         : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                   >
-                    <span className={`mr-4 transition-colors ${isActive ? 'text-gray-900' : 'text-gray-300 group-hover:text-[#3C3C52]'}`}>
+                    <span className={`mr-4 transition-colors ${isActive ? 'text-gray-900' : 'text-gray-300 group-hover:text-indigo-600'}`}>
                         {item.icon}
                     </span>
                     {item.label}

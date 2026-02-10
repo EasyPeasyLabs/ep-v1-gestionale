@@ -15,7 +15,9 @@
 
 ### Stack Tecnologico
 - **Frontend:** React 19 + TypeScript + Vite (SPA).
-- **Styling:** TailwindCSS con variabili CSS dinamiche per tematizzazione real-time.
+- **Styling (Hybrid-Freeze Engine):**
+    - **Livello 1 (Componenti Core):** CSS Vanilla puro (`index.css`) per garantire il rendering strutturale immediato (Layout, Card, Bottoni, Input) indipendente dalla compilazione.
+    - **Livello 2 (Utility):** TailwindCSS via CDN Runtime per la gestione atomica delle spaziature e dei colori, bypassando la catena di build PostCSS per massima compatibilità Vercel.
 - **Backend (BaaS):** Firebase (Google Cloud).
     - **Firestore:** Database NoSQL con cache persistente (Offline-first).
     - **Auth:** Gestione accessi amministrativi.
@@ -87,10 +89,13 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Grouped Time Slots:** Nuova visualizzazione gerarchica nel registro presenze (Sede -> Giorno -> Slot Orario) per migliorare la leggibilità e l'operatività.
     - **Bulk Actions:** Introduzione di azioni massive per slot orario ("Tutti Presenti" / "Tutti Assenti") e refactoring del Wizard Assenze per supportare input multipli.
     - **Box Liberation Strategy:** Risoluzione conflitti di clipping CSS sui menu a discesa delle card presenze, rimuovendo `overflow-hidden` dai contenitori e gestendo manualmente il `border-radius` per mantenere il design pulito.
-- **25/02 (Mattina):** **Deployment & Performance Fix.**
-    - Risoluzione critica del conflitto di build Tailwind su Vercel: migrazione definitiva da CDN+Inline styles a pipeline standard Vite+PostCSS.
-    - Ottimizzazione della configurazione `tailwind.config.js` per escludere `node_modules` dalla scansione (fix warning di performance).
-    - Ripristino dell'architettura CSS modulare (`index.css`) per garantire stabilità in produzione.
+- **25/02 (Mattina):** **Cristallizzazione Architettura Ibrida (Deploy Stability).**
+    - **Problema:** I conflitti ricorrenti tra la pipeline di build standard di Vercel e le direttive `@apply` di Tailwind causavano "pagine bianche" e stili mancanti in produzione.
+    - **Soluzione:** Adozione definitiva dell'architettura **Hybrid-Freeze**.
+        1.  **Tailwind Runtime:** Il motore grafico è stato spostato nel browser via CDN (`cdn.tailwindcss.com`). Questo garantisce che le utility classes siano sempre generate correttamente indipendentemente dall'ambiente di build server-side.
+        2.  **CSS Vanilla Core:** I componenti critici (`.md-card`, `.md-btn`, input forms) sono stati riscritti in CSS standard puro in `index.css`. Questo assicura che l'interfaccia Enterprise sia visibile e funzionale anche prima che il motore JS si carichi completamente (No FOUC).
+        3.  **Build Pipeline:** Rimozione delle dipendenze PostCSS dalla build di Vite. Vercel ora compila solo il JS/TS, trattando gli stili come asset statici immutabili.
+    - **Risultato:** Una configurazione di deploy "intoccabile" e robusta, immune agli aggiornamenti delle dipendenze di build.
 
 ---
 

@@ -157,7 +157,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen h-[100dvh] w-full text-gray-800 font-sans overflow-hidden" style={{ backgroundColor: 'var(--md-bg-light)' }}>
+    <div className="flex h-screen h-[100dvh] w-full text-gray-800 font-sans overflow-hidden bg-gray-50">
       {/* Protezione Background Services */}
       <ErrorBoundary>
         <NotificationScheduler />
