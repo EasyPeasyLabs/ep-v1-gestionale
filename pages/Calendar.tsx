@@ -345,10 +345,10 @@ const Calendar: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            <div className="flex justify-between items-center mb-6 flex-shrink-0">
+            <div className="flex justify-between items-center mb-4 md:mb-6 flex-shrink-0">
                 <div>
-                    <h1 className="text-3xl font-bold">Calendario</h1>
-                    <p className="mt-1 text-gray-500">Gestione lezioni extra e chiusure.</p>
+                    <h1 className="text-2xl md:text-3xl font-bold">Calendario</h1>
+                    <p className="mt-1 text-sm md:text-base text-gray-500">Gestione lezioni extra e chiusure.</p>
                 </div>
                 <div className="flex items-center gap-2">
                     {closures.length > 0 && (
@@ -361,25 +361,25 @@ const Calendar: React.FC = () => {
                         </button>
                     )}
                     <button onClick={() => { setEditingLesson(null); setIsLessonModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center">
-                        <PlusIcon /><span className="ml-2">Nuova Lezione</span>
+                        <PlusIcon /><span className="ml-2 hidden md:inline">Nuova Lezione</span><span className="md:hidden ml-1">Nuova</span>
                     </button>
                 </div>
             </div>
 
             <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 {/* Calendar Header */}
-                <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0 z-10 relative">
-                    <button onClick={handlePrevMonth} className="md-icon-btn bg-white shadow-sm hover:bg-gray-100">&lt;</button>
-                    <h2 className="text-xl font-bold text-gray-800 capitalize">
+                <div className="flex items-center justify-between p-2 md:p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0 z-10 relative">
+                    <button onClick={handlePrevMonth} className="md-icon-btn bg-white shadow-sm hover:bg-gray-100 p-1 md:p-2">&lt;</button>
+                    <h2 className="text-base md:text-xl font-bold text-gray-800 capitalize">
                         {currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
                     </h2>
-                    <button onClick={handleNextMonth} className="md-icon-btn bg-white shadow-sm hover:bg-gray-100">&gt;</button>
+                    <button onClick={handleNextMonth} className="md-icon-btn bg-white shadow-sm hover:bg-gray-100 p-1 md:p-2">&gt;</button>
                 </div>
 
                 {/* Days Header - STICKY */}
                 <div className="grid grid-cols-7 border-b border-gray-200 bg-gray-50 flex-shrink-0 z-10 shadow-sm relative">
                     {['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'].map(day => (
-                        <div key={day} className="py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">
+                        <div key={day} className="py-2 md:py-3 text-center text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">
                             {day}
                         </div>
                     ))}
@@ -404,22 +404,22 @@ const Calendar: React.FC = () => {
                                 <div 
                                     key={idx} 
                                     // Aumento altezza minima a 180px
-                                    className={`min-h-[180px] border-b border-r border-gray-100 p-2 flex flex-col relative transition-colors group ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'} ${isToday ? 'bg-indigo-50/30 animate-neon-pulse z-10' : ''}`}
+                                    className={`min-h-[80px] md:min-h-[180px] border-b border-r border-gray-100 p-1 md:p-2 flex flex-col relative transition-colors group ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'} ${isToday ? 'bg-indigo-50/30 animate-neon-pulse z-10' : ''}`}
                                     onClick={() => !closure && setManageClosureData({ date: dayItem })}
                                 >
-                                    <div className="flex justify-between items-start mb-2">
-                                        <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-700' } ${holidayName ? 'text-red-500' : ''}`}>
+                                    <div className="flex justify-between items-start mb-1 md:mb-2">
+                                        <span className={`text-xs md:text-sm font-bold w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-700' } ${holidayName ? 'text-red-500' : ''}`}>
                                             {dayItem.getDate()}
                                         </span>
                                         {closure ? (
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); setManageClosureData({ date: dayItem, closure }); }}
-                                                className="text-[9px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded border border-red-200 uppercase"
+                                                className="text-[8px] md:text-[9px] font-bold bg-red-100 text-red-700 px-1.5 md:px-2 py-0.5 rounded border border-red-200 uppercase"
                                             >
                                                 Chiuso
                                             </button>
                                         ) : holidayName ? (
-                                            <span className="text-[9px] font-bold text-red-400 uppercase truncate max-w-[80px]" title={holidayName}>{holidayName}</span>
+                                            <span className="text-[8px] md:text-[9px] font-bold text-red-400 uppercase truncate max-w-[80px]" title={holidayName}>{holidayName}</span>
                                         ) : (
                                             <div className="opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <button className="text-gray-300 hover:text-gray-500 text-xs font-bold">+</button>
@@ -428,15 +428,19 @@ const Calendar: React.FC = () => {
                                     </div>
 
                                     {/* Events Container */}
-                                    <div className="flex-1 space-y-0.5 overflow-y-auto custom-scrollbar pr-1">
+                                    <div className="flex-1 space-y-1 md:space-y-0.5 overflow-y-auto custom-scrollbar pr-0 md:pr-1">
                                         {dayEvents.map(evt => {
                                             const bgCol = evt.locationColor || '#94a3b8';
                                             const textCol = getTextColorForBg(bgCol);
                                             
-                                            // Costruzione Etichetta: Sede (3 char) + Orario
+                                            // Costruzione Etichetta Desktop: Sede (3 char) + Orario
                                             const locName = evt.locationName || '';
                                             const locCode = locName.length >= 3 ? locName.substring(0, 3).toUpperCase() : locName.toUpperCase();
-                                            const displayLabel = `${locCode} ${evt.startTime}`;
+                                            const desktopLabel = `${locCode} ${evt.startTime}`;
+                                            
+                                            // Costruzione Etichetta Mobile: Sede (3 char) + Ora (2 char)
+                                            const startHour = evt.startTime.split(':')[0];
+                                            const mobileLabel = `${locCode} ${startHour}`;
                                             
                                             // Tooltip: Lista completa partecipanti
                                             const tooltip = `${evt.startTime} - ${evt.locationName}\n${evt.studentNames?.join(', ') || evt.childName || evt.description}`;
@@ -445,19 +449,31 @@ const Calendar: React.FC = () => {
                                                 <div 
                                                     key={evt.displayId} 
                                                     onClick={(e) => handleEventClick(e, evt)}
-                                                    className="text-[10px] px-1.5 py-1 rounded shadow-sm cursor-pointer hover:opacity-80 truncate font-bold flex justify-between items-center transition-transform hover:scale-[1.02] border border-black/5"
+                                                    className="
+                                                        rounded shadow-sm cursor-pointer hover:opacity-80 font-bold flex items-center transition-transform hover:scale-[1.02] border border-black/5
+                                                        text-[9px] px-1 py-0.5 justify-center        
+                                                        md:text-[10px] md:px-1.5 md:py-1 md:justify-between
+                                                        mb-0.5 md:mb-0
+                                                    "
                                                     style={{ backgroundColor: bgCol, color: textCol }}
                                                     title={tooltip}
                                                 >
-                                                    <span className="truncate w-full flex items-center gap-1 leading-tight">
-                                                        {displayLabel}
+                                                    <span className="truncate w-full flex items-center gap-1 leading-tight justify-center md:justify-start">
+                                                        {/* Mobile View */}
+                                                        <span className="md:hidden">{mobileLabel}</span>
+                                                        {/* Desktop View */}
+                                                        <span className="hidden md:inline">{desktopLabel}</span>
+                                                        
                                                         {evt.studentNames && evt.studentNames.length > 1 && (
-                                                            <span className="text-[8px] bg-black/20 px-1 rounded-full min-w-[16px] text-center">
-                                                                {evt.studentNames.length}
-                                                            </span>
+                                                            <>
+                                                                <span className="text-[8px] bg-black/20 px-1 rounded-full min-w-[16px] text-center hidden md:inline-block">
+                                                                    {evt.studentNames.length}
+                                                                </span>
+                                                                {/* Mobile Indicator for Group REMOVED */}
+                                                            </>
                                                         )}
                                                         {evt.hasMergedProjects && (
-                                                            <span className="text-[8px] bg-white/30 px-1 rounded text-current">
+                                                            <span className="text-[8px] opacity-70 ml-0.5">
                                                                 ★
                                                             </span>
                                                         )}
