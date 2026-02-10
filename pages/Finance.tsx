@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus, InvoiceGap, RentAnalysisResult } from '../types';
 import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken } from '../services/financeService';
@@ -593,13 +594,23 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
         const globalUniqueLessons = new Set<string>();
 
+        // NEW LOGIC: Use appointment location as primary source of truth
         enrollments.forEach(enr => {
-            if (!enr.isQuoteBased && enr.locationId && locStats[enr.locationId]) {
+            if (!enr.isQuoteBased) {
                 (enr.appointments || []).forEach(app => {
                     if (new Date(app.date).getFullYear() === controllingYear && app.status === 'Present') {
-                        const lessonKey = `${app.date.split('T')[0]}_${app.startTime}_${enr.locationId}`;
-                        locStats[enr.locationId].uniqueLessonKeys.add(lessonKey);
-                        globalUniqueLessons.add(lessonKey);
+                        // Priority: App Location -> Enrollment Location
+                        const actualLocId = (app.locationId && app.locationId !== 'unassigned') 
+                            ? app.locationId 
+                            : (enr.locationId && enr.locationId !== 'unassigned' ? enr.locationId : '');
+
+                        if (actualLocId && locStats[actualLocId]) {
+                            // Unique Key: Date + StartTime + LocationID
+                            // Ensures multiple students in same slot count as 1 lesson
+                            const lessonKey = `${app.date.split('T')[0]}_${app.startTime}_${actualLocId}`;
+                            locStats[actualLocId].uniqueLessonKeys.add(lessonKey);
+                            globalUniqueLessons.add(lessonKey);
+                        }
                     }
                 });
             }

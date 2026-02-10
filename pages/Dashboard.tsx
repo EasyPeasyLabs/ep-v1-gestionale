@@ -1,13 +1,14 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
-import { getLessons } from '../services/calendarService'; 
+import { getLessons, getSchoolClosures } from '../services/calendarService'; 
 import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
 import { getUserPreferences, markFocusAsSeen } from '../services/profileService';
 import { auth } from '../firebase/config';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment } from '../types';
+import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment, SchoolClosure } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
@@ -17,6 +18,7 @@ import SuppliersIcon from '../components/icons/SuppliersIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import FocusModeConfigModal from '../components/FocusModeConfigModal';
 import FocusModePopup from '../components/FocusModePopup';
+import { getItalianHolidays, toLocalISOString } from '../utils/dateUtils';
 
 const calculateFuelRating = (distance: number) => {
     if (distance <= 5) return 5;
@@ -26,12 +28,8 @@ const calculateFuelRating = (distance: number) => {
     return 1;
 };
 
-const toLocalISOString = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
+// Use imported utility instead of redefining to ensure consistency
+// const toLocalISOString = (date: Date) => { ... } // Removed redundant definition
 
 const StatCard: React.FC<{ 
     title: string; 
@@ -162,6 +160,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [suppliersData, setSuppliersData] = useState<any[]>([]);
   const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
   const [manualLessonsData, setManualLessonsData] = useState<any[]>([]);
+  const [schoolClosures, setSchoolClosures] = useState<SchoolClosure[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
   const [top5Tab, setTop5Tab] = useState<'clients' | 'suppliers'>('clients');
@@ -173,17 +172,21 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
   const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
 
+  // Compute holidays for the current year once
+  const holidaysMap = useMemo(() => getItalianHolidays(new Date().getFullYear()), []);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [clients, suppliers, enrollments, manualLessons, transactions, notifs] = await Promise.all([
+        const [clients, suppliers, enrollments, manualLessons, transactions, notifs, closures] = await Promise.all([
           getClients(),
           getSuppliers(),
           getAllEnrollments(),
           getLessons(),
           getTransactions(),
-          getNotifications()
+          getNotifications(),
+          getSchoolClosures()
         ]);
         
         setClientsData(clients);
@@ -191,6 +194,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         setAllEnrollments(enrollments);
         setManualLessonsData(manualLessons);
         setNotifications(notifs);
+        setSchoolClosures(closures);
 
         const now = new Date();
         const startOfWeek = new Date(now);
@@ -201,6 +205,17 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
         // Consideriamo anche le Pending perché spesso la lezione si fa prima del saldo
         const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
+        
+        // --- COSTRUZIONE MAPPE PER FILTRO VALIDITÀ (Replicata dal Calendario) ---
+        const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
+        suppliers.forEach(s => {
+            s.locations.forEach((l: any) => {
+                const days = new Set<number>(l.availability?.map((a: any) => a.dayOfWeek) || []);
+                if (l.name) locationConfigMap.set(l.name.trim(), { days, closedAt: l.closedAt });
+            });
+        });
+        
+        const closureSet = new Set(closures.map(c => c.date));
 
         const daysData = [];
         const dayNames = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
@@ -209,11 +224,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             const currentDay = new Date(startOfWeek);
             currentDay.setDate(startOfWeek.getDate() + i);
             const currentDayStr = toLocalISOString(currentDay);
-            
+            const dayOfWeek = currentDay.getDay();
+
             // Usiamo un Set per contare gli "Slot Occupati" univoci
-            // Chiave = Orario_Location. 
-            // Se 3 bambini fanno lezione alle 16:00 in Sala A, conta come 1 slot occupato/lezione erogata.
-            // Esattamente come visualizzato nel Calendario.
             const uniqueSlots = new Set<string>();
 
             // 1. Appuntamenti da Iscrizioni
@@ -225,7 +238,26 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                          
                          // Conta solo se la data corrisponde e non è sospesa
                          if(appDateStr === currentDayStr && app.status !== 'Suspended') {
+                             
+                             // --- FILTRI VALIDITÀ CALENDARIO ---
+                             // 1. Chiusura Globale & Festività
+                             if (closureSet.has(appDateStr) || holidaysMap[appDateStr]) return;
+                             
                              const loc = (app.locationName || enr.locationName || 'N/D').trim();
+                             const config = locationConfigMap.get(loc);
+
+                             // 2. Chiusura/Dismissione Sede & Giorno Settimana
+                             if (config) {
+                                 let isClosedLocation = false;
+                                 if (config.closedAt) {
+                                     const closingDate = new Date(config.closedAt);
+                                     closingDate.setHours(0,0,0,0);
+                                     if (appDateObj >= closingDate) isClosedLocation = true;
+                                 }
+                                 if (isClosedLocation) return;
+                                 if (app.status === 'Scheduled' && !config.days.has(dayOfWeek)) return; 
+                             }
+
                              const key = `${app.startTime}_${loc}`;
                              uniqueSlots.add(key);
                          }
@@ -240,7 +272,20 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
                 if(mlDateStr === currentDayStr) {
                     if (ml.description && ml.description.startsWith('[SOSPESO]')) return;
+                    
+                    // Applicare filtri anche a lezioni manuali? (Il calendario le mostra ma "flaggate")
+                    // Se la scuola è chiusa (Festa), anche le extra non si fanno solitamente.
+                    if (closureSet.has(mlDateStr) || holidaysMap[mlDateStr]) return;
+                    
+                    // Check chiusura sede permanente
                     const loc = (ml.locationName || 'N/D').trim();
+                    const config = locationConfigMap.get(loc);
+                    if (config && config.closedAt) {
+                         const closingDate = new Date(config.closedAt);
+                         closingDate.setHours(0,0,0,0);
+                         if (mlDateObj >= closingDate) return;
+                    }
+
                     const key = `${ml.startTime}_${loc}`;
                     uniqueSlots.add(key);
                 }
@@ -261,7 +306,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     const handleDataUpdate = () => fetchData();
     window.addEventListener('EP_DataUpdated', handleDataUpdate);
     return () => window.removeEventListener('EP_DataUpdated', handleDataUpdate);
-  }, []);
+  }, [holidaysMap]); // Add dependency
 
   const checkFocusModeTrigger = async () => {
       try {
@@ -355,91 +400,147 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
   const lessonsMetrics = useMemo(() => {
       const now = new Date();
-      const currentMonth = now.getMonth();
-      const currentYear = now.getFullYear();
+      
+      // Boundaries for strict month filtering
+      const currentMonthStr = toLocalISOString(now).substring(0, 7); // YYYY-MM
       const todayStr = toLocalISOString(now);
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
       
       const uniqueSlots = new Set<string>();
       const doneSlots = new Set<string>();
 
+      // --- 1. PREPARE LOOKUP MAPS FOR VALIDITY CHECK ---
+      const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
+      suppliersData.forEach(s => {
+          s.locations.forEach((l: any) => {
+              const days = new Set<number>(l.availability?.map((a: any) => a.dayOfWeek) || []);
+              if (l.name) locationConfigMap.set(l.name.trim().toLowerCase(), { days, closedAt: l.closedAt });
+          });
+      });
+      const closureSet = new Set(schoolClosures.map(c => c.date));
+
+      // 2. PROCESS ENROLLMENTS
       allEnrollments.forEach(enr => {
           if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
               if (enr.appointments) {
                   enr.appointments.forEach(app => {
                       if (app.status === 'Suspended') return;
 
+                      // Extract date parts strictly
                       const d = new Date(app.date);
-                      if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                          const dateKey = toLocalISOString(d);
-                          const locKey = (app.locationName || enr.locationName || 'N/D').trim();
-                          const slotKey = `${dateKey}_${app.startTime}_${locKey}`;
-                          
-                          uniqueSlots.add(slotKey);
+                      const appDateStr = toLocalISOString(d); // YYYY-MM-DD
 
-                          let isDone = false;
+                      // STRICT MONTH FILTER
+                      if (!appDateStr.startsWith(currentMonthStr)) return;
                           
-                          if (app.status === 'Present') {
-                              isDone = true;
-                          } else if (dateKey < todayStr) {
-                              isDone = true;
-                          } else if (dateKey === todayStr) {
-                              const [endH, endM] = app.endTime.split(':').map(Number);
-                              const endMinutes = endH * 60 + endM;
-                              if (currentMinutes >= endMinutes) {
-                                  isDone = true;
-                              }
-                          }
+                      // --- APPLY VALIDITY FILTERS ---
+                      // 1. Global Closure & Holidays
+                      if (closureSet.has(appDateStr) || holidaysMap[appDateStr]) return; 
 
-                          if (isDone) {
-                              doneSlots.add(slotKey);
+                      const locKeyRaw = (app.locationName || enr.locationName || 'N/D');
+                      const locKey = locKeyRaw.trim().toLowerCase();
+                      const config = locationConfigMap.get(locKey);
+                      
+                      // 2. Location Checks
+                      if (config) {
+                          if (config.closedAt) {
+                              const closingDate = new Date(config.closedAt);
+                              closingDate.setHours(0,0,0,0);
+                              if (d >= closingDate) return;
                           }
+                          // Day of week check (only for future scheduled, present ones happened)
+                          if (app.status === 'Scheduled' && !config.days.has(d.getDay())) return;
+                      }
+
+                      // LOGICA Data_Ora_Sede per unicità slot
+                      // Normalizzazione Key: Date_Time_Location(lowercase)
+                      const slotKey = `${appDateStr}_${app.startTime}_${locKey}`;
+                      
+                      uniqueSlots.add(slotKey);
+
+                      let isDone = false;
+                      
+                      if (app.status === 'Present') {
+                          isDone = true;
+                      } else if (appDateStr < todayStr) {
+                          isDone = true;
+                      } else if (appDateStr === todayStr) {
+                          const [endH, endM] = app.endTime.split(':').map(Number);
+                          const endMinutes = endH * 60 + endM;
+                          if (currentMinutes >= endMinutes) {
+                              isDone = true;
+                          }
+                      }
+
+                      if (isDone) {
+                          doneSlots.add(slotKey);
                       }
                   });
               }
           }
       });
 
-      let extraTotal = 0;
-      let extraDone = 0;
-
+      // 3. PROCESS MANUAL LESSONS
       manualLessonsData.forEach(ml => {
           if (ml.description && ml.description.startsWith('[SOSPESO]')) return;
+          
+          // FIX: Ignora lezioni manuali che hanno attendees (sono lezioni di progetto/iscrizione, già contate sopra)
+          if (ml.attendees && ml.attendees.length > 0) return;
 
           const d = new Date(ml.date);
-          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-              extraTotal++;
+          const mlDateStr = toLocalISOString(d);
+
+          // STRICT MONTH FILTER
+          if (!mlDateStr.startsWith(currentMonthStr)) return;
               
-              const dateKey = toLocalISOString(d);
-              let isDone = false;
-              
-              if (dateKey < todayStr) {
+          // --- APPLY FILTERS ---
+          if (closureSet.has(mlDateStr) || holidaysMap[mlDateStr]) return;
+          
+          const locKeyRaw = (ml.locationName || 'N/D');
+          const locKey = locKeyRaw.trim().toLowerCase();
+
+          const config = locationConfigMap.get(locKey);
+          if (config && config.closedAt) {
+               const closingDate = new Date(config.closedAt);
+               closingDate.setHours(0,0,0,0);
+               if (d >= closingDate) return;
+          }
+
+          const slotKey = `${mlDateStr}_${ml.startTime}_${locKey}`;
+          uniqueSlots.add(slotKey);
+          
+          let isDone = false;
+          
+          if (mlDateStr < todayStr) {
+              isDone = true;
+          } else if (mlDateStr === todayStr) {
+              const [endH, endM] = ml.endTime.split(':').map(Number);
+              const endMinutes = endH * 60 + endM;
+              if (currentMinutes >= endMinutes) {
                   isDone = true;
-              } else if (dateKey === todayStr) {
-                  const [endH, endM] = ml.endTime.split(':').map(Number);
-                  const endMinutes = endH * 60 + endM;
-                  if (currentMinutes >= endMinutes) {
-                      isDone = true;
-                  }
               }
-              
-              if (isDone) {
-                  extraDone++;
-              }
+          }
+          
+          if (isDone) {
+              doneSlots.add(slotKey);
           }
       });
 
-      const totalCount = uniqueSlots.size + extraTotal;
-      const doneCount = doneSlots.size + extraDone;
+      const totalCount = uniqueSlots.size;
+      const doneCount = doneSlots.size;
       const upcomingCount = totalCount - doneCount;
+      
+      // Label Mese Corrente
+      const currentMonthName = now.toLocaleDateString('it-IT', { month: 'long' });
+      const capitalizedMonth = currentMonthName.charAt(0).toUpperCase() + currentMonthName.slice(1);
 
       return { 
           total: totalCount, 
           done: doneCount, 
           upcoming: upcomingCount,
-          breakdown: { standard: uniqueSlots.size, extra: extraTotal }
+          monthLabel: `(${capitalizedMonth})`
       };
-  }, [allEnrollments, manualLessonsData]);
+  }, [allEnrollments, manualLessonsData, suppliersData, schoolClosures, holidaysMap]);
 
   const supplierMetrics = useMemo(() => {
       const totalCensus = suppliersData.length;
@@ -698,7 +799,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     <StatCard 
                         title="Lezioni Mese" 
                         value={lessonsMetrics.total}
-                        valueLabel="(tot. mese)"
+                        valueLabel={lessonsMetrics.monthLabel}
                         onClick={() => setCurrentPage && setCurrentPage('ActivityLog')}
                         icon={<ChecklistIcon />}
                         subtext={

@@ -60,7 +60,12 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
             await setDoc(settingsDocRef, defaultCompanyInfo);
             return defaultCompanyInfo;
         }
-    } catch (error) {
+    } catch (error: any) {
+        // Gestione graceful per modalità offline
+        if (error.code === 'unavailable' || error.message?.includes('offline')) {
+             console.warn("Firestore offline: Loaded default company info.");
+             return defaultCompanyInfo;
+        }
         console.error("Error fetching company info:", error);
         return defaultCompanyInfo;
     }

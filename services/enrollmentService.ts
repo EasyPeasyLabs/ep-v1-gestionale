@@ -3,6 +3,7 @@ import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus } from '../types';
+import { isItalianHoliday, toLocalISOString } from '../utils/dateUtils';
 
 const enrollmentCollectionRef = collection(db, 'enrollments');
 
@@ -131,15 +132,14 @@ const generateTheoreticalAppointments = (
     const appointments: Appointment[] = [];
     const startObj = new Date(startDate);
     let current = new Date(startObj);
-    const dayOfWeek = current.getDay();
-    let count = 0;
     
     // Safety break to prevent infinite loops if something goes wrong
     let loops = 0; 
+    let count = 0;
     
     while (count < totalLessons && loops < 100) {
         // Verifica se il giorno è corretto (dovrebbe esserlo dato che incrementiamo di 7)
-        // E verifica festivi
+        // E verifica festivi (USING CENTRALIZED UTILS)
         if (!isItalianHoliday(current)) {
             appointments.push({
                 lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -173,20 +173,15 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
             // Map old appointments by Date (YYYY-MM-DD) for quick lookup
             const historyMap = new Map<string, Appointment>();
             oldAppointments.forEach(a => {
-                const k = new Date(a.date).toISOString().split('T')[0];
+                const k = a.date.split('T')[0];
                 historyMap.set(k, a);
             });
 
             // Determine base parameters for new schedule
-            // Use existing enrollment's location/time if not provided in update payload
-            // CAUTION: If enrollment.appointments is passed (from form state), it might contain the OLD dates. We ignore it for generation.
-            
-            // Try to find a reference appointment for time info
             const refApp = oldAppointments.length > 0 ? oldAppointments[0] : null;
             const locId = enrollment.locationId || oldData.locationId || 'unassigned';
             const locName = enrollment.locationName || oldData.locationName || 'Sede Non Definita';
             const locColor = enrollment.locationColor || oldData.locationColor || '#ccc';
-            // Use updated appointments array first element if available to get time, else fallback to old
             const timeSource = (enrollment.appointments && enrollment.appointments.length > 0) ? enrollment.appointments[0] : refApp;
             const startTime = timeSource?.startTime || '16:00';
             const endTime = timeSource?.endTime || '18:00';
@@ -206,7 +201,7 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
 
             // Merge Logic
             const mergedAppointments: Appointment[] = theoreticalSchedule.map(newApp => {
-                const key = new Date(newApp.date).toISOString().split('T')[0];
+                const key = newApp.date.split('T')[0];
                 const historicalMatch = historyMap.get(key);
 
                 if (historicalMatch) {
@@ -224,9 +219,6 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
 
             enrollment.appointments = mergedAppointments;
             
-            // Also update lessonsRemaining based on new schedule
-            // Count how many are NOT 'Present' (or 'Absent' without recovery logic, simplified here)
-            // Ideally re-calculate based on what's left
             const used = mergedAppointments.filter(a => a.status === 'Present').length;
             enrollment.lessonsRemaining = Math.max(0, enrollment.lessonsTotal - used);
 
@@ -248,28 +240,6 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
 export const deleteEnrollment = async (id: string): Promise<void> => {
     const enrollmentDoc = doc(db, 'enrollments', id);
     await deleteDoc(enrollmentDoc);
-};
-
-const isItalianHoliday = (date: Date): boolean => {
-    const d = date.getDate();
-    const m = date.getMonth() + 1;
-    const y = date.getFullYear();
-    if (d === 1 && m === 1) return true;
-    if (d === 6 && m === 1) return true;
-    if (d === 25 && m === 4) return true;
-    if (d === 1 && m === 5) return true;
-    if (d === 2 && m === 6) return true;
-    if (d === 15 && m === 8) return true;
-    if (d === 1 && m === 11) return true;
-    if (d === 8 && m === 12) return true;
-    if (d === 25 && m === 12) return true;
-    if (d === 26 && m === 12) return true;
-    const easterMondays: Record<number, string> = {
-        2024: '4-1', 2025: '4-21', 2026: '4-6', 2027: '3-29', 2028: '4-17', 2029: '4-2', 2030: '4-22'
-    };
-    const key = `${m}-${d}`;
-    if (easterMondays[y] === key) return true;
-    return false;
 };
 
 // --- LOGICA ASSENZE AVANZATA (Lost vs Recover) ---
@@ -298,29 +268,22 @@ export const registerAbsence = async (
     let newLessonsRemaining = enrollment.lessonsRemaining;
 
     // LOGICA DELTA CREDITI
-    // Se era 'Present', il credito era stato scalato. Lo "restituiamo" virtualmente prima di ri-applicare la logica.
     if (previousStatus === 'Present') {
         newLessonsRemaining += 1;
     }
 
     // 2. Logica condizionale Strategia
     if (strategy === 'lost') {
-        // ASSENZA SECCA: Il credito viene bruciato (decremento)
         newLessonsRemaining -= 1;
     } 
-    // Se strategy == recover (auto/manual), non scaliamo nulla (il credito rimane "in pancia" per il nuovo slot)
 
-    // Safety check boundaries
     newLessonsRemaining = Math.max(0, Math.min(enrollment.lessonsTotal, newLessonsRemaining));
 
     if (strategy === 'recover_auto' || strategy === 'recover_manual') {
-        // RECUPERO: Generiamo un nuovo slot
-        
         const originalApp = appointments[appIndex];
         let newAppointment: Appointment | null = null;
 
         if (strategy === 'recover_manual' && manualDetails) {
-            // RECUPERO MANUALE
             newAppointment = {
                 lessonId: `REC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                 date: new Date(manualDetails.date).toISOString(),
@@ -329,21 +292,19 @@ export const registerAbsence = async (
                 locationId: manualDetails.locationId,
                 locationName: manualDetails.locationName,
                 locationColor: manualDetails.locationColor,
-                childName: originalApp.childName, // Opzionale: aggiungere " (Recupero)"
+                childName: originalApp.childName,
                 status: 'Scheduled'
             };
         } else {
-            // RECUPERO AUTOMATICO (Slot successivo)
-            // Cerca l'ultimo appuntamento pianificato per calcolare da lì, oppure da oggi
-            // Qui prendiamo la data dell'assenza come base
+            // RECUPERO AUTOMATICO
             let nextDate = new Date(originalApp.date);
             const originalDayOfWeek = nextDate.getDay();
             let foundDate = false;
             let safetyCounter = 0;
             
-            while (!foundDate && safetyCounter < 52) { // Max 1 anno avanti
+            while (!foundDate && safetyCounter < 52) { 
                 nextDate.setDate(nextDate.getDate() + 1);
-                // Cerca stesso giorno della settimana e non festivo
+                // Cerca stesso giorno della settimana e non festivo (USING CENTRALIZED UTILS)
                 if (nextDate.getDay() === originalDayOfWeek && !isItalianHoliday(nextDate)) {
                     foundDate = true;
                 }
@@ -367,12 +328,10 @@ export const registerAbsence = async (
 
         if (newAppointment) {
             appointments.push(newAppointment);
-            // Riordina cronologicamente
             appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         }
     }
 
-    // UPDATE DATE BOUNDARIES (Extend if recover goes beyond)
     let newEndDate = enrollment.endDate;
     if (appointments.length > 0) {
         appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -396,30 +355,10 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
     if (appIndex === -1) throw new Error("Lezione non trovata");
     if (appointments[appIndex].status === 'Present') return;
     
-    // Check if coming from 'Absent' state (which might have kept credit if it was pending recovery, 
-    // BUT usually 'Absent' means credit handled. If we switch Absent -> Present, we must consume credit IF it wasn't consumed.
-    // Simplifying: Present always consumes 1 credit.
-    // We assume lessonsRemaining is currently correct based on previous state. 
-    // If it was Scheduled, lessonsRemaining included this lesson.
-    // If it was Absent (Lost), lessonsRemaining was decremented. Swapping to Present keeps it decremented (used).
-    // If it was Absent (Recovered), lessonsRemaining was preserved. Swapping to Present should decrement it.
-    // This state switching logic is complex. 
-    // SIMPLE RULE: 'Present' always implies -1 to the *potential* total. 
-    // Current logic: Just decrement.
-    
     appointments[appIndex].status = 'Present';
     appointments[appIndex].locationId = enrollment.locationId;
     appointments[appIndex].locationName = enrollment.locationName;
     appointments[appIndex].locationColor = enrollment.locationColor;
-    
-    // We only decrement if it wasn't already counted as "used".
-    // Scheduled -> Present: Decrement.
-    // Absent (Lost) -> Present: No change (already decremented).
-    // Absent (Recovered) -> Present: Decrement (was preserved).
-    // To be safe, let's recalculate based on total.
-    
-    const usedCount = appointments.filter(a => a.status === 'Present' || (a.status === 'Absent' && !a.lessonId.startsWith('REC-') /* Heuristic */)).length;
-    // Actually, safer to just trust the current counter - 1 if moving from Scheduled.
     
     const newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
     await updateDoc(enrollmentDocRef, { appointments, lessonsRemaining: newRemaining });
@@ -453,8 +392,7 @@ export const deleteAppointment = async (enrollmentId: string, appointmentLessonI
     const previousStatus = appointments[appIndex].status;
     appointments.splice(appIndex, 1);
     let newRemaining = enrollment.lessonsRemaining;
-    // If we delete a 'Present' or 'Absent (Lost)', we should refund the credit?
-    // Usually deleting an appointment means "it never happened/cancelled". Refund credit.
+    
     if (previousStatus === 'Present' || previousStatus === 'Absent') {
         newRemaining = Math.min(enrollment.lessonsTotal, enrollment.lessonsRemaining + 1);
     }
@@ -472,13 +410,10 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
     const currentStatus = appointments[appIndex].status;
     let newRemaining = enrollment.lessonsRemaining;
     
-    // Logic toggle: Present <-> Absent (Lost)
     if (currentStatus === 'Present') {
         appointments[appIndex].status = 'Absent';
-        // No change in remaining (both consume slot)
     } else if (currentStatus === 'Absent') {
         appointments[appIndex].status = 'Present';
-        // No change in remaining
     } else if (currentStatus === 'Scheduled') {
         appointments[appIndex].status = 'Present';
         newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
@@ -524,7 +459,6 @@ export const addRecoveryLessons = async (
     }
     appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
-    // Extend End Date if needed
     const newEndDate = appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate;
 
     await updateDoc(enrollmentDocRef, { appointments, endDate: newEndDate });
@@ -547,7 +481,6 @@ export const activateEnrollmentWithLocation = async (
     const enrollment = enrollmentSnap.data() as Enrollment;
     let currentDate = new Date(enrollment.startDate);
     
-    // Find the first occurrence of the specific dayOfWeek
     while (currentDate.getDay() !== dayOfWeek) {
         currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -556,7 +489,6 @@ export const activateEnrollmentWithLocation = async (
     const lessonsTotal = enrollment.lessonsTotal;
     let generatedCount = 0;
     
-    // Generate until quota filled
     while (generatedCount < lessonsTotal) {
         if (!isItalianHoliday(currentDate)) {
             appointments.push({
@@ -572,7 +504,6 @@ export const activateEnrollmentWithLocation = async (
             });
             generatedCount++;
         }
-        // Advance 1 week regardless (checks holiday next loop)
         currentDate.setDate(currentDate.getDate() + 7);
     }
 
@@ -583,7 +514,6 @@ export const activateEnrollmentWithLocation = async (
         locationName,
         locationColor,
         appointments: appointments,
-        // Override dates to match reality of slots
         startDate: appointments[0]?.date || enrollment.startDate, 
         endDate: appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate
     });
@@ -635,10 +565,9 @@ export const bulkUpdateLocation = async (
 
 export const suspendLessonsForClosure = async (closureDate: string): Promise<void> => {
     const batch = writeBatch(db);
-    const targetDate = new Date(closureDate);
+    // CRITICAL: Usa toLocalISOString o split per evitare shift di fuso orario
     const targetDateStr = closureDate.split('T')[0];
 
-    // 1. Process Enrollments
     const enrollmentsSnapshot = await getDocs(enrollmentCollectionRef);
     enrollmentsSnapshot.docs.forEach(docSnap => {
         const enr = docSnap.data() as Enrollment;
@@ -646,7 +575,6 @@ export const suspendLessonsForClosure = async (closureDate: string): Promise<voi
             let modified = false;
             const newApps = enr.appointments.map(app => {
                 const appDateStr = app.date.split('T')[0];
-                // Only suspend Scheduled lessons
                 if (appDateStr === targetDateStr && app.status === 'Scheduled') {
                     modified = true;
                     return { ...app, status: 'Suspended' as AppointmentStatus };
@@ -659,10 +587,7 @@ export const suspendLessonsForClosure = async (closureDate: string): Promise<voi
         }
     });
 
-    // 2. Process Manual Lessons (Extra)
-    // Note: Manual lessons are their own docs. We add a field `isSuspended` or update UI logic?
-    // Since `Lesson` type doesn't have status, we assume manual lessons are simply "events".
-    // For this implementation, we will append "[SOSPESO]" to description to indicate closure.
+    // Process Manual Lessons
     const lessonsCollectionRef = collection(db, 'lessons');
     const lessonsSnapshot = await getDocs(lessonsCollectionRef);
     lessonsSnapshot.docs.forEach(docSnap => {
@@ -671,6 +596,50 @@ export const suspendLessonsForClosure = async (closureDate: string): Promise<voi
         if (lessonDateStr === targetDateStr) {
             if (!lesson.description.startsWith('[SOSPESO]')) {
                 batch.update(docSnap.ref, { description: `[SOSPESO] ${lesson.description}` });
+            }
+        }
+    });
+
+    await batch.commit();
+};
+
+export const restoreSuspendedLessons = async (closureDate: string): Promise<void> => {
+    const batch = writeBatch(db);
+    // CRITICAL FIX: Assicuriamoci di comparare solo la parte data YYYY-MM-DD
+    // closureDate deve arrivare come YYYY-MM-DD o ISO string
+    const targetDateStr = closureDate.split('T')[0];
+
+    // 1. Process Enrollments (Revert Suspended -> Scheduled)
+    const enrollmentsSnapshot = await getDocs(enrollmentCollectionRef);
+    enrollmentsSnapshot.docs.forEach(docSnap => {
+        const enr = docSnap.data() as Enrollment;
+        if (enr.appointments && enr.appointments.length > 0) {
+            let modified = false;
+            const newApps = enr.appointments.map(app => {
+                const appDateStr = app.date.split('T')[0];
+                // Compare loose date
+                if (appDateStr === targetDateStr && app.status === 'Suspended') {
+                    modified = true;
+                    return { ...app, status: 'Scheduled' as AppointmentStatus };
+                }
+                return app;
+            });
+            if (modified) {
+                batch.update(docSnap.ref, { appointments: newApps });
+            }
+        }
+    });
+
+    // 2. Process Manual Lessons (Remove [SOSPESO])
+    const lessonsCollectionRef = collection(db, 'lessons');
+    const lessonsSnapshot = await getDocs(lessonsCollectionRef);
+    lessonsSnapshot.docs.forEach(docSnap => {
+        const lesson = docSnap.data() as Lesson;
+        const lessonDateStr = lesson.date.split('T')[0];
+        if (lessonDateStr === targetDateStr) {
+            if (lesson.description.startsWith('[SOSPESO]')) {
+                const restoredDesc = lesson.description.replace('[SOSPESO] ', '').replace('[SOSPESO]', '').trim();
+                batch.update(docSnap.ref, { description: restoredDesc });
             }
         }
     });
@@ -699,12 +668,10 @@ export const rescheduleSuspendedLesson = async (
     if (strategy === 'move_to_date') {
         targetDateObj = new Date(newDate);
     } else {
-        // Append to end: Find last appointment date and add 1 week
         const sortedApps = [...appointments].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         const lastApp = sortedApps[sortedApps.length - 1];
         const lastDate = new Date(lastApp.date);
         
-        // Find next valid slot (1 week later, skipping holidays)
         let candidateDate = new Date(lastDate);
         candidateDate.setDate(candidateDate.getDate() + 7);
         while (isItalianHoliday(candidateDate)) {
@@ -713,19 +680,13 @@ export const rescheduleSuspendedLesson = async (
         targetDateObj = candidateDate;
     }
 
-    // Create rescheduled appointment
     const newApp: Appointment = {
         ...originalApp,
         date: targetDateObj.toISOString(),
         status: 'Scheduled',
-        // Preserve original time/location unless specified otherwise
     };
 
-    // Remove old suspended one or update it? 
-    // Requirement says "reschedule", so we replace the suspended one with the new one at new date
     appointments[appIndex] = newApp;
-    
-    // Sort and update end date
     appointments.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const newEndDate = appointments[appointments.length - 1].date;
 

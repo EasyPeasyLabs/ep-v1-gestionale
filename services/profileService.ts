@@ -13,7 +13,12 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
             return docSnap.data() as UserPreferences;
         }
         return {};
-    } catch (error) {
+    } catch (error: any) {
+        // Gestione graceful per modalità offline
+        if (error.code === 'unavailable' || error.message?.includes('offline')) {
+             console.warn("Firestore offline: Loaded default user preferences.");
+             return {};
+        }
         console.error("Error fetching user preferences:", error);
         return {};
     }

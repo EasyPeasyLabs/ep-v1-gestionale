@@ -22,7 +22,10 @@ interface SuspendedItem {
 }
 
 const ClosureWizard: React.FC<ClosureWizardProps> = ({ date, onClose }) => {
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(true); // Initial load
+    const [processing, setProcessing] = useState(false); // Action processing
+    const [success, setSuccess] = useState(false); // Success state
+
     const [suspendedItems, setSuspendedItems] = useState<SuspendedItem[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [action, setAction] = useState<'append' | 'move'>('append');
@@ -83,7 +86,7 @@ const ClosureWizard: React.FC<ClosureWizardProps> = ({ date, onClose }) => {
 
     const handleProcess = async () => {
         if (selectedIds.length === 0) return;
-        setLoading(true);
+        setProcessing(true);
         
         try {
             const promises = selectedIds.map(id => {
@@ -99,18 +102,21 @@ const ClosureWizard: React.FC<ClosureWizardProps> = ({ date, onClose }) => {
                     );
                 } 
                 // Manual lessons handling: Update date directly (Simplified for now)
-                // In a real app we'd have a specific service for manual lesson move
                 return Promise.resolve(); 
             });
 
             await Promise.all(promises);
-            alert("Riprogrammazione completata!");
-            onClose();
+            
+            // Success Feedback Sequence
+            setSuccess(true);
+            setTimeout(() => {
+                onClose();
+            }, 1500);
+
         } catch (e) {
             console.error(e);
             alert("Errore durante la riprogrammazione.");
-        } finally {
-            setLoading(false);
+            setProcessing(false);
         }
     };
 
@@ -127,7 +133,7 @@ const ClosureWizard: React.FC<ClosureWizardProps> = ({ date, onClose }) => {
                 <p className="text-sm text-red-700">Lezioni sospese del {date.toLocaleDateString()}</p>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className={`flex-1 overflow-y-auto p-6 space-y-6 transition-opacity ${processing ? 'opacity-50 pointer-events-none' : ''}`}>
                 {suspendedItems.length === 0 ? (
                     <div className="text-center py-10 text-gray-500 italic">
                         Nessuna lezione sospesa trovata per questa data.
@@ -184,15 +190,29 @@ const ClosureWizard: React.FC<ClosureWizardProps> = ({ date, onClose }) => {
                 )}
             </div>
 
-            <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
-                <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
-                <button 
-                    onClick={handleProcess} 
-                    disabled={selectedIds.length === 0 || (action === 'move' && !moveDate)} 
-                    className="md-btn md-btn-raised md-btn-primary"
-                >
-                    Applica Modifiche
-                </button>
+            <div className="p-4 border-t bg-gray-50 flex justify-between items-center gap-2">
+                <button onClick={onClose} disabled={processing} className="md-btn md-btn-flat">Chiudi</button>
+                
+                {success ? (
+                    <div className="flex-1 bg-green-100 text-green-700 px-4 py-2 rounded-lg font-bold text-center animate-fade-in border border-green-200 shadow-inner">
+                        ✓ Riprogrammazione Completata!
+                    </div>
+                ) : (
+                    <button 
+                        onClick={handleProcess} 
+                        disabled={selectedIds.length === 0 || (action === 'move' && !moveDate) || processing} 
+                        className="md-btn md-btn-raised md-btn-primary min-w-[180px] flex justify-center items-center gap-2"
+                    >
+                        {processing ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                <span>Elaborazione...</span>
+                            </>
+                        ) : (
+                            'Applica Modifiche'
+                        )}
+                    </button>
+                )}
             </div>
         </div>
     );
