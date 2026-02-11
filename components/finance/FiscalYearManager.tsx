@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { FiscalYear, Transaction, Invoice, DocumentStatus, TransactionType, InvoiceInput, PaymentMethod } from '../../types';
+import { FiscalYear, Transaction, Invoice, DocumentStatus, TransactionType, InvoiceInput, PaymentMethod, TransactionCategory } from '../../types';
 import { getFiscalYears, closeFiscalYear, reopenFiscalYear } from '../../services/fiscalYearService';
 import { addInvoice } from '../../services/financeService'; 
 import ConfirmModal from '../ConfirmModal';
@@ -53,11 +54,35 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
         const start = new Date(selectedYear, 0, 1);
         const end = new Date(selectedYear, 11, 31, 23, 59, 59);
 
-        const yearTrans = transactions.filter(t => !t.isDeleted && new Date(t.date) >= start && new Date(t.date) <= end);
-        const yearInvoices = invoices.filter(i => !i.isDeleted && !i.isGhost && new Date(i.issueDate) >= start && new Date(i.issueDate) <= end);
+        // Filter transactions for CASH FLOW (Incassato) - Exclude Capital
+        const yearTrans = transactions.filter(t => 
+            !t.isDeleted && 
+            new Date(t.date) >= start && 
+            new Date(t.date) <= end
+        );
+        
+        // Filter Invoices for FISCAL REVENUE (Fatturato)
+        const yearInvoices = invoices.filter(i => 
+            !i.isDeleted && 
+            !i.isGhost && 
+            new Date(i.issueDate) >= start && 
+            new Date(i.issueDate) <= end
+        );
 
-        const revenue = yearTrans.filter(t => t.type === TransactionType.Income).reduce((acc, t) => acc + t.amount, 0);
-        const expenses = yearTrans.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => acc + t.amount, 0);
+        // Cash Revenue (Incassato)
+        const revenue = yearTrans
+            .filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+            
+        // Expenses
+        const expenses = yearTrans
+            .filter(t => t.type === TransactionType.Expense)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+            
+        // Invoiced Revenue (Fatturato Fiscale)
+        const invoicedTotal = yearInvoices.reduce((acc, i) => acc + (Number(i.totalAmount) || 0), 0);
+
+        // Profit (Cash based)
         const profit = revenue - expenses;
 
         // Check Integrità Base
@@ -105,7 +130,16 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
             integrityIssues.push(`SALTATA NUMERAZIONE: Mancano le fatture n. ${gaps.join(', ')}`);
         }
 
-        return { revenue, expenses, profit, integrityIssues, docCount: yearInvoices.length, transCount: yearTrans.length, gaps };
+        return { 
+            revenue, // Incassato
+            invoicedTotal, // Fatturato
+            expenses, 
+            profit, 
+            integrityIssues, 
+            docCount: yearInvoices.length, 
+            transCount: yearTrans.length, 
+            gaps 
+        };
     }, [selectedYear, transactions, invoices]);
 
     const existingYearRecord = years.find(y => y.year === selectedYear);
@@ -121,8 +155,9 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
         setLoading(true);
         try {
             if (confirmAction.type === 'close') {
+                // When closing, save the INVOICED revenue as official total revenue for fiscal record
                 await closeFiscalYear(confirmAction.year, {
-                    totalRevenue: simulation.revenue,
+                    totalRevenue: simulation.invoicedTotal, // Use Invoiced for tax snapshot
                     totalExpenses: simulation.expenses,
                     netProfit: simulation.profit,
                     taxes: 0 
@@ -231,9 +266,22 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                         <p className="text-xs font-bold text-slate-400 uppercase">BILANCIO {selectedYear}</p>
                         <div className="mt-2 space-y-1">
-                            <div className="flex justify-between text-sm"><span>Entrate:</span> <span className="font-bold text-green-700">{simulation.revenue.toFixed(2)}€</span></div>
-                            <div className="flex justify-between text-sm"><span>Uscite:</span> <span className="font-bold text-red-700">{simulation.expenses.toFixed(2)}€</span></div>
-                            <div className="border-t pt-1 mt-1 flex justify-between text-sm font-black"><span>Utile:</span> <span>{simulation.profit.toFixed(2)}€</span></div>
+                            <div className="flex justify-between text-sm">
+                                <span>Incassato (Cassa):</span> 
+                                <span className="font-bold text-indigo-700">{simulation.revenue.toFixed(2)}€</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span>Fatturato (Fiscale):</span> 
+                                <span className="font-bold text-green-700">{simulation.invoicedTotal.toFixed(2)}€</span>
+                            </div>
+                            <div className="flex justify-between text-sm border-t pt-1 border-slate-200">
+                                <span>Uscite:</span> 
+                                <span className="font-bold text-red-700">{simulation.expenses.toFixed(2)}€</span>
+                            </div>
+                            <div className="border-t pt-1 mt-1 flex justify-between text-sm font-black">
+                                <span>Utile Cassa:</span> 
+                                <span>{simulation.profit.toFixed(2)}€</span>
+                            </div>
                         </div>
                     </div>
 

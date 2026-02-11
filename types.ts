@@ -304,6 +304,7 @@ export interface CompanyInfo {
     satispay: string;
     googlePay: string;
     klarna: string;
+    currentBankBalance?: number; // Nuovo campo per saldo reale C/C
 }
 
 export interface SubscriptionStatusConfig {

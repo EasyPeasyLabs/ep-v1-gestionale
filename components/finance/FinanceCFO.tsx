@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import CalculatorIcon from '../icons/CalculatorIcon';
 import SparklesIcon from '../icons/SparklesIcon';
 
@@ -11,6 +11,8 @@ interface FinanceCFOProps {
     setTargetMonthlyNet: (v: number) => void;
     year: number;
     onYearChange: (year: number) => void;
+    currentBankBalance?: number; // Prop esistente che contiene il dato dal DB
+    onUpdateBankBalance?: (val: number) => void; // Funzione per salvare
 }
 
 // Local Tooltip Component for educational context
@@ -27,8 +29,24 @@ const FiscalTooltip: React.FC<{ text: string }> = ({ text }) => (
 const FinanceCFO: React.FC<FinanceCFOProps> = ({ 
     stats, simulatorData, reverseEngineering, 
     targetMonthlyNet, setTargetMonthlyNet,
-    year, onYearChange
+    year, onYearChange,
+    currentBankBalance = 0,
+    onUpdateBankBalance
 }) => {
+    
+    // Local state for the input to prevent jitters, syncs with prop
+    const [localBankBalance, setLocalBankBalance] = useState(currentBankBalance);
+
+    useEffect(() => {
+        setLocalBankBalance(currentBankBalance);
+    }, [currentBankBalance]);
+
+    const handleBalanceBlur = () => {
+        if (onUpdateBankBalance && localBankBalance !== currentBankBalance) {
+            onUpdateBankBalance(localBankBalance);
+        }
+    };
+
     const availableYears = useMemo(() => {
         const currentYear = new Date().getFullYear();
         const years = [];
@@ -38,14 +56,19 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
         return years;
     }, []);
 
-    // Calcolo Liquidità Reale vs Target
-    const currentLiquidity = (stats.revenue || 0) - (stats.expenses || 0);
+    // Calcolo Liquidità Reale (Registro App) - Solo per riferimento
+    const appLiquidity = (stats.cashRevenue || 0) - (stats.expenses || 0);
+    
+    // NUOVO CALCOLO SOSTENIBILITA': Basato su Disponibilità Reale C/C inserita manualmente
     const targetReserve = simulatorData.totalTarget || 0;
-    const difference = currentLiquidity - targetReserve;
-    const coveragePercent = targetReserve > 0 ? (currentLiquidity / targetReserve) * 100 : 0;
+    const realDifference = localBankBalance - targetReserve;
+    const coveragePercent = targetReserve > 0 ? (localBankBalance / targetReserve) * 100 : 0;
 
     // Helper formatter
     const fmt = (n: number) => n?.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Calcolo rata mensile per la prima tranche (6 rate)
+    const installmentT1 = (simulatorData.tranche1 || 0) / 6;
 
     return (
         <div className="space-y-8 animate-slide-up pb-10 max-w-6xl mx-auto">
@@ -82,12 +105,12 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
 
                 <div className="p-6 space-y-8">
                     
-                    {/* A. PLAFOND GAUGE */}
+                    {/* A. PLAFOND GAUGE (Based on Invoiced) */}
                     <div>
                         <div className="flex justify-between items-end mb-2">
                             <div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Utilizzo Plafond</p>
-                                <p className="text-xs text-slate-500 font-medium">Limite: <strong>85.000,00€</strong></p>
+                                <p className="text-xs text-slate-500 font-medium">Limite: <strong>85.000,00€</strong> (su Fatturato)</p>
                             </div>
                             <div className="text-right">
                                 <p className={`text-lg font-black ${stats.progress > 85 ? 'text-red-500' : stats.progress > 60 ? 'text-amber-500' : 'text-emerald-500'}`}>
@@ -108,20 +131,22 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                         </div>
                         <p className="text-[10px] text-right text-slate-400 mt-1 font-medium">
                             {stats.progress < 100 
-                                ? `Hai ancora spazio per ${fmt(85000 - stats.revenue)}€` 
+                                ? `Hai ancora spazio per ${fmt(85000 - (stats.invoicedRevenue || 0))}€` 
                                 : "⚠️ Plafond superato!"}
                         </p>
                     </div>
 
-                    {/* B. THE FUNNEL: REVENUE -> TAXABLE */}
+                    {/* B. THE FUNNEL: INVOICED REVENUE -> TAXABLE */}
                     <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 relative">
                         <div className="flex flex-col md:flex-row justify-between items-center gap-6 relative z-10">
                             
-                            {/* Input: Fatturato */}
+                            {/* Input: Fatturato FISCALE (invoicedRevenue) */}
                             <div className="text-center md:text-left">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Fatturato Incassato</p>
-                                <p className="text-3xl font-black text-indigo-900">{fmt(stats.revenue)}€</p>
-                                <p className="text-[10px] text-slate-400 mt-1">Totale entrate dell'anno</p>
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1 justify-center md:justify-start">
+                                    Base Imponibile Fatturata <FiscalTooltip text="Somma delle sole fatture reali emesse e sigillate (SDI). È la base legale per il calcolo tasse." />
+                                </p>
+                                <p className="text-3xl font-black text-indigo-900">{fmt(stats.invoicedRevenue)}€</p>
+                                <p className="text-[10px] text-slate-400 mt-1">Totale fatture emesse (SDI)</p>
                             </div>
 
                             {/* The Filter */}
@@ -141,299 +166,280 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                                 <p className="text-[10px] text-slate-400 mt-1">Base di calcolo INPS</p>
                             </div>
                         </div>
-                    </div>
-
-                    {/* C. THE DEBT GRID: INPS, TAX, STAMPS */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         
-                        {/* CARD INPS */}
-                        <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl flex flex-col justify-between hover:shadow-md transition-shadow">
-                            <div>
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">INPS</span>
-                                    <FiscalTooltip text="Gestione Separata INPS. Calcolata sul 100% dell'Imponibile Lordo." />
+                        {/* Note on difference Cash vs Invoice */}
+                        {Math.abs((stats.cashRevenue || 0) - (stats.invoicedRevenue || 0)) > 5 && (
+                             <div className="mt-6 text-center border-t border-slate-200 pt-4">
+                                <div className="inline-flex items-center gap-2 bg-amber-50 px-4 py-2 rounded-lg border border-amber-100 text-left md:text-center">
+                                    <span className="text-xl">⚠️</span>
+                                    <div>
+                                        <p className="text-[10px] font-black text-amber-700 uppercase tracking-wide mb-0.5">Discrepanza Rilevata</p>
+                                        <p className="text-xs text-amber-800 leading-snug">
+                                            L'incassato reale (Cassa) è <strong>{fmt(stats.cashRevenue)}€</strong>.
+                                            {stats.cashRevenue > stats.invoicedRevenue 
+                                                ? " Hai incassato più di quanto fatturato (Emetti fatture mancanti)." 
+                                                : " Hai fatturato più di quanto incassato (Crediti da riscuotere)."}
+                                        </p>
+                                    </div>
                                 </div>
-                                <p className="text-[10px] text-orange-800 font-medium mb-1">Aliquota <strong className="text-orange-900">26,23%</strong></p>
-                            </div>
-                            <div>
-                                <p className="text-2xl font-black text-orange-900">{fmt(stats.inps)}€</p>
-                                <p className="text-[9px] text-orange-700/60 font-medium mt-1">Deducibile l'anno prossimo</p>
-                            </div>
-                        </div>
+                             </div>
+                        )}
+                    </div>
 
-                        {/* CARD IMPOSTA */}
-                        <div className="bg-red-50 border border-red-100 p-4 rounded-2xl flex flex-col justify-between hover:shadow-md transition-shadow relative overflow-hidden">
-                            <div className="absolute -right-4 -top-4 w-16 h-16 bg-red-100 rounded-full opacity-50 pointer-events-none"></div>
-                            <div>
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">Imposta</span>
-                                    <FiscalTooltip text="Imposta Sostitutiva 5% (Start-up). Calcolata sull'Imponibile Netto (Lordo - INPS)." />
-                                </div>
-                                <p className="text-[10px] text-red-800 font-medium mb-1">Aliquota <strong className="text-red-900">5%</strong></p>
-                            </div>
-                            <div>
-                                <p className="text-2xl font-black text-red-900">{fmt(stats.tax)}€</p>
-                                <p className="text-[9px] text-red-700/60 font-medium mt-1">
-                                    Su imp. netto: <strong>{fmt(stats.taxableNet)}€</strong>
+                    {/* C. LIABILITY BREAKDOWN */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-xs font-black text-orange-800 uppercase flex items-center gap-1">
+                                    INPS (Gest. Separata) <FiscalTooltip text="26,23% sull'Imponibile Lordo" />
                                 </p>
+                                <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded text-orange-400">26,23%</span>
                             </div>
+                            <p className="text-2xl font-black text-orange-600">{fmt(stats.inps)}€</p>
                         </div>
-
-                        {/* CARD BOLLI */}
-                        <div className="bg-slate-100 border border-slate-200 p-4 rounded-2xl flex flex-col justify-between hover:shadow-md transition-shadow">
-                            <div>
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="bg-white text-slate-600 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border border-slate-200">Bolli</span>
-                                    <FiscalTooltip text="Somma dei bolli virtuali da 2€ applicati su fatture superiori a 77,47€." />
-                                </div>
-                                <p className="text-[10px] text-slate-500 font-medium mb-1">Fissi <strong className="text-slate-700">2,00€</strong></p>
+                        <div className="p-4 bg-red-50 rounded-xl border border-red-100">
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-xs font-black text-red-800 uppercase flex items-center gap-1">
+                                    Imposta Sostitutiva <FiscalTooltip text="5% (Start-up) sull'Imponibile Netto (Lordo - INPS)" />
+                                </p>
+                                <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded text-red-400">5%</span>
                             </div>
-                            <div>
-                                <p className="text-2xl font-black text-slate-700">{fmt(stats.stampDutyTotal)}€</p>
-                                <p className="text-[9px] text-slate-400 font-medium mt-1">Non deducibili</p>
-                            </div>
+                            <p className="text-2xl font-black text-red-600">{fmt(stats.tax)}€</p>
                         </div>
                     </div>
 
-                    {/* D. FOOTER: THE BILL */}
-                    <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white/10 rounded-lg">
-                                <span className="text-xl">🧾</span>
-                            </div>
-                            <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Totale Debito Stimato</p>
-                                <p className="text-xs text-slate-500">INPS + Imposta Sostitutiva</p>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-4xl font-black text-white font-mono tracking-tight">{fmt(stats.totalLiability)}€</p>
-                            {stats.stampDutyTotal > 0 && <p className="text-[10px] text-slate-400 mt-1">+ {fmt(stats.stampDutyTotal)}€ bolli</p>}
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-
-            {/* CARD 2: SCADENZE FISCALI */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="md-card p-6 bg-white border border-gray-200 border-l-4 border-l-red-500 shadow-sm">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h4 className="text-sm font-black text-red-700 uppercase tracking-widest">I Tranche (Giugno {year + 1})</h4>
-                            <p className="text-[10px] text-gray-400 font-bold mt-1">SALDO {year} + 50% ACCONTO {year + 1}</p>
-                        </div>
-                        <div className="bg-red-50 text-red-700 px-2 py-1 rounded text-[10px] font-black uppercase">Il Salasso</div>
-                    </div>
-                    
-                    <p className="text-3xl font-black text-slate-800 mb-6">{simulatorData.tranche1.toFixed(2)}€</p>
-
-                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="text-xs font-bold text-gray-600">Piano Rateale (6 mesi)</span>
-                            <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-1.5 py-0.5 rounded">Opzionale</span>
-                        </div>
-                        <p className="text-sm text-gray-500">
-                            Puoi dividere in 6 rate da: <strong className="text-slate-800">{(simulatorData.tranche1 / 6).toFixed(2)}€</strong>
-                        </p>
-                    </div>
-                </div>
-
-                <div className="md-card p-6 bg-white border border-gray-200 border-l-4 border-l-amber-500 shadow-sm">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <h4 className="text-sm font-black text-amber-700 uppercase tracking-widest">II Tranche (Novembre {year + 1})</h4>
-                            <p className="text-[10px] text-gray-400 font-bold mt-1">50% ACCONTO {year + 1}</p>
-                        </div>
-                        <div className="bg-amber-50 text-amber-700 px-2 py-1 rounded text-[10px] font-black uppercase">No Rate</div>
-                    </div>
-                    
-                    <p className="text-3xl font-black text-slate-800 mb-6">{simulatorData.tranche2.toFixed(2)}€</p>
-
-                    <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100">
-                        <p className="text-xs text-amber-800 font-medium">
-                            ⚠️ Questa scadenza <strong>non è rateizzabile</strong>. Assicurati di avere la liquidità necessaria per l'autunno.
-                        </p>
+                    {/* D. FINAL SUMMARY */}
+                    <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                        <p className="text-xs font-bold text-slate-500 uppercase">Totale Tasse Stimate (Anno {year})</p>
+                        <p className="text-3xl font-black text-slate-800">{fmt(stats.totalLiability)}€</p>
                     </div>
                 </div>
             </div>
 
-            {/* CARD 3: PIANO ACCANTONAMENTO */}
-            <div className="md-card p-6 bg-slate-900 text-white shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-3xl opacity-20 pointer-events-none -mr-16 -mt-16"></div>
-                
-                <h4 className="text-sm font-black text-indigo-300 uppercase tracking-widest mb-6 flex items-center gap-2 relative z-10">
-                    <span className="bg-white/10 p-1 rounded">💰</span> Piano Accantonamento Mensile
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative z-10 mb-8">
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Competenza {year}</p>
-                        <p className="text-2xl font-black">{simulatorData.savingsPlan[0].competence.toFixed(2)}€</p>
-                        <p className="text-[10px] text-slate-500 mt-1">Quota mensile per pagare il saldo attuale.</p>
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Anticipo {year + 1}</p>
-                        <p className="text-2xl font-black text-indigo-400">{simulatorData.savingsPlan[0].advance.toFixed(2)}€</p>
-                        <p className="text-[10px] text-slate-500 mt-1">Quota mensile per coprire gli acconti futuri.</p>
-                    </div>
-                    <div className="bg-white/10 p-4 rounded-xl border border-white/10">
-                        <p className="text-[10px] font-bold text-amber-400 uppercase mb-1">Bonifico Mensile Suggerito</p>
-                        <p className="text-3xl font-black text-white">{simulatorData.savingsPlan[0].amount.toFixed(2)}€</p>
-                        <p className="text-[10px] text-slate-300 mt-2">
-                            Da spostare sul conto risparmio ogni mese.
-                        </p>
-                    </div>
-                </div>
-
-                {/* --- SEZIONE CONTROLLO LIQUIDITÀ --- */}
-                <div className="mt-8 pt-6 border-t border-white/10 relative z-10">
-                    <div className="bg-slate-800/50 rounded-2xl p-6 border border-white/5">
-                        <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-4">
+            {/* --- CARD 2: LIQUIDITY SIMULATOR (Using Cash for Sustainability) --- */}
+            <div className="bg-slate-900 text-white rounded-3xl shadow-xl overflow-hidden">
+                <div className="p-6 md:p-8">
+                    <h3 className="text-xl font-black mb-6 flex items-center gap-2">
+                        <SparklesIcon /> Simulatore Accantonamento
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* LEFT COLUMN: Piano Rateale Tasse (UNCHANGED) */}
+                        <div className="space-y-4">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Piano Pagamenti {year+1}</p>
                             
-                            {/* 1. Liquidità (Realtà) */}
+                            {/* Tranche 1 */}
+                            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative overflow-hidden group">
+                                <div className="flex justify-between items-start relative z-10">
+                                    <div>
+                                        <p className="text-xs font-bold text-indigo-300 uppercase mb-1">Giugno {year+1}</p>
+                                        <p className="text-[10px] text-slate-400">Saldo {year} + I Acconto {year+1}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-2xl font-black text-white">{fmt(simulatorData.tranche1)}€</p>
+                                        <p className="text-[10px] text-indigo-200 mt-1">Totale dovuto</p>
+                                    </div>
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-slate-700/50">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Rateizzabile in 6 rate (Giu-Nov)</span>
+                                        <span className="text-sm font-bold text-indigo-400">{fmt(installmentT1)}€ / mese</span>
+                                    </div>
+                                    <div className="flex gap-1 overflow-x-auto pb-1 no-scrollbar">
+                                        {['GIU','LUG','AGO','SET','OTT','NOV'].map(m => (
+                                            <span key={m} className="text-[8px] font-mono bg-slate-900 text-slate-500 px-1.5 py-0.5 rounded border border-slate-700">{m}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="absolute right-0 top-0 h-full w-1 bg-indigo-500 opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                            </div>
+
+                            {/* Tranche 2 */}
+                            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 relative overflow-hidden group">
+                                <div className="flex justify-between items-end relative z-10">
+                                    <div>
+                                        <p className="text-xs font-bold text-teal-300 uppercase mb-1">Novembre {year+1}</p>
+                                        <p className="text-xs text-slate-400">II Acconto {year+1}</p>
+                                    </div>
+                                    <p className="text-2xl font-black text-white">{fmt(simulatorData.tranche2)}€</p>
+                                </div>
+                                <div className="mt-2 pt-2 border-t border-slate-700/50 flex items-center gap-2">
+                                    <span className="text-amber-500 text-xs">ℹ️</span>
+                                    <p className="text-[10px] font-medium text-slate-400">Da versare in <strong>unica soluzione</strong></p>
+                                </div>
+                                <div className="absolute right-0 top-0 h-full w-1 bg-teal-500 opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                            </div>
+                        </div>
+
+                        {/* RIGHT COLUMN: Sostenibilità (UPDATED ORDER & LOGIC) */}
+                        <div className="flex flex-col gap-6">
                             <div>
-                                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1">
-                                    Liquidità Attuale Disponibile
-                                </p>
-                                <p className="text-3xl font-black text-white">
-                                    {currentLiquidity.toFixed(2)}€
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-1">
-                                    Cassa generata nel {year} (Entrate - Uscite)
+                                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Sostenibilità (Su Cassa Attuale)</p>
+                                
+                                {/* 1. Fabbisogno Fiscale (KPI Principale) */}
+                                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 mb-4 text-center">
+                                    <p className="text-[10px] font-bold text-amber-500 uppercase tracking-wider mb-1">Fabbisogno Fiscale Totale {year+1}</p>
+                                    <p className="text-3xl font-black text-white">{fmt(simulatorData.totalTarget)}€</p>
+                                </div>
+
+                                {/* 2. Liquidità App (Riferimento) */}
+                                <div className="flex justify-between text-xs mb-3 px-1">
+                                    <span className="text-slate-500">Registro Cassa (App):</span>
+                                    <span className="font-mono text-slate-400">{fmt(appLiquidity)}€</span>
+                                </div>
+
+                                {/* 3. Disponibilità C/C (Input Attivo) */}
+                                <div className="bg-white/5 p-3 rounded-lg border border-white/10 mb-4 flex items-center justify-between">
+                                    <label className="text-xs font-bold text-indigo-200">Disponibilità Reale C/C:</label>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="number" 
+                                            value={localBankBalance}
+                                            onChange={(e) => setLocalBankBalance(Number(e.target.value))}
+                                            onBlur={handleBalanceBlur}
+                                            className="w-28 bg-white text-slate-900 font-bold text-right px-2 py-1 rounded text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                        <span className="text-white font-bold">€</span>
+                                    </div>
+                                </div>
+                                
+                                {/* 4. Barra Copertura & Stato (Calcolato su C/C) */}
+                                <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden mb-2">
+                                    <div 
+                                        className={`h-full transition-all duration-1000 ${coveragePercent >= 100 ? 'bg-green-500' : 'bg-amber-500'}`} 
+                                        style={{ width: `${Math.min(coveragePercent, 100)}%` }}
+                                    ></div>
+                                </div>
+                                <p className={`text-xs font-black text-right ${realDifference >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    {realDifference >= 0 ? `Coperto (+${fmt(realDifference)}€)` : `Scoperto (${fmt(realDifference)}€)`}
                                 </p>
                             </div>
 
-                            {/* 2. Target (Obiettivo) */}
-                            <div className="text-right">
-                                 <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">
-                                    Riserva Target Totale
-                                </p>
-                                <p className="text-3xl font-black text-white">
-                                    {targetReserve.toFixed(2)}€
-                                </p>
-                                <p className="text-[10px] text-slate-400 mt-1">
-                                    Fabbisogno per Giugno + Novembre
+                            {/* 5. Suggerimento Accantonamento (Footer) */}
+                            <div className="bg-indigo-900/50 p-4 rounded-xl border border-indigo-500/30">
+                                <p className="text-[10px] font-bold text-indigo-300 uppercase mb-2">Suggerimento Accantonamento</p>
+                                <p className="text-sm font-medium text-slate-200 leading-snug">
+                                    Per non avere sorprese, dovresti mettere da parte <strong className="text-white bg-indigo-600 px-1.5 rounded">{fmt(simulatorData.savingsPlan[0].amount)}€</strong> ogni mese.
                                 </p>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
 
-                        {/* 3. Bar / Verdict */}
-                        <div className="relative h-4 bg-slate-900 rounded-full overflow-hidden border border-white/10">
-                             {/* La barra mostra quanto della riserva è coperta dalla liquidità */}
-                             <div 
-                                className={`h-full transition-all duration-1000 ${difference >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
-                                style={{ width: `${Math.min(coveragePercent, 100)}%` }}
-                             ></div>
+            {/* --- CARD 3: REVERSE ENGINEERING 2.0 --- */}
+            <div className="bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden">
+                {/* Header */}
+                <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-lg font-black text-white flex items-center gap-2">
+                            🚀 Reverse Engineering
+                        </h3>
+                        <p className="text-xs text-slate-400 font-medium">Strategia di crescita basata sul tuo obiettivo di reddito.</p>
+                    </div>
+                </div>
+
+                <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    
+                    {/* AREA A: OBIETTIVO */}
+                    <div className="space-y-6 border-b lg:border-b-0 lg:border-r border-slate-100 pb-6 lg:pb-0 lg:pr-6">
+                        <div className="bg-indigo-50 rounded-2xl p-4 border border-indigo-100">
+                            <label className="block text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">1. Il tuo stipendio netto ideale</label>
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="number" 
+                                    value={targetMonthlyNet} 
+                                    onChange={(e) => setTargetMonthlyNet(Number(e.target.value))}
+                                    className="w-full bg-white text-2xl font-black text-indigo-900 outline-none border-b-2 border-indigo-200 focus:border-indigo-500 py-1 text-center"
+                                />
+                                <span className="text-xl font-bold text-indigo-300">€/mese</span>
+                            </div>
                         </div>
-                        
-                        <div className="mt-3 flex justify-between items-center">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase">
-                                Verifica Sostenibilità
+
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">3. Fatturato Annuo Necessario</p>
+                            <p className="text-3xl font-black text-slate-800 tracking-tight">{fmt(reverseEngineering.grossNeeded)}€</p>
+                            <p className="text-[10px] text-slate-400 font-medium mt-1 leading-snug">
+                                Include tasse ({fmt((reverseEngineering.grossNeeded || 0) * 0.78 * 0.26)}€ stimati) e costi fissi attuali.
                             </p>
-                            <div className={`px-3 py-1 rounded-full text-xs font-black uppercase flex items-center gap-2 ${difference >= 0 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {difference >= 0 ? (
-                                    <><span>✓</span> Copertura Completa (+{difference.toFixed(0)}€)</>
+                        </div>
+                    </div>
+
+                    {/* AREA B: ANALISI PRICING */}
+                    <div className="space-y-6 border-b lg:border-b-0 lg:border-r border-slate-100 pb-6 lg:pb-0 lg:pr-6">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Analisi Prezzo Lezione</p>
+                        
+                        <div className="flex items-center justify-between relative">
+                            {/* Current */}
+                            <div className="text-center">
+                                <p className="text-xs font-bold text-slate-500 mb-1">Attuale</p>
+                                <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center border-4 border-white shadow-sm mx-auto">
+                                    <span className="text-sm font-black text-slate-700">{fmt(reverseEngineering.currentAvgPrice)}€</span>
+                                </div>
+                            </div>
+
+                            {/* Arrow */}
+                            <div className="flex-1 px-2 text-center relative top-2">
+                                {reverseEngineering.recommendedPrice > reverseEngineering.currentAvgPrice ? (
+                                    <div className="flex flex-col items-center animate-pulse">
+                                        <span className="text-[10px] font-black text-red-500 uppercase bg-red-50 px-2 py-0.5 rounded">Alza i prezzi</span>
+                                        <div className="h-0.5 w-full bg-red-200 mt-1"></div>
+                                        <span className="text-red-400 text-xl leading-none">➜</span>
+                                    </div>
                                 ) : (
-                                    <><span>⚠️</span> Mancano {Math.abs(difference).toFixed(2)}€</>
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-[10px] font-black text-green-500 uppercase bg-green-50 px-2 py-0.5 rounded">Prezzo OK</span>
+                                        <div className="h-0.5 w-full bg-green-200 mt-1"></div>
+                                        <span className="text-green-400 text-xl leading-none">➜</span>
+                                    </div>
                                 )}
                             </div>
-                        </div>
-                    </div>
-                </div>
 
-            </div>
-
-            {/* CARD 4: REVERSE ENGINEERING DASHBOARD (STRATEGIA & OBIETTIVI) */}
-            <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden relative">
-                
-                {/* Header Card */}
-                <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center bg-indigo-50/50">
-                    <h4 className="text-sm font-black text-indigo-900 uppercase tracking-widest flex items-center gap-2">
-                        <SparklesIcon /> Reverse Engineering & Target
-                    </h4>
-                    <span className="text-[10px] font-bold text-indigo-400 bg-white px-2 py-1 rounded border border-indigo-100">
-                        Strategia Aziendale
-                    </span>
-                </div>
-
-                <div className="p-6">
-                    {/* Row 1: IL DRIVER (Obiettivo) */}
-                    <div className="mb-8 text-center">
-                        <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">
-                            Il tuo Obiettivo: Stipendio Netto Mensile
-                        </label>
-                        <div className="relative inline-block w-full max-w-xs">
-                            <input 
-                                type="number" 
-                                value={targetMonthlyNet} 
-                                onChange={e => setTargetMonthlyNet(Number(e.target.value))} 
-                                className="text-5xl font-black text-indigo-700 bg-transparent border-b-4 border-indigo-100 focus:border-indigo-500 outline-none w-full text-center pb-2 placeholder-indigo-200 transition-colors"
-                                placeholder="3000"
-                            />
-                            <span className="absolute right-0 top-1/2 -translate-y-1/2 text-2xl font-bold text-indigo-200 pointer-events-none">€</span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2 font-medium">Inserisci quanto vuoi guadagnare pulito al mese.</p>
-                    </div>
-
-                    {/* Row 2: CONFRONTO PREZZI */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                        <div className="bg-gray-50 p-4 rounded-2xl border border-gray-200 text-center">
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Prezzo Medio Attuale</p>
-                            <p className="text-2xl font-black text-gray-600">{reverseEngineering.currentAvgPrice.toFixed(2)}€</p>
-                            <p className="text-[9px] text-gray-400 mt-1">Calcolato sulle iscrizioni attive</p>
-                        </div>
-                        <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-200 text-center relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-12 h-12 bg-indigo-500 rounded-bl-3xl opacity-10"></div>
-                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Prezzo Consigliato</p>
-                            <p className="text-2xl font-black text-indigo-700">{reverseEngineering.recommendedPrice.toFixed(2)}€</p>
-                            <p className="text-[9px] text-indigo-400 mt-1">Per raggiungere l'obiettivo a parità di volumi</p>
-                        </div>
-                    </div>
-
-                    {/* Row 3: KPI OPERATIVI */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 items-center">
-                        <div className="text-center md:text-left">
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Fatturato Lordo Annuo Necessario</p>
-                            <p className="text-4xl font-black text-slate-800">{fmt(reverseEngineering.grossNeeded)}€</p>
-                            <p className="text-xs text-slate-500 mt-2 font-medium">
-                                Include copertura costi fissi ({fmt(stats.expenses)}€) e tasse stimate (~23%).
-                            </p>
-                        </div>
-                        <div className="flex flex-col items-center justify-center p-6 bg-slate-50 rounded-2xl border border-slate-200">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Target Allievi Totali</p>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-5xl font-black text-slate-800">{reverseEngineering.studentsNeededTotal}</span>
-                                <span className="text-sm font-bold text-slate-400">iscritti</span>
-                            </div>
-                            <p className="text-[10px] text-slate-500 mt-2 text-center">
-                                Mantenendo il prezzo attuale, ti servono {reverseEngineering.studentsNeededTotal} studenti a regime.
-                                {reverseEngineering.studentsNeeded > 0 && <span className="block font-bold text-indigo-600 mt-1">(Te ne mancano {reverseEngineering.studentsNeeded})</span>}
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Footer: MOSSA VINCENTE */}
-                    {reverseEngineering.bestSubscription && (
-                        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white p-6 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
-                            <div>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className="bg-amber-400 text-indigo-900 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">La Mossa Vincente</span>
+                            {/* Recommended */}
+                            <div className="text-center">
+                                <p className="text-xs font-bold text-indigo-500 mb-1">Consigliato</p>
+                                <div className="bg-indigo-600 w-20 h-20 rounded-full flex items-center justify-center border-4 border-indigo-100 shadow-xl mx-auto transform scale-110">
+                                    <span className="text-lg font-black text-white">{fmt(reverseEngineering.recommendedPrice)}€</span>
                                 </div>
-                                <h4 className="text-lg font-bold">
-                                    Spingi il pacchetto: <span className="text-amber-300 font-black text-xl">"{reverseEngineering.bestSubscription.name}"</span>
-                                </h4>
-                                <p className="text-xs text-indigo-200 mt-1 opacity-80">
-                                    È il prodotto con il miglior rapporto Prezzo/Lezioni (ROI {reverseEngineering.bestSubscription.roi.toFixed(2)}€/ora).
+                            </div>
+                        </div>
+                        
+                        <p className="text-[10px] text-center text-slate-400 italic mt-2">
+                            (5. Prezzo necessario a parità di volumi attuali)
+                        </p>
+                    </div>
+
+                    {/* AREA C: STRATEGIA */}
+                    <div className="space-y-6">
+                        <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">4. Target Allievi</p>
+                            <div className="flex items-baseline gap-2">
+                                <span className="text-4xl font-black text-slate-800">{reverseEngineering.studentsNeededTotal}</span>
+                                <span className="text-sm font-bold text-slate-500">totali necessari</span>
+                            </div>
+                            <div className="mt-2 flex items-center gap-2">
+                                <span className={`text-xs font-bold px-2 py-1 rounded ${reverseEngineering.studentsNeeded > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                    {reverseEngineering.studentsNeeded > 0 ? `Te ne mancano ${reverseEngineering.studentsNeeded}` : 'Obiettivo Raggiunto!'}
+                                </span>
+                            </div>
+                        </div>
+
+                        {reverseEngineering.bestSubscription && (
+                            <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 relative overflow-hidden">
+                                <div className="absolute top-0 right-0 bg-amber-200 text-amber-800 text-[9px] font-black px-2 py-1 rounded-bl-lg uppercase">
+                                    6. Best Performer
+                                </div>
+                                <p className="text-[10px] font-bold text-amber-800 uppercase tracking-widest mb-1">Prodotto Consigliato</p>
+                                <p className="text-lg font-black text-slate-800">{reverseEngineering.bestSubscription.name}</p>
+                                <p className="text-xs font-medium text-amber-700 mt-1">
+                                    Rendimento: <strong>{fmt(reverseEngineering.bestSubscription.roi)}€</strong> / lezione
                                 </p>
                             </div>
-                            <div className="text-3xl">🚀</div>
-                        </div>
-                    )}
+                        )}
+                    </div>
 
                 </div>
             </div>
-
         </div>
     );
 };

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus, InvoiceGap, RentAnalysisResult, SubscriptionType } from '../types';
 import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
-import { getCompanyInfo, getSubscriptionTypes } from '../services/settingsService';
+import { getCompanyInfo, getSubscriptionTypes, updateCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
 import { getLessons } from '../services/calendarService';
 import { generateDocumentPDF } from '../utils/pdfGenerator';
@@ -249,6 +249,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [loading, setLoading] = useState(true);
     const [targetMonthlyNet, setTargetMonthlyNet] = useState(3000);
     const [controllingYear, setControllingYear] = useState<number>(Math.max(2025, new Date().getFullYear()));
+    const [controllingMonth, setControllingMonth] = useState<string>('all'); // 'all' or '0'-'11'
     const [filters, setFilters] = useState({ search: '' });
     const [selectedLocationROI, setSelectedLocationROI] = useState<any | null>(null);
     const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([]);
@@ -305,46 +306,85 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         return () => window.removeEventListener('EP_DataUpdated', fetchData);
     }, [fetchData, initialParams]);
 
+    // HANDLER PER AGGIORNAMENTO SALDO BANCA
+    const handleUpdateBankBalance = async (val: number) => {
+        if (!companyInfo) return;
+        const newInfo = { ...companyInfo, currentBankBalance: val };
+        setCompanyInfo(newInfo); // Optimistic UI update
+        await updateCompanyInfo(newInfo);
+    };
+
     const stats = useMemo(() => {
         const activeT = transactions.filter(t => !t.isDeleted && new Date(t.date).getFullYear() === overviewYear);
-        const revenue = activeT.filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-        const expenses = activeT.filter(t => t.type === TransactionType.Expense).reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
-        const profit = revenue - expenses;
-        const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
         
-        // 1. IMPONIBILE LORDO
-        const taxable = revenue * COEFF_REDDITIVITA;
+        // 1. INCASSATO (Cassa) - Exclude Capital
+        const cashRevenue = activeT
+            .filter(t => t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+            
+        // Cash Expenses
+        const cashExpenses = activeT
+            .filter(t => t.type === TransactionType.Expense)
+            .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
+
+        // 2. FATTURATO (Competenza/Fiscale) - Real Invoices Only
+        const yearInvoices = invoices.filter(inv => 
+            !inv.isDeleted && 
+            !inv.isGhost && 
+            new Date(inv.issueDate).getFullYear() === overviewYear
+        );
         
-        // 2. INPS (Gestione Separata 26,23%)
+        const invoicedRevenue = yearInvoices.reduce((acc, inv) => acc + (Number(inv.totalAmount) || 0), 0);
+
+        // Profit (Cash based for internal view)
+        const cashProfit = cashRevenue - cashExpenses;
+        const cashMargin = cashRevenue > 0 ? (cashProfit / cashRevenue) * 100 : 0;
+        
+        // --- CALCOLO FISCALE (Basato su FATTURATO come richiesto) ---
+        
+        // 1. IMPONIBILE LORDO (su Fatturato)
+        const taxable = invoicedRevenue * COEFF_REDDITIVITA;
+        
+        // 2. INPS
         const inps = taxable * INPS_RATE;
         
-        // 3. IMPONIBILE NETTO (Imponibile Lordo - INPS deducibile)
-        // Nota: Nel forfettario l'INPS pagato è deducibile. Qui simuliamo che l'INPS di competenza venga dedotto.
+        // 3. IMPONIBILE NETTO
         const taxableNet = taxable - inps;
         
-        // 4. IMPOSTA SOSTITUTIVA (5% Start-up)
+        // 4. IMPOSTA
         const tax = taxableNet * TAX_RATE_STARTUP;
         
-        // 5. MONTANTE (Debito totale principale: INPS + Imposta)
+        // 5. LIABILTY
         const totalLiability = inps + tax;
 
         // 6. BOLLI
         let stampDutyTotal = 0;
-        const yearInvoices = invoices.filter(inv => !inv.isDeleted && !inv.isGhost && new Date(inv.issueDate).getFullYear() === overviewYear);
         yearInvoices.forEach(inv => { if ((Number(inv.totalAmount) || 0) > 77.47) stampDutyTotal += 2; });
         
         const totalAll = totalLiability + stampDutyTotal;
 
         return { 
-            revenue, expenses, profit, margin, taxable, taxableNet, inps, tax, stampDutyTotal, 
-            totalInpsTax: totalLiability, // Alias for legacy code compatibility
+            cashRevenue, // Was 'revenue'
+            invoicedRevenue, // New
+            revenue: cashRevenue, // Keep for backward compatibility with components expecting 'revenue'
+            expenses: cashExpenses, 
+            profit: cashProfit, 
+            margin: cashMargin, 
+            taxable, 
+            taxableNet, 
+            inps, 
+            tax, 
+            stampDutyTotal, 
             totalLiability, // New Proper Name
+            totalInpsTax: totalLiability, // Alias for legacy
             totalAll, 
             savingsSuggestion: totalAll, 
-            progress: (revenue / LIMIT_FORFETTARIO) * 100, 
+            progress: (invoicedRevenue / LIMIT_FORFETTARIO) * 100, // Limit is on Invoiced
             monthlyData: Array(12).fill(0).map((_, i) => ({ 
                 month: i, 
-                revenue: activeT.filter(t => new Date(t.date).getMonth() === i && t.type === TransactionType.Income).reduce((a,c) => a + (Number(c.amount) || 0), 0), 
+                cash: activeT.filter(t => new Date(t.date).getMonth() === i && t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale).reduce((a,c) => a + (Number(c.amount) || 0), 0),
+                invoiced: invoices.filter(inv => !inv.isDeleted && !inv.isGhost && new Date(inv.issueDate).getFullYear() === overviewYear && new Date(inv.issueDate).getMonth() === i).reduce((a,c) => a + (Number(c.totalAmount) || 0), 0),
+                revenue: activeT.filter(t => new Date(t.date).getMonth() === i && t.type === TransactionType.Income && t.category !== TransactionCategory.Capitale).reduce((a,c) => a + (Number(c.amount) || 0), 0), // Legacy alias for 'cash'
                 expenses: activeT.filter(t => new Date(t.date).getMonth() === i && t.type === TransactionType.Expense).reduce((a,c) => a + (Number(c.amount) || 0), 0) 
             })) 
         };
@@ -390,20 +430,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const currentExpenses = stats.expenses;
 
         // 2. Calcolo Coefficiente Fiscale Sintetico (Tax Factor)
-        // Il regime forfettario non è lineare sul fatturato, ma sul netto.
-        // Formula: Revenue = (Net + Expenses) / (1 - TaxImpact)
-        // TaxImpact = (Coeff * INPS) + ( (Coeff - (Coeff * INPS)) * FlatTax )
-        // TaxImpact = (0.78 * 0.2623) + ( (0.78 - 0.204594) * 0.05 )
-        // TaxImpact = 0.204594 + (0.575406 * 0.05)
-        // TaxImpact = 0.204594 + 0.02877 = 0.233364 (~23.3%)
         const taxImpactFactor = (COEFF_REDDITIVITA * INPS_RATE) + ((COEFF_REDDITIVITA * (1 - INPS_RATE)) * TAX_RATE_STARTUP);
         
         // 3. Calcolo Fatturato Lordo Necessario
-        // Net = Rev - Exp - (Rev * TaxImpact)
-        // Net + Exp = Rev * (1 - TaxImpact)
-        // Rev = (Net + Exp) / (1 - TaxImpact)
         const grossRevenueNeeded = (desiredAnnualNet + currentExpenses) / (1 - taxImpactFactor);
-        const gap = Math.max(0, grossRevenueNeeded - stats.revenue);
+        const gap = Math.max(0, grossRevenueNeeded - stats.revenue); // Use Cash or Invoiced? Strategy usually targets cash flow needed.
         
         // 4. Analisi KPI Attuali
         const activeEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active);
@@ -498,7 +529,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             distance: number;
             rentalCost: number; // Stored here for reference
             revenue: number; 
-            directCosts: number; // Transactions allocated
+            operationalCosts: number; // New definition (Direct Costs excluding rent)
             calculatedRentCost: number; // Unique Slots * Rental Price
             tripCount: number; 
             uniqueStudents: Set<string>;
@@ -509,6 +540,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         
         // Costi Auto Reali (TCO Calculation)
         let totalCarExpenses = 0;
+
+        const targetMonth = controllingMonth === 'all' ? null : parseInt(controllingMonth);
         
         // --- 2. INITIALIZE LOCATIONS FROM SUPPLIERS ---
         suppliers.forEach(s => s.locations.forEach(l => {
@@ -519,7 +552,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 distance: l.distance || 0,
                 rentalCost: l.rentalCost || 0,
                 revenue: 0, 
-                directCosts: 0, 
+                operationalCosts: 0, 
                 calculatedRentCost: 0,
                 tripCount: 0, 
                 uniqueStudents: new Set()
@@ -536,7 +569,12 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         ];
 
         transactions.forEach(t => {
-            const tYear = new Date(t.date).getFullYear();
+            const tDate = new Date(t.date);
+            const tYear = tDate.getFullYear();
+            
+            // Apply Month Filter if active
+            if (targetMonth !== null && tDate.getMonth() !== targetMonth) return;
+
             if (tYear === controllingYear && !t.isDeleted && t.type === TransactionType.Expense) {
                 const amt = Number(t.amount) || 0;
                 
@@ -549,9 +587,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 else if (t.allocationType === 'location' && t.allocationId && data.has(t.allocationId)) {
                     const loc = data.get(t.allocationId)!;
                     // Ignore Nolo transactions here as we calculate them theoretically later
-                    // But include other direct costs (materials, etc.)
+                    // But include other direct costs (materials, etc.) in operationalCosts
                     if (t.category !== TransactionCategory.Nolo) {
-                        loc.directCosts += amt;
+                        loc.operationalCosts += amt;
                     }
                 } else {
                     // Overhead (General Expenses not allocated and not car)
@@ -604,18 +642,29 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                  // Revenue Attribution (Pro-rated or full? Let's use full price if starts in year)
                  // Or better: Sum price to location.
                  const isRevenueRelevant = startY === controllingYear; 
+                 // IMPORTANT: Revenue logic remains annual-based/start-date based for now, unless changed.
+                 // If Month Filter is active, we ideally want ONLY revenue for that month.
+                 // However, enrollments are often paid upfront. 
+                 // Current logic assigns revenue to the FIRST processed appointment.
+                 // If that first appointment is filtered out (because wrong month), revenue won't be added. This is acceptable for Cash/Competence view.
+                 
                  const priceToAdd = isRevenueRelevant ? (Number(enr.price) || 0) : 0;
                  
                  // If enrollment has specific appointments, use them for accurate slot counting
                  if (enr.appointments && enr.appointments.length > 0) {
                      let first = true;
                      enr.appointments.forEach(app => {
-                         if (new Date(app.date).getFullYear() === controllingYear && app.status !== 'Suspended') {
+                         const appDate = new Date(app.date);
+                         
+                         // Apply Month Filter if active
+                         if (targetMonth !== null && appDate.getMonth() !== targetMonth) return;
+
+                         if (appDate.getFullYear() === controllingYear && app.status !== 'Suspended') {
                              processActivity(
                                  app.locationId || enr.locationId, 
                                  app.date, 
                                  app.startTime, 
-                                 first ? priceToAdd : 0, // Add price only once (on first relevant app)
+                                 first ? priceToAdd : 0, // Add price only once (on first relevant app in this window)
                                  enr.childName
                              );
                              if (isRevenueRelevant) first = false; // Consumed revenue add
@@ -623,14 +672,25 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                      });
                  } else {
                      // Fallback for enrollments without appointments generated yet
-                     processActivity(enr.locationId, enr.startDate, "00:00", priceToAdd, enr.childName);
+                     // If month filter active, this fallback might show revenue even if date doesn't match month exactly if we don't check.
+                     // But fallback date is start date.
+                     const startDate = new Date(enr.startDate);
+                     if (targetMonth !== null && startDate.getMonth() !== targetMonth) {
+                         // Skip if start date not in target month
+                     } else {
+                        processActivity(enr.locationId, enr.startDate, "00:00", priceToAdd, enr.childName);
+                     }
                  }
              }
         });
 
         // Scan Manual Lessons
         manualLessons.forEach(ml => {
-            if (new Date(ml.date).getFullYear() === controllingYear) {
+            const mlDate = new Date(ml.date);
+            // Apply Month Filter
+            if (targetMonth !== null && mlDate.getMonth() !== targetMonth) return;
+
+            if (mlDate.getFullYear() === controllingYear) {
                 // Manual lessons store name, find ID
                 const locEntry = Array.from(data.values()).find(l => l.name === ml.locationName);
                 if (locEntry) {
@@ -663,10 +723,29 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
 
         // --- 6. FINAL AGGREGATION ---
+        // NEW: Capture current time for slot consumption comparison
+        const now = new Date();
+
         const result = Array.from(data.values()).map(loc => {
             // Rent: Slots * Hourly/Slot Cost
-            const uniqueSlotsCount = locationSlotsMap.get(loc.id)?.size || 0;
-            const calculatedRent = uniqueSlotsCount * loc.rentalCost;
+            const slotsSet = locationSlotsMap.get(loc.id);
+            const uniqueSlotsCount = slotsSet?.size || 0;
+            
+            // Calculate Consumed Slots (Nolo Attuale)
+            let consumedSlotsCount = 0;
+            if (slotsSet) {
+                slotsSet.forEach(key => {
+                    const [d, t] = key.split('_');
+                    // Simple ISO comparison: 'YYYY-MM-DD' + 'T' + 'HH:MM'
+                    const slotDate = new Date(`${d}T${t}`);
+                    if (slotDate < now) {
+                        consumedSlotsCount++;
+                    }
+                });
+            }
+
+            const calculatedRentTotal = uniqueSlotsCount * loc.rentalCost;
+            const calculatedRentCurrent = consumedSlotsCount * loc.rentalCost;
 
             // Logistics: Trips * Dist * CostPerKm
             const logisticsCost = loc.tripCount * (loc.distance * 2) * costPerKm;
@@ -674,7 +753,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             // Overhead: Proportional to Revenue
             const overheadShare = globalRevenue > 0 ? (loc.revenue / globalRevenue) * globalOverhead : 0;
 
-            const totalCosts = loc.directCosts + calculatedRent + logisticsCost + overheadShare;
+            // IMPORTANT: Total Costs Calculation uses Total Rent (Forecast view)
+            const totalCosts = loc.operationalCosts + calculatedRentTotal + logisticsCost + overheadShare;
             const studentCount = loc.uniqueStudents.size;
             
             // Approx lessons count (slots)
@@ -686,7 +766,9 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 revenue: loc.revenue,
                 costs: totalCosts,
                 breakdown: {
-                    rent: calculatedRent,
+                    // Update structure to support split
+                    rent: { total: calculatedRentTotal, current: calculatedRentCurrent },
+                    operational: loc.operationalCosts,
                     logistics: logisticsCost,
                     overhead: overheadShare
                 },
@@ -702,7 +784,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
         return result.sort((a,b) => b.revenue - a.revenue);
 
-    }, [suppliers, enrollments, transactions, manualLessons, controllingYear, companyInfo]); 
+    }, [suppliers, enrollments, transactions, manualLessons, controllingYear, controllingMonth, companyInfo]); 
 
     return (
         <div className="pb-20">
@@ -726,8 +808,28 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             <div className="border-b border-gray-200 mb-6 -mx-4 md:mx-0"><nav className="flex space-x-2 overflow-x-auto scrollbar-hide px-4 md:px-0 pb-1">{Object.entries(TAB_LABELS).map(([key, label]) => (<button key={key} onClick={() => setActiveTab(key as any)} className={`flex-shrink-0 py-2 px-4 rounded-full text-sm font-bold transition-all whitespace-nowrap mb-2 ${activeTab === key ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'}`}>{label}</button>))}</nav></div>
 
             {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} invoices={invoices} overviewYear={overviewYear} setOverviewYear={setOverviewYear} />}
-            {activeTab === 'cfo' && <FinanceCFO stats={stats} simulatorData={simulatorData} reverseEngineering={reverseEngineering} targetMonthlyNet={targetMonthlyNet} setTargetMonthlyNet={setTargetMonthlyNet} year={overviewYear} onYearChange={setOverviewYear} />}
-            {activeTab === 'controlling' && <FinanceControlling roiSedi={roiSedi} onSelectLocation={setSelectedLocationROI} year={controllingYear} onYearChange={setControllingYear} />}
+            {/* Added currentBankBalance and update handler to FinanceCFO */}
+            {activeTab === 'cfo' && <FinanceCFO 
+                stats={stats} 
+                simulatorData={simulatorData} 
+                reverseEngineering={reverseEngineering} 
+                targetMonthlyNet={targetMonthlyNet} 
+                setTargetMonthlyNet={setTargetMonthlyNet} 
+                year={overviewYear} 
+                onYearChange={setOverviewYear}
+                currentBankBalance={companyInfo?.currentBankBalance || 0}
+                onUpdateBankBalance={handleUpdateBankBalance}
+            />}
+            {activeTab === 'controlling' && (
+                <FinanceControlling 
+                    roiSedi={roiSedi} 
+                    onSelectLocation={setSelectedLocationROI} 
+                    year={controllingYear} 
+                    onYearChange={setControllingYear}
+                    month={controllingMonth}
+                    onMonthChange={setControllingMonth} 
+                />
+            )}
             {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'archive' || activeTab === 'quotes') && (
                 <FinanceListView 
                     activeTab={activeTab} 

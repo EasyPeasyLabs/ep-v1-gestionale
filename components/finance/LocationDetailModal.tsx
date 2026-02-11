@@ -10,9 +10,9 @@ interface LocationDetailModalProps {
         revenue: number, 
         costs: number, 
         costPerLesson?: { value: number, min: number, max: number, avg: number }, 
-        costPerStudentPerLesson?: number, // NEW
+        costPerStudentPerLesson?: number,
         costPerStudent?: number, 
-        breakdown?: { rent: number, logistics: number, overhead: number } 
+        breakdown?: { rent: { total: number, current: number }, operational: number, logistics: number, overhead: number } 
     };
     onClose: () => void;
 }
@@ -34,7 +34,7 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
     const chartRef = useRef<HTMLCanvasElement | null>(null);
     
     // Breakdown defaults
-    const bd = data.breakdown || { rent: 0, logistics: 0, overhead: 0 };
+    const bd = data.breakdown || { rent: { total: 0, current: 0 }, operational: 0, logistics: 0, overhead: 0 };
     
     // Efficiency: Quanto rimane in tasca su 10 euro
     const pocketMoneyPer10 = data.revenue > 0 ? (profit / data.revenue) * 10 : 0;
@@ -144,12 +144,26 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                             <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
                                 <div className="flex items-center gap-2">
                                     <span className="text-lg">🏠</span>
-                                    <div className="flex items-center">
-                                        <span className="text-xs font-bold text-gray-600">Costi Diretti (Sede)</span>
-                                        <InfoTooltip text="Spese operative (Affitto, Materiali, Attrezzature) attribuite specificamente a questa sede." />
+                                    <div className="flex flex-col">
+                                        <div className="flex items-center">
+                                            <span className="text-xs font-bold text-gray-600">Costi Nolo Sede</span>
+                                            <InfoTooltip text="Affitto/Nolo calcolato in base agli slot utilizzati (Pay-per-use)." />
+                                        </div>
+                                        <span className="text-[9px] text-emerald-600 font-bold">({bd.rent.current.toFixed(2)}€ maturati ad oggi)</span>
                                     </div>
                                 </div>
-                                <span className="font-bold text-gray-800">{bd.rent.toFixed(2)}€</span>
+                                <span className="font-bold text-gray-800">{bd.rent.total.toFixed(2)}€</span>
+                            </div>
+
+                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-lg">🛠️</span>
+                                    <div className="flex items-center">
+                                        <span className="text-xs font-bold text-gray-600">Costi Operativi</span>
+                                        <InfoTooltip text="Spese vive (Materiali, Attrezzature, etc.) escluso l'affitto." />
+                                    </div>
+                                </div>
+                                <span className="font-bold text-gray-800">{bd.operational.toFixed(2)}€</span>
                             </div>
 
                             <div className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">

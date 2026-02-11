@@ -34,8 +34,18 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
         if (!ctx) return;
 
         let config: any = {};
-        if (type === 'Fatturato') {
-            config = { type: 'bar', data: { labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'], datasets: [{ label: 'Incassi Effettivi', data: (stats.monthlyData || []).map((d: any) => d.revenue), backgroundColor: '#10b981', borderRadius: 6 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } };
+        if (type === 'Incassato') {
+            config = { 
+                type: 'bar', 
+                data: { 
+                    labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'], 
+                    datasets: [
+                        { label: 'Incassi (Cassa)', data: (stats.monthlyData || []).map((d: any) => d.cash), backgroundColor: '#4f46e5', borderRadius: 6 },
+                        { label: 'Fatturato (Doc)', data: (stats.monthlyData || []).map((d: any) => d.invoiced), backgroundColor: '#10b981', borderRadius: 6, hidden: true }
+                    ] 
+                }, 
+                options: { responsive: true, maintainAspectRatio: false } 
+            };
         } else if (type === 'Costi') {
             const expenses = transactions.filter(t => t.type === TransactionType.Expense && !t.isDeleted);
             const macros: Record<string, number> = { 'Logistica': 0, 'Generali': 0, 'Operazioni': 0, 'Noli/Sedi': 0, 'Altro': 0 };
@@ -60,7 +70,7 @@ const KpiCard = ({ title, value, color, progress, label, sub, onClick }: any) =>
     <div onClick={onClick} className={`md-card p-6 bg-white shadow-xl border-l-4 cursor-pointer transition-transform transform hover:scale-105 active:scale-95 group relative overflow-hidden`} style={{ borderLeftColor: color === 'emerald' ? '#10b981' : color === 'red' ? '#ef4444' : color === 'indigo' ? '#6366f1' : '#f59e0b' }}>
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h3>
         <p className="text-2xl font-black text-slate-900">{value}</p>
-        {sub && <p className="text-[10px] text-slate-400 mt-1 font-bold">{sub}</p>}
+        {sub && <p className="text-[10px] text-slate-400 mt-1 font-bold truncate">{sub}</p>}
         {progress !== undefined && (
             <div className="mt-4">
                 <div className="flex justify-between text-[9px] font-black uppercase text-slate-400 mb-1"><span>{label}</span><span>{(Number(progress) || 0).toFixed(0)}%</span></div>
@@ -89,7 +99,32 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
             if (chartInstance.current) chartInstance.current.destroy();
             const ctx = chartRef.current.getContext('2d');
             if (ctx) {
-                chartInstance.current = new Chart(ctx, { type: 'line', data: { labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'], datasets: [{ label: 'Entrate (Cassa)', data: (stats.monthlyData || []).map((d: any) => d.revenue), borderColor: '#4f46e5', backgroundColor: 'rgba(79, 70, 229, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: false } });
+                chartInstance.current = new Chart(ctx, { 
+                    type: 'line', 
+                    data: { 
+                        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'], 
+                        datasets: [
+                            { 
+                                label: 'Incassi (Cassa)', 
+                                data: (stats.monthlyData || []).map((d: any) => d.cash), 
+                                borderColor: '#4f46e5', 
+                                backgroundColor: 'rgba(79, 70, 229, 0.1)', 
+                                fill: true, 
+                                tension: 0.4 
+                            },
+                            { 
+                                label: 'Fatturato (Doc)', 
+                                data: (stats.monthlyData || []).map((d: any) => d.invoiced), 
+                                borderColor: '#10b981', 
+                                backgroundColor: 'transparent',
+                                borderDash: [5, 5],
+                                fill: false, 
+                                tension: 0.4 
+                            }
+                        ] 
+                    }, 
+                    options: { responsive: true, maintainAspectRatio: false } 
+                });
             }
         }
         return () => { if (chartInstance.current) chartInstance.current.destroy(); };
@@ -108,25 +143,33 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
         if (stats.margin < 30) long.push("Il margine operativo è basso (sotto il 30%): valuta una revisione dei listini o un taglio dei costi logistici.");
         else long.push("Ottima marginalità: potresti investire l'utile in nuove attrezzature o marketing.");
 
-        if (stats.revenue > 60000) long.push("Ti stai avvicinando alla soglia degli 85k: pianifica con il commercialista l'eventuale passaggio di regime.");
+        if (stats.invoicedRevenue > 60000) long.push("Ti stai avvicinando alla soglia degli 85k: pianifica con il commercialista l'eventuale passaggio di regime.");
 
         return { short, long };
     }, [invoices, stats]);
 
     const educationalFooters: Record<string, string> = {
-        'Fatturato': "Il fatturato espresso qui rappresenta il totale degli incassi reali registrati in cassa (Transazioni di Entrata). Non include le fatture ancora da incassare o i versamenti di capitale proprio.",
+        'Incassato': "L'incassato rappresenta il denaro realmente entrato in cassa (transazioni). Il 'Fatturato Reale' invece è la somma dei documenti fiscali emessi. Una discrepanza è normale se hai fatture non ancora pagate o incassi senza fattura immediata.",
         'Costi': "Le uscite includono tutti i costi operativi (noli, logistica, software) e amministrativi registrati nell'anno solare corrente.",
         'Margine': "Il margine è la percentuale di guadagno lordo rispetto al fatturato. Un margine sano per la tua attività dovrebbe oscillare tra il 40% e il 65%.",
-        'Accantonamento': "Questa cifra rappresenta la riserva minima che dovresti detenere per coprire le tasse e i contributi INPS che pagherai nell'anno fiscale successivo. Si basa sui coefficienti del regime forfettario."
+        'Accantonamento': "Questa cifra rappresenta la riserva minima che dovresti detenere per coprire le tasse e i contributi INPS che pagherai nell'anno fiscale successivo. Si basa sui coefficienti del regime forfettario applicati al Fatturato Documentale."
     };
 
     return (
         <div className="space-y-8 animate-fade-in">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <KpiCard title="Fatturato" value={`${(stats.revenue ?? 0).toFixed(2)}€`} color="emerald" progress={stats.progress} label="Soglia 85k" onClick={() => setSelectedKpi('Fatturato')} />
+                <KpiCard 
+                    title="Incassato (Cassa)" 
+                    value={`${(stats.cashRevenue ?? 0).toFixed(2)}€`} 
+                    color="emerald" 
+                    progress={stats.progress} 
+                    label="Plafond 85k (Fatt)" 
+                    sub={`Fatturato Reale: ${(stats.invoicedRevenue ?? 0).toFixed(2)}€`}
+                    onClick={() => setSelectedKpi('Incassato')} 
+                />
                 <KpiCard title="Costi" value={`${(stats.expenses ?? 0).toFixed(2)}€`} color="red" onClick={() => setSelectedKpi('Costi')} />
                 <KpiCard title="Margine" value={`${(stats.margin ?? 0).toFixed(1)}%`} color="indigo" onClick={() => setSelectedKpi('Margine')} />
-                <KpiCard title="Accantonamento" value={`${(stats.savingsSuggestion ?? 0).toFixed(2)}€`} color="amber" sub="Suggerito Tasse" onClick={() => setSelectedKpi('Accantonamento')} />
+                <KpiCard title="Accantonamento" value={`${(stats.savingsSuggestion ?? 0).toFixed(2)}€`} color="amber" sub="Suggerito Tasse (su Fatturato)" onClick={() => setSelectedKpi('Accantonamento')} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -151,7 +194,7 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
                     <div className="md-card p-6 bg-indigo-900 text-white shadow-xl">
                         <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato ({overviewYear})</h4>
                         <p className="text-3xl font-black">{((stats.profit ?? 0) - (stats.totalAll ?? 0)).toFixed(2)}€</p>
-                        <p className="text-[10px] text-indigo-400 mt-2 italic">Cifra al netto di tasse, contributi e bolli.</p>
+                        <p className="text-[10px] text-indigo-400 mt-2 italic">Cash Flow al netto di tasse e bolli stimati.</p>
                     </div>
 
                     <div className="md-card p-5 bg-white border border-slate-200">

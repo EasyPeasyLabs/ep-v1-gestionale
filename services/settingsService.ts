@@ -32,7 +32,8 @@ const defaultCompanyInfo: CompanyInfo = {
     paypal: '',
     satispay: '',
     googlePay: '',
-    klarna: ''
+    klarna: '',
+    currentBankBalance: 0
 };
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
@@ -53,7 +54,8 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
                 klarna: data.klarna || '',
                 city: data.city || '',
                 province: data.province || '',
-                zipCode: data.zipCode || ''
+                zipCode: data.zipCode || '',
+                currentBankBalance: data.currentBankBalance || 0
             };
         } else {
             // Se non esiste, crealo con default
