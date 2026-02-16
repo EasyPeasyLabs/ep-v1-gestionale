@@ -1,8 +1,8 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, getDocFromServer, writeBatch, orderBy } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
-import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus } from '../types';
+import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput } from '../types';
 import { isItalianHoliday, toLocalISOString } from '../utils/dateUtils';
 
 const enrollmentCollectionRef = collection(db, 'enrollments');
@@ -131,6 +131,9 @@ const generateTheoreticalAppointments = (
 ): Appointment[] => {
     const appointments: Appointment[] = [];
     const startObj = new Date(startDate);
+    // FIX DATE SLIPPAGE: Force noon to avoid timezone shift on iterative adding
+    startObj.setHours(12, 0, 0, 0);
+    
     let current = new Date(startObj);
     
     // Safety break to prevent infinite loops if something goes wrong
@@ -240,6 +243,173 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
 export const deleteEnrollment = async (id: string): Promise<void> => {
     const enrollmentDoc = doc(db, 'enrollments', id);
     await deleteDoc(enrollmentDoc);
+};
+
+// --- SYNC ENGINE: Manual Lesson Update -> Enrollment Appointment Update ---
+export const syncEnrollmentFromLessonUpdate = async (lessonId: string, lessonUpdate: Partial<LessonInput>) => {
+    // Only proceed if critical fields changed (Date, Time, Location)
+    if (!lessonUpdate.date && !lessonUpdate.startTime && !lessonUpdate.endTime && !lessonUpdate.locationName) return;
+
+    if (lessonUpdate.attendees && lessonUpdate.attendees.length > 0) {
+        const batch = writeBatch(db);
+        let updatedCount = 0;
+
+        for (const attendee of lessonUpdate.attendees) {
+            if (attendee.enrollmentId) {
+                const enrRef = doc(db, 'enrollments', attendee.enrollmentId);
+                const enrSnap = await getDoc(enrRef);
+                if (enrSnap.exists()) {
+                    const enrData = enrSnap.data() as Enrollment;
+                    // Find matching appointment by lessonId
+                    let modified = false;
+                    const newApps = enrData.appointments.map(app => {
+                        if (app.lessonId === lessonId) {
+                            modified = true;
+                            return {
+                                ...app,
+                                date: lessonUpdate.date || app.date,
+                                startTime: lessonUpdate.startTime || app.startTime,
+                                endTime: lessonUpdate.endTime || app.endTime,
+                                locationName: lessonUpdate.locationName || app.locationName,
+                                locationColor: lessonUpdate.locationColor || app.locationColor
+                            };
+                        }
+                        return app;
+                    });
+                    
+                    if (modified) {
+                        batch.update(enrRef, { appointments: newApps });
+                        updatedCount++;
+                    }
+                }
+            }
+        }
+        if (updatedCount > 0) {
+            await batch.commit();
+            console.log(`[Sync] Updated ${updatedCount} enrollments from manual lesson update.`);
+        }
+    }
+};
+
+// --- NEW: RESYNC FORZATO PER PROGETTI ISTITUZIONALI (OPTIMIZED) ---
+// Questa funzione interroga SOLO la finestra temporale rilevante per evitare Transport Error (Full Table Scan).
+export const resyncInstitutionalEnrollment = async (enrollmentId: string): Promise<number> => {
+    try {
+        const enrollmentRef = doc(db, 'enrollments', enrollmentId);
+        // FORCE SERVER FETCH: Bypass cache to avoid stale data or cache deadlock
+        const enrollmentSnap = await getDocFromServer(enrollmentRef);
+        if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
+        const enrData = enrollmentSnap.data() as Enrollment;
+
+        // 1. Calcola finestra temporale con buffer di 60gg
+        const startDate = new Date(enrData.startDate);
+        const endDate = new Date(enrData.endDate);
+        
+        // Safety check se date mancanti
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            throw new Error("Date iscrizione non valide. Impossibile ottimizzare la ricerca.");
+        }
+
+        const rangeStart = new Date(startDate); rangeStart.setDate(rangeStart.getDate() - 60);
+        const rangeEnd = new Date(endDate); rangeEnd.setDate(rangeEnd.getDate() + 60);
+
+        // FIX: Uso split per avere solo YYYY-MM-DD
+        // Questo garantisce compatibilità sia con date salvate come "2026-02-01" che "2026-02-01T..."
+        const rangeStartStr = rangeStart.toISOString().split('T')[0]; 
+        const rangeEndStr = rangeEnd.toISOString().split('T')[0];
+
+        console.log(`[Resync] Query range (Network Only): ${rangeStartStr} to ${rangeEndStr}`);
+
+        // 2. Query Ottimizzata (Server-Side Filtering)
+        const lessonsRef = collection(db, 'lessons');
+        const q = query(
+            lessonsRef, 
+            where('date', '>=', rangeStartStr),
+            where('date', '<=', rangeEndStr)
+        );
+
+        // FORCE SERVER FETCH: Bypass cache
+        const lessonsSnap = await getDocsFromServer(q);
+        const allLessonsInWindow = lessonsSnap.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() } as Lesson));
+
+        console.log(`[Resync] Fetched ${allLessonsInWindow.length} potential lessons from server.`);
+
+        // 3. Filtro "Hard Link" in memoria (su dataset ridotto)
+        let linkedLessons = allLessonsInWindow.filter(l => l.attendees && l.attendees.some(a => a.enrollmentId === enrollmentId));
+
+        // 4. Logica "Self-Healing": Se non troviamo lezioni linkate, cerchiamo lezioni "orfane" 
+        // che corrispondono per nome progetto (spesso inserito nella descrizione)
+        if (linkedLessons.length === 0) {
+            console.log(`[Resync] Nessun hard-link trovato. Avvio ricerca per nome progetto: "${enrData.childName}"`);
+            
+            const projectNameLower = enrData.childName.trim().toLowerCase();
+            
+            // Candidati: Lezioni manuali che contengono il nome progetto
+            const candidates = allLessonsInWindow.filter(l => 
+                (l.description || '').toLowerCase().includes(projectNameLower) ||
+                (l.childName || '').toLowerCase().includes(projectNameLower)
+            );
+
+            if (candidates.length > 0) {
+                console.log(`[Resync] Trovate ${candidates.length} lezioni orfane compatibili. Eseguo healing...`);
+                const batch = writeBatch(db);
+                
+                // Ripariamo le lezioni aggiungendo l'attendee corretto
+                candidates.forEach(l => {
+                    const attendees = l.attendees || [];
+                    // Evita duplicati se già presente ma magari senza enrollmentId
+                    const cleanAttendees = attendees.filter(a => a.childName !== enrData.childName);
+                    
+                    cleanAttendees.push({
+                        clientId: enrData.clientId,
+                        childId: 'institutional',
+                        childName: enrData.childName,
+                        enrollmentId: enrollmentId // Questo è il link mancante che ripristiniamo
+                    });
+
+                    batch.update(doc(db, 'lessons', l.id), { attendees: cleanAttendees });
+                });
+                
+                await batch.commit();
+                // Aggiorniamo la lista linkedLessons con i candidati riparati
+                linkedLessons = candidates;
+            }
+        }
+
+        if (linkedLessons.length === 0) {
+            return 0; // Nessuna lezione trovata nemmeno col self-healing
+        }
+
+        // Sort Chronologically
+        linkedLessons.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+        // Rebuild Appointments
+        const newAppointments: Appointment[] = linkedLessons.map(l => ({
+            lessonId: l.id,
+            date: l.date,
+            startTime: l.startTime,
+            endTime: l.endTime,
+            locationId: 'institutional', // Manteniamo la logica di raggruppamento
+            locationName: l.locationName,
+            locationColor: l.locationColor,
+            childName: enrData.childName, // Use Enrollment project name
+            status: 'Scheduled'
+        }));
+
+        // Update Enrollment
+        await updateDoc(enrollmentRef, {
+            appointments: newAppointments,
+            lessonsTotal: newAppointments.length,
+            lessonsRemaining: newAppointments.length, // O calcola in base a stato lezione se avessimo 'completed' su lesson
+            startDate: newAppointments[0].date,
+            endDate: newAppointments[newAppointments.length - 1].date
+        });
+
+        return newAppointments.length;
+    } catch (e) {
+        console.error("Critical Resync Error:", e);
+        throw e; // Rilancia per la UI
+    }
 };
 
 // --- LOGICA ASSENZE AVANZATA (Lost vs Recover) ---

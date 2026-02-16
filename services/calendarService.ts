@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch, query, where } from 'firebase/firestore';
 import { Lesson, LessonInput, SchoolClosure } from '../types';
-import { restoreSuspendedLessons } from './enrollmentService';
+import { restoreSuspendedLessons, syncEnrollmentFromLessonUpdate } from './enrollmentService';
 
 const lessonCollectionRef = collection(db, 'lessons');
 const closuresCollectionRef = collection(db, 'school_closures');
@@ -39,6 +39,14 @@ export const addLessonsBatch = async (lessons: LessonInput[]): Promise<string[]>
 export const updateLesson = async (id: string, lessonItem: Partial<LessonInput>): Promise<void> => {
     const lessonDoc = doc(db, 'lessons', id);
     await updateDoc(lessonDoc, lessonItem);
+    
+    // Sync Enrollment Reflection
+    // Quando aggiorno una lezione manuale (es. cambio data nel calendario),
+    // se questa lezione fa parte di un progetto istituzionale/iscrizione (ha attendees),
+    // devo propagare la modifica all'array appointments dell'enrollment collegato.
+    if (lessonItem.attendees && lessonItem.attendees.length > 0) {
+        await syncEnrollmentFromLessonUpdate(id, lessonItem);
+    }
 };
 
 export const deleteLesson = async (id: string): Promise<void> => {

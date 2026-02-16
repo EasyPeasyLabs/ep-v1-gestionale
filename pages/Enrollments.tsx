@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client, InstitutionalClient, Transaction, Quote } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient } from '../services/enrollmentService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient, resyncInstitutionalEnrollment } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices, updateQuote, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment, getTransactions, getQuotes } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
 import { importEnrollmentsFromExcel } from '../services/importService';
@@ -448,6 +449,26 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         if (!bulkAssignState) return;
         await performAssignment(enrollment.id, bulkAssignState.locationId, bulkAssignState.locationName, bulkAssignState.locationColor, assignDay, assignStart, assignEnd);
     };
+    
+    // --- RESYNC HANDLER FOR INSTITUTIONAL PROJECTS ---
+    const handleResyncRequest = async (enrollment: Enrollment) => {
+        if (!confirm("Questa operazione sovrascriverà l'agenda interna del progetto con le lezioni reali presenti nel Calendario. Usalo per correggere discrepanze di orario/giorno. Confermi?")) return;
+        
+        setLoading(true);
+        try {
+            const count = await resyncInstitutionalEnrollment(enrollment.id);
+            if (count > 0) {
+                alert(`Sincronizzazione completata con successo! Trovate e collegate ${count} lezioni.`);
+            } else {
+                alert("ATTENZIONE: Nessuna lezione trovata collegata a questo progetto. \n\nSuggerimento: Se hai creato le lezioni manualmente, assicurati che il nome del progetto sia presente nella descrizione/titolo della lezione per permettere l'auto-riparazione.");
+            }
+            await fetchData();
+        } catch (e: any) {
+            alert("Errore durante la sincronizzazione: " + e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const availableLocations = useMemo(() => {
         const names = new Set<string>();
@@ -643,6 +664,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                                 <div className="flex gap-1 self-end md:self-auto flex-shrink-0">
                                                                                     {/* Financial Wizard Trigger */}
                                                                                     <button onClick={() => setFinancialWizardTarget(enr)} className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`} title="Gestione Finanziaria / Wizard"><span className="font-bold text-xs">€</span></button>
+                                                                                    
+                                                                                    {/* RESYNC BUTTON PER ISTITUZIONALI */}
+                                                                                    {isInst && (
+                                                                                        <button 
+                                                                                            onClick={() => handleResyncRequest(enr)}
+                                                                                            className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-amber-200"
+                                                                                            title="Sincronizza Calendario (Fix Date/Slots)"
+                                                                                        >
+                                                                                            <RefreshIcon />
+                                                                                        </button>
+                                                                                    )}
+                                                                                    
                                                                                     <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 flex-shrink-0 ml-1"><PencilIcon/></button>
                                                                                     <button onClick={() => handleDeleteRequest(enr)} className="text-slate-300 hover:text-red-500 flex-shrink-0 ml-1"><TrashIcon/></button>
                                                                                 </div>

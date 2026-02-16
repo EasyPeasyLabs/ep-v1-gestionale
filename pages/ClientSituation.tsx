@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo } from '../types';
 import { getClients } from '../services/parentService';
@@ -49,6 +50,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [filterLocation, setFilterLocation] = useState('');
     const [filterYear, setFilterYear] = useState('');
     const [filterMonth, setFilterMonth] = useState('');
+    const [filterBalanceStatus, setFilterBalanceStatus] = useState<'all' | 'balanced' | 'debt' | 'surplus'>('all');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
     
     // Selected Context
@@ -118,107 +120,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         return true;
     };
 
-    const filteredClients = useMemo(() => {
-        return clients.filter(c => {
-            const name = getClientName(c).toLowerCase();
-            const term = (searchTerm || '').toLowerCase();
-            let match = name.includes(term);
-            
-            // Search in children
-            if (!match && c.clientType === ClientType.Parent) {
-                const children = (c as ParentClient).children || [];
-                match = children.some(child => (child.name || '').toLowerCase().includes(term));
-            }
-
-            // Location Filter (Indirect)
-            if (match && filterLocation) {
-                const hasLoc = enrollments.some(e => e.clientId === c.id && e.locationName === filterLocation);
-                if (!hasLoc) match = false;
-            }
-
-            return match;
-        }).sort((a,b) => {
-            const nA = getClientName(a);
-            const nB = getClientName(b);
-            return sortOrder === 'asc' ? nA.localeCompare(nB) : nB.localeCompare(nA);
-        });
-    }, [clients, searchTerm, filterLocation, sortOrder, enrollments]);
-
-    // Derived Data for Selected Client (Visual Detail View)
-    const clientFinancials = useMemo(() => {
-        if (!selectedClient) return null;
-        
-        let clientEnrollments = enrollments
-            .filter(e => e.clientId === selectedClient.id)
-            .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-        
-        // Group by Enrollment ID for structured view
-        const rows = clientEnrollments.map(enr => {
-            const linkedInvoices = invoices.filter(i => 
-                i.relatedEnrollmentId === enr.id && 
-                !i.isDeleted &&
-                isDateInPeriod(i.issueDate, filterYear, filterMonth)
-            );
-            const linkedTrans = transactions.filter(t => 
-                t.relatedEnrollmentId === enr.id && 
-                !t.isDeleted &&
-                isDateInPeriod(t.date, filterYear, filterMonth)
-            );
-
-            // Calculate Attendance Stats for this enrollment
-            let presences = 0;
-            let absences = 0;
-            let recoveries = 0;
-
-            if (enr.appointments) {
-                enr.appointments.forEach(app => {
-                    if (app.status === 'Present') presences++;
-                    else if (app.status === 'Absent') absences++;
-                    
-                    if (app.lessonId && app.lessonId.startsWith('REC-')) {
-                        recoveries++;
-                    }
-                });
-            }
-            
-            return {
-                enrollment: enr,
-                invoices: linkedInvoices,
-                transactions: linkedTrans,
-                stats: { presences, absences, recoveries }
-            };
-        });
-
-        // Filter Rows for Visuals: Show if Enrollment in Period OR has Activity in Period
-        const visibleRows = rows.filter(row => {
-            const enrInPeriod = isDateInPeriod(row.enrollment.startDate, filterYear, filterMonth);
-            const hasActivity = row.transactions.length > 0 || row.invoices.length > 0;
-            return enrInPeriod || hasActivity;
-        });
-
-        // Orphans (General Payments/Invoices not linked)
-        const orphanInvoices = invoices.filter(i => 
-            i.clientId === selectedClient.id && 
-            !i.relatedEnrollmentId && 
-            !i.isDeleted &&
-            isDateInPeriod(i.issueDate, filterYear, filterMonth)
-        );
-        const clientNameStr = getClientName(selectedClient);
-        const orphanTrans = transactions.filter(t => 
-            t.clientName === clientNameStr && 
-            !t.relatedEnrollmentId && 
-            !t.isDeleted &&
-            isDateInPeriod(t.date, filterYear, filterMonth)
-        ); 
-
-        return { rows: visibleRows, orphanInvoices, orphanTrans };
-    }, [selectedClient, enrollments, invoices, transactions, filterYear, filterMonth]);
-
-    const handleSelectClient = (c: Client) => {
-        setSelectedClient(c);
-    };
-
-    // --- AGGREGATION HELPER FOR BULK EXPORT ---
+    // --- AGGREGATION HELPER FOR BULK EXPORT & FILTERING ---
     const getClientFinancialSummary = (client: Client, locFilter?: string, year?: string, month?: string) => {
         // 1. Filter Enrollments based on Location Filter (if active)
         let clientEnrs = enrollments.filter(e => e.clientId === client.id);
@@ -305,6 +207,159 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             aggAbsences,
             aggRecoveries
         };
+    };
+
+    // Calculate counts for the filter buttons
+    const statusCounts = useMemo(() => {
+        let countBalanced = 0;
+        let countDebt = 0;
+        let countSurplus = 0;
+
+        // Iterate all clients to apply base filters (Search + Location) WITHOUT Balance Status
+        clients.forEach(c => {
+            const name = getClientName(c).toLowerCase();
+            const term = (searchTerm || '').toLowerCase();
+            let match = name.includes(term);
+            
+            // Search in children
+            if (!match && c.clientType === ClientType.Parent) {
+                const children = (c as ParentClient).children || [];
+                match = children.some(child => (child.name || '').toLowerCase().includes(term));
+            }
+
+            // Location Filter (Indirect)
+            if (match && filterLocation) {
+                const hasLoc = enrollments.some(e => e.clientId === c.id && e.locationName === filterLocation);
+                if (!hasLoc) match = false;
+            }
+
+            if (match) {
+                // Calculate financial status
+                const summary = getClientFinancialSummary(c, filterLocation, filterYear, filterMonth);
+                
+                if (Math.abs(summary.balance) < 0.01) {
+                    countBalanced++;
+                } else if (summary.balance > 0.01) {
+                    countDebt++;
+                } else {
+                    countSurplus++;
+                }
+            }
+        });
+
+        return { countBalanced, countDebt, countSurplus };
+    }, [clients, searchTerm, filterLocation, enrollments, transactions, filterYear, filterMonth]);
+
+    const filteredClients = useMemo(() => {
+        return clients.filter(c => {
+            const name = getClientName(c).toLowerCase();
+            const term = (searchTerm || '').toLowerCase();
+            let match = name.includes(term);
+            
+            // Search in children
+            if (!match && c.clientType === ClientType.Parent) {
+                const children = (c as ParentClient).children || [];
+                match = children.some(child => (child.name || '').toLowerCase().includes(term));
+            }
+
+            // Location Filter (Indirect)
+            if (match && filterLocation) {
+                const hasLoc = enrollments.some(e => e.clientId === c.id && e.locationName === filterLocation);
+                if (!hasLoc) match = false;
+            }
+
+            // Balance Status Filter
+            if (match && filterBalanceStatus !== 'all') {
+                const summary = getClientFinancialSummary(c, filterLocation, filterYear, filterMonth);
+                if (filterBalanceStatus === 'balanced') {
+                    if (Math.abs(summary.balance) >= 0.01) match = false;
+                } else if (filterBalanceStatus === 'debt') {
+                    if (summary.balance <= 0.01) match = false;
+                } else if (filterBalanceStatus === 'surplus') {
+                    if (summary.balance >= -0.01) match = false;
+                }
+            }
+
+            return match;
+        }).sort((a,b) => {
+            const nA = getClientName(a);
+            const nB = getClientName(b);
+            return sortOrder === 'asc' ? nA.localeCompare(nB) : nB.localeCompare(nA);
+        });
+    }, [clients, searchTerm, filterLocation, sortOrder, enrollments, transactions, filterYear, filterMonth, filterBalanceStatus]);
+
+    // Derived Data for Selected Client (Visual Detail View)
+    const clientFinancials = useMemo(() => {
+        if (!selectedClient) return null;
+        
+        let clientEnrollments = enrollments
+            .filter(e => e.clientId === selectedClient.id)
+            .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+        
+        // Group by Enrollment ID for structured view
+        const rows = clientEnrollments.map(enr => {
+            const linkedInvoices = invoices.filter(i => 
+                i.relatedEnrollmentId === enr.id && 
+                !i.isDeleted &&
+                isDateInPeriod(i.issueDate, filterYear, filterMonth)
+            );
+            const linkedTrans = transactions.filter(t => 
+                t.relatedEnrollmentId === enr.id && 
+                !t.isDeleted &&
+                isDateInPeriod(t.date, filterYear, filterMonth)
+            );
+
+            // Calculate Attendance Stats for this enrollment
+            let presences = 0;
+            let absences = 0;
+            let recoveries = 0;
+
+            if (enr.appointments) {
+                enr.appointments.forEach(app => {
+                    if (app.status === 'Present') presences++;
+                    else if (app.status === 'Absent') absences++;
+                    
+                    if (app.lessonId && app.lessonId.startsWith('REC-')) {
+                        recoveries++;
+                    }
+                });
+            }
+            
+            return {
+                enrollment: enr,
+                invoices: linkedInvoices,
+                transactions: linkedTrans,
+                stats: { presences, absences, recoveries }
+            };
+        });
+
+        // Filter Rows for Visuals: Show if Enrollment in Period OR has Activity in Period
+        const visibleRows = rows.filter(row => {
+            const enrInPeriod = isDateInPeriod(row.enrollment.startDate, filterYear, filterMonth);
+            const hasActivity = row.transactions.length > 0 || row.invoices.length > 0;
+            return enrInPeriod || hasActivity;
+        });
+
+        // Orphans (General Payments/Invoices not linked)
+        const orphanInvoices = invoices.filter(i => 
+            i.clientId === selectedClient.id && 
+            !i.relatedEnrollmentId && 
+            !i.isDeleted &&
+            isDateInPeriod(i.issueDate, filterYear, filterMonth)
+        );
+        const clientNameStr = getClientName(selectedClient);
+        const orphanTrans = transactions.filter(t => 
+            t.clientName === clientNameStr && 
+            !t.relatedEnrollmentId && 
+            !t.isDeleted &&
+            isDateInPeriod(t.date, filterYear, filterMonth)
+        ); 
+
+        return { rows: visibleRows, orphanInvoices, orphanTrans };
+    }, [selectedClient, enrollments, invoices, transactions, filterYear, filterMonth]);
+
+    const handleSelectClient = (c: Client) => {
+        setSelectedClient(c);
     };
 
     // Calculate Grand Totals for UI (Visible List)
@@ -713,6 +768,10 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         }
     };
 
+    const toggleBalanceFilter = (status: 'balanced' | 'debt' | 'surplus') => {
+        setFilterBalanceStatus(prev => prev === status ? 'all' : status);
+    };
+
     if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
 
     return (
@@ -768,6 +827,31 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                     {months.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
                                 </select>
                             </div>
+                        </div>
+                        
+                        {/* BALANCE STATUS QUICK FILTERS */}
+                        <div className="flex gap-3 justify-center md:justify-start border-t border-slate-50 pt-3 pb-1 overflow-x-auto">
+                             <button
+                                onClick={() => toggleBalanceFilter('balanced')}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'balanced' ? 'bg-green-500 text-white border-green-600 shadow-md' : 'bg-white text-green-600 border-green-200 hover:bg-green-50'}`}
+                            >
+                                <span className={filterBalanceStatus === 'balanced' ? 'text-white' : 'text-green-500'}>✓</span> 
+                                COPERTI <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'balanced' ? 'text-white' : 'text-green-600'}`}>({statusCounts.countBalanced})</span>
+                            </button>
+                            <button
+                                onClick={() => toggleBalanceFilter('debt')}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'debt' ? 'bg-red-500 text-white border-red-600 shadow-md' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}
+                            >
+                                <span className={filterBalanceStatus === 'debt' ? 'text-white' : 'text-red-500'}>⚠</span> 
+                                SCOPERTI <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'debt' ? 'text-white' : 'text-red-600'}`}>({statusCounts.countDebt})</span>
+                            </button>
+                            <button
+                                onClick={() => toggleBalanceFilter('surplus')}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'surplus' ? 'bg-cyan-500 text-white border-cyan-600 shadow-md' : 'bg-white text-cyan-600 border-cyan-200 hover:bg-cyan-50'}`}
+                            >
+                                <span className={filterBalanceStatus === 'surplus' ? 'text-white' : 'text-cyan-500'}>+</span> 
+                                SURPLUS <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'surplus' ? 'text-white' : 'text-cyan-600'}`}>({statusCounts.countSurplus})</span>
+                            </button>
                         </div>
                         
                         {/* BULK EXPORT ACTIONS */}
