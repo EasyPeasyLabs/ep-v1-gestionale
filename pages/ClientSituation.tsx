@@ -830,7 +830,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         </div>
                         
                         {/* BALANCE STATUS QUICK FILTERS */}
-                        <div className="flex gap-3 justify-center md:justify-start border-t border-slate-50 pt-3 pb-1 overflow-x-auto">
+                        <div className="flex flex-wrap gap-2 md:gap-3 justify-start border-t border-slate-50 pt-3 pb-1">
                              <button
                                 onClick={() => toggleBalanceFilter('balanced')}
                                 className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'balanced' ? 'bg-green-500 text-white border-green-600 shadow-md' : 'bg-white text-green-600 border-green-200 hover:bg-green-50'}`}
