@@ -13,6 +13,8 @@ import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import RefreshIcon from '../components/icons/RestoreIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
+import CheckIcon from '../components/icons/CheckIcon';
+import ExclamationIcon from '../components/icons/ExclamationIcon';
 import TransactionForm from '../components/finance/TransactionForm';
 import InvoiceEditForm from '../components/finance/InvoiceEditForm';
 import QuoteForm from '../components/finance/QuoteForm';
@@ -217,9 +219,194 @@ const FixWizard: React.FC<{
     onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string) => Promise<void>;
     onClose: () => void;
 }> = ({ issues, onFix, onClose }) => {
-    // ... [Same implementation as previous version] ...
-    // Placeholder to keep the file valid. In real application, keep the full FixWizard code.
-    return null; 
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [strategy, setStrategy] = useState<'invoice' | 'cash' | 'link' | null>(null);
+    const [date, setDate] = useState('');
+    
+    const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
+
+    useEffect(() => {
+        if (activeIssue) {
+            setStrategy(null);
+            setDate(new Date().toISOString().split('T')[0]);
+        }
+    }, [activeIssue]);
+
+    const handleResolve = async (strat: 'invoice' | 'cash' | 'link') => {
+        if (!activeIssue) return;
+        setLoading(true);
+        try {
+            await onFix(activeIssue, strat, undefined, undefined, undefined, undefined, date);
+            setSelectedIndex(null);
+        } catch (e) {
+            alert("Errore durante la risoluzione: " + e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (issues.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full p-10 text-center">
+                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
+                    <CheckIcon className="w-10 h-10 text-green-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2">Tutto in ordine!</h2>
+                <p className="text-gray-500 mb-8">Il Fiscal Doctor non ha rilevato anomalie nei dati.</p>
+                <button onClick={onClose} className="md-btn md-btn-primary md-btn-raised px-8 py-3">Chiudi</button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col h-[80vh] md:h-[70vh]">
+            {/* Header */}
+            <div className="p-6 border-b bg-slate-800 text-white flex-shrink-0 flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                    <div className="p-3 bg-white/10 rounded-xl">
+                        <SparklesIcon className="w-6 h-6 text-yellow-400" />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold">Fiscal Doctor</h3>
+                        <p className="text-slate-300 text-sm">{issues.length} anomalie rilevate da sanare.</p>
+                    </div>
+                </div>
+                <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                    <span className="text-2xl">&times;</span>
+                </button>
+            </div>
+
+            <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+                {/* LISTA LATERALE */}
+                <div className={`w-full md:w-1/3 border-r bg-gray-50 overflow-y-auto ${activeIssue ? 'hidden md:block' : 'block'}`}>
+                    {issues.map((issue, idx) => (
+                        <div 
+                            key={issue.id} 
+                            onClick={() => setSelectedIndex(idx)}
+                            className={`p-4 border-b cursor-pointer transition-all ${selectedIndex === idx ? 'bg-white border-l-4 border-l-indigo-500 shadow-md z-10 relative' : 'border-l-4 border-l-transparent hover:bg-gray-100'}`}
+                        >
+                            <div className="flex justify-between items-start mb-2">
+                                <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded tracking-wider ${
+                                    issue.type === 'missing_invoice' ? 'bg-orange-100 text-orange-700' : 
+                                    issue.type === 'missing_transaction' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                    {issue.type === 'missing_invoice' ? 'Manca Fattura' : issue.type === 'missing_transaction' ? 'Manca Incasso' : 'Discrepanza'}
+                                </span>
+                                <span className="text-xs text-gray-400 font-mono">{new Date(issue.date).toLocaleDateString()}</span>
+                            </div>
+                            <h4 className="font-bold text-gray-800 text-sm mb-1">{issue.entityName}</h4>
+                            <p className="text-xs text-gray-500 line-clamp-2 mb-2">{issue.description}</p>
+                            {issue.amount && <div className="text-right"><span className="font-mono text-sm font-black text-slate-700">{issue.amount.toFixed(2)}€</span></div>}
+                        </div>
+                    ))}
+                </div>
+
+                {/* DETTAGLIO */}
+                <div className={`w-full md:w-2/3 bg-white p-6 md:p-8 overflow-y-auto ${!activeIssue ? 'hidden md:flex md:items-center md:justify-center' : 'block'}`}>
+                    {!activeIssue ? (
+                        <div className="text-center text-gray-400 max-w-xs">
+                            <ExclamationIcon className="w-16 h-16 mx-auto mb-4 text-gray-200" />
+                            <p>Seleziona un'anomalia dalla lista per visualizzare le opzioni di risoluzione guidata.</p>
+                        </div>
+                    ) : (
+                        <div className="max-w-xl mx-auto w-full animate-fade-in">
+                            <button onClick={() => setSelectedIndex(null)} className="md:hidden mb-6 text-sm text-indigo-600 font-bold flex items-center gap-1">
+                                <span>&larr;</span> Torna alla lista
+                            </button>
+                            
+                            <h2 className="text-2xl font-bold text-gray-900 mb-6">Risoluzione Anomalia</h2>
+                            
+                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-8 shadow-sm">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Dettagli Problema</h4>
+                                <p className="font-medium text-slate-800 text-lg mb-4">{activeIssue.description}</p>
+                                <div className="grid grid-cols-2 gap-4 text-sm border-t border-slate-200 pt-4">
+                                    <div>
+                                        <span className="block text-xs text-slate-500 mb-1">Entità Coinvolta</span>
+                                        <span className="font-bold text-slate-900">{activeIssue.entityName}</span>
+                                    </div>
+                                    {activeIssue.amount && (
+                                        <div className="text-right">
+                                            <span className="block text-xs text-slate-500 mb-1">Valore Stimato</span>
+                                            <span className="font-mono font-black text-indigo-600 text-lg">{activeIssue.amount.toFixed(2)}€</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <h3 className="font-bold text-gray-900 flex items-center gap-2">
+                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">1</span>
+                                    Scegli Azione Correttiva
+                                </h3>
+                                
+                                {activeIssue.type === 'missing_invoice' && (
+                                    <div className="space-y-3">
+                                        <div 
+                                            className={`p-4 border rounded-xl transition-all cursor-pointer group ${strategy === 'invoice' ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'hover:border-indigo-300 hover:bg-gray-50'}`}
+                                            onClick={() => setStrategy('invoice')}
+                                        >
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${strategy === 'invoice' ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
+                                                    {strategy === 'invoice' && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                </div>
+                                                <span className={`font-bold ${strategy === 'invoice' ? 'text-indigo-900' : 'text-gray-700'}`}>Genera Fattura Mancante</span>
+                                            </div>
+                                            <p className="text-sm text-gray-500 ml-8">Il sistema genererà automaticamente una fattura bozza precompilata.</p>
+                                            
+                                            {strategy === 'invoice' && (
+                                                <div className="ml-8 mt-4 pt-4 border-t border-indigo-100 animate-fade-in">
+                                                    <label className="block text-xs font-bold text-indigo-800 mb-1">Data Emissione</label>
+                                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input w-full mb-3" />
+                                                    <button onClick={() => handleResolve('invoice')} disabled={loading} className="md-btn md-btn-primary w-full shadow-lg">
+                                                        {loading ? <Spinner /> : 'Conferma e Genera Fattura'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeIssue.type === 'missing_transaction' && (
+                                    <div className="space-y-3">
+                                        <div 
+                                            className={`p-4 border rounded-xl transition-all cursor-pointer group ${strategy === 'cash' ? 'border-green-600 bg-green-50 ring-1 ring-green-600' : 'hover:border-green-300 hover:bg-gray-50'}`}
+                                            onClick={() => setStrategy('cash')}
+                                        >
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${strategy === 'cash' ? 'border-green-600 bg-green-600' : 'border-gray-300'}`}>
+                                                    {strategy === 'cash' && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                </div>
+                                                <span className={`font-bold ${strategy === 'cash' ? 'text-green-900' : 'text-gray-700'}`}>Registra Incasso</span>
+                                            </div>
+                                            <p className="text-sm text-gray-500 ml-8">Registra il movimento di cassa/banca mancante per saldare il documento.</p>
+                                            
+                                            {strategy === 'cash' && (
+                                                <div className="ml-8 mt-4 pt-4 border-t border-green-100 animate-fade-in">
+                                                    <label className="block text-xs font-bold text-green-800 mb-1">Data Incasso</label>
+                                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input w-full mb-3" />
+                                                    <button onClick={() => handleResolve('cash')} disabled={loading} className="md-btn md-btn-green w-full shadow-lg">
+                                                        {loading ? <Spinner /> : 'Conferma Incasso'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeIssue.type === 'amount_mismatch' && (
+                                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-yellow-800 text-sm">
+                                        <p className="font-bold flex items-center gap-2"><ExclamationIcon className="w-4 h-4" /> Attenzione</p>
+                                        <p className="mt-1">Per le discrepanze di importo, si consiglia di verificare manualmente la fattura o la transazione e correggerla dall'elenco principale.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 
@@ -481,6 +668,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             }
         });
 
+        // 8. Stipendio Netto Attuale (Reverse del punto 3)
+        // Netto = (Fatturato - Spese) * (1 - TaxFactor)
+        // Nota: Questo è un calcolo semplificato che assume che tutto il profitto sia prelevabile come netto
+        const currentNetSalary = (stats.revenue - currentExpenses) * (1 - taxImpactFactor) / 12;
+
         // Advice Text
         let advice = "Sei sulla buona strada.";
         if (gap > 0) {
@@ -495,7 +687,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
             studentsNeededTotal,         // New prop
             recommendedPrice, 
             currentAvgPrice,
-            bestSubscription
+            bestSubscription,
+            currentNetSalary // New prop
         };
     }, [stats, targetMonthlyNet, enrollments, subscriptionTypes]);
 

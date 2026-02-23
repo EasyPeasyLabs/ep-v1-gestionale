@@ -160,9 +160,83 @@ const CommunicationModal: React.FC<{
     // Dynamic Context for Placeholders (based on selection)
     const [previewContext, setPreviewContext] = useState<CommunicationContext | null>(contextData || null);
 
+    // WhatsApp Queue State
+    const [isWhatsappSenderOpen, setIsWhatsappSenderOpen] = useState(false);
+    const [whatsappQueue, setWhatsappQueue] = useState<{phone: string, message: string}[]>([]);
+    const [whatsappQueueIndex, setWhatsappQueueIndex] = useState(0);
+
     useEffect(() => {
         getCommunicationTemplates().then(setTemplates);
     }, []);
+
+    // WhatsApp Sender Modal Component (Internal)
+    const WhatsAppSenderModal = () => {
+        const currentItem = whatsappQueue[whatsappQueueIndex];
+        const progress = Math.round(((whatsappQueueIndex) / whatsappQueue.length) * 100);
+        const isComplete = whatsappQueueIndex >= whatsappQueue.length;
+
+        const sendNext = () => {
+            if (isComplete) {
+                // Finish
+                setIsWhatsappSenderOpen(false);
+                onSent(); // Close main modal and refresh
+                return;
+            }
+
+            let cleanPhone = currentItem.phone.replace(/[^0-9]/g, '');
+            if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
+            if (cleanPhone.length === 10) cleanPhone = '39' + cleanPhone;
+            
+            const encodedMsg = encodeURIComponent(currentItem.message);
+            window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
+            
+            setWhatsappQueueIndex(prev => prev + 1);
+        };
+
+        return (
+            <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">Invio WhatsApp Sequenziale</h3>
+                    
+                    {!isComplete ? (
+                        <>
+                            <div className="mb-4">
+                                <div className="flex justify-between text-xs font-bold text-gray-500 mb-1">
+                                    <span>Messaggio {whatsappQueueIndex + 1} di {whatsappQueue.length}</span>
+                                    <span>{progress}%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div className="bg-green-500 h-2.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-green-50 border border-green-100 p-4 rounded-lg mb-6 text-center">
+                                <p className="text-sm text-gray-600 mb-2">Pronto per inviare a:</p>
+                                <p className="text-lg font-bold text-gray-800">{currentItem.phone}</p>
+                            </div>
+
+                            <button 
+                                onClick={sendNext}
+                                className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl shadow-lg transform active:scale-95 transition-all flex items-center justify-center gap-2"
+                            >
+                                <PaperAirplaneIcon /> Invia Messaggio {whatsappQueueIndex + 1}
+                            </button>
+                            <p className="text-xs text-center text-gray-400 mt-3">Clicca per aprire WhatsApp e inviare, poi torna qui per il prossimo.</p>
+                        </>
+                    ) : (
+                        <div className="text-center py-6">
+                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <CheckIcon />
+                            </div>
+                            <h4 className="text-lg font-bold text-gray-800 mb-2">Invio Completato!</h4>
+                            <p className="text-sm text-gray-500 mb-6">Tutti i messaggi sono stati processati.</p>
+                            <button onClick={sendNext} className="md-btn md-btn-primary w-full">Chiudi</button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
 
     // Placeholder Logic Enhancement: Update context when selection changes
     useEffect(() => {
@@ -355,15 +429,25 @@ const CommunicationModal: React.FC<{
         if (channel === 'whatsapp') {
             if (targetPhones.length === 0) return alert("Nessun numero trovato.");
 
-            const encodedMsg = encodeURIComponent(`*${finalSubject}*\n\n${finalMessage}`);
-            
-            targetPhones.forEach(rawPhone => {
-                let cleanPhone = rawPhone.replace(/[^0-9]/g, '');
+            // NEW: Sequential Sending Logic for Mobile Compatibility
+            if (targetPhones.length > 1) {
+                // Store queue in state and start sending process
+                setWhatsappQueue(targetPhones.map(phone => ({
+                    phone,
+                    message: `*${finalSubject}*\n\n${finalMessage}`
+                })));
+                setWhatsappQueueIndex(0);
+                setIsWhatsappSenderOpen(true);
+                return; // Stop here, let the modal handle the rest
+            } else {
+                // Single message - direct open
+                const encodedMsg = encodeURIComponent(`*${finalSubject}*\n\n${finalMessage}`);
+                let cleanPhone = targetPhones[0].replace(/[^0-9]/g, '');
                 if (cleanPhone.startsWith('00')) cleanPhone = cleanPhone.substring(2);
                 if (cleanPhone.length === 10) cleanPhone = '39' + cleanPhone;
-
+                
                 if (cleanPhone) window.open(`https://wa.me/${cleanPhone}?text=${encodedMsg}`, '_blank');
-            });
+            }
 
         } else {
             const bcc = recipientsType === 'custom' ? customRecipient : ''; 
@@ -385,7 +469,8 @@ const CommunicationModal: React.FC<{
     };
 
     return (
-        <div className="flex flex-col h-full max-h-[90vh] overflow-hidden">
+        <div className="flex flex-col h-full max-h-[90vh] overflow-hidden relative">
+            {isWhatsappSenderOpen && <WhatsAppSenderModal />}
             <div className="p-6 border-b bg-gray-50 flex-shrink-0">
                 <h3 className="text-xl font-bold text-gray-800">Nuova Comunicazione</h3>
                 {selectedIds.length > 1 && <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-bold ml-2">{selectedIds.length} Destinatari</span>}
@@ -554,6 +639,7 @@ const CRM: React.FC = () => {
     const [filterTimeFrame, setFilterTimeFrame] = useState<'day'|'week'|'month'|'year'>('month');
     const [currentDate, setCurrentDate] = useState(new Date()); // Stato navigazione temporale
     const [selectedAlertIds, setSelectedAlertIds] = useState<string[]>([]); // For Bulk Actions
+    const [activeAlertId, setActiveAlertId] = useState<string | null>(null); // For Single Action Tracking
 
     // Persistent State for Dismissed/Handled Items
     // Use Firestore synced preference instead of just local
@@ -681,6 +767,13 @@ const CRM: React.FC = () => {
                     // Try allocation match
                     if (!supplier && t.allocationId) {
                         supplier = suppliersData.find(s => s.locations.some(l => l.id === t.allocationId));
+                    }
+
+                    // FILTER: Exclude deleted suppliers or closed locations
+                    if (supplier?.isDeleted) return;
+                    if (t.allocationId && supplier) {
+                        const loc = supplier.locations.find(l => l.id === t.allocationId);
+                        if (loc?.closedAt) return;
                     }
 
                     alerts.push({
@@ -811,12 +904,13 @@ const CRM: React.FC = () => {
 
     // --- Action Handlers ---
     const handleSingleAction = (item: CrmAlertItem) => {
+        setActiveAlertId(item.id);
         setCommunicationContext({
             clientName: item.recipientName,
             childName: item.type !== 'rent' ? item.rawObj.childName : undefined,
             description: item.description,
             amount: item.amount ? item.amount.toFixed(2) : undefined,
-            date: new Date().toLocaleDateString('it-IT')
+            date: new Date(item.date).toLocaleDateString('it-IT')
         });
 
         setPrefilledCommData({
@@ -846,6 +940,7 @@ const CRM: React.FC = () => {
         const hasClients = selectedItems.some(i => i.recipientType === 'clients');
         const type = hasSuppliers && !hasClients ? 'suppliers' : 'clients';
 
+        setActiveAlertId(null);
         setInitialBulkRecipients(recipientIds);
         setInitialRecipientType(type);
         setPrefilledCommData(null); // Clear single mode data
@@ -853,10 +948,31 @@ const CRM: React.FC = () => {
         setIsFreeCommOpen(true);
     };
 
-    const handleCommunicationSent = () => {
+    const handleCommunicationSent = async () => {
         setIsFreeCommOpen(false);
+        
+        // Identify alerts to dismiss
+        let idsToDismiss: string[] = [];
+        if (selectedAlertIds.length > 0) {
+            idsToDismiss = [...selectedAlertIds];
+        } else if (activeAlertId) {
+            idsToDismiss = [activeAlertId];
+        }
+
+        if (idsToDismiss.length > 0) {
+            setDismissedIds(prev => [...prev, ...idsToDismiss]);
+            if (auth.currentUser) {
+                await syncDismissedNotifications(auth.currentUser.uid, idsToDismiss);
+            }
+        }
+
         setSelectedAlertIds([]);
-        fetchData();
+        setActiveAlertId(null);
+        
+        // Trigger Header Update
+        window.dispatchEvent(new Event('EP_DataUpdated'));
+        
+        await fetchData();
         alert("Messaggio inviato!");
     };
 
@@ -899,6 +1015,9 @@ const CRM: React.FC = () => {
             // Deselect handled items if they were selected
             setSelectedAlertIds(prev => prev.filter(id => !newDismissed.includes(id)));
             
+            // Trigger Header Update
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+
             await fetchData();
             alert("Operazione completata. Voci rimosse dalla vista.");
         } catch (e) {

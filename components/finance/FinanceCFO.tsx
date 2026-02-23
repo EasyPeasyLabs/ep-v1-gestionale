@@ -142,9 +142,9 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                             
                             {/* Input: Fatturato FISCALE (invoicedRevenue) */}
                             <div className="text-center md:text-left">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1 justify-center md:justify-start">
+                                <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1 justify-center md:justify-start">
                                     Base Imponibile Fatturata <FiscalTooltip text="Somma delle sole fatture reali emesse e sigillate (SDI). È la base legale per il calcolo tasse." />
-                                </p>
+                                </div>
                                 <p className="text-3xl font-black text-indigo-900">{fmt(stats.invoicedRevenue)}€</p>
                                 <p className="text-[10px] text-slate-400 mt-1">Totale fatture emesse (SDI)</p>
                             </div>
@@ -190,18 +190,18 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
                             <div className="flex justify-between items-center mb-2">
-                                <p className="text-xs font-black text-orange-800 uppercase flex items-center gap-1">
+                                <div className="text-xs font-black text-orange-800 uppercase flex items-center gap-1">
                                     INPS (Gest. Separata) <FiscalTooltip text="26,23% sull'Imponibile Lordo" />
-                                </p>
+                                </div>
                                 <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded text-orange-400">26,23%</span>
                             </div>
                             <p className="text-2xl font-black text-orange-600">{fmt(stats.inps)}€</p>
                         </div>
                         <div className="p-4 bg-red-50 rounded-xl border border-red-100">
                             <div className="flex justify-between items-center mb-2">
-                                <p className="text-xs font-black text-red-800 uppercase flex items-center gap-1">
+                                <div className="text-xs font-black text-red-800 uppercase flex items-center gap-1">
                                     Imposta Sostitutiva <FiscalTooltip text="5% (Start-up) sull'Imponibile Netto (Lordo - INPS)" />
-                                </p>
+                                </div>
                                 <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded text-red-400">5%</span>
                             </div>
                             <p className="text-2xl font-black text-red-600">{fmt(stats.tax)}€</p>
@@ -354,6 +354,19 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                                 />
                                 <span className="text-xl font-bold text-indigo-300">€/mese</span>
                             </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">2. Il tuo stipendio netto attuale</label>
+                            <div className="flex items-center gap-2 justify-center">
+                                <span className={`text-2xl font-black ${reverseEngineering.currentNetSalary >= targetMonthlyNet ? 'text-green-600' : 'text-slate-700'}`}>
+                                    {fmt(reverseEngineering.currentNetSalary || 0)}
+                                </span>
+                                <span className="text-xl font-bold text-slate-300">€/mese</span>
+                            </div>
+                            <p className="text-[9px] text-center text-slate-400 mt-1 italic">
+                                Calcolato su base incassato reale al netto di tasse e spese.
+                            </p>
                         </div>
 
                         <div>

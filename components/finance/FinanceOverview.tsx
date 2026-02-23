@@ -193,7 +193,7 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
                 <div className="space-y-6">
                     <div className="md-card p-6 bg-indigo-900 text-white shadow-xl">
                         <h4 className="font-bold text-xs uppercase text-indigo-300 mb-2">Utile Netto Stimato ({overviewYear})</h4>
-                        <p className="text-3xl font-black">{((stats.profit ?? 0) - (stats.totalAll ?? 0)).toFixed(2)}€</p>
+                        <p className="text-3xl font-black">{(Number(stats.profit || 0) - Number(stats.totalAll || 0)).toFixed(2)}€</p>
                         <p className="text-[10px] text-indigo-400 mt-2 italic">Cash Flow al netto di tasse e bolli stimati.</p>
                     </div>
 

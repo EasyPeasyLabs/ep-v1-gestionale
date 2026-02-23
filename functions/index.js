@@ -1,11 +1,95 @@
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// --- CONFIGURAZIONE SICUREZZA ---
+// IMPORTANTE: In produzione, utilizzare firebase functions:secrets:set per gestire questa chiave.
+// Per questo sprint, utilizziamo una costante definita qui.
+// Questa chiave deve corrispondere ESATTAMENTE a quella usata dal ProjectB per inviare i dati.
+const API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY"; 
+
+// --- FUNZIONE 1: ENDPOINT API PUBBLICO (Nuova) ---
+// Url previsto: https://europe-west1-ep-gestionale-v1.cloudfunctions.net/receiveLead
+exports.receiveLead = onRequest({
+    region: "europe-west1",
+    cors: true, // Abilita CORS se necessario per chiamate client-side (opzionale per server-to-server ma utile per debug)
+    maxInstances: 10
+}, async (req, res) => {
+    
+    // 1. Controllo Metodo
+    if (req.method !== 'POST') {
+        return res.status(405).send('Method Not Allowed');
+    }
+
+    // 2. Controllo Sicurezza (Bearer Token)
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized: Missing Bearer Token' });
+    }
+
+    const token = authHeader.split('Bearer ')[1];
+    if (token !== API_SHARED_SECRET) {
+        // Simuliamo un ritardo per prevenire timing attacks (opzionale ma best practice)
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return res.status(403).json({ error: 'Forbidden: Invalid API Key' });
+    }
+
+    // 3. Validazione Payload JSON
+    const data = req.body;
+    
+    // Controlli minimi obbligatori
+    if (!data || typeof data !== 'object') {
+        return res.status(400).json({ error: 'Bad Request: Invalid JSON body' });
+    }
+
+    // Qui puoi definire i campi obbligatori che ProjectB DEVE inviare
+    const requiredFields = ['email']; // Es. almeno l'email è richiesta
+    const missing = requiredFields.filter(field => !data[field]);
+
+    if (missing.length > 0) {
+        return res.status(400).json({ error: `Bad Request: Missing required fields: ${missing.join(', ')}` });
+    }
+
+    try {
+        // 4. Persistenza su Firestore
+        // Salviamo nella collezione "buffer" per non sporcare i dati reali
+        const leadDoc = {
+            ...data,
+            source: 'projectB_api',
+            status: 'pending', // pending | processed | rejected
+            receivedAt: new Date().toISOString(),
+            // Aggiungiamo campi di utilità per ricerca
+            searchableName: (data.nome + ' ' + data.cognome).toLowerCase(),
+            metadata: {
+                userAgent: req.headers['user-agent'],
+                ip: req.ip
+            }
+        };
+
+        const docRef = await db.collection('incoming_leads').add(leadDoc);
+
+        console.log(`[API] Lead ricevuto e salvato con ID: ${docRef.id}`);
+
+        // 5. Risposta al mittente
+        return res.status(200).json({ 
+            success: true, 
+            message: 'Lead received and stored successfully.',
+            referenceId: docRef.id 
+        });
+
+    } catch (error) {
+        console.error("[API] Error saving lead:", error);
+        return res.status(500).json({ error: 'Internal Server Error', details: error.message });
+    }
+});
+
+
+// --- FUNZIONE 2: CRON JOB NOTIFICHE (Esistente) ---
 // Questa funzione gira sui server di Google ogni minuto
 exports.checkPeriodicNotifications = onSchedule({
     schedule: "* * * * *",
@@ -206,4 +290,3 @@ exports.checkPeriodicNotifications = onSchedule({
         }
     }
 });
-    
