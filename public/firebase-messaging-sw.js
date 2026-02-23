@@ -16,15 +16,10 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage(function(payload) {
-  const notificationTitle = payload.notification.title;
-  const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/lemon_logo_150px.png',
-    badge: '/lemon_logo_150px.png',
-    data: payload.data
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+  // Il payload inviato dal backend contiene già l'oggetto "notification".
+  // L'SDK di Firebase mostrerà automaticamente la notifica.
+  // Chiamare self.registration.showNotification qui creerebbe un conflitto o una notifica doppia.
 });
 
 self.addEventListener('notificationclick', function(event) {

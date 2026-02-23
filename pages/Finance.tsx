@@ -579,20 +579,45 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     // Calculate Simulator Data for CFO (TRANCHE & SAVINGS)
     const simulatorData = useMemo(() => {
-        // Logica "Start-up / Storico"
+        // Logica "Start-up / Storico" (Regime Forfettario)
         // Le tasse dell'anno N si pagano nell'anno N+1.
-        // Giugno N+1: Saldo Anno N + I Acconto Anno N+1 (50% del storico)
-        // Novembre N+1: II Acconto Anno N+1 (50% del storico)
         
-        const montante = stats.totalLiability || 0; // INPS + Imposta (esclusi bolli che sono costi diretti)
+        const saldoImposta = stats.tax || 0;
+        const saldoInps = stats.inps || 0;
+        const montanteSaldo = saldoImposta + saldoInps; // Saldo totale anno N
         
-        // I Tranche (Giugno): Saldo (100% Montante) + I Acconto (50% Montante) = 150%
-        const tranche1 = montante * 1.5;
+        // Regole Acconto Imposta Sostitutiva (su anno N+1 basato su anno N)
+        // L'acconto è pari al 100% dell'imposta dell'anno precedente.
+        let accontoImposta = saldoImposta;
+        let accontoImposta1 = 0; // Giugno
+        let accontoImposta2 = 0; // Novembre
         
-        // II Tranche (Novembre): II Acconto (50% Montante)
-        const tranche2 = montante * 0.5;
+        if (accontoImposta < 52) {
+            // Nessun acconto dovuto
+            accontoImposta1 = 0;
+            accontoImposta2 = 0;
+        } else if (accontoImposta <= 257.52) {
+            // Unica soluzione a Novembre
+            accontoImposta1 = 0;
+            accontoImposta2 = accontoImposta;
+        } else {
+            // Diviso in due rate: 50% Giugno, 50% Novembre
+            accontoImposta1 = accontoImposta * 0.5;
+            accontoImposta2 = accontoImposta * 0.5;
+        }
 
-        // Totale fabbisogno per l'anno prossimo (Saldo N + Acconti N+1)
+        // Regole Acconto INPS (Gestione Separata)
+        // L'acconto è pari all'80% del saldo dell'anno precedente, diviso in due rate uguali (40% e 40%)
+        const accontoInps1 = saldoInps * 0.4;
+        const accontoInps2 = saldoInps * 0.4;
+
+        // I Tranche (Giugno N+1): Saldo N + I Acconto Imposta N+1 + I Acconto INPS N+1
+        const tranche1 = montanteSaldo + accontoImposta1 + accontoInps1;
+        
+        // II Tranche (Novembre N+1): II Acconto Imposta N+1 + II Acconto INPS N+1
+        const tranche2 = accontoImposta2 + accontoInps2;
+
+        // Totale fabbisogno per l'anno prossimo
         const totalTarget = tranche1 + tranche2;
         
         // Piano Mensile
@@ -602,12 +627,11 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         const savingsPlan = monthsLabels.map(m => ({ 
             month: m, 
             amount: monthlySavings,
-            // Per UI: breakdown opzionale
-            competence: montante / 12, // Quota saldo
-            advance: montante / 12     // Quota acconto (totale acconti è 100% montante)
+            competence: montanteSaldo / 12, 
+            advance: (accontoImposta1 + accontoImposta2 + accontoInps1 + accontoInps2) / 12     
         }));
 
-        return { savingsPlan, tranche1, tranche2, totalTarget };
+        return { savingsPlan, tranche1, tranche2, totalTarget, baseTax: saldoImposta };
     }, [stats]);
 
     // Reverse Engineering Logic (UPDATED 2026)

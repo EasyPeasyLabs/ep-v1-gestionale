@@ -265,14 +265,17 @@ const NotificationPlanning: React.FC = () => {
 
                                     {/* Time & Push */}
                                     <div className="flex items-end justify-between gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                        <div>
+                                        <div className="flex-1">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 block">Orario Report</label>
-                                            <input 
-                                                type="time" 
-                                                value={rule.time} 
-                                                onChange={(e) => handleTimeChange(rule, e.target.value)}
-                                                className="bg-transparent font-black text-xl text-gray-800 outline-none border-b-2 border-transparent focus:border-indigo-500 transition-colors w-24"
-                                            />
+                                            <div className="flex items-center gap-2">
+                                                <input 
+                                                    type="time" 
+                                                    value={rule.time} 
+                                                    onChange={(e) => handleTimeChange(rule, e.target.value)}
+                                                    className="bg-transparent font-black text-xl text-gray-800 outline-none border-b-2 border-transparent focus:border-indigo-500 transition-colors w-full max-w-[120px]"
+                                                />
+                                                <ClockIcon />
+                                            </div>
                                         </div>
                                         
                                         <div className="flex flex-col items-end">

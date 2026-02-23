@@ -67,8 +67,24 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
     // Helper formatter
     const fmt = (n: number) => n?.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    // Calcolo rata mensile per la prima tranche (6 rate)
-    const installmentT1 = (simulatorData.tranche1 || 0) / 6;
+    // Calcolo rateizzazione Giugno (fino a 6 rate)
+    const [selectedInstallments, setSelectedInstallments] = useState<number>(6);
+    const baseInstallmentT1 = (simulatorData.tranche1 || 0) / selectedInstallments;
+    
+    // Interessi: 0,33% mensile dalla seconda rata in poi
+    const interestRate = 0.0033;
+    const installmentsDetails = useMemo(() => {
+        const details = [];
+        let totalWithInterest = 0;
+        for (let i = 1; i <= selectedInstallments; i++) {
+            // La prima rata non ha interessi
+            const interest = i === 1 ? 0 : baseInstallmentT1 * interestRate * (i - 1);
+            const amount = baseInstallmentT1 + interest;
+            totalWithInterest += amount;
+            details.push({ num: i, base: baseInstallmentT1, interest, total: amount });
+        }
+        return { details, totalWithInterest };
+    }, [baseInstallmentT1, selectedInstallments]);
 
     return (
         <div className="space-y-8 animate-slide-up pb-10 max-w-6xl mx-auto">
@@ -242,14 +258,32 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                                 </div>
                                 <div className="mt-3 pt-3 border-t border-slate-700/50">
                                     <div className="flex justify-between items-center mb-2">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Rateizzabile in 6 rate (Giu-Nov)</span>
-                                        <span className="text-sm font-bold text-indigo-400">{fmt(installmentT1)}€ / mese</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Rate:</span>
+                                            <select 
+                                                value={selectedInstallments}
+                                                onChange={(e) => setSelectedInstallments(Number(e.target.value))}
+                                                className="bg-slate-900 text-indigo-300 text-xs font-bold border border-slate-600 rounded px-2 py-1 outline-none"
+                                            >
+                                                {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-sm font-bold text-indigo-400">{fmt(installmentsDetails.totalWithInterest)}€</span>
+                                            <p className="text-[8px] text-slate-500">Tot. con int. (0,33%/mese)</p>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-1 overflow-x-auto pb-1 no-scrollbar">
-                                        {['GIU','LUG','AGO','SET','OTT','NOV'].map(m => (
-                                            <span key={m} className="text-[8px] font-mono bg-slate-900 text-slate-500 px-1.5 py-0.5 rounded border border-slate-700">{m}</span>
-                                        ))}
-                                    </div>
+                                    
+                                    {selectedInstallments > 1 && (
+                                        <div className="mt-2 space-y-1">
+                                            {installmentsDetails.details.map((d, idx) => (
+                                                <div key={d.num} className="flex justify-between items-center text-[9px] border-b border-slate-700/30 pb-1">
+                                                    <span className="text-slate-400">Rata {d.num} {idx === 0 ? '(Senza int.)' : ''}</span>
+                                                    <span className="text-slate-300 font-mono">{fmt(d.total)}€</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="absolute right-0 top-0 h-full w-1 bg-indigo-500 opacity-50 group-hover:opacity-100 transition-opacity"></div>
                             </div>
@@ -259,13 +293,18 @@ const FinanceCFO: React.FC<FinanceCFOProps> = ({
                                 <div className="flex justify-between items-end relative z-10">
                                     <div>
                                         <p className="text-xs font-bold text-teal-300 uppercase mb-1">Novembre {year+1}</p>
-                                        <p className="text-xs text-slate-400">II Acconto {year+1}</p>
+                                        <p className="text-[10px] text-slate-400">II Acconto {year+1}</p>
                                     </div>
-                                    <p className="text-2xl font-black text-white">{fmt(simulatorData.tranche2)}€</p>
+                                    <div className="text-right">
+                                        <p className="text-2xl font-black text-white">{fmt(simulatorData.tranche2)}€</p>
+                                        <p className="text-[10px] text-teal-200 mt-1">Totale dovuto</p>
+                                    </div>
                                 </div>
-                                <div className="mt-2 pt-2 border-t border-slate-700/50 flex items-center gap-2">
-                                    <span className="text-amber-500 text-xs">ℹ️</span>
-                                    <p className="text-[10px] font-medium text-slate-400">Da versare in <strong>unica soluzione</strong></p>
+                                <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-start gap-2">
+                                    <span className="text-amber-500 text-xs mt-0.5">ℹ️</span>
+                                    <p className="text-[10px] text-slate-400 leading-tight">
+                                        Da versare in <strong>unica soluzione</strong>. Non è prevista rateizzazione per il secondo acconto.
+                                    </p>
                                 </div>
                                 <div className="absolute right-0 top-0 h-full w-1 bg-teal-500 opacity-50 group-hover:opacity-100 transition-opacity"></div>
                             </div>
