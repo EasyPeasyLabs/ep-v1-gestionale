@@ -333,6 +333,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
     const [filterLocation, setFilterLocation] = useState<string>('');
+    const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
+    const [filterMonth, setFilterMonth] = useState<string>((new Date().getMonth() + 1).toString());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     const [bulkAssignState, setBulkAssignState] = useState<{ isOpen: boolean; locationId: string; locationName: string; locationColor: string; } | null>(null);
@@ -472,34 +474,101 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     const availableLocations = useMemo(() => {
         const names = new Set<string>();
-        suppliers.forEach(s => s.locations.forEach(l => names.add(l.name)));
-        enrollments.forEach(e => { if (e.locationName && e.locationName !== 'Sede Non Definita') names.add(e.locationName); });
+        suppliers.forEach(s => s.locations.forEach(l => {
+            if (!l.closedAt) names.add(l.name);
+        }));
+        enrollments.forEach(e => { 
+            if (e.locationName && e.locationName !== 'Sede Non Definita') {
+                let isClosed = false;
+                suppliers.forEach(s => s.locations.forEach(l => {
+                    if (l.id === e.locationId && l.closedAt) isClosed = true;
+                }));
+                if (!isClosed) names.add(e.locationName);
+            }
+        });
         return Array.from(names).sort();
     }, [suppliers, enrollments]);
 
     const groupedEnrollments = useMemo(() => {
         const groups: Record<string, any> = {};
-        suppliers.forEach(s => { s.locations.forEach(l => { const key = l.id; groups[key] = { locationId: l.id, locationName: l.name, locationColor: l.color, days: {} }; }); });
+        suppliers.forEach(s => { 
+            s.locations.forEach(l => { 
+                if (!l.closedAt) {
+                    const key = l.id; 
+                    groups[key] = { locationId: l.id, locationName: l.name, locationColor: l.color, days: {} }; 
+                }
+            }); 
+        });
         groups['unassigned'] = { locationId: 'unassigned', locationName: 'Non Assegnati / In Attesa', locationColor: '#e5e7eb', days: {} };
+        
         const filtered = enrollments.filter(e => {
             if (searchTerm && !e.childName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
             if (filterLocation && e.locationName !== filterLocation) return false;
+            
+            // Exclude closed locations
+            let isClosed = false;
+            if (e.locationId && e.locationId !== 'unassigned') {
+                suppliers.forEach(s => s.locations.forEach(l => {
+                    if (l.id === e.locationId && l.closedAt) isClosed = true;
+                }));
+            }
+            if (isClosed) return false;
+
+            // Date filtering
+            if (filterYear !== 'all' && filterMonth !== 'all') {
+                const year = parseInt(filterYear);
+                const month = parseInt(filterMonth) - 1;
+                const filterStartDate = new Date(year, month, 1);
+                const filterEndDate = new Date(year, month + 1, 0, 23, 59, 59);
+                
+                const enrStart = new Date(e.startDate);
+                const enrEnd = new Date(e.endDate);
+                
+                if (enrStart > filterEndDate || enrEnd < filterStartDate) return false;
+            } else if (filterYear !== 'all') {
+                const year = parseInt(filterYear);
+                const filterStartDate = new Date(year, 0, 1);
+                const filterEndDate = new Date(year, 11, 31, 23, 59, 59);
+                
+                const enrStart = new Date(e.startDate);
+                const enrEnd = new Date(e.endDate);
+                
+                if (enrStart > filterEndDate || enrEnd < filterStartDate) return false;
+            } else if (filterMonth !== 'all') {
+                const month = parseInt(filterMonth) - 1;
+                const enrStart = new Date(e.startDate);
+                const enrEnd = new Date(e.endDate);
+                
+                let monthMatches = false;
+                let curr = new Date(enrStart.getFullYear(), enrStart.getMonth(), 1);
+                while (curr <= enrEnd) {
+                    if (curr.getMonth() === month) {
+                        monthMatches = true;
+                        break;
+                    }
+                    curr.setMonth(curr.getMonth() + 1);
+                }
+                if (!monthMatches) return false;
+            }
+
             return true;
         });
+
         filtered.forEach(e => {
             let groupId = e.locationId;
             if (!groupId || groupId === 'unassigned') groupId = 'unassigned';
-            if (!groups[groupId]) { groups[groupId] = { locationId: groupId, locationName: e.locationName || 'Sede Ignota', locationColor: e.locationColor || '#9ca3af', days: {} }; }
+            if (!groups[groupId]) return; // Skip if location is closed
             const date = e.appointments?.[0]?.date ? new Date(e.appointments[0].date) : null;
             const dIdx = date ? date.getDay() : 99;
             const dName = date ? daysOfWeekMap[dIdx] : 'In Attesa';
             if (!groups[groupId].days[dIdx]) { groups[groupId].days[dIdx] = { dayName: dName, items: [] }; }
             groups[groupId].days[dIdx].items.push(e);
         });
+        
         let result = Object.values(groups);
         if (filterLocation) { result = result.filter((g: any) => g.locationName === filterLocation); }
         return result.sort((a: any, b: any) => { if (a.locationId === 'unassigned') return -1; if (b.locationId === 'unassigned') return 1; return a.locationName.localeCompare(b.locationName); });
-    }, [enrollments, suppliers, searchTerm, filterLocation]);
+    }, [enrollments, suppliers, searchTerm, filterLocation, filterYear, filterMonth]);
 
     const unassignedEnrollments = useMemo(() => {
         return enrollments.filter(e => (e.locationId === 'unassigned' || !e.locationId) && e.childName.toLowerCase().includes(assignSearch.toLowerCase()));
@@ -589,8 +658,23 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 <button onClick={() => { setEditingEnrollment(undefined); setIsModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova</button>
             </div>
 
-            <div className="bg-white p-3 rounded-xl border mb-6 flex gap-4 items-center">
-                <div className="relative flex-1"><SearchIcon /><input type="text" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="md-input pl-10" /></div>
+            <div className="bg-white p-3 rounded-xl border mb-6 flex flex-wrap gap-4 items-center">
+                <div className="relative flex-1 min-w-[200px]"><SearchIcon /><input type="text" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="md-input pl-10" /></div>
+                
+                <select value={filterYear} onChange={e => setFilterYear(e.target.value)} className="md-input w-32">
+                    <option value="all">Tutti gli anni</option>
+                    {Array.from({length: 5}, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                        <option key={y} value={y}>{y}</option>
+                    ))}
+                </select>
+
+                <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="md-input w-32">
+                    <option value="all">Tutti i mesi</option>
+                    {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m}>{new Date(2000, m - 1, 1).toLocaleString('it-IT', { month: 'long' })}</option>
+                    ))}
+                </select>
+
                 <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input w-48">
                     <option value="">Tutte le Sedi</option>
                     {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
@@ -655,33 +739,41 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                     const isFullyPaid = paymentStatus.isFullyPaid;
 
                                                                     return (
-                                                                        <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-4 transition-all hover:shadow-md cursor-grab ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
-                                                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-2 gap-2">
-                                                                                <div className="min-w-0 w-full md:w-auto">
-                                                                                    <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2"><span className="truncate">{enr.childName}</span>{childAge && <span className="bg-gray-100 text-black text-[10px] font-bold px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap">{childAge}</span>}</h4>
-                                                                                    {isInst && <span className="text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
-                                                                                </div>
-                                                                                <div className="flex gap-1 self-end md:self-auto flex-shrink-0">
-                                                                                    {/* Financial Wizard Trigger */}
-                                                                                    <button onClick={() => setFinancialWizardTarget(enr)} className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`} title="Gestione Finanziaria / Wizard"><span className="font-bold text-xs">€</span></button>
-                                                                                    
-                                                                                    {/* RESYNC BUTTON PER ISTITUZIONALI */}
-                                                                                    {isInst && (
-                                                                                        <button 
-                                                                                            onClick={() => handleResyncRequest(enr)}
-                                                                                            className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-amber-200"
-                                                                                            title="Sincronizza Calendario (Fix Date/Slots)"
-                                                                                        >
-                                                                                            <RefreshIcon />
-                                                                                        </button>
-                                                                                    )}
-                                                                                    
-                                                                                    <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 flex-shrink-0 ml-1"><PencilIcon/></button>
-                                                                                    <button onClick={() => handleDeleteRequest(enr)} className="text-slate-300 hover:text-red-500 flex-shrink-0 ml-1"><TrashIcon/></button>
+                                                                        <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-[6px] transition-all hover:shadow-md cursor-grab flex flex-col gap-3 ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
+                                                                            {/* Riga 1 & 2: Nome ed Età */}
+                                                                            <div>
+                                                                                <h4 className="font-bold text-slate-800 text-sm leading-tight break-words">{enr.childName}</h4>
+                                                                                {childAge && <p className="text-xs text-slate-500 mt-1">{childAge}</p>}
+                                                                                {isInst && <span className="inline-block mt-1 text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
+                                                                            </div>
+                                                                            
+                                                                            {/* Riga 3: Abbonamento e Progresso */}
+                                                                            <div>
+                                                                                <p className="text-[10px] text-slate-500 mb-1 leading-tight break-words">{enr.subscriptionName}</p>
+                                                                                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                                                                    <div className={`h-full ${isInst ? 'bg-indigo-900' : 'bg-indigo-500'}`} style={{ width: `${progress}%` }}></div>
                                                                                 </div>
                                                                             </div>
-                                                                            <p className="text-[10px] text-slate-500 mb-3 truncate">{enr.subscriptionName}</p>
-                                                                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden mt-auto"><div className={`h-full ${isInst ? 'bg-indigo-900' : 'bg-indigo-500'}`} style={{ width: `${progress}%` }}></div></div>
+
+                                                                            {/* Riga 4: Bottoni Azione */}
+                                                                            <div className="flex justify-end gap-1 mt-1">
+                                                                                {/* Financial Wizard Trigger */}
+                                                                                <button onClick={() => setFinancialWizardTarget(enr)} className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`} title="Gestione Finanziaria / Wizard"><span className="font-bold text-xs">€</span></button>
+                                                                                
+                                                                                {/* RESYNC BUTTON PER ISTITUZIONALI */}
+                                                                                {isInst && (
+                                                                                    <button 
+                                                                                        onClick={() => handleResyncRequest(enr)}
+                                                                                        className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-amber-200"
+                                                                                        title="Sincronizza Calendario (Fix Date/Slots)"
+                                                                                    >
+                                                                                        <RefreshIcon />
+                                                                                    </button>
+                                                                                )}
+                                                                                
+                                                                                <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 flex-shrink-0 ml-1"><PencilIcon/></button>
+                                                                                <button onClick={() => handleDeleteRequest(enr)} className="text-slate-300 hover:text-red-500 flex-shrink-0 ml-1"><TrashIcon/></button>
+                                                                            </div>
                                                                         </div>
                                                                     );
                                                                 })}
