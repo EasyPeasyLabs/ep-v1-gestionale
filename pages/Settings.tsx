@@ -275,13 +275,86 @@ const ContractTemplateForm: React.FC<{ template: ContractTemplate; onSave: (t: C
     );
 };
 
-const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); const [subCategory, setSubCategory] = useState(check?.subCategory || ''); const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); const [startTime, setStartTime] = useState(check?.startTime || '09:00'); const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); const [note, setNote] = useState(check?.note || ''); const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; const toggleDay = (day: number) => { setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); }; const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; if (check?.id) onSave({ ...data, id: check.id }); else onSave(data); }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> <div className="p-6 pb-2 border-b"> <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> </div> <div className="flex-1 overflow-y-auto p-6 space-y-4"> <div className="md-input-group"> <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> {Object.values(CheckCategory).map(c => <option key={c} value={c}>{c}</option>)} </select> <label className="md-input-label">Categoria</label> </div> <div className="md-input-group"> <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> <label className="md-input-label">Dettaglio (es. Commercialista)</label> </div> <div> <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> <div className="flex flex-wrap gap-2"> {daysMap.map((d, i) => ( <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > {d} </button> ))} </div> </div> <div className="md-input-group"> <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> <label className="md-input-label !top-0">Orario Notifica</label> </div> <div className="flex items-center gap-2 mt-2"> <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> <label className="text-sm text-gray-700">Abilita Notifica Push</label> </div> <div className="md-input-group"> <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> <label className="md-input-label">Nota / Messaggio</label> </div> </div> <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> </div> </form> ); };
+const checkCategoryLabels: Record<CheckCategory, string> = {
+    [CheckCategory.Payments]: 'Pagamenti e Scadenze (es. rate, affitti)',
+    [CheckCategory.Operations]: 'Operatività e Didattica (es. presenze, materiali)',
+    [CheckCategory.Maintenance]: 'Manutenzione e Pulizia (es. locali, attrezzature)',
+    [CheckCategory.Compliance]: 'Fisco e Burocrazia (es. fatture SDI, privacy)'
+};
+
+const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCheckInput | PeriodicCheck) => void; onCancel: () => void }> = ({ check, onSave, onCancel }) => { 
+    const [category, setCategory] = useState<CheckCategory>(check?.category || CheckCategory.Payments); 
+    const [subCategory, setSubCategory] = useState(check?.subCategory || ''); 
+    const [daysOfWeek, setDaysOfWeek] = useState<number[]>(check?.daysOfWeek || []); 
+    const [startTime, setStartTime] = useState(check?.startTime || '09:00'); 
+    const [pushEnabled, setPushEnabled] = useState(check?.pushEnabled || false); 
+    const [note, setNote] = useState(check?.note || ''); 
+    const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']; 
+    
+    const toggleDay = (day: number) => { 
+        setDaysOfWeek(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]); 
+    }; 
+    
+    const handleSubmit = (e: React.FormEvent) => { 
+        e.preventDefault(); 
+        const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; 
+        if (check?.id) onSave({ ...data, id: check.id }); 
+        else onSave(data); 
+    }; 
+    
+    return ( 
+        <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden"> 
+            <div className="p-6 pb-2 border-b"> 
+                <h2 className="text-xl font-bold text-gray-800">{check ? 'Modifica Controllo' : 'Nuovo Controllo Periodico'}</h2> 
+            </div> 
+            <div className="flex-1 overflow-y-auto p-6 space-y-4"> 
+                <div className="md-input-group"> 
+                    <select value={category} onChange={e => setCategory(e.target.value as CheckCategory)} className="md-input"> 
+                        {Object.values(CheckCategory).map(c => <option key={c} value={c}>{checkCategoryLabels[c]}</option>)} 
+                    </select> 
+                    <label className="md-input-label">Categoria</label> 
+                </div> 
+                <div className="md-input-group"> 
+                    <input type="text" value={subCategory} onChange={e => setSubCategory(e.target.value)} className="md-input" placeholder=" " /> 
+                    <label className="md-input-label">Dettaglio (es. Commercialista)</label> 
+                </div> 
+                <div> 
+                    <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> 
+                    <div className="flex flex-wrap gap-2"> 
+                        {daysMap.map((d, i) => ( 
+                            <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > 
+                                {d} 
+                            </button> 
+                        ))} 
+                    </div> 
+                </div> 
+                <div className="md-input-group"> 
+                    <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input" /> 
+                    <label className="md-input-label !top-0">Orario Notifica</label> 
+                </div> 
+                <div className="flex items-center gap-2 mt-2"> 
+                    <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> 
+                    <label className="text-sm text-gray-700">Abilita Notifica Push</label> 
+                </div> 
+                <div className="md-input-group"> 
+                    <textarea value={note} onChange={e => setNote(e.target.value)} className="md-input" rows={2} placeholder=" "></textarea> 
+                    <label className="md-input-label">Nota / Messaggio</label> 
+                </div> 
+            </div> 
+            <div className="p-4 border-t flex justify-end gap-2 bg-gray-50"> 
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> 
+                <button type="submit" className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva</button> 
+            </div> 
+        </form> 
+    ); 
+};
 
 // --- MAIN SETTINGS COMPONENT ---
 
 const Settings: React.FC = () => {
     const [info, setInfo] = useState<CompanyInfo | null>(null);
     const [subscriptions, setSubscriptions] = useState<SubscriptionType[]>([]);
+    const [subscriptionFilter, setSubscriptionFilter] = useState<string>('all');
     const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [contractTemplates, setContractTemplates] = useState<ContractTemplate[]>([]);
     const [checks, setChecks] = useState<PeriodicCheck[]>([]);
@@ -530,10 +603,27 @@ const Settings: React.FC = () => {
                 <div className="md-card p-6">
                     <div className="flex justify-between items-center border-b pb-3" style={{borderColor: 'var(--md-divider)'}}>
                         <h2 className="text-lg font-semibold">Abbonamenti</h2>
-                        <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-raised md-btn-green md-btn-sm"><PlusIcon /> Nuovo</button>
+                        <div className="flex items-center gap-3">
+                            <select 
+                                value={subscriptionFilter} 
+                                onChange={(e) => setSubscriptionFilter(e.target.value)}
+                                className="text-xs border border-gray-300 rounded px-2 py-1.5 outline-none bg-white text-gray-700"
+                            >
+                                <option value="all">Tutti gli stati</option>
+                                <option value="active">Attivi</option>
+                                <option value="promo">Promo</option>
+                                <option value="future">Da Attivare</option>
+                                <option value="obsolete">Obsoleti</option>
+                            </select>
+                            <button onClick={() => handleOpenSubModal()} className="md-btn md-btn-raised md-btn-green md-btn-sm"><PlusIcon /> Nuovo</button>
+                        </div>
                     </div>
                     <div className="mt-4 space-y-3">
-                        {subscriptions.map(sub => {
+                        {subscriptions.filter(sub => {
+                            if (subscriptionFilter === 'all') return true;
+                            const status = sub.statusConfig?.status || 'active';
+                            return status === subscriptionFilter;
+                        }).map(sub => {
                             const status = sub.statusConfig?.status || 'active';
                             const badgeInfo = status !== 'active' ? getStatusBadgeInfo(status) : null;
                             
