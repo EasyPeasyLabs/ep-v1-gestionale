@@ -1,6 +1,6 @@
 
 import { messaging, db } from '../firebase/config';
-import { getToken } from 'firebase/messaging';
+import { getToken, onMessage } from 'firebase/messaging';
 import { doc, setDoc } from 'firebase/firestore';
 
 // Chiave VAPID reale fornita dall'utente
@@ -106,5 +106,36 @@ const saveTokenToDatabase = async (token: string, userId: string) => {
         }, { merge: true });
     } catch (e) {
         console.error("[FCM Service] Errore salvataggio DB:", e);
+    }
+};
+
+export const setupForegroundMessaging = () => {
+    if (!messaging) return;
+    
+    try {
+        onMessage(messaging, (payload) => {
+            console.log('[FCM] Message received in foreground:', payload);
+            
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const title = payload.notification?.title || 'Nuova Notifica';
+                const options = {
+                    body: payload.notification?.body,
+                    icon: '/lemon_logo_150px.png',
+                    data: payload.data,
+                };
+                
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.ready.then(registration => {
+                        registration.showNotification(title, options);
+                    }).catch(err => {
+                        new Notification(title, options);
+                    });
+                } else {
+                    new Notification(title, options);
+                }
+            }
+        });
+    } catch (e) {
+        console.error('[FCM] Error setting up foreground messaging:', e);
     }
 };

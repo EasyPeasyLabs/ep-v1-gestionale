@@ -107,20 +107,36 @@ exports.checkPeriodicNotifications = onSchedule(
   async (event) => {
     // 1. Calcola Ora e Giorno corrente in Italia
     const now = new Date();
-    // Convert to Rome Timezone Object to ensure correct hour/day even if server is UTC
-    const romeTimeStr = now.toLocaleString("en-US", {
-      timeZone: "Europe/Rome",
+    
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Rome',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
     });
-    const romeTime = new Date(romeTimeStr);
-
-    const currentHour =
-      romeTime.getHours().toString().padStart(2, "0") +
-      ":" +
-      romeTime.getMinutes().toString().padStart(2, "0");
-    const currentDay = romeTime.getDay(); // 0 = Sunday, 1 = Monday, ... (Standard JS)
+    
+    const parts = formatter.formatToParts(now);
+    const getPart = (type) => parts.find(p => p.type === type)?.value;
+    
+    const year = getPart('year');
+    const month = getPart('month');
+    const day = getPart('day');
+    const hour = getPart('hour');
+    const minute = getPart('minute');
+    
+    const currentHour = `${hour === '24' ? '00' : hour}:${minute}`;
+    
+    // Creiamo una data UTC usando i valori locali per ottenere il giorno della settimana corretto
+    const romeDateUTC = new Date(Date.UTC(year, month - 1, day));
+    const currentDay = romeDateUTC.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
+    
+    const todayStr = `${year}-${month}-${day}`;
 
     console.log(
-      `[DEBUG v4] Rome Time: ${romeTime.toISOString()} | Hour: ${currentHour} | Day Index: ${currentDay}`,
+      `[DEBUG v5] Rome Time: ${todayStr} ${currentHour} | Day Index: ${currentDay}`,
     );
 
     const notificationsToSend = [];
@@ -174,7 +190,6 @@ exports.checkPeriodicNotifications = onSchedule(
           const diffMinutes = currTotalMinutes - ruleTotalMinutes;
 
           // Se siamo entro 5 minuti dall'orario previsto e non abbiamo ancora inviato oggi
-          const todayStr = romeTime.toISOString().split("T")[0];
           const lastSentDate = rule.lastSentDate;
 
           if (
@@ -210,12 +225,12 @@ exports.checkPeriodicNotifications = onSchedule(
                   .collection("enrollments")
                   .where("status", "==", "Active")
                   .get();
-                const nextWeek = new Date(romeTime);
-                nextWeek.setDate(romeTime.getDate() + 7);
+                const nextWeek = new Date(now);
+                nextWeek.setDate(now.getDate() + 7);
 
                 count = snap.docs.filter((d) => {
                   const end = new Date(d.data().endDate);
-                  return end >= romeTime && end <= nextWeek;
+                  return end >= now && end <= nextWeek;
                 }).length;
 
                 if (count > 0) {
@@ -230,8 +245,8 @@ exports.checkPeriodicNotifications = onSchedule(
                   .where("isDeleted", "==", false)
                   .get();
 
-                const thirtyDaysAgo = new Date(romeTime);
-                thirtyDaysAgo.setDate(romeTime.getDate() - 30);
+                const thirtyDaysAgo = new Date(now);
+                thirtyDaysAgo.setDate(now.getDate() - 30);
 
                 count = snap.docs.filter((d) => {
                   const created = new Date(d.data().issueDate);
@@ -261,15 +276,15 @@ exports.checkPeriodicNotifications = onSchedule(
                   .where("status", "==", "Paid")
                   .get();
                 let dueCount = 0;
-                const threshold = new Date(romeTime);
-                threshold.setDate(romeTime.getDate() + 45);
+                const threshold = new Date(now);
+                threshold.setDate(now.getDate() + 45);
 
                 snap.docs.forEach((qDoc) => {
                   const installments = qDoc.data().installments || [];
                   installments.forEach((inst) => {
                     if (!inst.isPaid) {
                       const due = new Date(inst.dueDate);
-                      if (due >= romeTime && due <= threshold) dueCount++;
+                      if (due >= now && due <= threshold) dueCount++;
                     }
                   });
                 });

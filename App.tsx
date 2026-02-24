@@ -27,7 +27,7 @@ import Initiatives from './pages/Initiatives';
 import Manual from './pages/Manual';
 import ClientSituation from './pages/ClientSituation'; 
 import NotificationScheduler from './components/NotificationScheduler';
-import { requestNotificationPermission } from './services/fcmService';
+import { requestNotificationPermission, setupForegroundMessaging } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
 import { Page } from './types';
 
@@ -55,6 +55,7 @@ const App: React.FC = () => {
           setLoadingAuth(false);
           if (currentUser) {
               requestNotificationPermission(currentUser.uid).catch(err => console.warn('Notif Error:', err));
+              setupForegroundMessaging();
           }
         }, (error) => {
             console.error("Auth Error: " + error.message);
