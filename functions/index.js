@@ -2,9 +2,20 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 
-admin.initializeApp();
-const db = admin.firestore();
-const messaging = admin.messaging();
+// --- HELPER DI INIZIALIZZAZIONE ---
+// Questa funzione viene chiamata all'interno di OGNI Cloud Function
+// per garantire che l'app sia inizializzata solo quando serve.
+function getServices() {
+  if (admin.apps.length === 0) {
+    admin.initializeApp();
+  }
+  return {
+    db: admin.firestore(),
+    messaging: admin.messaging()
+  };
+}
+
+const daysOfWeekMap = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
 
 // --- CONFIGURAZIONE SICUREZZA ---
 // IMPORTANTE: In produzione, utilizzare firebase functions:secrets:set per gestire questa chiave.
@@ -21,6 +32,9 @@ exports.receiveLead = onRequest(
     maxInstances: 10,
   },
   async (req, res) => {
+    // Inizializza servizi
+    const { db } = getServices();
+
     // 1. Controllo Metodo
     if (req.method !== "POST") {
       return res.status(405).send("Method Not Allowed");
@@ -96,6 +110,125 @@ exports.receiveLead = onRequest(
   },
 );
 
+// --- FUNZIONE 1.1: ENDPOINT DISPONIBILITÀ SEDI (Nuova) ---
+// Url previsto: https://europe-west1-ep-gestionale-v1.cloudfunctions.net/getAvailableSlots
+exports.getAvailableSlots = onRequest(
+  {
+    region: "europe-west1",
+    cors: true,
+    maxInstances: 10,
+  },
+  async (req, res) => {
+    // Inizializza servizi
+    const { db } = getServices();
+
+    // 1. Gestione Manuale CORS (Preflight & Headers)
+    res.set('Access-Control-Allow-Origin', '*');
+    
+    if (req.method === 'OPTIONS') {
+      res.set('Access-Control-Allow-Methods', 'GET');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.set('Access-Control-Max-Age', '3600');
+      res.status(204).send('');
+      return;
+    }
+
+    // 2. Controllo Metodo
+    if (req.method !== "GET") {
+      return res.status(405).send("Method Not Allowed");
+    }
+
+    // 3. Controllo Sicurezza (Bearer Token)
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res
+        .status(401)
+        .json({ error: "Unauthorized: Missing Bearer Token" });
+    }
+
+    const token = authHeader.split("Bearer ")[1];
+    if (token !== API_SHARED_SECRET) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return res.status(403).json({ error: "Forbidden: Invalid API Key" });
+    }
+
+    try {
+      // 3. Recupero Sedi (dai Suppliers)
+      const suppliersSnap = await db.collection("suppliers").get();
+      const locations = [];
+      suppliersSnap.forEach((doc) => {
+        const supplier = doc.data();
+        if (supplier.locations && Array.isArray(supplier.locations)) {
+          supplier.locations.forEach((loc) => {
+            locations.push({
+              id: loc.id,
+              name: loc.name,
+              address: loc.address || "",
+              city: loc.city || "",
+              capacity: loc.capacity || 0,
+              availability: loc.availability || [],
+            });
+          });
+        }
+      });
+
+      // 4. Recupero Iscrizioni Attive per calcolo saturazione
+      const enrollmentsSnap = await db
+        .collection("enrollments")
+        .where("status", "==", "Active")
+        .get();
+
+      const enrollmentData = enrollmentsSnap.docs.map((doc) => doc.data());
+
+      // 5. Elaborazione Disponibilità
+      const result = locations.map((loc) => {
+        const slots = loc.availability.map((slot) => {
+          // Contiamo quante iscrizioni uniche occupano questo slot
+          // Uno slot è definito da locationId, dayOfWeek e startTime
+          const occupied = enrollmentData.filter((enr) => {
+            if (enr.locationId !== loc.id) return false;
+            
+            // Verifichiamo se l'iscrizione ha appuntamenti che matchano il giorno e l'ora
+            return (
+              enr.appointments &&
+              enr.appointments.some((app) => {
+                const appDate = new Date(app.date);
+                return (
+                  appDate.getDay() === slot.dayOfWeek &&
+                  app.startTime === slot.startTime
+                );
+              })
+            );
+          }).length;
+
+          const remaining = Math.max(0, loc.capacity - occupied);
+
+          return {
+            giorno: daysOfWeekMap[slot.dayOfWeek],
+            orario: `${slot.startTime} - ${slot.endTime}`,
+            postiRimanenti: remaining,
+            esaurito: remaining <= 0,
+          };
+        });
+
+        return {
+          sedeId: loc.id,
+          nomeSede: loc.name,
+          indirizzo: `${loc.address}${loc.city ? ", " + loc.city : ""}`,
+          slot: slots,
+        };
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      console.error("[API] Error fetching availability:", error);
+      return res
+        .status(500)
+        .json({ error: "Internal Server Error", details: error.message });
+    }
+  },
+);
+
 // --- FUNZIONE 2: CRON JOB NOTIFICHE (Esistente) ---
 // Questa funzione gira sui server di Google ogni minuto
 exports.checkPeriodicNotifications = onSchedule(
@@ -105,6 +238,9 @@ exports.checkPeriodicNotifications = onSchedule(
     region: "europe-west1",
   },
   async (event) => {
+    // Inizializza servizi
+    const { db, messaging } = getServices();
+
     // 1. Calcola Ora e Giorno corrente in Italia
     const now = new Date();
     
