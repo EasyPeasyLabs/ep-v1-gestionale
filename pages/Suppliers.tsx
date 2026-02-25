@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note, ContractTemplate, CompanyInfo } from '../types';
+import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note, ContractTemplate, CompanyInfo, SlotType } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
 import { getContractTemplates, getCompanyInfo } from '../services/settingsService';
 import { compileContractTemplate } from '../utils/contractUtils';
@@ -17,6 +17,8 @@ import ImportModal from '../components/ImportModal';
 import { importSuppliersFromExcel } from '../services/importService';
 import NotesManager from '../components/NotesManager';
 import Pagination from '../components/Pagination';
+import EyeIcon from '../components/icons/EyeIcon';
+import EyeOffIcon from '../components/icons/EyeOffIcon';
 
 // Helpers & Icons
 const StarIcon: React.FC<{ filled: boolean; onClick?: () => void; className?: string }> = ({ filled, onClick, className }) => ( <svg onClick={onClick} xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${filled ? 'text-yellow-400' : 'text-gray-300'} ${onClick ? 'cursor-pointer hover:scale-110 transition-transform' : ''} ${className}`} viewBox="0 0 20 20" fill="currentColor"> <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /> </svg> );
@@ -421,24 +423,82 @@ const LocationForm: React.FC<{
     const [distance, setDistance] = useState(location.distance || 0);
     const [color, setColor] = useState(location.color || '#3b82f6');
     const [closedAt, setClosedAt] = useState(location.closedAt || '');
-    
+    const [isPubliclyVisible, setIsPubliclyVisible] = useState(location.isPubliclyVisible !== false);
+
     const [slots, setSlots] = useState<AvailabilitySlot[]>(location.availability || []);
     const [newSlotDay, setNewSlotDay] = useState(1); 
     const [newSlotStart, setNewSlotStart] = useState('16:00');
     const [newSlotEnd, setNewSlotEnd] = useState('18:00');
+    const [newSlotVisible, setNewSlotVisible] = useState(true);
+    const [newSlotMinAge, setNewSlotMinAge] = useState('');
+    const [newSlotMaxAge, setNewSlotMaxAge] = useState('');
+    const [newSlotType, setNewSlotType] = useState<SlotType>('LAB');
+    const [editingSlotIndex, setEditingSlotIndex] = useState<number | null>(null);
 
-    const handleAddSlot = () => {
-        setSlots([...slots, { dayOfWeek: Number(newSlotDay), startTime: newSlotStart, endTime: newSlotEnd }]);
+    const handleAddOrUpdateSlot = () => {
+        const slotData: AvailabilitySlot = { 
+            dayOfWeek: Number(newSlotDay), 
+            startTime: newSlotStart, 
+            endTime: newSlotEnd,
+            isPubliclyVisible: newSlotVisible,
+            minAge: newSlotMinAge ? Number(newSlotMinAge) : undefined,
+            maxAge: newSlotMaxAge ? Number(newSlotMaxAge) : undefined,
+            type: newSlotType
+        };
+
+        if (editingSlotIndex !== null) {
+            setSlots(slots.map((s, i) => i === editingSlotIndex ? slotData : s));
+            setEditingSlotIndex(null);
+        } else {
+            setSlots([...slots, slotData]);
+        }
+
+        // Reset inputs
+        setNewSlotMinAge('');
+        setNewSlotMaxAge('');
+        setNewSlotType('LAB');
+        setNewSlotVisible(true);
+        setNewSlotStart('16:00');
+        setNewSlotEnd('18:00');
+        setNewSlotDay(1);
+    };
+
+    const startEditingSlot = (idx: number) => {
+        const s = slots[idx];
+        setNewSlotDay(s.dayOfWeek);
+        setNewSlotStart(s.startTime);
+        setNewSlotEnd(s.endTime);
+        setNewSlotVisible(s.isPubliclyVisible !== false);
+        setNewSlotMinAge(s.minAge?.toString() || '');
+        setNewSlotMaxAge(s.maxAge?.toString() || '');
+        setNewSlotType(s.type || 'LAB');
+        setEditingSlotIndex(idx);
+    };
+
+    const cancelEditingSlot = () => {
+        setEditingSlotIndex(null);
+        setNewSlotMinAge('');
+        setNewSlotMaxAge('');
+        setNewSlotType('LAB');
+        setNewSlotVisible(true);
+        setNewSlotStart('16:00');
+        setNewSlotEnd('18:00');
+        setNewSlotDay(1);
     };
 
     const removeSlot = (idx: number) => {
         setSlots(slots.filter((_, i) => i !== idx));
+        if (editingSlotIndex === idx) cancelEditingSlot();
+    };
+
+    const toggleSlotVisibility = (idx: number) => {
+        setSlots(slots.map((s, i) => i === idx ? { ...s, isPubliclyVisible: !s.isPubliclyVisible } : s));
     };
 
     const handleSubmit = () => {
         onSave({ 
             ...location, 
-            name, address, city, capacity, rentalCost, distance, color, closedAt, availability: slots 
+            name, address, city, capacity, rentalCost, distance, color, closedAt, availability: slots, isPubliclyVisible 
         });
     };
 
@@ -450,6 +510,20 @@ const LocationForm: React.FC<{
                 <div className="md-input-group"><input type="text" value={city} onChange={e => setCity(e.target.value)} className="md-input text-sm" placeholder=" "/><label className="md-input-label text-xs">Città</label></div>
             </div>
             <div className="md-input-group mb-3"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input text-sm" placeholder=" "/><label className="md-input-label text-xs">Indirizzo</label></div>
+            
+            <div className="mb-4 flex items-center gap-2">
+                <input 
+                    type="checkbox" 
+                    id="isPubliclyVisible" 
+                    checked={isPubliclyVisible} 
+                    onChange={e => setIsPubliclyVisible(e.target.checked)} 
+                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                />
+                <label htmlFor="isPubliclyVisible" className="text-xs font-bold text-gray-700 select-none cursor-pointer">
+                    Disponibile per Iscrizioni Online
+                </label>
+            </div>
+
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div><label className="text-[10px] text-gray-500">Capienza</label><input type="number" value={capacity} onChange={e => setCapacity(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
                 <div><label className="text-[10px] text-gray-500">Costo Nolo (€)</label><input type="number" value={rentalCost} onChange={e => setRentalCost(Number(e.target.value))} className="w-full border rounded p-1 text-sm"/></div>
@@ -460,15 +534,65 @@ const LocationForm: React.FC<{
                 <div className="md-input-group"><input type="date" value={closedAt} onChange={e => setClosedAt(e.target.value)} className="md-input text-sm" placeholder=" " /><label className="md-input-label text-xs">Data Chiusura</label></div>
             </div>
             <div className="border-t border-gray-200 pt-3">
-                <label className="block text-xs font-bold text-gray-600 mb-2">Disponibilità Oraria</label>
-                <div className="flex gap-2 items-end mb-2">
-                    <select value={newSlotDay} onChange={e => setNewSlotDay(Number(e.target.value))} className="text-xs border rounded p-1 bg-white">{daysMap.map((d, i) => <option key={i} value={i}>{d}</option>)}</select>
-                    <input type="time" value={newSlotStart} onChange={e => setNewSlotStart(e.target.value)} className="text-xs border rounded p-1"/>
-                    <span className="text-gray-400">-</span>
-                    <input type="time" value={newSlotEnd} onChange={e => setNewSlotEnd(e.target.value)} className="text-xs border rounded p-1"/>
-                    <button type="button" onClick={handleAddSlot} className="md-btn md-btn-sm md-btn-green px-2 py-0 h-7">+</button>
+                <div className="flex justify-between items-end mb-2">
+                    <label className="block text-xs font-bold text-gray-600">Disponibilità Oraria</label>
+                    <div className="flex gap-4">
+                        <label className="block text-xs font-bold text-gray-600">Tipo</label>
+                        <label className="block text-xs font-bold text-gray-600 mr-24">Fascia d'età (anni)</label>
+                    </div>
                 </div>
-                <div className="flex flex-wrap gap-2">{slots.map((s, i) => (<span key={i} className="inline-flex items-center px-2 py-1 rounded bg-white border border-gray-300 text-[10px] font-medium text-gray-700">{daysMap[s.dayOfWeek]} {s.startTime}-{s.endTime}<button type="button" onClick={() => removeSlot(i)} className="ml-1 text-red-500 hover:text-red-700 font-bold">×</button></span>))}</div>
+                <div className="flex gap-2 items-end mb-4 flex-wrap bg-gray-50 p-2 rounded border border-gray-200">
+                    <select value={newSlotDay} onChange={e => setNewSlotDay(Number(e.target.value))} className="text-xs border rounded p-1.5 bg-white h-8 w-24">{daysMap.map((d, i) => <option key={i} value={i}>{d}</option>)}</select>
+                    <input type="time" value={newSlotStart} onChange={e => setNewSlotStart(e.target.value)} className="text-xs border rounded p-1.5 h-8"/>
+                    <span className="text-gray-400 self-center">-</span>
+                    <input type="time" value={newSlotEnd} onChange={e => setNewSlotEnd(e.target.value)} className="text-xs border rounded p-1.5 h-8"/>
+                    
+                    <div className="flex items-center gap-2 ml-2">
+                        <select value={newSlotType} onChange={e => setNewSlotType(e.target.value as SlotType)} className={`text-xs border rounded p-1.5 h-8 font-bold ${newSlotType === 'LAB' ? 'text-blue-600 bg-blue-50 border-blue-200' : 'text-orange-600 bg-orange-50 border-orange-200'}`}>
+                            <option value="LAB">Laboratorio</option>
+                            <option value="SG">Spazio Gioco</option>
+                        </select>
+                    </div>
+
+                    <div className="flex items-center gap-1 ml-2">
+                        <input type="number" value={newSlotMinAge} onChange={e => setNewSlotMinAge(e.target.value)} placeholder="Min" className="text-xs border rounded p-1.5 h-8 w-12 text-center" />
+                        <span className="text-gray-400">-</span>
+                        <input type="number" value={newSlotMaxAge} onChange={e => setNewSlotMaxAge(e.target.value)} placeholder="Max" className="text-xs border rounded p-1.5 h-8 w-12 text-center" />
+                    </div>
+
+                    <button type="button" onClick={() => setNewSlotVisible(!newSlotVisible)} className="p-1.5 rounded hover:bg-gray-200 ml-2 h-8 w-8 flex items-center justify-center" title={newSlotVisible ? "Visibile online" : "Nascosto online"}>
+                        {newSlotVisible ? <EyeIcon className="w-4 h-4 text-green-600" /> : <EyeOffIcon className="w-4 h-4 text-gray-400" />}
+                    </button>
+                    
+                    <div className="flex gap-1 ml-auto">
+                        {editingSlotIndex !== null && <button type="button" onClick={cancelEditingSlot} className="md-btn md-btn-sm md-btn-flat px-3 h-8 flex items-center justify-center">Annulla</button>}
+                        <button type="button" onClick={handleAddOrUpdateSlot} className={`md-btn md-btn-sm ${editingSlotIndex !== null ? 'md-btn-primary' : 'md-btn-green'} px-3 h-8 flex items-center justify-center`}>
+                            {editingSlotIndex !== null ? 'Aggiorna' : '+ Aggiungi'}
+                        </button>
+                    </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-3">
+                    {slots.map((s, i) => (
+                        <div key={i} onClick={() => startEditingSlot(i)} className={`relative border rounded-md p-2 w-48 shadow-sm cursor-pointer transition-all hover:shadow-md ${editingSlotIndex === i ? 'ring-2 ring-indigo-500 border-transparent' : ''} ${s.isPubliclyVisible !== false ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-75'}`}>
+                            <div className="flex justify-between items-start mb-1 border-b border-gray-100 pb-1">
+                                <span className="text-[11px] font-bold text-gray-700 flex items-center gap-1">
+                                    <span className={`text-[9px] px-1 rounded ${s.type === 'SG' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{s.type || 'LAB'}</span>
+                                    {daysMap[s.dayOfWeek]} <span className="font-normal text-gray-500">{s.startTime}-{s.endTime}</span>
+                                </span>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); removeSlot(i); }} className="text-red-400 hover:text-red-600 font-bold text-xs p-0.5 rounded hover:bg-red-50">✕</button>
+                            </div>
+                            <div className="flex justify-between items-center mt-1">
+                                <span className="text-[10px] font-medium text-gray-500">
+                                    {(s.minAge || s.maxAge) ? `${s.minAge || 0} - ${s.maxAge || '?'} anni` : 'Tutte le età'}
+                                </span>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); toggleSlotVisibility(i); }} className="text-gray-400 hover:text-indigo-600 p-0.5 rounded hover:bg-gray-100" title="Cambia visibilità">
+                                    {s.isPubliclyVisible !== false ? <EyeIcon className="w-3.5 h-3.5 text-green-600" /> : <EyeOffIcon className="w-3.5 h-3.5" />}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
             </div>
             <div className="flex justify-end gap-2 mt-4"><button onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button><button onClick={handleSubmit} className="md-btn md-btn-raised md-btn-primary md-btn-sm">Salva Sede</button></div>
         </div>
@@ -527,7 +651,38 @@ const SupplierForm: React.FC<{
                 <div>
                     <div className="flex justify-between items-center mb-2 border-b pb-1"><h3 className="font-bold text-gray-700">Sedi & Disponibilità</h3>{!isEditingLoc && <button type="button" onClick={() => { setEditingLocation({}); setIsEditingLoc(true); }} className="text-xs text-indigo-600 font-bold hover:underline">+ Aggiungi Sede</button>}</div>
                     {isEditingLoc && editingLocation && (<LocationForm location={editingLocation as Location} onSave={handleSaveLocation} onCancel={() => setIsEditingLoc(false)} />)}
-                    <div className="space-y-2 mt-2">{locations.map(loc => (<div key={loc.id} className={`bg-white border rounded p-3 flex justify-between items-center hover:shadow-sm transition-shadow ${loc.closedAt ? 'border-l-4 border-l-red-400 bg-red-50/20' : ''}`}><div><div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full" style={{backgroundColor: loc.color}}></span><span className="font-bold text-sm text-gray-800">{loc.name}</span>{loc.closedAt && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">Chiusa</span>}</div><p className="text-xs text-gray-500">{loc.address}, {loc.city}</p><div className="flex gap-1 mt-1">{loc.availability?.map((slot, i) => (<span key={i} className="text-[9px] bg-gray-100 px-1 rounded text-gray-600">{daysMap[slot.dayOfWeek].substring(0,3)} {slot.startTime}</span>))}</div></div><div className="flex gap-1"><button type="button" onClick={() => { setEditingLocation(loc); setIsEditingLoc(true); }} className="md-icon-btn edit p-1"><PencilIcon/></button></div></div>))}</div>
+                    <div className="space-y-2 mt-2">{locations.map(loc => (
+                        <div key={loc.id} className={`bg-white border rounded p-3 flex justify-between items-center hover:shadow-sm transition-shadow ${loc.closedAt ? 'border-l-4 border-l-red-400 bg-red-50/20' : ''}`}>
+                            <div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full" style={{backgroundColor: loc.color}}></span>
+                                    <span className="font-bold text-sm text-gray-800">{loc.name}</span>
+                                    {loc.closedAt && <span className="text-[9px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold uppercase">Chiusa</span>}
+                                    {loc.isPubliclyVisible === false && <EyeOffIcon className="w-3 h-3 text-gray-400" />}
+                                </div>
+                                <p className="text-xs text-gray-500">{loc.address}, {loc.city}</p>
+                                <div className="flex gap-1 mt-1 flex-wrap">
+                                    {loc.availability?.map((slot, i) => (
+                                        <span key={i} className={`text-[9px] px-1.5 py-1 rounded flex flex-col items-start gap-0.5 border ${slot.isPubliclyVisible !== false ? 'bg-gray-50 border-gray-200' : 'bg-gray-100 border-gray-300 text-gray-400'}`}>
+                                            <span className="flex items-center gap-1 font-bold text-gray-700">
+                                                <span className={`text-[8px] px-0.5 rounded ${slot.type === 'SG' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{slot.type || 'LAB'}</span>
+                                                {slot.isPubliclyVisible === false && <EyeOffIcon className="w-2 h-2 text-gray-400" />}
+                                                {daysMap[slot.dayOfWeek].substring(0,3)} {slot.startTime}-{slot.endTime}
+                                            </span>
+                                            {(slot.minAge || slot.maxAge) && (
+                                                <span className="text-[8px] text-gray-500 font-medium">
+                                                    {slot.minAge || 0}-{slot.maxAge || '?'} anni
+                                                </span>
+                                            )}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex gap-1">
+                                <button type="button" onClick={() => { setEditingLocation(loc); setIsEditingLoc(true); }} className="md-icon-btn edit p-1"><PencilIcon/></button>
+                            </div>
+                        </div>
+                    ))}</div>
                 </div>
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0"><button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button><button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button></div>
@@ -605,7 +760,7 @@ const Suppliers: React.FC = () => {
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{paginatedSuppliers.map(supplier => {
                 const avgRating = getAverageRating(supplier.rating);
                 return (
-                    <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'opacity-75' : ''} border-t-4 border-indigo-50`}><div className="flex-1"><div className="flex justify-between items-start"><h2 className="text-lg font-bold">{supplier.companyName}</h2>{Number(avgRating) > 0 && <span className="text-sm font-bold text-yellow-600 flex items-center bg-yellow-50 px-2 py-1 rounded">{avgRating} <StarIcon filled={true} className="w-3 h-3 ml-1"/></span>}</div><div className="mt-3 text-sm text-gray-600"><p><strong>Tel:</strong> {supplier.phone}</p><p><strong>Sede:</strong> {supplier.city}</p></div><div className="mt-4 pt-4 border-t border-gray-100"><h4 className="font-semibold text-xs text-gray-500 uppercase">Sedi & Slot</h4><ul className="text-xs mt-2 space-y-1">{supplier.locations.map(loc => (<li key={loc.id} className={`flex justify-between items-center p-1 rounded ${loc.closedAt ? 'bg-red-50 text-red-500 line-through' : 'bg-gray-50'}`}><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: loc.color }}></span><span className="truncate max-w-[120px]">{loc.name}</span></div><div className="flex gap-1">{loc.availability?.map((slot, i) => (<span key={i} className="px-1.5 py-0.5 bg-white border rounded text-[10px] font-bold text-indigo-600">{daysMap[slot.dayOfWeek].substring(0,3)}</span>))}</div></li>))}</ul></div></div><div className="mt-4 pt-4 border-t flex justify-between items-center space-x-2">{!showTrash && (<button onClick={() => setContractModalSupplier(supplier)} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1 font-bold"><PrinterIcon /> Contratto</button>)}<div className="flex gap-1 ml-auto">{showTrash ? (<><button onClick={() => restoreSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn"><RestoreIcon /></button></>) : (<><button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => deleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button></>)}</div></div></div>
+                    <div key={supplier.id} className={`md-card p-6 flex flex-col ${showTrash ? 'opacity-75' : ''} border-t-4 border-indigo-50`}><div className="flex-1"><div className="flex justify-between items-start"><h2 className="text-lg font-bold">{supplier.companyName}</h2>{Number(avgRating) > 0 && <span className="text-sm font-bold text-yellow-600 flex items-center bg-yellow-50 px-2 py-1 rounded">{avgRating} <StarIcon filled={true} className="w-3 h-3 ml-1"/></span>}</div><div className="mt-3 text-sm text-gray-600"><p><strong>Tel:</strong> {supplier.phone}</p><p><strong>Sede:</strong> {supplier.city}</p></div><div className="mt-4 pt-4 border-t border-gray-100"><h4 className="font-semibold text-xs text-gray-500 uppercase">Sedi & Slot</h4><ul className="text-xs mt-2 space-y-1">{supplier.locations.map(loc => (<li key={loc.id} className={`flex justify-between items-center p-1 rounded ${loc.closedAt ? 'bg-red-50 text-red-500 line-through' : 'bg-gray-50'}`}><div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: loc.color }}></span><span className="truncate max-w-[120px]">{loc.name}</span>{loc.isPubliclyVisible === false && <EyeOffIcon className="w-2 h-2 text-gray-400" />}</div><div className="flex gap-1 flex-wrap justify-end max-w-[50%]">{loc.availability?.map((slot, i) => (<span key={i} className={`px-1.5 py-0.5 border rounded text-[10px] font-bold flex items-center gap-0.5 ${slot.isPubliclyVisible !== false ? 'bg-white text-indigo-600' : 'bg-gray-100 text-gray-400'}`}>{slot.isPubliclyVisible === false && <EyeOffIcon className="w-2 h-2" />}<span className={`text-[8px] px-0.5 rounded mr-0.5 ${slot.type === 'SG' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>{slot.type || 'LAB'}</span>{daysMap[slot.dayOfWeek].substring(0,3)} {(slot.minAge || slot.maxAge) && <span className="text-[8px] text-gray-400 font-normal ml-0.5">({slot.minAge || 0}-{slot.maxAge || '?'}a)</span>}</span>))}</div></li>))}</ul></div></div><div className="mt-4 pt-4 border-t flex justify-between items-center space-x-2">{!showTrash && (<button onClick={() => setContractModalSupplier(supplier)} className="text-xs bg-indigo-50 text-indigo-700 px-2 py-1 rounded border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1 font-bold"><PrinterIcon /> Contratto</button>)}<div className="flex gap-1 ml-auto">{showTrash ? (<><button onClick={() => restoreSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn"><RestoreIcon /></button></>) : (<><button onClick={() => handleOpenModal(supplier)} className="md-icon-btn edit"><PencilIcon /></button><button onClick={() => deleteSupplier(supplier.id).then(fetchSuppliers)} className="md-icon-btn delete"><TrashIcon /></button></>)}</div></div></div>
                 );
              })}</div><Pagination currentPage={currentPage} totalItems={filteredSuppliers.length} itemsPerPage={itemsPerPage} onPageChange={setCurrentPage} /></>
             )}

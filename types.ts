@@ -1,5 +1,5 @@
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'NotificationPlanning' | 'Profile' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'NotificationPlanning' | 'Profile' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation' | 'Leads';
 
 export enum ClientType {
     Parent = 'parent',
@@ -105,14 +105,21 @@ export interface Location {
     notesHistory?: Note[];
     tags?: string[];
     rating?: LocationRating;
+    isPubliclyVisible?: boolean;
 }
 
 export type LocationInput = Omit<Location, 'id'>;
+
+export type SlotType = 'LAB' | 'SG';
 
 export interface AvailabilitySlot {
     dayOfWeek: number;
     startTime: string;
     endTime: string;
+    isPubliclyVisible?: boolean;
+    minAge?: number;
+    maxAge?: number;
+    type?: SlotType;
 }
 
 export interface SupplierRating {

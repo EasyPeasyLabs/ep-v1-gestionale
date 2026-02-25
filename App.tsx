@@ -29,6 +29,7 @@ import ClientSituation from './pages/ClientSituation';
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission, setupForegroundMessaging } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
+import { LeadsPage } from './src/pages/LeadsPage';
 import { Page } from './types';
 
 const App: React.FC = () => {
@@ -125,6 +126,7 @@ const App: React.FC = () => {
                       case 'NotificationPlanning': return <NotificationPlanning />;
                       case 'Profile': return <Profile user={user} />;
                       case 'Manual': return <Manual />;
+                      case 'Leads': return <LeadsPage />;
                       default: return <Dashboard setCurrentPage={handleNavigation} />;
                     }
                 })()}

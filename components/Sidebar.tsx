@@ -14,6 +14,7 @@ import ChevronDownIcon from './icons/ChevronDownIcon';
 import ArchiveIcon from './icons/ArchiveIcon'; 
 import IdentificationIcon from './icons/IdentificationIcon';
 import BellIcon from './icons/BellIcon';
+import UserPlusIcon from './icons/UserPlusIcon';
 import { getCompanyInfo } from '../services/settingsService';
 
 const SoccerBallIcon = () => (
@@ -93,6 +94,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
 
   const navItems: NavItem[] = [
     { page: 'Dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+    { page: 'Leads', label: 'Richieste Web', icon: <UserPlusIcon /> },
     { page: 'Calendar', label: 'Calendario', icon: <CalendarIcon /> },
     { page: 'Enrollments', label: 'Iscrizioni', icon: <ChecklistIcon /> },
     { page: 'EnrollmentArchive', label: 'Archivio Iscrizioni', icon: <ArchiveIcon /> },
