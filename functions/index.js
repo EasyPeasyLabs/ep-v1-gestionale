@@ -518,17 +518,17 @@ exports.checkPeriodicNotifications = onSchedule(
 const gmailClientId = defineSecret("GMAIL_CLIENT_ID");
 const gmailClientSecret = defineSecret("GMAIL_CLIENT_SECRET");
 const gmailRefreshToken = defineSecret("GMAIL_REFRESH_TOKEN");
+const gmailSenderEmail = defineSecret("GMAIL_SENDER_EMAIL");
 
 exports.sendEmail = onCall({
     region: "europe-west1",
     cors: true,
-    secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
+    secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken, gmailSenderEmail]
 }, async (request) => {
     // Lazy load dependencies to prevent cold start timeouts
     const { google } = require("googleapis");
     const nodemailer = require("nodemailer");
 
-    const SENDER_EMAIL = "labeasypeasy@gmail.com";
     const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 
     const { to, subject, html, attachments } = request.data;
@@ -541,6 +541,7 @@ exports.sendEmail = onCall({
         const clientId = gmailClientId.value();
         const clientSecret = gmailClientSecret.value();
         const refreshToken = gmailRefreshToken.value();
+        const senderEmail = gmailSenderEmail.value();
 
         const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
         oAuth2Client.setCredentials({ refresh_token: refreshToken });
@@ -556,7 +557,7 @@ exports.sendEmail = onCall({
             service: "gmail",
             auth: {
                 type: "OAuth2",
-                user: SENDER_EMAIL,
+                user: senderEmail,
                 clientId: clientId,
                 clientSecret: clientSecret,
                 refreshToken: refreshToken,
@@ -566,7 +567,7 @@ exports.sendEmail = onCall({
 
         // 3. Prepara gli allegati (se presenti)
         const mailOptions = {
-            from: `Lab Easy Peasy <${SENDER_EMAIL}>`,
+            from: `Lab Easy Peasy <${senderEmail}>`,
             to: Array.isArray(to) ? to.join(",") : to,
             subject: subject,
             html: html,
