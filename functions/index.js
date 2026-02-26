@@ -2,8 +2,6 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
-const { google } = require("googleapis");
-const nodemailer = require("nodemailer");
 const { defineSecret } = require("firebase-functions/params");
 
 // --- HELPER DI INIZIALIZZAZIONE ---
@@ -520,18 +518,23 @@ exports.checkPeriodicNotifications = onSchedule(
 const gmailClientId = defineSecret("GMAIL_CLIENT_ID");
 const gmailClientSecret = defineSecret("GMAIL_CLIENT_SECRET");
 const gmailRefreshToken = defineSecret("GMAIL_REFRESH_TOKEN");
-const SENDER_EMAIL = "labeasypeasy@gmail.com";
-const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 
 exports.sendEmail = onCall({
     region: "europe-west1",
     cors: true,
     secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
 }, async (request) => {
+    // Lazy load dependencies to prevent cold start timeouts
+    const { google } = require("googleapis");
+    const nodemailer = require("nodemailer");
+
+    const SENDER_EMAIL = "labeasypeasy@gmail.com";
+    const REDIRECT_URI = "https://developers.google.com/oauthplayground";
+
     const { to, subject, html, attachments } = request.data;
 
     if (!to || !subject || !html) {
-        throw new Error("Missing required fields: to, subject, html");
+        throw new HttpsError("invalid-argument", "Missing required fields: to, subject, html");
     }
 
     try {
