@@ -1,7 +1,22 @@
 
-import { db } from '../firebase/config';
+import { db, app } from '../firebase/config';
 import { collection, getDocs, addDoc, doc, deleteDoc, DocumentData, QueryDocumentSnapshot, query, orderBy, updateDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { CommunicationLog, CommunicationLogInput, Campaign, CampaignInput } from '../types';
+
+// --- CLOUD FUNCTIONS ---
+const functions = getFunctions(app, 'europe-west2'); // Region must match deployment
+
+export const sendEmail = async (data: { to: string | string[], subject: string, html: string, attachments?: { filename: string, path: string }[] }) => {
+    const sendEmailFn = httpsCallable(functions, 'sendEmail');
+    try {
+        const result = await sendEmailFn(data);
+        return result.data;
+    } catch (error) {
+        console.error("Error calling sendEmail function:", error);
+        throw error;
+    }
+};
 
 // --- LOGS ---
 const communicationCollectionRef = collection(db, 'communications');
