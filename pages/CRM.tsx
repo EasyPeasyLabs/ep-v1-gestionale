@@ -470,25 +470,6 @@ const CommunicationModal: React.FC<{
                 }));
 
                 // Send via Cloud Function
-                await sendEmail({
-                    to: recipientsType === 'custom' ? customRecipient : 'labeasypeasy@gmail.com', // For bulk, we send to self in BCC or loop. 
-                    // BETTER STRATEGY FOR BULK: Send individually or use BCC if supported by function.
-                    // Current function supports array. Let's use BCC logic or direct TO based on privacy.
-                    // For privacy, if multiple recipients, we should send to sender and BCC others, OR send individually.
-                    // Let's simplify: If custom, TO = custom. If bulk, TO = sender, BCC = recipients (but function needs update for BCC).
-                    // For now, let's just send to the first recipient if single, or loop if multiple?
-                    // Looping in frontend is bad. Let's send to all in TO for now (assuming internal use) or update function for BCC.
-                    // WAIT: The function takes 'to' as array. Nodemailer puts them in TO. Everyone sees everyone.
-                    // FIX: We should loop here or update function to support BCC.
-                    // Let's loop here for safety and individual logs.
-                });
-                
-                // Actually, let's loop to ensure privacy and individual delivery status
-                // But for 50 emails it's slow.
-                // Let's send one email with all recipients in BCC?
-                // The current function only supports 'to'.
-                // Let's change strategy: Send to the list.
-                
                 // REVISED STRATEGY:
                 // If single recipient: Send directly.
                 // If multiple: Loop and send individually (safer for privacy).
