@@ -357,14 +357,18 @@ const CommunicationModal: React.FC<{
 
     // Attachments
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+        const fileList = e.target.files;
+        if (!fileList || fileList.length === 0) return;
+        
+        // Convert FileList to Array immediately to avoid issues with async loops
+        const files = Array.from(fileList);
         
         setIsUploading(true);
         try {
-            for (let i = 0; i < files.length; i++) {
-                const url = await uploadCommunicationAttachment(files[i]);
-                setAttachments(prev => [...prev, { name: files[i].name, url }]);
+            for (const file of files) {
+                if (!file) continue; // Skip if file is somehow undefined
+                const url = await uploadCommunicationAttachment(file);
+                setAttachments(prev => [...prev, { name: file.name, url }]);
             }
         } catch (error) {
             console.error(error);
