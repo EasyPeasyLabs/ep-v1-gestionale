@@ -5,7 +5,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { CommunicationLog, CommunicationLogInput, Campaign, CampaignInput } from '../types';
 
 // --- CLOUD FUNCTIONS ---
-const functions = getFunctions(app, 'europe-west2'); // Region must match deployment
+const functions = getFunctions(app, 'europe-west1'); // Region must match deployment
 
 export const sendEmail = async (data: { to: string | string[], subject: string, html: string, attachments?: { filename: string, path: string }[] }) => {
     const sendEmailFn = httpsCallable(functions, 'sendEmail');
