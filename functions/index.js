@@ -524,20 +524,25 @@ exports.sendEmail = onCall({
     cors: true,
     secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
 }, async (request) => {
-    // Lazy load dependencies to prevent cold start timeouts
-    const { google } = require("googleapis");
-    const nodemailer = require("nodemailer");
-
-    const SENDER_EMAIL = "labeasypeasy@gmail.com";
-    const REDIRECT_URI = "https://developers.google.com/oauthplayground";
-
-    const { to, subject, html, attachments } = request.data;
-
-    if (!to || !subject || !html) {
-        throw new HttpsError("invalid-argument", "Missing required fields: to, subject, html");
+    // 0. PING CHECK (Debug)
+    if (request.data.ping) {
+        return { success: true, message: "pong" };
     }
 
     try {
+        // Lazy load dependencies to prevent cold start timeouts
+        const { google } = require("googleapis");
+        const nodemailer = require("nodemailer");
+
+        const SENDER_EMAIL = "labeasypeasy@gmail.com";
+        const REDIRECT_URI = "https://developers.google.com/oauthplayground";
+
+        const { to, subject, html, attachments } = request.data;
+
+        if (!to || !subject || !html) {
+            throw new Error("Missing required fields: to, subject, html");
+        }
+
         const clientId = gmailClientId.value();
         const clientSecret = gmailClientSecret.value();
         const refreshToken = gmailRefreshToken.value();
