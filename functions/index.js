@@ -1,5 +1,5 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onRequest, onCall } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 const logger = require("firebase-functions/logger");
 const { google } = require("googleapis");
@@ -578,6 +578,6 @@ exports.sendEmail = onCall({
 
     } catch (error) {
         logger.error("Error sending email:", error);
-        throw new Error(`Email sending failed: ${error.message}`);
+        throw new HttpsError("internal", `Email sending failed: ${error.message}`, error);
     }
 });
