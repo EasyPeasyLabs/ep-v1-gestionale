@@ -211,7 +211,7 @@ export const LeadsPage: React.FC = () => {
             placeholder="Cerca per nome, email o studente..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-brand-blue focus:border-transparent shadow-sm"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-600 focus:border-transparent shadow-sm"
           />
         </div>
 
@@ -221,25 +221,25 @@ export const LeadsPage: React.FC = () => {
           <div className="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200">
             <button 
               onClick={() => setDateFilterType('all')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'all' ? 'bg-white text-brand-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'all' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Tutti
             </button>
             <button 
               onClick={() => setDateFilterType('today')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'today' ? 'bg-white text-brand-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'today' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Oggi
             </button>
             <button 
               onClick={() => setDateFilterType('week')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'week' ? 'bg-white text-brand-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'week' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Settimana
             </button>
              <button 
               onClick={() => setDateFilterType('month')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'month' ? 'bg-white text-brand-blue shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${dateFilterType === 'month' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Mese
             </button>
@@ -249,7 +249,7 @@ export const LeadsPage: React.FC = () => {
             <select 
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="text-sm border-gray-300 rounded-lg focus:ring-brand-blue focus:border-brand-blue"
+              className="text-sm border-gray-300 rounded-lg focus:ring-cyan-600 focus:border-cyan-600"
             >
               {Array.from({ length: 12 }, (_, i) => (
                 <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM', { locale: it })}</option>
@@ -264,7 +264,7 @@ export const LeadsPage: React.FC = () => {
             <select 
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="text-sm border-gray-300 rounded-lg focus:ring-brand-blue focus:border-brand-blue bg-white"
+              className="text-sm border-gray-300 rounded-lg focus:ring-cyan-600 focus:border-cyan-600 bg-white"
             >
               <option value="all">Tutti gli stati</option>
               <option value="pending">Nuovi</option>
@@ -331,8 +331,8 @@ export const LeadsPage: React.FC = () => {
                     
                     {/* Email Actionable */}
                     <div className="flex items-center gap-2 text-gray-600 group cursor-pointer" onClick={() => openGmail(lead.email)}>
-                      <Mail className="w-4 h-4 text-gray-400 group-hover:text-brand-red transition-colors" />
-                      <span className="group-hover:text-brand-red group-hover:underline transition-colors">{lead.email}</span>
+                      <Mail className="w-4 h-4 text-gray-400 group-hover:text-red-600 transition-colors" />
+                      <span className="group-hover:text-red-600 group-hover:underline transition-colors">{lead.email}</span>
                     </div>
 
                     {/* Phone Actionable (WhatsApp) */}
@@ -357,7 +357,7 @@ export const LeadsPage: React.FC = () => {
                     <>
                       <button 
                         onClick={() => handleConvertToStudent(lead)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm w-full"
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium shadow-sm w-full"
                       >
                         <UserPlus className="w-4 h-4" />
                         Iscrivi
@@ -382,7 +382,7 @@ export const LeadsPage: React.FC = () => {
                   {lead.status === 'contacted' && (
                     <button 
                       onClick={() => handleConvertToStudent(lead)}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-blue text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium shadow-sm w-full"
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium shadow-sm w-full"
                     >
                       <UserPlus className="w-4 h-4" />
                       Converti
