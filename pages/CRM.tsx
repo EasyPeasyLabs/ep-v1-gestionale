@@ -30,7 +30,12 @@ const PaperClipIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="
 const LinkIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>);
 
 // --- Helpers ---
-const getClientName = (c: Client) => c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName || ''} ${(c as ParentClient).lastName || ''}` : ((c as InstitutionalClient).companyName || '');
+const getClientName = (c: Client | undefined | null) => {
+    if (!c) return '';
+    return c.clientType === ClientType.Parent 
+        ? `${(c as ParentClient).firstName || ''} ${(c as ParentClient).lastName || ''}` 
+        : ((c as InstitutionalClient).companyName || '');
+};
 
 // --- Helper Colors ---
 const getTextColorForBg = (bgColor: string) => {
@@ -249,8 +254,9 @@ const CommunicationModal: React.FC<{
                 const c = clients.find(x => x.id === firstId);
                 if (c) {
                     newContext.clientName = getClientName(c);
-                    if (c.clientType === ClientType.Parent && (c as ParentClient).children.length > 0) {
-                        newContext.childName = (c as ParentClient).children[0].name; // Pick first child as example
+                    if (c.clientType === ClientType.Parent && (c as ParentClient).children && (c as ParentClient).children.length > 0) {
+                        const firstChild = (c as ParentClient).children[0];
+                        newContext.childName = firstChild?.name || ''; 
                     }
                 }
             } else {
@@ -276,7 +282,7 @@ const CommunicationModal: React.FC<{
     const availableLocations = useMemo(() => {
         const names = new Set<string>();
         enrollments.forEach(e => {
-            if (e.locationName && e.locationName !== 'Sede Non Definita') names.add(e.locationName);
+            if (e && e.locationName && e.locationName !== 'Sede Non Definita') names.add(e.locationName);
         });
         return Array.from(names).sort();
     }, [enrollments]);
@@ -290,18 +296,18 @@ const CommunicationModal: React.FC<{
             if (filterLocation) {
                 const clientIdsInLocation = new Set(
                     enrollments
-                    .filter(e => e.locationName === filterLocation && e.status === EnrollmentStatus.Active)
+                    .filter(e => e && e.locationName === filterLocation && e.status === EnrollmentStatus.Active)
                     .map(e => e.clientId)
                 );
-                list = clients.filter(c => clientIdsInLocation.has(c.id));
+                list = clients.filter(c => c && clientIdsInLocation.has(c.id));
             } else {
-                list = clients;
+                list = clients.filter(c => c);
             }
             
-            return list.filter(c => getClientName(c as Client).toLowerCase().includes(searchTerm.toLowerCase()));
+            return list.filter(c => c && getClientName(c as Client).toLowerCase().includes(searchTerm.toLowerCase()));
         } else {
             // Suppliers don't use location filter in this context (usually)
-            return suppliers.filter(s => (s.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()));
+            return suppliers.filter(s => s && (s.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()));
         }
     }, [recipientsType, clients, suppliers, enrollments, filterLocation, searchTerm]);
 
@@ -514,9 +520,9 @@ const CommunicationModal: React.FC<{
                             <div className="flex-1 overflow-y-auto p-2 space-y-1">
                                 {filteredList.length === 0 && <p className="text-xs text-gray-400 italic text-center p-4">Nessun destinatario trovato.</p>}
                                 {filteredList.map(item => (
-                                    <label key={item.id} className="flex items-center gap-2 text-sm p-1 hover:bg-gray-50 rounded cursor-pointer">
-                                        <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleId(item.id)} className="rounded text-indigo-600" />
-                                        <span>{recipientsType === 'clients' ? getClientName(item as Client) : (item as Supplier).companyName}</span>
+                                    <label key={item?.id || Math.random()} className="flex items-center gap-2 text-sm p-1 hover:bg-gray-50 rounded cursor-pointer">
+                                        <input type="checkbox" checked={item?.id ? selectedIds.includes(item.id) : false} onChange={() => item?.id && toggleId(item.id)} className="rounded text-indigo-600" />
+                                        <span>{item ? (recipientsType === 'clients' ? getClientName(item as Client) : (item as Supplier).companyName) : ''}</span>
                                     </label>
                                 ))}
                             </div>
@@ -569,7 +575,7 @@ const CommunicationModal: React.FC<{
                         <div className="flex flex-wrap gap-2 mb-3">
                             {attachments.map((att, idx) => (
                                 <div key={idx} className="flex items-center gap-2 bg-white border px-2 py-1 rounded-md shadow-sm text-xs">
-                                    <span className="truncate max-w-[150px] font-medium" title={att.url}>{att.name}</span>
+                                    <span className="truncate max-w-[150px] font-medium" title={att?.url}>{att?.name || 'File'}</span>
                                     <button onClick={() => removeAttachment(idx)} className="text-red-500 hover:text-red-700 font-bold">×</button>
                                 </div>
                             ))}
