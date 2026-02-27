@@ -105,14 +105,13 @@ const EnrollmentFinancialWizard: React.FC<{
     const selectedOrphansTotal = useMemo(() => {
         const invSum = orphans.orphanInvoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((s, i) => s + Number(i.totalAmount), 0);
         const trnSum = orphans.orphanTransactions.filter(t => selectedTransactionIds.includes(t.id)).reduce((s, t) => s + Number(t.amount), 0);
-        const ghostSum = orphans.orphanGhosts.filter(g => selectedInvoiceIds.includes(g.id)).reduce((s, g) => s + Number(g.totalAmount), 0);
-        return invSum + trnSum + ghostSum;
+        return invSum + trnSum;
     }, [orphans, selectedInvoiceIds, selectedTransactionIds]);
 
     const alreadyLinkedGhostsTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
     
-    // Critical Fix: Force Number casting on totalPaid to ensure correct math
-    const projectedCoverage = Number(totalPaid) + selectedOrphansTotal + alreadyLinkedGhostsTotal + Number(adjustmentAmount);
+    // FIX: Projected coverage is Real Money + Adjustment. Ghosts are just promises.
+    const projectedCoverage = Number(totalPaid) + selectedOrphansTotal + Number(adjustmentAmount);
     const remainingGap = Number((packagePrice - projectedCoverage).toFixed(2));
     const isBalanced = Math.abs(remainingGap) < 0.1;
 
@@ -158,6 +157,17 @@ const EnrollmentFinancialWizard: React.FC<{
                 <p className="text-sm text-slate-500 mb-8 uppercase tracking-widest font-bold">Progetto: {enrollment.childName}</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* NEW: Show Pending Ghosts Prominently */}
+                    {linkedGhosts.length > 0 && (
+                        <div className="md-col-span-2 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+                            <div>
+                                <h4 className="font-black text-amber-900 text-sm uppercase flex items-center gap-2">📄 Pro-forma Rilevata</h4>
+                                <p className="text-xs text-amber-700 mt-1">Esiste un documento di saldo di <strong>{linkedGhosts[0].totalAmount.toFixed(2)}€</strong> in attesa.</p>
+                            </div>
+                            <button onClick={() => onOpenPayment()} className="md-btn md-btn-sm bg-amber-500 text-white font-black shadow-md hover:bg-amber-600 uppercase tracking-wider">Incassa Ora</button>
+                        </div>
+                    )}
+
                     {enrollment.isQuoteBased ? (
                         <button onClick={() => setPath('installments')} className="md-card p-6 border-2 border-indigo-50 hover:border-indigo-500 transition-all text-left flex flex-col items-center justify-center group">
                             <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">🗓️</div>
@@ -614,7 +624,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         const linkedGhosts = invoices.filter(i => i.relatedEnrollmentId === enr.id && i.isGhost && !i.isDeleted);
         const ghostTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
         
-        const remaining = Math.max(0, price - totalPaid - adjustment - ghostTotal);
+        // FIX: Ghost invoices are NOT payments. They are promises. 
+        // Remaining should be Price - Real Money Paid - Adjustments.
+        const remaining = Math.max(0, price - totalPaid - adjustment);
         const isFullyPaid = remaining < 0.5 && price > 0;
         
         return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
@@ -838,6 +850,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 <Modal onClose={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} size="md">
                     <div className="p-6">
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Registra Pagamento</h3>
+                        
+                        {/* NEW: Alert for Ghost Linking */}
+                        {paymentModalState.ghostInvoiceId && (
+                            <div className="mb-4 bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-3">
+                                <span className="text-xl">🔗</span>
+                                <div>
+                                    <h4 className="text-xs font-black uppercase text-amber-800">Collegamento Automatico</h4>
+                                    <p className="text-xs text-amber-700 leading-tight mt-1">Questo pagamento salderà la <strong>Pro-forma esistente</strong>. Il documento diventerà una Fattura Reale definitiva.</p>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-indigo-50 p-3 rounded mb-4 text-xs">
                             <p>Prezzo Totale: <strong>{Number(paymentModalState.enrollment.price).toFixed(2)}€</strong></p>
                             <p className="text-indigo-700 font-bold">Rimanenza: {( Number(paymentModalState.enrollment.price || 0) - paymentModalState.totalPaid - Number(paymentModalState.enrollment.adjustmentAmount || 0) ).toFixed(2)}€</p>

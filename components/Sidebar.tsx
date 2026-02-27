@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Page } from '../types';
 import type { User } from 'firebase/auth';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import DashboardIcon from './icons/DashboardIcon';
 import ClientsIcon from './icons/ClientsIcon';
 import SuppliersIcon from './icons/SuppliersIcon';
@@ -64,6 +66,8 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, isOpen, setIsOpen }) => {
   const [logoSrc, setLogoSrc] = useState<string>('');
   const [expandedMenu, setExpandedMenu] = useState<string | null>(null);
+  const [landingCount, setLandingCount] = useState(0);
+  const [enrollmentCount, setEnrollmentCount] = useState(0);
 
   useEffect(() => {
       const fetchLogo = async () => {
@@ -80,6 +84,45 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
       const handleUpdate = () => fetchLogo();
       window.addEventListener('EP_DataUpdated', handleUpdate);
       return () => window.removeEventListener('EP_DataUpdated', handleUpdate);
+  }, []);
+
+  // Listen for incoming leads to update badges
+  useEffect(() => {
+    const q = query(
+      collection(db, 'incoming_leads'),
+      where('status', '==', 'pending')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let landing = 0;
+      let enrollment = 0;
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        // Determine source based on 'source' field or notes content
+        // 'landing_page' -> Blue Badge
+        // 'enrollment_form' -> Green Badge
+        const isEnrollment = 
+            data.source === 'enrollment_form' || 
+            data.source === 'project_c' ||
+            data.notes?.toLowerCase().includes('iscrizione') ||
+            data.notes?.toLowerCase().includes('progetto c');
+
+        if (isEnrollment) {
+          enrollment++;
+        } else {
+          // Default to landing page for all other pending leads
+          landing++;
+        }
+      });
+
+      setLandingCount(landing);
+      setEnrollmentCount(enrollment);
+    }, (error) => {
+      console.error("Error listening to leads:", error);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -229,10 +272,28 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                         : 'text-gray-400 hover:text-gray-900 hover:bg-gray-50'
                       }`}
                   >
-                    <span className={`mr-4 transition-colors ${isActive ? 'text-gray-900' : 'text-gray-300 group-hover:text-indigo-600'}`}>
-                        {item.icon}
-                    </span>
-                    {item.label}
+                    <div className="flex items-center flex-1">
+                        <span className={`mr-4 transition-colors ${isActive ? 'text-gray-900' : 'text-gray-300 group-hover:text-indigo-600'}`}>
+                            {item.icon}
+                        </span>
+                        {item.label}
+                    </div>
+                    
+                    {/* Badges for Leads */}
+                    {item.page === 'Leads' && (
+                        <div className="flex items-center gap-1 ml-2">
+                            {landingCount > 0 && (
+                                <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center shadow-sm">
+                                    {landingCount}
+                                </span>
+                            )}
+                            {enrollmentCount > 0 && (
+                                <span className="bg-green-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] h-[18px] flex items-center justify-center shadow-sm">
+                                    {enrollmentCount}
+                                </span>
+                            )}
+                        </div>
+                    )}
                   </button>
                 </li>
             );

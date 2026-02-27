@@ -30,6 +30,7 @@ import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission, setupForegroundMessaging } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
 import { LeadsPage } from './src/pages/LeadsPage';
+import EnrollmentPortal from './src/pages/EnrollmentPortal';
 import { Page } from './types';
 
 const App: React.FC = () => {
@@ -137,6 +138,11 @@ const App: React.FC = () => {
 
   if (loadingAuth) {
       return <FullScreenSpinner />;
+  }
+
+  // PUBLIC ROUTES (No Auth Required)
+  if (window.location.pathname === '/iscrizione') {
+    return <EnrollmentPortal />;
   }
 
   // Visualizzazione Errore Critico di Configurazione

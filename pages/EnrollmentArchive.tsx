@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { getAllEnrollments, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, getInvoices, getTransactions, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment, getQuotes } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
@@ -515,7 +517,47 @@ const EnrollmentArchive: React.FC = () => {
     const handleConfirmDelete = async () => {
         if (!deleteTarget) return;
         setLoading(true);
-        try { await cleanupEnrollmentFinancials(deleteTarget); await deleteEnrollment(deleteTarget.id); await fetchData(); } catch (err) { alert("Errore eliminazione."); } finally { setLoading(false); setDeleteTarget(null); }
+        try {
+            // 1. Revert Lead Status if exists
+            const client = clients.find(c => c.id === deleteTarget.clientId);
+            if (client && client.clientType === ClientType.Parent) {
+                const parentClient = client as ParentClient;
+                const leadsRef = collection(db, 'incoming_leads');
+                // Query by email and status 'converted'
+                const q = query(
+                    leadsRef, 
+                    where('email', '==', parentClient.email),
+                    where('status', '==', 'converted')
+                );
+                const querySnapshot = await getDocs(q);
+                
+                // Iterate and check child name match
+                for (const docSnap of querySnapshot.docs) {
+                    const leadData = docSnap.data();
+                    // Check if child name matches (case insensitive)
+                    if (leadData.childName && deleteTarget.childName && 
+                        leadData.childName.toLowerCase().trim() === deleteTarget.childName.toLowerCase().trim()) {
+                        
+                        await updateDoc(doc(db, 'incoming_leads', docSnap.id), {
+                            status: 'pending', // Revert to 'pending' (Nuovo)
+                            convertedAt: null,
+                            convertedStudentId: null
+                        });
+                        console.log(`Reverted lead status for ${leadData.childName}`);
+                    }
+                }
+            }
+
+            await cleanupEnrollmentFinancials(deleteTarget); 
+            await deleteEnrollment(deleteTarget.id); 
+            await fetchData(); 
+        } catch (err) { 
+            console.error(err);
+            alert("Errore eliminazione."); 
+        } finally { 
+            setLoading(false); 
+            setDeleteTarget(null); 
+        }
     };
 
     const handleTerminateRequest = (enr: Enrollment) => { setTerminateTarget(enr); };

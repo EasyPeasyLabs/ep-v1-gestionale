@@ -328,11 +328,13 @@ export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';
 export interface SubscriptionType {
     id: string;
     name: string;
+    description?: string; // New field for public description
     price: number;
     lessons: number;
     durationInDays: number;
     target: 'kid' | 'adult';
     statusConfig?: SubscriptionStatusConfig;
+    isPubliclyVisible?: boolean; // New field for visibility toggle
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;

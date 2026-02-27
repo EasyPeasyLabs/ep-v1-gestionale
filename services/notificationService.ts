@@ -140,6 +140,32 @@ export const getNotifications = async (): Promise<Notification[]> => {
                     filterContext: { status: 'active', searchTerm: enr.childName }
                 });
             }
+
+            // NEW: Fiscal Doctor check for Active Enrollments with outstanding balance
+            const paidInv = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
+            const paidTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted).reduce((s, t) => s + t.amount, 0);
+            const adjustment = Number(enr.adjustmentAmount || 0);
+            const totalPaid = paidInv + paidTrans + adjustment;
+            const price = Number(enr.price || 0);
+            const gap = price - totalPaid;
+
+            if (gap > 5) {
+                const startDate = new Date(enr.startDate);
+                const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                
+                // Se sono passati più di 15 giorni dall'inizio e c'è ancora un saldo significativo
+                if (daysSinceStart >= 15) {
+                    notifications.push({
+                        id: `enr-balance-active-${enr.id}`,
+                        type: 'payment_required',
+                        message: `SALDO SCOPERTO: ${enr.childName} (${parentName}) ha un residuo di ${gap.toFixed(2)}€ (Iniziato da ${daysSinceStart}gg).`,
+                        clientId: enr.clientId,
+                        date: enr.startDate,
+                        linkPage: 'Enrollments',
+                        filterContext: { status: 'active', searchTerm: enr.childName }
+                    });
+                }
+            }
         }
     });
 

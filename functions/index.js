@@ -582,6 +582,6 @@ exports.sendEmail = onCall({
 
     } catch (error) {
         logger.error("Error sending email:", error);
-        throw new HttpsError("internal", `Email sending failed: ${error.message}`, error);
+        throw new HttpsError("internal", `Email sending failed: ${error.message}`);
     }
 });
