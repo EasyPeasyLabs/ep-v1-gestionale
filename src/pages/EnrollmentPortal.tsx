@@ -129,12 +129,16 @@ const EnrollmentPortal: React.FC = () => {
         const locs: {id: string, name: string, color: string, slots: string[]}[] = [];
         suppliers.forEach(s => {
           s.locations.forEach(l => {
-            if (!l.closedAt) {
+            // Filter out closed or hidden locations
+            if (!l.closedAt && l.isPubliclyVisible !== false) {
               locs.push({
                 id: l.id,
                 name: l.name,
                 color: l.color,
-                slots: (l.availability || []).map(a => `${a.startTime} - ${a.endTime}`)
+                // Filter out hidden slots
+                slots: (l.availability || [])
+                  .filter(a => a.isPubliclyVisible !== false)
+                  .map(a => `${a.startTime} - ${a.endTime}`)
               });
             }
           });
@@ -794,7 +798,7 @@ const EnrollmentPortal: React.FC = () => {
                         <div className="space-y-4">
                           <h4 className="font-black text-blue-900 uppercase text-sm">Link PayPal</h4>
                           <a 
-                            href={companyInfo?.paypal || '#'} 
+                            href={companyInfo?.paypal ? (companyInfo.paypal.startsWith('http') ? companyInfo.paypal : `https://${companyInfo.paypal}`) : '#'} 
                             target="_blank" 
                             rel="noreferrer"
                             className="flex items-center justify-between bg-[#0070BA] text-white p-4 rounded-xl font-bold hover:bg-[#003087] transition-colors shadow-md"
