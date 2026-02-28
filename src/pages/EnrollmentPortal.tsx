@@ -452,7 +452,7 @@ const EnrollmentPortal: React.FC = () => {
             : 'Grazie! Il pagamento è stato ricevuto e l\'iscrizione è attiva. Ti aspettiamo in sede!'}
         </p>
         <div className="space-y-3">
-          <button onClick={() => window.location.href = 'https://www.labeasypeasy.it'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Visita il Sito</button>
+          <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
           <p className="text-xs text-gray-400">Riceverai una mail di riepilogo a breve.</p>
         </div>
       </div>
