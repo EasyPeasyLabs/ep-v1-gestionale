@@ -119,6 +119,34 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const isInstitutional = currentClient?.clientType === ClientType.Institutional || existingEnrollment?.clientType === ClientType.Institutional;
     const isCustomMode = isInstitutional || subscriptionTypeId === 'quote-based';
 
+    // Auto-select based on client preferences
+    useEffect(() => {
+        if (!existingEnrollment && currentClient && !targetLocationId) {
+            const clientAny = currentClient as any;
+            const prefLoc = clientAny.preferredLocation;
+            const prefSlot = clientAny.preferredSlot;
+
+            if (prefLoc) {
+                const matchedLoc = allLocations.find(l => l.name === prefLoc);
+                if (matchedLoc) {
+                    setTargetLocationId(matchedLoc.id);
+                    
+                    if (prefSlot) {
+                        // Try to match slot time
+                        const matchedSlot = matchedLoc.availability?.find(s => 
+                            prefSlot.includes(`${s.startTime} - ${s.endTime}`) || 
+                            `${s.startTime} - ${s.endTime}`.includes(prefSlot)
+                        );
+                        if (matchedSlot) {
+                            setStartTime(matchedSlot.startTime);
+                            setEndTime(matchedSlot.endTime);
+                        }
+                    }
+                }
+            }
+        }
+    }, [selectedClientId, allLocations, existingEnrollment, currentClient, targetLocationId]);
+
     useEffect(() => {
         const loadData = async () => {
             try {

@@ -170,6 +170,8 @@ export const LeadsPage: React.FC = () => {
             parentLastName: lead.cognome,
             parentEmail: lead.email,
             parentPhone: lead.telefono,
+            preferredLocation: lead.selectedLocation || '',
+            preferredSlot: lead.selectedSlot || '',
             status: 'Active',
             createdAt: serverTimestamp(),
             source: 'web_lead'

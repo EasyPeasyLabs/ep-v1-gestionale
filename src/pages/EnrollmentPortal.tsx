@@ -90,6 +90,8 @@ const EnrollmentPortal: React.FC = () => {
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
+  const [showAllOptions, setShowAllOptions] = useState(false);
+
   useEffect(() => {
     // Extract ID from either search params or hash params (for SPA compatibility)
     const searchParams = new URLSearchParams(window.location.search);
@@ -167,6 +169,17 @@ const EnrollmentPortal: React.FC = () => {
         const matchedLoc = locs.find(l => l.name === leadData.selectedLocation);
         if (matchedLoc) {
           setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id }));
+          
+          // Try to match slot time
+          // leadData.selectedSlot might be "Lunedì 16:30 - 18:00" or just "16:30 - 18:00"
+          const slotToMatch = leadData.selectedSlot || '';
+          const matchedSlot = matchedLoc.slots.find(s => 
+            slotToMatch.includes(s.time) || s.time.includes(slotToMatch)
+          );
+          
+          if (matchedSlot) {
+            setFormData(prev => ({ ...prev, selectedSlot: matchedSlot.time }));
+          }
         }
 
       } catch (err) {
@@ -608,9 +621,21 @@ const EnrollmentPortal: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <label className="text-xs font-black text-gray-400 uppercase">Seleziona la Sede</label>
+                  <div className="flex justify-between items-end">
+                    <label className="text-xs font-black text-gray-400 uppercase">Seleziona la Sede</label>
+                    {lead?.selectedLocation && (
+                      <button 
+                        onClick={() => setShowAllOptions(!showAllOptions)}
+                        className="text-[10px] font-bold text-indigo-600 hover:underline uppercase"
+                      >
+                        {showAllOptions ? 'Mostra solo preferenza' : 'Mostra tutte le sedi'}
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {locations.map(loc => (
+                    {locations
+                      .filter(loc => showAllOptions || !lead?.selectedLocation || loc.name === lead.selectedLocation)
+                      .map(loc => (
                       <button 
                         key={loc.id}
                         onClick={() => setFormData({...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: ''})}
@@ -618,6 +643,9 @@ const EnrollmentPortal: React.FC = () => {
                       >
                         <div className="w-3 h-3 rounded-full mb-2" style={{ backgroundColor: loc.color }}></div>
                         <span className="font-black text-gray-800">{loc.name}</span>
+                        {lead?.selectedLocation === loc.name && !showAllOptions && (
+                          <span className="block text-[10px] text-indigo-600 font-bold mt-1 uppercase">Sede Preferita</span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -629,6 +657,13 @@ const EnrollmentPortal: React.FC = () => {
                       const typeSlots = locations.find(l => l.id === formData.selectedLocationId)?.slots.filter(s => s.type === type);
                       if (!typeSlots || typeSlots.length === 0) return null;
                       
+                      // Filter slots if preference exists and we are not showing all
+                      const filteredSlots = typeSlots.filter(slot => 
+                        showAllOptions || !lead?.selectedSlot || lead.selectedSlot.includes(slot.time) || slot.time.includes(lead.selectedSlot)
+                      );
+
+                      if (filteredSlots.length === 0 && !showAllOptions) return null;
+
                       const typeLabel = type === 'LAB' ? 'Laboratori' : type === 'SG' ? 'Spazio Gioco' : 'Eventi';
                       const typeColor = type === 'LAB' ? 'text-blue-600' : type === 'SG' ? 'text-orange-600' : 'text-purple-600';
 
@@ -636,7 +671,7 @@ const EnrollmentPortal: React.FC = () => {
                         <div key={type} className="space-y-3">
                           <label className={`text-[10px] font-black uppercase tracking-widest ${typeColor}`}>{typeLabel}</label>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {typeSlots.map(slot => (
+                            {(showAllOptions ? typeSlots : filteredSlots).map(slot => (
                               <button 
                                 key={slot.time}
                                 onClick={() => setFormData({...formData, selectedSlot: slot.time})}
@@ -644,6 +679,9 @@ const EnrollmentPortal: React.FC = () => {
                               >
                                 <Clock className="w-4 h-4" />
                                 {slot.time}
+                                {lead?.selectedSlot && (lead.selectedSlot.includes(slot.time) || slot.time.includes(lead.selectedSlot)) && (
+                                  <CheckCircle className="w-3 h-3 ml-auto" />
+                                )}
                               </button>
                             ))}
                           </div>
