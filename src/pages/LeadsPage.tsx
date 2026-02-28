@@ -107,7 +107,7 @@ export const LeadsPage: React.FC = () => {
 
   const sendLinkWhatsApp = (lead: Lead) => {
     const link = generateEnrollmentLink(lead.id);
-    const message = `Ciao ${lead.nome}, siamo felici del tuo interesse! Per completare l'iscrizione e bloccare il tuo posto, compila questo modulo: ${link}`;
+    const message = `*Easy Peasy Labs*\n\nCiao ${lead.nome}, siamo felici del tuo interesse!\n\nPer completare l'iscrizione e bloccare il tuo posto, compila questo modulo:\n\n${link}`;
     const cleanPhone = lead.telefono.replace(/\D/g, '');
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
@@ -116,7 +116,7 @@ export const LeadsPage: React.FC = () => {
   const sendLinkEmail = (lead: Lead) => {
     const link = generateEnrollmentLink(lead.id);
     const subject = "Completa la tua iscrizione - EasyPeasy Lab";
-    const body = `Ciao ${lead.nome},\n\nsiamo felici del tuo interesse! Per completare l'iscrizione e bloccare il tuo posto, compila questo modulo:\n\n${link}\n\nA presto!`;
+    const body = `Easy Peasy Labs\n\nCiao ${lead.nome}, siamo felici del tuo interesse!\n\nPer completare l'iscrizione e bloccare il tuo posto, compila questo modulo:\n\n${link}`;
     const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${lead.email}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(url, '_blank');
   };
