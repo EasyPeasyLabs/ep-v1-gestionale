@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
 import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments, deleteEnrollment, getEnrollmentsForClient } from '../services/enrollmentService';
@@ -457,13 +459,10 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
     const handleConfirmAction = async () => {
         if (!clientToProcess) return;
         try {
-            if (clientToProcess.action === 'delete') {
+            if (clientToProcess.action === 'delete' || clientToProcess.action === 'permanent') {
                 const clientId = clientToProcess.id;
-                await deleteClient(clientId);
-            }
-            else if (clientToProcess.action === 'restore') await restoreClient(clientToProcess.id);
-            else {
-                const clientId = clientToProcess.id;
+                const client = clients.find(c => c.id === clientId);
+                
                 const clientEnrollments = await getEnrollmentsForClient(clientId);
                 for (const enr of clientEnrollments) {
                     await cleanupEnrollmentFinancials(enr);
@@ -472,7 +471,35 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                         await deleteAutoRentTransactions(enr.locationId);
                     }
                 }
+                
+                if (client) {
+                    if (client.email) {
+                        const q = query(
+                            collection(db, 'incoming_leads'),
+                            where('email', '==', client.email)
+                        );
+                        const querySnapshot = await getDocs(q);
+                        for (const docSnap of querySnapshot.docs) {
+                            await deleteDoc(doc(db, 'incoming_leads', docSnap.id));
+                        }
+                    }
+                    
+                    if (client.phone) {
+                        const qPhone = query(
+                            collection(db, 'incoming_leads'),
+                            where('telefono', '==', client.phone)
+                        );
+                        const phoneSnapshot = await getDocs(qPhone);
+                        for (const docSnap of phoneSnapshot.docs) {
+                            await deleteDoc(doc(db, 'incoming_leads', docSnap.id));
+                        }
+                    }
+                }
+
                 await permanentDeleteClient(clientId);
+            }
+            else if (clientToProcess.action === 'restore') {
+                await restoreClient(clientToProcess.id);
             }
             fetchClientsData();
         } catch (err) {
@@ -939,8 +966,10 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                 onClose={() => setClientToProcess(null)}
                 onConfirm={handleConfirmAction}
                 title={clientToProcess?.action === 'restore' ? "Ripristina" : "Elimina"}
-                message={clientToProcess?.action === 'restore' ? "Vuoi ripristinare questo cliente?" : "Sei sicuro di voler eliminare questo cliente? L'eliminazione definitiva cancellerà anche tutte le iscrizioni, lezioni e dati finanziari collegati."}
+                message={clientToProcess?.action === 'restore' ? "Vuoi ripristinare questo cliente?" : "Attenzione! la cancellazione provocherà l'eliminazione definitiva di tutti i dati (anagrafici, didattici, economici e fiscali) associati a questo cliente."}
                 isDangerous={clientToProcess?.action !== 'restore'}
+                confirmText={clientToProcess?.action === 'restore' ? "Conferma" : "elimina"}
+                cancelText={clientToProcess?.action === 'restore' ? "Annulla" : "annulla eliminazione"}
             />
 
             <ConfirmModal 
