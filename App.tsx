@@ -77,14 +77,17 @@ const App: React.FC = () => {
           if (!user) return;
           try {
               const info = await getCompanyInfo();
-              if (info && info.logoBase64) {
-                  let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+              if (info) {
+                  document.title = info.denomination || "EasyPeasy Labs";
+                  if (info.logoBase64) {
+                      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
                   if (!link) {
                       link = document.createElement('link');
                       link.rel = 'icon';
                       document.head.appendChild(link);
                   }
                   link.href = info.logoBase64;
+                  }
               }
           } catch (e) {
               console.error("Errore aggiornamento icona app:", e);

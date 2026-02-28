@@ -144,6 +144,7 @@ const EnrollmentPortal: React.FC = () => {
           });
         });
         setLocations(locs);
+        document.title = "EasyPeasy Labs";
 
         // Pre-fill form
         setFormData(prev => ({
