@@ -66,7 +66,7 @@ const EnrollmentPortal: React.FC = () => {
   const [lead, setLead] = useState<Lead | null>(null);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
-  const [locations, setLocations] = useState<{id: string, name: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
+  const [locations, setLocations] = useState<{id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -134,7 +134,8 @@ const EnrollmentPortal: React.FC = () => {
         setSubscriptionTypes(subs);
 
         // Extract locations from suppliers
-        const locs: {id: string, name: string, color: string, slots: {time: string, type: SlotType}[]}[] = [];
+        const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        const locs: {id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[] = [];
         suppliers.forEach(s => {
           s.locations.forEach(l => {
             // Filter out closed or hidden locations
@@ -142,12 +143,14 @@ const EnrollmentPortal: React.FC = () => {
               locs.push({
                 id: l.id,
                 name: l.name,
+                address: l.address || '',
+                city: l.city || '',
                 color: l.color,
                 // Filter out hidden slots
                 slots: (l.availability || [])
                   .filter(a => a.isPubliclyVisible !== false)
                   .map(a => ({
-                    time: `${a.startTime} - ${a.endTime}`,
+                    time: `${daysMap[a.dayOfWeek || 0]}, ${a.startTime} - ${a.endTime}`,
                     type: a.type || 'LAB'
                   }))
               });
@@ -172,10 +175,14 @@ const EnrollmentPortal: React.FC = () => {
 
         // Try to match location name to ID
         const leadLocNormalized = normalizeString(leadData.selectedLocation);
-        const matchedLoc = locs.find(l => 
-          normalizeString(l.name) === leadLocNormalized || 
-          normalizeString(l.id) === leadLocNormalized
-        );
+        const matchedLoc = locs.find(l => {
+          const locNameNorm = normalizeString(l.name);
+          const locIdNorm = normalizeString(l.id);
+          return locNameNorm === leadLocNormalized || 
+                 locIdNorm === leadLocNormalized ||
+                 leadLocNormalized.includes(locNameNorm) ||
+                 locNameNorm.includes(leadLocNormalized);
+        });
         
         if (matchedLoc) {
           setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id, selectedLocationName: matchedLoc.name }));
@@ -631,84 +638,152 @@ const EnrollmentPortal: React.FC = () => {
                   <h2 className="text-xl font-black uppercase tracking-tight">Sede e Orario</h2>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex justify-between items-end">
-                    <label className="text-xs font-black text-gray-400 uppercase">Seleziona la Sede</label>
-                    {lead?.selectedLocation && (
-                      <button 
-                        onClick={() => setShowAllOptions(!showAllOptions)}
-                        className="text-[10px] font-bold text-indigo-600 hover:underline uppercase"
-                      >
-                        {showAllOptions ? 'Mostra solo preferenza' : 'Mostra tutte le sedi'}
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {locations
-                      .filter(loc => {
-                        if (showAllOptions || !lead?.selectedLocation) return true;
-                        const leadLocNormalized = normalizeString(lead.selectedLocation);
-                        return normalizeString(loc.name) === leadLocNormalized || normalizeString(loc.id) === leadLocNormalized;
-                      })
-                      .map(loc => {
-                        const isPreferred = lead?.selectedLocation && (
-                          normalizeString(loc.name) === normalizeString(lead.selectedLocation) || 
-                          normalizeString(loc.id) === normalizeString(lead.selectedLocation)
-                        );
-                        return (
-                      <button 
-                        key={loc.id}
-                        onClick={() => setFormData({...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: ''})}
-                        className={`p-4 rounded-2xl border-2 text-left transition-all ${formData.selectedLocationId === loc.id ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-400/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
-                      >
-                        <div className="w-3 h-3 rounded-full mb-2" style={{ backgroundColor: loc.color }}></div>
-                        <span className="font-black text-gray-800">{loc.name}</span>
-                        {isPreferred && !showAllOptions && (
-                          <span className="block text-[10px] text-indigo-600 font-bold mt-1 uppercase">Sede Preferita</span>
-                        )}
-                      </button>
-                    )})}
-                  </div>
-                </div>
-
-                {formData.selectedLocationId && (
-                  <div className="space-y-6 animate-slide-up">
-                    {['LAB', 'SG', 'EVT'].map(type => {
-                      const typeSlots = locations.find(l => l.id === formData.selectedLocationId)?.slots.filter(s => s.type === type);
-                      if (!typeSlots || typeSlots.length === 0) return null;
-                      
-                      // Filter slots if preference exists and we are not showing all
-                      const filteredSlots = typeSlots.filter(slot => 
-                        showAllOptions || !lead?.selectedSlot || lead.selectedSlot.includes(slot.time) || slot.time.includes(lead.selectedSlot)
-                      );
-
-                      if (filteredSlots.length === 0 && !showAllOptions) return null;
-
-                      const typeLabel = type === 'LAB' ? 'Laboratori' : type === 'SG' ? 'Spazio Gioco' : 'Eventi';
-                      const typeColor = type === 'LAB' ? 'text-blue-600' : type === 'SG' ? 'text-orange-600' : 'text-purple-600';
-
-                      return (
-                        <div key={type} className="space-y-3">
-                          <label className={`text-[10px] font-black uppercase tracking-widest ${typeColor}`}>{typeLabel}</label>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {(showAllOptions ? typeSlots : filteredSlots).map(slot => (
-                              <button 
-                                key={slot.time}
-                                onClick={() => setFormData({...formData, selectedSlot: slot.time})}
-                                className={`p-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 ${formData.selectedSlot === slot.time ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
-                              >
-                                <Clock className="w-4 h-4" />
-                                {slot.time}
-                                {lead?.selectedSlot && (lead.selectedSlot.includes(slot.time) || slot.time.includes(lead.selectedSlot)) && (
-                                  <CheckCircle className="w-3 h-3 ml-auto" />
-                                )}
-                              </button>
-                            ))}
-                          </div>
+                {lead?.selectedLocation && lead?.selectedSlot && formData.selectedLocationId && formData.selectedSlot ? (
+                  <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6">
+                    <h3 className="text-sm font-black text-amber-800 uppercase mb-4">Scelte confermate</h3>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-amber-100">
+                        <MapPin className="w-5 h-5 text-amber-500" />
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p>
+                          <p className="font-bold text-gray-800">{formData.selectedLocationName}</p>
                         </div>
-                      );
-                    })}
+                      </div>
+                      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-amber-100">
+                        <Clock className="w-5 h-5 text-amber-500" />
+                        <div>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
+                          <p className="font-bold text-gray-800">{formData.selectedSlot}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-amber-600 mt-4 font-medium">
+                      Queste opzioni sono state selezionate durante la tua richiesta iniziale e non possono essere modificate.
+                    </p>
                   </div>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-end">
+                        <label className="text-xs font-black text-gray-400 uppercase">Seleziona la Sede</label>
+                        {lead?.selectedLocation && (
+                          <button 
+                            onClick={() => setShowAllOptions(!showAllOptions)}
+                            className="text-[10px] font-bold text-indigo-600 hover:underline uppercase"
+                          >
+                            {showAllOptions ? 'Mostra solo preferenza' : 'Mostra tutte le sedi'}
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {locations
+                          .filter(loc => {
+                            if (showAllOptions || !lead?.selectedLocation) return true;
+                            const leadLocNormalized = normalizeString(lead.selectedLocation);
+                            const locNameNorm = normalizeString(loc.name);
+                            return locNameNorm === leadLocNormalized || normalizeString(loc.id) === leadLocNormalized || leadLocNormalized.includes(locNameNorm) || locNameNorm.includes(leadLocNormalized);
+                          })
+                          .map(loc => {
+                            const isPreferred = lead?.selectedLocation && (
+                              normalizeString(loc.name) === normalizeString(lead.selectedLocation) || 
+                              normalizeString(loc.id) === normalizeString(lead.selectedLocation) ||
+                              normalizeString(lead.selectedLocation).includes(normalizeString(loc.name)) ||
+                              normalizeString(loc.name).includes(normalizeString(lead.selectedLocation))
+                            );
+                            return (
+                          <button 
+                            key={loc.id}
+                            onClick={() => setFormData({...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: ''})}
+                            className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedLocationId === loc.id ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-400/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: loc.color }}></div>
+                              <span className="font-black text-gray-800 text-lg">{loc.name}</span>
+                            </div>
+                            {(loc.address || loc.city) && (
+                              <div className="text-sm text-gray-600">
+                                {loc.address}{loc.city ? `, ${loc.city}` : ''}
+                              </div>
+                            )}
+                            {(loc.address || loc.city) && (
+                              <div className="mt-2">
+                                <a 
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.name} ${loc.address} ${loc.city}`)}`} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                                >
+                                  <MapPin className="w-3 h-3" /> Mostra sulla mappa
+                                </a>
+                              </div>
+                            )}
+                            {isPreferred && !showAllOptions && (
+                              <span className="inline-block px-2 py-1 bg-indigo-100 text-[10px] text-indigo-600 font-bold rounded mt-1 uppercase self-start">Sede Preferita</span>
+                            )}
+                          </button>
+                        )})}
+                      </div>
+                    </div>
+
+                    {formData.selectedLocationId && (
+                      <div className="space-y-6 animate-slide-up mt-8">
+                        {['LAB', 'SG', 'EVT'].map(type => {
+                          const typeSlots = locations.find(l => l.id === formData.selectedLocationId)?.slots.filter(s => s.type === type);
+                          if (!typeSlots || typeSlots.length === 0) return null;
+                          
+                          // Filter slots if preference exists and we are not showing all
+                          const filteredSlots = typeSlots.filter(slot => {
+                            if (showAllOptions || !lead?.selectedSlot) return true;
+                            const slotNorm = normalizeString(slot.time);
+                            const leadSlotNorm = normalizeString(lead.selectedSlot);
+                            return leadSlotNorm.includes(slotNorm) || slotNorm.includes(leadSlotNorm);
+                          });
+
+                          if (filteredSlots.length === 0 && !showAllOptions) return null;
+
+                          const typeLabel = type === 'LAB' ? 'Laboratorio' : type === 'SG' ? 'Spazio Gioco' : 'Evento Speciale';
+                          const typeColor = type === 'LAB' ? 'bg-blue-100 text-blue-800' : type === 'SG' ? 'bg-orange-100 text-orange-800' : 'bg-purple-100 text-purple-800';
+
+                          return (
+                            <div key={type} className="space-y-3">
+                              <label className={`text-[10px] font-black uppercase tracking-widest ${type === 'LAB' ? 'text-blue-600' : type === 'SG' ? 'text-orange-600' : 'text-purple-600'}`}>{typeLabel}i</label>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {(showAllOptions ? typeSlots : filteredSlots).map(slot => {
+                                  const isPreferred = lead?.selectedSlot && (
+                                    normalizeString(lead.selectedSlot).includes(normalizeString(slot.time)) ||
+                                    normalizeString(slot.time).includes(normalizeString(lead.selectedSlot))
+                                  );
+                                  return (
+                                  <button 
+                                    key={slot.time}
+                                    onClick={() => setFormData({...formData, selectedSlot: slot.time})}
+                                    className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedSlot === slot.time ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-600/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                                  >
+                                    <div className="flex justify-between items-start w-full">
+                                      <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${typeColor}`}>
+                                        {type}
+                                      </span>
+                                      {isPreferred && (
+                                        <CheckCircle className="w-5 h-5 text-indigo-600" />
+                                      )}
+                                    </div>
+                                    <div className="font-bold text-gray-800 text-sm">
+                                      {typeLabel}
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-gray-600 font-medium mt-1">
+                                      <Clock className="w-4 h-4" />
+                                      {slot.time}
+                                    </div>
+                                  </button>
+                                )})}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
