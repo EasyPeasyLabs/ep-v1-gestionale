@@ -96,7 +96,8 @@ export const LeadsPage: React.FC = () => {
 
   const generateEnrollmentLink = (leadId: string) => {
     const baseUrl = window.location.origin;
-    return `${baseUrl}/iscrizione?id=${leadId}`;
+    // Use hash routing to avoid 404 on direct links in SPA
+    return `${baseUrl}/#/iscrizione?id=${leadId}`;
   };
 
   const copyToClipboard = (text: string) => {

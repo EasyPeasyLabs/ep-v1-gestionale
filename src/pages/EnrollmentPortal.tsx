@@ -90,8 +90,15 @@ const EnrollmentPortal: React.FC = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const leadId = params.get('id');
+    // Extract ID from either search params or hash params (for SPA compatibility)
+    const searchParams = new URLSearchParams(window.location.search);
+    let leadId = searchParams.get('id');
+    
+    if (!leadId && window.location.hash.includes('?')) {
+      const hashPart = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashPart);
+      leadId = hashParams.get('id');
+    }
 
     if (!leadId) {
       setError("Link non valido. Contatta la segreteria.");
