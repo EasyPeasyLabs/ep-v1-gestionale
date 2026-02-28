@@ -765,6 +765,23 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                                 <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                                                                                     <div className={`h-full ${isInst ? 'bg-indigo-900' : 'bg-indigo-500'}`} style={{ width: `${progress}%` }}></div>
                                                                                 </div>
+                                                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                                                    {(enr.labCount || 0) > 0 && (
+                                                                                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100">
+                                                                                            Lab: {enr.labRemaining}/{enr.labCount}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {(enr.sgCount || 0) > 0 && (
+                                                                                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-orange-50 text-orange-600 border border-orange-100">
+                                                                                            SG: {enr.sgRemaining}/{enr.sgCount}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {(enr.evtCount || 0) > 0 && (
+                                                                                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 border border-purple-100">
+                                                                                            Evt: {enr.evtRemaining}/{enr.evtCount}
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
 
                                                                             {/* Riga 4: Bottoni Azione */}

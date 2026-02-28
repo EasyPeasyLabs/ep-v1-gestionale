@@ -634,6 +634,101 @@ export const addRecoveryLessons = async (
     await updateDoc(enrollmentDocRef, { appointments, endDate: newEndDate });
 };
 
+// --- MIGRAZIONE STORICA (Carnet & Tipi Slot) ---
+export const migrateHistoricalEnrollments = async (): Promise<{ updated: number, errors: number }> => {
+    const snapshot = await getDocs(enrollmentCollectionRef);
+    let updatedCount = 0;
+    let errorCount = 0;
+
+    const batch = writeBatch(db);
+    let batchSize = 0;
+
+    for (const docSnap of snapshot.docs) {
+        try {
+            const enr = docSnap.data() as Enrollment;
+            const appointments = [...(enr.appointments || [])];
+            let modified = false;
+            const newApps = appointments.map(app => {
+                const appDate = app.date.split('T')[0];
+                let type = app.type || 'LAB'; // Default Rule D: Tutto LAB prima del 6 Feb 2026
+
+                // Regola B: Istituzionali
+                if (enr.clientType === ClientType.Institutional || enr.isQuoteBased) {
+                    type = 'INST';
+                } 
+                // Regola A: Evento 22 Febbraio 2026
+                else if (appDate === '2026-02-22') {
+                    type = 'EVT';
+                }
+                // Regola C: Carnet Febbraio 2026 (Specifici Slot SG)
+                else if (appDate === '2026-02-21' && app.startTime === '09:30' && app.endTime === '12:30') {
+                    type = 'SG';
+                }
+                else if (appDate === '2026-02-28' && app.startTime === '09:30' && app.endTime === '12:30') {
+                    type = 'SG';
+                }
+                // Regola C: Carnet Febbraio 2026 (Specifici Slot LAB)
+                else if ((appDate === '2026-02-07' || appDate === '2026-02-14') && app.startTime === '10:00' && app.endTime === '11:00') {
+                    type = 'LAB';
+                }
+                // Regola D: Storico (Già coperto dal default 'LAB' sopra, ma esplicitiamo per chiarezza)
+                else if (new Date(appDate) <= new Date('2026-02-06')) {
+                    type = 'LAB';
+                }
+
+                if (app.type !== type) {
+                    modified = true;
+                    return { ...app, type };
+                }
+                return app;
+            });
+
+            // Ricalcolo Contatori
+            const labCount = newApps.filter(a => a.type === 'LAB').length;
+            const sgCount = newApps.filter(a => a.type === 'SG').length;
+            const evtCount = newApps.filter(a => a.type === 'EVT').length;
+
+            const labAttended = newApps.filter(a => a.type === 'LAB' && a.status === 'Present').length;
+            const sgAttended = newApps.filter(a => a.type === 'SG' && a.status === 'Present').length;
+            const evtAttended = newApps.filter(a => a.type === 'EVT' && a.status === 'Present').length;
+
+            // Update if appointments changed or if carnet counts are missing
+            const needsUpdate = modified || enr.labCount === undefined || enr.sgCount === undefined || enr.evtCount === undefined;
+
+            if (needsUpdate) {
+                const updateData: Record<string, any> = {
+                    appointments: newApps,
+                    labCount,
+                    sgCount,
+                    evtCount,
+                    labRemaining: Math.max(0, labCount - labAttended),
+                    sgRemaining: Math.max(0, sgCount - sgAttended),
+                    evtRemaining: Math.max(0, evtCount - evtAttended)
+                };
+
+                batch.update(docSnap.ref, updateData);
+                batchSize++;
+                updatedCount++;
+            }
+
+            // Commit periodico per evitare limiti di batch di Firestore (500)
+            if (batchSize >= 400) {
+                await batch.commit();
+                batchSize = 0;
+            }
+        } catch (e) {
+            console.error(`Error migrating enrollment ${docSnap.id}:`, e);
+            errorCount++;
+        }
+    }
+
+    if (batchSize > 0) {
+        await batch.commit();
+    }
+
+    return { updated: updatedCount, errors: errorCount };
+};
+
 export const activateEnrollmentWithLocation = async (
     enrollmentId: string,
     supplierId: string,
@@ -649,7 +744,7 @@ export const activateEnrollmentWithLocation = async (
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
     const enrollment = enrollmentSnap.data() as Enrollment;
-    let currentDate = new Date(enrollment.startDate);
+    const currentDate = new Date(enrollment.startDate);
     
     while (currentDate.getDay() !== dayOfWeek) {
         currentDate.setDate(currentDate.getDate() + 1);

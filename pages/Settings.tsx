@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate } from '../services/settingsService';
+import { migrateHistoricalEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import { requestNotificationPermission } from '../services/fcmService';
@@ -145,7 +146,194 @@ const SubscriptionStatusModal: React.FC<{
     );
 };
 
-const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => { const [name, setName] = useState(''); const [year, setYear] = useState(''); const [annotation, setAnnotation] = useState(''); const [description, setDescription] = useState(''); const [price, setPrice] = useState('0'); const [lessons, setLessons] = useState('0'); const [durationInDays, setDurationInDays] = useState('0'); const [target, setTarget] = useState<'kid' | 'adult'>('kid'); const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' }); const [isPubliclyVisible, setIsPubliclyVisible] = useState(true); const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); useEffect(() => { if (sub) { const parsed = parseSubscriptionName(sub.name); setName(parsed.name); setYear(parsed.year); setAnnotation(parsed.annotation); setDescription(sub.description || ''); setPrice(sub.price?.toString() || '0'); setLessons(sub.lessons?.toString() || '0'); setDurationInDays(sub.durationInDays?.toString() || '0'); setTarget(sub.target || 'kid'); setStatusConfig(sub.statusConfig || { status: 'active' }); setIsPubliclyVisible(sub.isPubliclyVisible !== undefined ? sub.isPubliclyVisible : true); } else { setName(''); setYear(new Date().getFullYear().toString()); setAnnotation('standard'); setDescription(''); setPrice('0'); setLessons('0'); setDurationInDays('0'); setTarget('kid'); setStatusConfig({ status: 'active' }); setIsPubliclyVisible(true); } }, [sub?.id]); const handleSubmit = async (e: React.FormEvent) => { e.preventDefault(); if (!name || !price || !lessons || !durationInDays) { alert("Compila tutti i campi obbligatori."); return; } const prefix = target === 'kid' ? 'K' : 'A'; const finalName = `${prefix}-${name}.${year}.${annotation}`; const subData = { name: finalName, description, price: Number(price), lessons: Number(lessons), durationInDays: Number(durationInDays), target, statusConfig, isPubliclyVisible }; try { if (sub?.id) { await onSave({ ...subData, id: sub.id }); } else { await onSave(subData); } } catch (err) { console.error(err); alert("Errore durante il salvataggio."); } }; const getStatusLabel = () => { const currentStatus = statusConfig?.status || 'active'; switch(currentStatus) { case 'active': return '🟢 Attivo'; case 'obsolete': return '⚫ Obsoleto'; case 'future': return '🔵 Da Attivare'; case 'promo': return '🟡 Promo'; default: return 'Attivo'; } }; return ( <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden"> <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex justify-between items-center"> <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Abbonamento' : 'Nuovo Abbonamento'}</h2> <button type="button" onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-bold text-gray-700 transition-colors border border-gray-300"> <span>{getStatusLabel()}</span> <PencilIcon /> </button> </div> <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> <div className="flex gap-4 mb-4"> <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}> <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" /> 👶 Bambini (K) </label> <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}> <input type="radio" name="target" value="adult" checked={target === 'adult'} onChange={() => setTarget('adult')} className="hidden" /> 🧑 Adulti (A) </label> </div> <div className="flex gap-2 items-end"> <div className="flex-1 md-input-group"> <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label> </div> <span className="text-gray-400 pb-2">.</span> <div className="w-20 md-input-group"> <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} className="md-input text-center" placeholder=" " autoComplete="off" /> <label htmlFor="subYear" className="md-input-label">Anno</label> </div> <span className="text-gray-400 pb-2">.</span> <div className="w-24 md-input-group"> <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subNote" className="md-input-label">Note</label> </div> </div> <div className="md-input-group"> <textarea id="subDescription" value={description} onChange={e => setDescription(e.target.value)} className="md-input" placeholder=" " rows={2} /> <label htmlFor="subDescription" className="md-input-label">Descrizione Pubblica (opzionale)</label> </div> <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"> <div className="md-input-group"> <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label> </div> <div className="md-input-group"> <input id="subLessons" type="number" value={lessons} onChange={e => setLessons(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subLessons" className="md-input-label">N. Lezioni</label> </div> </div> <div className="md-input-group"> <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" /> <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label> </div> <div className="flex items-center gap-2 mt-2"> <label className="flex items-center gap-2 cursor-pointer"> <input type="checkbox" checked={isPubliclyVisible} onChange={e => setIsPubliclyVisible(e.target.checked)} className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" /> <span className="text-sm text-gray-700">Visibile pubblicamente nel portale iscrizioni</span> </label> </div> <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500"> Codice generato: <strong>{target === 'kid' ? 'K' : 'A'}-{name}.{year}.{annotation}</strong> </div> {statusConfig && (statusConfig.status === 'promo' || statusConfig.status === 'future') && ( <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800"> <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). {statusConfig.discountValue ? ` Sconto attivo: ${statusConfig.discountValue}${statusConfig.discountType === 'percent' ? '%' : '€'}` : ''} </div> )} </div> <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}> <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button> <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button> </div> {isStatusModalOpen && ( <SubscriptionStatusModal currentConfig={statusConfig} suppliers={suppliers} onSave={setStatusConfig} onClose={() => setIsStatusModalOpen(false)} /> )} </form> ); };
+const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => {
+    const [name, setName] = useState('');
+    const [year, setYear] = useState('');
+    const [annotation, setAnnotation] = useState('');
+    const [description, setDescription] = useState('');
+    const [price, setPrice] = useState('0');
+    const [labCount, setLabCount] = useState('0');
+    const [sgCount, setSgCount] = useState('0');
+    const [evtCount, setEvtCount] = useState('0');
+    const [durationInDays, setDurationInDays] = useState('0');
+    const [target, setTarget] = useState<'kid' | 'adult'>('kid');
+    const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' });
+    const [isPubliclyVisible, setIsPubliclyVisible] = useState(true);
+    const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+
+    useEffect(() => {
+        if (sub) {
+            const parsed = parseSubscriptionName(sub.name);
+            setName(parsed.name);
+            setYear(parsed.year);
+            setAnnotation(parsed.annotation);
+            setDescription(sub.description || '');
+            setPrice(sub.price?.toString() || '0');
+            setLabCount(sub.labCount?.toString() || '0');
+            setSgCount(sub.sgCount?.toString() || '0');
+            setEvtCount(sub.evtCount?.toString() || '0');
+            setDurationInDays(sub.durationInDays?.toString() || '0');
+            setTarget(sub.target || 'kid');
+            setStatusConfig(sub.statusConfig || { status: 'active' });
+            setIsPubliclyVisible(sub.isPubliclyVisible !== undefined ? sub.isPubliclyVisible : true);
+        } else {
+            setName('');
+            setYear(new Date().getFullYear().toString());
+            setAnnotation('standard');
+            setDescription('');
+            setPrice('0');
+            setLabCount('0');
+            setSgCount('0');
+            setEvtCount('0');
+            setDurationInDays('0');
+            setTarget('kid');
+            setStatusConfig({ status: 'active' });
+            setIsPubliclyVisible(true);
+        }
+    }, [sub?.id]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const totalLessons = Number(labCount) + Number(sgCount) + Number(evtCount);
+        if (!name || !price || !durationInDays || totalLessons === 0) {
+            alert("Compila tutti i campi obbligatori e inserisci almeno una lezione.");
+            return;
+        }
+        const prefix = target === 'kid' ? 'K' : 'A';
+        const finalName = `${prefix}-${name}.${year}.${annotation}`;
+        const subData = {
+            name: finalName,
+            description,
+            price: Number(price),
+            lessons: totalLessons,
+            labCount: Number(labCount),
+            sgCount: Number(sgCount),
+            evtCount: Number(evtCount),
+            durationInDays: Number(durationInDays),
+            target,
+            statusConfig,
+            isPubliclyVisible
+        };
+        try {
+            if (sub?.id) {
+                await onSave({ ...subData, id: sub.id });
+            } else {
+                await onSave(subData);
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Errore durante il salvataggio.");
+        }
+    };
+
+    const getStatusLabel = () => {
+        const currentStatus = statusConfig?.status || 'active';
+        switch(currentStatus) {
+            case 'active': return '🟢 Attivo';
+            case 'obsolete': return '⚫ Obsoleto';
+            case 'future': return '🔵 Da Attivare';
+            case 'promo': return '🟡 Promo';
+            default: return 'Attivo';
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-800">{sub ? 'Modifica Carnet' : 'Nuovo Carnet'}</h2>
+                <button type="button" onClick={() => setIsStatusModalOpen(true)} className="flex items-center gap-2 px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-full text-xs font-bold text-gray-700 transition-colors border border-gray-300">
+                    <span>{getStatusLabel()}</span>
+                    <PencilIcon />
+                </button>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
+                <div className="flex gap-4 mb-4">
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
+                        <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" />
+                        👶 Bambini (K)
+                    </label>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
+                        <input type="radio" name="target" value="adult" checked={target === 'adult'} onChange={() => setTarget('adult')} className="hidden" />
+                        🧑 Adulti (A)
+                    </label>
+                </div>
+                <div className="flex gap-2 items-end">
+                    <div className="flex-1 md-input-group">
+                        <input id="subName" type="text" value={name} onChange={e => setName(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subName" className="md-input-label">Nome (es. Trimestrale)</label>
+                    </div>
+                    <span className="text-gray-400 pb-2">.</span>
+                    <div className="w-20 md-input-group">
+                        <input id="subYear" type="text" value={year} onChange={e => setYear(e.target.value)} className="md-input text-center" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subYear" className="md-input-label">Anno</label>
+                    </div>
+                    <span className="text-gray-400 pb-2">.</span>
+                    <div className="w-24 md-input-group">
+                        <input id="subNote" type="text" value={annotation} onChange={e => setAnnotation(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subNote" className="md-input-label">Note</label>
+                    </div>
+                </div>
+                <div className="md-input-group">
+                    <textarea id="subDescription" value={description} onChange={e => setDescription(e.target.value)} className="md-input" placeholder=" " rows={2} />
+                    <label htmlFor="subDescription" className="md-input-label">Descrizione Pubblica (opzionale)</label>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="md-input-group">
+                        <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label>
+                    </div>
+                    <div className="md-input-group">
+                        <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
+                    </div>
+                </div>
+
+                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3 tracking-wider">Composizione Carnet (Lezioni)</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                        <div className="md-input-group">
+                            <input id="labCount" type="number" value={labCount} onChange={e => setLabCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                            <label htmlFor="labCount" className="md-input-label">Lab</label>
+                        </div>
+                        <div className="md-input-group">
+                            <input id="sgCount" type="number" value={sgCount} onChange={e => setSgCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                            <label htmlFor="sgCount" className="md-input-label">SG</label>
+                        </div>
+                        <div className="md-input-group">
+                            <input id="evtCount" type="number" value={evtCount} onChange={e => setEvtCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                            <label htmlFor="evtCount" className="md-input-label">Evt</label>
+                        </div>
+                    </div>
+                    <p className="text-[10px] text-indigo-500 mt-2 text-center font-bold">Totale: {Number(labCount) + Number(sgCount) + Number(evtCount)} lezioni</p>
+                </div>
+
+                <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={isPubliclyVisible} onChange={e => setIsPubliclyVisible(e.target.checked)} className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                        <span className="text-sm text-gray-700">Visibile pubblicamente nel portale iscrizioni</span>
+                    </label>
+                </div>
+                <div className="mt-4 p-2 bg-gray-50 border border-gray-200 rounded text-xs text-center text-gray-500">
+                    Codice generato: <strong>{target === 'kid' ? 'K' : 'A'}-{name}.{year}.{annotation}</strong>
+                </div>
+                {statusConfig && (statusConfig.status === 'promo' || statusConfig.status === 'future') && (
+                    <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-800">
+                        <strong>Nota:</strong> Questo abbonamento ha regole speciali di validità ({statusConfig.status}). {statusConfig.discountValue ? ` Sconto attivo: ${statusConfig.discountValue}${statusConfig.discountType === 'percent' ? '%' : '€'}` : ''}
+                    </div>
+                )}
+            </div>
+            <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0" style={{borderColor: 'var(--md-divider)'}}>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva</button>
+            </div>
+            {isStatusModalOpen && (
+                <SubscriptionStatusModal currentConfig={statusConfig} suppliers={suppliers} onSave={setStatusConfig} onClose={() => setIsStatusModalOpen(false)} />
+            )}
+        </form>
+    );
+};
+
 
 const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: CommunicationTemplate) => void; onCancel: () => void; }> = ({ template, onSave, onCancel }) => { 
     const [label, setLabel] = useState(template.label || ''); 
@@ -388,6 +576,9 @@ const Settings: React.FC = () => {
     // Notification Status & Debugging
     const [notifPermission, setNotifPermission] = useState(Notification.permission);
     const [debugLog, setDebugLog] = useState<string[]>([]);
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [migrationResult, setMigrationResult] = useState<{ updated: number, errors: number } | null>(null);
+    const [showConfirmMigrate, setShowConfirmMigrate] = useState(false);
 
     const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
 
@@ -664,6 +855,15 @@ const Settings: React.FC = () => {
                                         <p className="text-xs text-gray-500 font-medium">
                                             {sub.lessons} lezioni - {sub.durationInDays} giorni
                                         </p>
+                                        {((sub.labCount || 0) > 0 || (sub.sgCount || 0) > 0 || (sub.evtCount || 0) > 0) && (
+                                            <p className="text-[10px] text-indigo-600 font-bold mt-1">
+                                                Composizione: {[
+                                                    (sub.labCount || 0) > 0 ? `${sub.labCount} Lab` : null,
+                                                    (sub.sgCount || 0) > 0 ? `${sub.sgCount} SG` : null,
+                                                    (sub.evtCount || 0) > 0 ? `${sub.evtCount} Evt` : null
+                                                ].filter(Boolean).join(' + ')}
+                                            </p>
+                                        )}
                                     </div>
 
                                     {/* Bottom Right: Actions */}
@@ -844,17 +1044,85 @@ const Settings: React.FC = () => {
                         <button onClick={handleResetTheme} className="md-btn md-btn-flat md-btn-sm text-gray-500 mt-2 self-start">Ripristina Default</button>
                     </div>
                 </div>
+
+                {/* 8. Manutenzione Sistema */}
+                <div className="md-card p-6 border-l-4 border-red-500">
+                    <h2 className="text-lg font-semibold border-b pb-3 mb-4">Manutenzione Sistema</h2>
+                    <p className="text-xs text-gray-500 mb-4">Procedure avanzate per la gestione del database e la migrazione dei dati.</p>
+                    
+                    <div className="space-y-4">
+                        <div className="p-4 bg-slate-50 rounded border border-slate-200">
+                            <h3 className="text-sm font-bold text-slate-800 mb-2">Migrazione Storico Carnet</h3>
+                            <p className="text-xs text-slate-600 mb-4">
+                                Ricalcola tutti i crediti residui (Lab, SG, Evt) per le iscrizioni esistenti basandosi sulle regole di business definite.
+                            </p>
+                            
+                            {migrationResult ? (
+                                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded text-xs">
+                                    <p className="font-bold text-emerald-800">Migrazione completata!</p>
+                                    <p className="text-emerald-700">Aggiornati: {migrationResult.updated} | Errori: {migrationResult.errors}</p>
+                                    <button onClick={() => setMigrationResult(null)} className="mt-2 text-emerald-600 font-bold hover:underline">Chiudi</button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setShowConfirmMigrate(true)}
+                                    disabled={isMigrating}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded font-bold text-xs transition-all ${
+                                        isMigrating 
+                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
+                                    }`}
+                                >
+                                    {isMigrating ? (
+                                        <>
+                                            <Spinner />
+                                            Migrazione in corso...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ClockIcon />
+                                            Avvia Migrazione Storico
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
         {isSubModalOpen && <Modal onClose={() => setIsSubModalOpen(false)}><SubscriptionForm sub={editingSub} onSave={handleSaveSub} onCancel={() => setIsSubModalOpen(false)} suppliers={suppliers} /></Modal>}
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
-        {isContractModalOpen && editingContract && <Modal onClose={() => setIsContractModalOpen(false)} size="lg"><ContractTemplateForm template={editingContract} onSave={handleSaveContract} onCancel={() => setIsContractModalOpen(false)} /></Modal>}
+        {isContractModalOpen && editingContract && <Modal onClose={() => setIsContractModalOpen(false)}><ContractTemplateForm template={editingContract} onSave={handleSaveContract} onCancel={() => setIsContractModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
         
         <ConfirmModal isOpen={!!subToDelete} onClose={() => setSubToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Abbonamento" message="Sei sicuro?" isDangerous={true} />
         <ConfirmModal isOpen={!!templateToDelete} onClose={() => setTemplateToDelete(null)} onConfirm={handleConfirmDeleteTemplate} title="Elimina Template" message="Sei sicuro di voler eliminare questo template?" isDangerous={true} />
         <ConfirmModal isOpen={!!contractToDelete} onClose={() => setContractToDelete(null)} onConfirm={handleConfirmDeleteContract} title="Elimina Contratto" message="Sei sicuro di voler eliminare questo contratto?" isDangerous={true} />
+        
+        {showConfirmMigrate && (
+            <ConfirmModal 
+                isOpen={true} 
+                onClose={() => setShowConfirmMigrate(false)} 
+                onConfirm={async () => {
+                    setShowConfirmMigrate(false);
+                    setIsMigrating(true);
+                    try {
+                        const result = await migrateHistoricalEnrollments();
+                        setMigrationResult(result);
+                    } catch (e) {
+                        console.error(e);
+                        alert("Errore durante la migrazione.");
+                    } finally {
+                        setIsMigrating(false);
+                    }
+                }} 
+                title="Conferma Migrazione" 
+                message="Questa operazione ricalcolerà tutti i crediti residui degli allievi in base alle nuove regole dei Carnet. Procedere?" 
+                isDangerous={true}
+            />
+        )}
     </div>
   );
 };

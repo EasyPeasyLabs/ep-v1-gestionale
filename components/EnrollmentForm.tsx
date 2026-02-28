@@ -5,7 +5,6 @@ import { getSuppliers } from '../services/supplierService';
 import Spinner from './Spinner';
 import SearchIcon from './icons/SearchIcon';
 import PlusIcon from './icons/PlusIcon';
-import TrashIcon from './icons/TrashIcon';
 import CalendarIcon from './icons/CalendarIcon';
 import ClockIcon from './icons/ClockIcon';
 
@@ -45,7 +44,7 @@ const isItalianHoliday = (date: Date): boolean => {
 const calculateSlotBasedDates = (startStr: string, lessons: number): { start: string, end: string } => {
     if (!startStr || lessons <= 0) return { start: startStr, end: startStr };
     
-    let currentDate = new Date(startStr);
+    const currentDate = new Date(startStr);
     let validSlots = 0;
     let firstDate: string | null = null;
     let lastDate: string = startStr;
@@ -106,7 +105,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [loading, setLoading] = useState(true);
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
     const [clientSearchTerm, setClientSearchTerm] = useState('');
-    const [clientSort, setClientSort] = useState<'surname_asc' | 'surname_desc'>('surname_asc');
+    const clientSort = 'surname_asc';
 
     const initialValues = useRef({
         startDate: existingEnrollment ? existingEnrollment.startDate.split('T')[0] : '',
@@ -222,7 +221,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         const loc = allLocations.find(l => l.id === genLocationId);
         const newApps: Appointment[] = [];
         
-        let currentDate = new Date(); // Start from today or logic start
+        const currentDate = new Date(); // Start from today or logic start
         // Find first occurrence of selected day
         while (currentDate.getDay() !== genDayOfWeek) {
             currentDate.setDate(currentDate.getDate() + 1);
@@ -286,7 +285,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     }, [calculatedDates, isEndDateManual, isCustomMode]);
 
     const filteredClients = useMemo(() => {
-        let result = clients.filter(c => {
+        const result = clients.filter(c => {
             const term = clientSearchTerm.toLowerCase();
             if (c.clientType === ClientType.Parent) {
                 const p = c as ParentClient;
@@ -320,9 +319,9 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         let finalLessonsTotal = Number(existingEnrollment?.lessonsTotal || selectedSub?.lessons || 0);
         let finalLocationId = targetLocationId || 'unassigned';
         let finalLocationName = allLocations.find(l => l.id === targetLocationId)?.name || 'Sede Non Definita';
-        let finalLocationColor = allLocations.find(l => l.id === targetLocationId)?.color || '#e5e7eb';
-        let finalSupplierId = allLocations.find(l => l.id === targetLocationId)?.supplierId || 'unassigned';
-        let finalSupplierName = allLocations.find(l => l.id === targetLocationId)?.supplierName || '';
+        const finalLocationColor = allLocations.find(l => l.id === targetLocationId)?.color || '#e5e7eb';
+        const finalSupplierId = allLocations.find(l => l.id === targetLocationId)?.supplierId || 'unassigned';
+        const finalSupplierName = allLocations.find(l => l.id === targetLocationId)?.supplierName || '';
 
         // --- MODE LOGIC BRANCH ---
         if (isCustomMode) {
@@ -404,6 +403,12 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 
                 lessonsTotal: finalLessonsTotal,
                 lessonsRemaining: isCustomMode ? finalLessonsTotal : Number(existingEnrollment?.lessonsRemaining || selectedSub?.lessons || 0),
+                labCount: selectedSub?.labCount || existingEnrollment?.labCount || 0,
+                sgCount: selectedSub?.sgCount || existingEnrollment?.sgCount || 0,
+                evtCount: selectedSub?.evtCount || existingEnrollment?.evtCount || 0,
+                labRemaining: isCustomMode ? (selectedSub?.labCount || 0) : Number(existingEnrollment?.labRemaining || selectedSub?.labCount || 0),
+                sgRemaining: isCustomMode ? (selectedSub?.sgCount || 0) : Number(existingEnrollment?.sgRemaining || selectedSub?.sgCount || 0),
+                evtRemaining: isCustomMode ? (selectedSub?.evtCount || 0) : Number(existingEnrollment?.evtRemaining || selectedSub?.evtCount || 0),
                 startDate: new Date(finalStartDate).toISOString(),
                 endDate: new Date(finalEndDate).toISOString(),
                 status: existingEnrollment ? existingEnrollment.status : EnrollmentStatus.Pending, 

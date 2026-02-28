@@ -25,7 +25,8 @@ import {
   TransactionCategory,
   TransactionStatus,
   ClientType,
-  EnrollmentStatus
+  EnrollmentStatus,
+  SlotType
 } from '../../types';
 import { getSubscriptionTypes, getCompanyInfo } from '../../services/settingsService';
 import { getSuppliers } from '../../services/supplierService';
@@ -60,7 +61,7 @@ const EnrollmentPortal: React.FC = () => {
   const [lead, setLead] = useState<Lead | null>(null);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
-  const [locations, setLocations] = useState<{id: string, name: string, color: string, slots: string[]}[]>([]);
+  const [locations, setLocations] = useState<{id: string, name: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -126,7 +127,7 @@ const EnrollmentPortal: React.FC = () => {
         setSubscriptionTypes(subs);
 
         // Extract locations from suppliers
-        const locs: {id: string, name: string, color: string, slots: string[]}[] = [];
+        const locs: {id: string, name: string, color: string, slots: {time: string, type: SlotType}[]}[] = [];
         suppliers.forEach(s => {
           s.locations.forEach(l => {
             // Filter out closed or hidden locations
@@ -138,7 +139,10 @@ const EnrollmentPortal: React.FC = () => {
                 // Filter out hidden slots
                 slots: (l.availability || [])
                   .filter(a => a.isPubliclyVisible !== false)
-                  .map(a => `${a.startTime} - ${a.endTime}`)
+                  .map(a => ({
+                    time: `${a.startTime} - ${a.endTime}`,
+                    type: a.type || 'LAB'
+                  }))
               });
             }
           });
@@ -225,6 +229,12 @@ const EnrollmentPortal: React.FC = () => {
         price: sub?.price || 0,
         lessonsTotal: sub?.lessons || 0,
         lessonsRemaining: sub?.lessons || 0,
+        labCount: sub?.labCount || 0,
+        sgCount: sub?.sgCount || 0,
+        evtCount: sub?.evtCount || 0,
+        labRemaining: sub?.labCount || 0,
+        sgRemaining: sub?.sgCount || 0,
+        evtRemaining: sub?.evtCount || 0,
         status: EnrollmentStatus.Pending,
         startDate: new Date().toISOString(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -305,6 +315,12 @@ const EnrollmentPortal: React.FC = () => {
         price: sub?.price || 0,
         lessonsTotal: sub?.lessons || 0,
         lessonsRemaining: sub?.lessons || 0,
+        labCount: sub?.labCount || 0,
+        sgCount: sub?.sgCount || 0,
+        evtCount: sub?.evtCount || 0,
+        labRemaining: sub?.labCount || 0,
+        sgRemaining: sub?.sgCount || 0,
+        evtRemaining: sub?.evtCount || 0,
         status: EnrollmentStatus.Active,
         startDate: new Date().toISOString(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -608,20 +624,32 @@ const EnrollmentPortal: React.FC = () => {
                 </div>
 
                 {formData.selectedLocationId && (
-                  <div className="space-y-4 animate-slide-up">
-                    <label className="text-xs font-black text-gray-400 uppercase">Seleziona lo Slot</label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {locations.find(l => l.id === formData.selectedLocationId)?.slots.map(slot => (
-                        <button 
-                          key={slot}
-                          onClick={() => setFormData({...formData, selectedSlot: slot})}
-                          className={`p-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 ${formData.selectedSlot === slot ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
-                        >
-                          <Clock className="w-4 h-4" />
-                          {slot}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="space-y-6 animate-slide-up">
+                    {['LAB', 'SG', 'EVT'].map(type => {
+                      const typeSlots = locations.find(l => l.id === formData.selectedLocationId)?.slots.filter(s => s.type === type);
+                      if (!typeSlots || typeSlots.length === 0) return null;
+                      
+                      const typeLabel = type === 'LAB' ? 'Laboratori' : type === 'SG' ? 'Spazio Gioco' : 'Eventi';
+                      const typeColor = type === 'LAB' ? 'text-blue-600' : type === 'SG' ? 'text-orange-600' : 'text-purple-600';
+
+                      return (
+                        <div key={type} className="space-y-3">
+                          <label className={`text-[10px] font-black uppercase tracking-widest ${typeColor}`}>{typeLabel}</label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {typeSlots.map(slot => (
+                              <button 
+                                key={slot.time}
+                                onClick={() => setFormData({...formData, selectedSlot: slot.time})}
+                                className={`p-3 rounded-xl border text-sm font-bold transition-all flex items-center gap-2 ${formData.selectedSlot === slot.time ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}`}
+                              >
+                                <Clock className="w-4 h-4" />
+                                {slot.time}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -644,7 +672,17 @@ const EnrollmentPortal: React.FC = () => {
                       // Smart Name Parsing
                       const nameParts = sub.name.split('.');
                       const shortName = nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase();
-                      const defaultDescription = `${sub.lessons} lezioni totali • Validità ${Math.round(sub.durationInDays / 30)} mesi`;
+                      
+                      const breakdown = [
+                        (sub.labCount || 0) > 0 ? `${sub.labCount} Lab` : null,
+                        (sub.sgCount || 0) > 0 ? `${sub.sgCount} SG` : null,
+                        (sub.evtCount || 0) > 0 ? `${sub.evtCount} Evt` : null
+                      ].filter(Boolean).join(' + ');
+
+                      const defaultDescription = breakdown 
+                        ? `${breakdown} (${sub.lessons} totali) • Validità ${Math.round(sub.durationInDays / 30)} mesi`
+                        : `${sub.lessons} lezioni totali • Validità ${Math.round(sub.durationInDays / 30)} mesi`;
+                      
                       const description = sub.description || defaultDescription;
 
                       return (

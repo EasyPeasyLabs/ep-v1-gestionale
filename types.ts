@@ -110,7 +110,7 @@ export interface Location {
 
 export type LocationInput = Omit<Location, 'id'>;
 
-export type SlotType = 'LAB' | 'SG';
+export type SlotType = 'LAB' | 'SG' | 'EVT';
 
 export interface AvailabilitySlot {
     dayOfWeek: number;
@@ -328,13 +328,16 @@ export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';
 export interface SubscriptionType {
     id: string;
     name: string;
-    description?: string; // New field for public description
+    description?: string;
     price: number;
-    lessons: number;
+    lessons: number; // Total lessons (sum of lab, sg, evt)
+    labCount: number;
+    sgCount: number;
+    evtCount: number;
     durationInDays: number;
     target: 'kid' | 'adult';
     statusConfig?: SubscriptionStatusConfig;
-    isPubliclyVisible?: boolean; // New field for visibility toggle
+    isPubliclyVisible?: boolean;
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
@@ -421,6 +424,7 @@ export interface Appointment {
     locationColor: string;
     childName: string;
     status: AppointmentStatus | string;
+    type?: string;
 }
 
 export interface Enrollment {
@@ -441,6 +445,12 @@ export interface Enrollment {
     appointments: Appointment[];
     lessonsTotal: number;
     lessonsRemaining: number;
+    labCount?: number;
+    sgCount?: number;
+    evtCount?: number;
+    labRemaining?: number;
+    sgRemaining?: number;
+    evtRemaining?: number;
     startDate: string;
     endDate: string;
     status: EnrollmentStatus;
@@ -467,6 +477,7 @@ export interface Lesson {
     startTime: string;
     endTime: string;
     locationName: string;
+    locationId?: string;
     locationColor: string;
     description: string;
     childName?: string; // Legacy

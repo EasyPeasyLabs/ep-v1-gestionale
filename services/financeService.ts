@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, where, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, where, writeBatch, getDoc } from 'firebase/firestore';
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     DocumentStatus, PaymentMethod, TransactionType, TransactionCategory, 
@@ -129,7 +129,7 @@ export const generateInvoicesFromQuote = async (quote: Quote, enrollmentId: stri
     const sortedLessons = [...selectedLessons].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     const batch = writeBatch(db);
 
-    let nextGhostBase = await getNextGhostInvoiceNumber();
+    const nextGhostBase = await getNextGhostInvoiceNumber();
     // Parse the base number to increment
     const parts = nextGhostBase.split('-');
     const year = parts[1];
@@ -194,18 +194,25 @@ export const analyzeRentExpenses = async (month: number, year: number, enrollmen
     const transactions = await getTransactions(); // To check if paid
 
     // Build map of location usage
-    // Map: LocationId -> Count
-    const locationUsage = new Map<string, number>();
+    // Map: LocationId -> Set of unique session keys (date_start_end)
+    const uniqueSessions = new Map<string, Set<string>>();
 
     // A. Count from Enrollments Appointments
     enrollments.forEach(enr => {
         if (enr.appointments) {
             enr.appointments.forEach(app => {
                 const d = new Date(app.date);
-                if (d.getMonth() === month && d.getFullYear() === year && app.status === 'Present') {
+                // Include Scheduled, Present, and Absent statuses as they represent a lesson that took place or was planned
+                const isValidStatus = app.status === 'Present' || app.status === 'Scheduled' || app.status === 'Absent';
+                
+                if (d.getMonth() === month && d.getFullYear() === year && isValidStatus) {
                     const locId = app.locationId || enr.locationId;
                     if (locId && locId !== 'unassigned') {
-                        locationUsage.set(locId, (locationUsage.get(locId) || 0) + 1);
+                        if (!uniqueSessions.has(locId)) {
+                            uniqueSessions.set(locId, new Set());
+                        }
+                        const sessionKey = `${d.toISOString().split('T')[0]}_${app.startTime}_${app.endTime}`;
+                        uniqueSessions.get(locId)!.add(sessionKey);
                     }
                 }
             });
@@ -216,14 +223,19 @@ export const analyzeRentExpenses = async (month: number, year: number, enrollmen
     lessons.forEach(l => {
         const d = new Date(l.date);
         if (d.getMonth() === month && d.getFullYear() === year) {
-            // Find location ID by name (inefficient but works for small datasets)
-            let locId = '';
-            for (const s of suppliers) {
-                const found = s.locations.find(loc => loc.name === l.locationName);
-                if (found) { locId = found.id; break; }
+            let locId = l.locationId;
+            if (!locId) {
+                for (const s of suppliers) {
+                    const found = s.locations.find(loc => loc.name === l.locationName);
+                    if (found) { locId = found.id; break; }
+                }
             }
             if (locId) {
-                locationUsage.set(locId, (locationUsage.get(locId) || 0) + 1);
+                if (!uniqueSessions.has(locId)) {
+                    uniqueSessions.set(locId, new Set());
+                }
+                const sessionKey = `${d.toISOString().split('T')[0]}_${l.startTime}_${l.endTime}`;
+                uniqueSessions.get(locId)!.add(sessionKey);
             }
         }
     });
@@ -234,7 +246,7 @@ export const analyzeRentExpenses = async (month: number, year: number, enrollmen
 
     for (const s of suppliers) {
         for (const loc of s.locations) {
-            const usage = locationUsage.get(loc.id) || 0;
+            const usage = uniqueSessions.get(loc.id)?.size || 0;
             if (usage > 0) {
                 const totalCost = usage * (loc.rentalCost || 0);
                 
