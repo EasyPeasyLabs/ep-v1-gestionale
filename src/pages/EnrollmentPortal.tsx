@@ -32,6 +32,7 @@ import { getSubscriptionTypes, getCompanyInfo } from '../../services/settingsSer
 import { getSuppliers } from '../../services/supplierService';
 import Spinner from '../../components/Spinner';
 import Modal from '../../components/Modal';
+import { isItalianHoliday } from '../../utils/dateUtils';
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -248,6 +249,63 @@ const EnrollmentPortal: React.FC = () => {
 
       // 2. Create Enrollment (Pending)
       const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
+      
+      const calculateEnrollmentDates = (selectedSlot: string, lessonsTotal: number) => {
+        const parts = selectedSlot.split(',');
+        const dayName = parts[0].trim();
+        const timePart = parts.length > 1 ? parts[1].trim() : '16:30 - 18:00';
+        const timeParts = timePart.split('-');
+        const startTime = timeParts[0].trim();
+        const endTime = timeParts.length > 1 ? timeParts[1].trim() : '18:00';
+
+        const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        const targetDay = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
+        
+        const now = new Date();
+        let startDate = new Date(now);
+        
+        if (targetDay !== -1) {
+          const currentDay = startDate.getDay();
+          let distance = targetDay - currentDay;
+          if (distance < 0) {
+            distance += 7;
+          }
+          startDate.setDate(startDate.getDate() + distance);
+        }
+        
+        // Se la startDate calcolata è un giorno festivo, cerchiamo il prossimo giorno utile
+        while (isItalianHoliday(startDate)) {
+            startDate.setDate(startDate.getDate() + 7);
+        }
+
+        startDate.setHours(0, 0, 0, 0);
+        
+        let endDate = new Date(startDate);
+        let validSlots = 1; // La startDate conta come primo slot
+        let loops = 0;
+        
+        // Calcoliamo la endDate aggiungendo settimane e saltando le festività
+        while (validSlots < (lessonsTotal || 1) && loops < 100) {
+            endDate.setDate(endDate.getDate() + 7);
+            if (!isItalianHoliday(endDate)) {
+                validSlots++;
+            }
+            loops++;
+        }
+        
+        endDate.setHours(23, 59, 59, 999);
+        
+        return {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          firstLessonDate: startDate.toISOString(),
+          startTime,
+          endTime
+        };
+      };
+
+      const dates = calculateEnrollmentDates(formData.selectedSlot, sub?.lessons || 0);
+
       const enrollmentData = {
         clientId: clientRef.id,
         clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
@@ -267,13 +325,13 @@ const EnrollmentPortal: React.FC = () => {
         sgRemaining: sub?.sgCount || 0,
         evtRemaining: sub?.evtCount || 0,
         status: EnrollmentStatus.Pending,
-        startDate: new Date().toISOString(),
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        startDate: dates.startDate,
+        endDate: dates.endDate,
         appointments: [{
           lessonId: generateUUID(),
-          date: new Date().toISOString(),
-          startTime: formData.selectedSlot.split(' - ')[0] || '16:30',
-          endTime: formData.selectedSlot.split(' - ')[1] || '18:00',
+          date: dates.firstLessonDate,
+          startTime: dates.startTime,
+          endTime: dates.endTime,
           locationId: formData.selectedLocationId || 'unassigned',
           locationName: formData.selectedLocationName || 'Sede Preferita',
           locationColor: '#6366f1',
@@ -334,6 +392,63 @@ const EnrollmentPortal: React.FC = () => {
 
       // 2. Create Enrollment (Active)
       const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
+      
+      const calculateEnrollmentDates = (selectedSlot: string, lessonsTotal: number) => {
+        const parts = selectedSlot.split(',');
+        const dayName = parts[0].trim();
+        const timePart = parts.length > 1 ? parts[1].trim() : '16:30 - 18:00';
+        const timeParts = timePart.split('-');
+        const startTime = timeParts[0].trim();
+        const endTime = timeParts.length > 1 ? timeParts[1].trim() : '18:00';
+
+        const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        const targetDay = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
+        
+        const now = new Date();
+        let startDate = new Date(now);
+        
+        if (targetDay !== -1) {
+          const currentDay = startDate.getDay();
+          let distance = targetDay - currentDay;
+          if (distance < 0) {
+            distance += 7;
+          }
+          startDate.setDate(startDate.getDate() + distance);
+        }
+        
+        // Se la startDate calcolata è un giorno festivo, cerchiamo il prossimo giorno utile
+        while (isItalianHoliday(startDate)) {
+            startDate.setDate(startDate.getDate() + 7);
+        }
+
+        startDate.setHours(0, 0, 0, 0);
+        
+        let endDate = new Date(startDate);
+        let validSlots = 1; // La startDate conta come primo slot
+        let loops = 0;
+        
+        // Calcoliamo la endDate aggiungendo settimane e saltando le festività
+        while (validSlots < (lessonsTotal || 1) && loops < 100) {
+            endDate.setDate(endDate.getDate() + 7);
+            if (!isItalianHoliday(endDate)) {
+                validSlots++;
+            }
+            loops++;
+        }
+        
+        endDate.setHours(23, 59, 59, 999);
+        
+        return {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          firstLessonDate: startDate.toISOString(),
+          startTime,
+          endTime
+        };
+      };
+
+      const dates = calculateEnrollmentDates(formData.selectedSlot, sub?.lessons || 0);
+
       const enrollmentData = {
         clientId: clientRef.id,
         clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
@@ -353,13 +468,13 @@ const EnrollmentPortal: React.FC = () => {
         sgRemaining: sub?.sgCount || 0,
         evtRemaining: sub?.evtCount || 0,
         status: EnrollmentStatus.Active,
-        startDate: new Date().toISOString(),
-        endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        startDate: dates.startDate,
+        endDate: dates.endDate,
         appointments: [{
           lessonId: generateUUID(),
-          date: new Date().toISOString(),
-          startTime: formData.selectedSlot.split(' - ')[0] || '16:30',
-          endTime: formData.selectedSlot.split(' - ')[1] || '18:00',
+          date: dates.firstLessonDate,
+          startTime: dates.startTime,
+          endTime: dates.endTime,
           locationId: formData.selectedLocationId || 'unassigned',
           locationName: formData.selectedLocationName || 'Sede Preferita',
           locationColor: '#6366f1',

@@ -6,7 +6,7 @@ import { db } from '../firebase/config';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
 import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments, deleteEnrollment, getEnrollmentsForClient } from '../services/enrollmentService';
-import { cleanupEnrollmentFinancials, deleteAutoRentTransactions } from '../services/financeService';
+import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, anonymizeClientFinancials } from '../services/financeService';
 import { importClientsFromExcel } from '../services/importService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -473,6 +473,12 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                 }
                 
                 if (client) {
+                    const clientName = client.clientType === ClientType.Parent 
+                        ? `${(client as ParentClient).firstName || ''} ${(client as ParentClient).lastName || ''}`.trim()
+                        : (client as InstitutionalClient).companyName || '';
+                        
+                    await anonymizeClientFinancials(clientId, clientName);
+
                     if (client.email) {
                         const q = query(
                             collection(db, 'incoming_leads'),
@@ -516,6 +522,12 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
             const allClients = await getClients();
             
             for (const client of allClients) {
+                const clientName = client.clientType === ClientType.Parent 
+                    ? `${(client as ParentClient).firstName || ''} ${(client as ParentClient).lastName || ''}`.trim()
+                    : (client as InstitutionalClient).companyName || '';
+                    
+                await anonymizeClientFinancials(client.id, clientName);
+
                 const clientEnrollments = await getEnrollmentsForClient(client.id);
                 for (const enr of clientEnrollments) {
                     await cleanupEnrollmentFinancials(enr);
@@ -524,10 +536,33 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                         await deleteAutoRentTransactions(enr.locationId);
                     }
                 }
+                
+                if (client.email) {
+                    const q = query(
+                        collection(db, 'incoming_leads'),
+                        where('email', '==', client.email)
+                    );
+                    const querySnapshot = await getDocs(q);
+                    for (const docSnap of querySnapshot.docs) {
+                        await deleteDoc(doc(db, 'incoming_leads', docSnap.id));
+                    }
+                }
+                
+                if (client.phone) {
+                    const qPhone = query(
+                        collection(db, 'incoming_leads'),
+                        where('telefono', '==', client.phone)
+                    );
+                    const phoneSnapshot = await getDocs(qPhone);
+                    for (const docSnap of phoneSnapshot.docs) {
+                        await deleteDoc(doc(db, 'incoming_leads', docSnap.id));
+                    }
+                }
+
                 await permanentDeleteClient(client.id);
             }
             await fetchClientsData();
-            alert("Tutti i clienti e i dati correlati sono stati eliminati.");
+            alert("Tutti i clienti sono stati eliminati e i loro dati finanziari anonimizzati.");
         } catch (err) {
             console.error("Error deleting all:", err);
             alert("Errore durante l'eliminazione totale.");
@@ -966,7 +1001,7 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                 onClose={() => setClientToProcess(null)}
                 onConfirm={handleConfirmAction}
                 title={clientToProcess?.action === 'restore' ? "Ripristina" : "Elimina"}
-                message={clientToProcess?.action === 'restore' ? "Vuoi ripristinare questo cliente?" : "Attenzione! la cancellazione provocherà l'eliminazione definitiva di tutti i dati (anagrafici, didattici, economici e fiscali) associati a questo cliente."}
+                message={clientToProcess?.action === 'restore' ? "Vuoi ripristinare questo cliente?" : "Attenzione! La cancellazione eliminerà definitivamente i dati anagrafici e didattici. I dati economici e fiscali (Fatture, Transazioni) verranno conservati e resi anonimi (GDPR Compliant)."}
                 isDangerous={clientToProcess?.action !== 'restore'}
                 confirmText={clientToProcess?.action === 'restore' ? "Conferma" : "elimina"}
                 cancelText={clientToProcess?.action === 'restore' ? "Annulla" : "annulla eliminazione"}
@@ -977,7 +1012,7 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                 onClose={() => setIsDeleteAllModalOpen(false)}
                 onConfirm={handleConfirmDeleteAll}
                 title="ELIMINA TUTTI I CLIENTI"
-                message="⚠️ ATTENZIONE: Stai per eliminare TUTTI i clienti dal database. Questa azione eliminerà a cascata anche tutte le Iscrizioni, Lezioni, Transazioni e Fatture collegate. Questa operazione è irreversibile. Confermi?"
+                message="⚠️ ATTENZIONE: Stai per eliminare TUTTI i clienti dal database. Questa azione eliminerà a cascata tutte le Iscrizioni e Lezioni. Le Transazioni e Fatture collegate verranno conservate e anonimizzate per fini fiscali (GDPR Compliant). Questa operazione è irreversibile. Confermi?"
                 isDangerous={true}
                 confirmText="Sì, Elimina TUTTO"
             />

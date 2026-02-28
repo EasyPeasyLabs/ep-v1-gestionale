@@ -77,6 +77,40 @@ exports.receiveLead = onRequest(
         });
     }
 
+    // 3.5 Controllo Duplicati (Deduplication)
+    // Cerchiamo lead pendenti con la stessa email
+    const leadsRef = db.collection("incoming_leads");
+    const duplicateQuery = await leadsRef
+      .where("email", "==", data.email)
+      .where("status", "==", "pending")
+      .get();
+
+    if (!duplicateQuery.empty) {
+      // Filtriamo in memoria per childName (se presente) per gestire case-insensitivity
+      // e distinguere fratelli iscritti dallo stesso genitore
+      const duplicate = duplicateQuery.docs.find((doc) => {
+        const lead = doc.data();
+        if (data.childName && lead.childName) {
+          return (
+            data.childName.trim().toLowerCase() ===
+            lead.childName.trim().toLowerCase()
+          );
+        }
+        // Se non c'è childName, assumiamo sia lo stesso lead (es. genitore senza figlio specificato)
+        return true;
+      });
+
+      if (duplicate) {
+        console.log(`[API] Duplicate lead detected: ${duplicate.id}`);
+        return res.status(200).json({
+          success: true,
+          message: "Lead already received (duplicate).",
+          referenceId: duplicate.id,
+          isDuplicate: true,
+        });
+      }
+    }
+
     try {
       // 4. Persistenza su Firestore
       // Salviamo nella collezione "buffer" per non sporcare i dati reali

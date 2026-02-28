@@ -625,6 +625,29 @@ export const cleanupEnrollmentFinancials = async (enrollment: Enrollment) => {
     await batch.commit();
 };
 
+export const anonymizeClientFinancials = async (clientId: string, clientName: string) => {
+    const batch = writeBatch(db);
+    
+    // Anonymize invoices
+    const qInv = query(invoicesCollectionRef, where('clientId', '==', clientId));
+    const invSnap = await getDocs(qInv);
+    invSnap.forEach(d => batch.update(d.ref, { clientName: 'Cliente Cancellato (GDPR)' }));
+    
+    // Anonymize quotes
+    const qQuote = query(quotesCollectionRef, where('clientId', '==', clientId));
+    const quoteSnap = await getDocs(qQuote);
+    quoteSnap.forEach(d => batch.update(d.ref, { clientName: 'Cliente Cancellato (GDPR)' }));
+
+    // Anonymize transactions by clientName
+    if (clientName) {
+        const qTrans = query(transactionsCollectionRef, where('clientName', '==', clientName));
+        const transSnap = await getDocs(qTrans);
+        transSnap.forEach(d => batch.update(d.ref, { clientName: 'Cliente Cancellato (GDPR)' }));
+    }
+    
+    await batch.commit();
+};
+
 export const markInvoicesAsPaid = async (invoiceIds: string[]) => {
     const batch = writeBatch(db);
     invoiceIds.forEach(id => {
