@@ -18,6 +18,8 @@ export interface Client {
     notesHistory: Note[];
     tags: string[];
     isDeleted?: boolean;
+    preferredLocation?: string;
+    preferredSlot?: string;
 }
 
 export interface ParentClient extends Client {

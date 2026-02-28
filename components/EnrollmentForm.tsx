@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
@@ -34,7 +34,6 @@ const isItalianHoliday = (date: Date): boolean => {
     const easterMondays: Record<number, string> = {
         2024: '4-1', 2025: '4-21', 2026: '4-6', 2027: '3-29', 2028: '4-17', 2029: '4-2', 2030: '4-22'
     };
-    const key = `${m}-${d}`; 
     const lookupKey = `${m}-${d}`;
     if (easterMondays[y] === lookupKey) return true;
     return false;
@@ -119,12 +118,26 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const isInstitutional = currentClient?.clientType === ClientType.Institutional || existingEnrollment?.clientType === ClientType.Institutional;
     const isCustomMode = isInstitutional || subscriptionTypeId === 'quote-based';
 
+    // Helper: Locations Flattened
+    const allLocations = useMemo(() => {
+        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string, availability?: AvailabilitySlot[]}[] = [];
+        suppliers.forEach(s => {
+            s.locations.forEach(l => {
+                locs.push({
+                    id: l.id, name: l.name, color: l.color,
+                    supplierId: s.id, supplierName: s.companyName,
+                    availability: l.availability
+                });
+            });
+        });
+        return locs.sort((a,b) => a.name.localeCompare(b.name));
+    }, [suppliers]);
+
     // Auto-select based on client preferences
     useEffect(() => {
         if (!existingEnrollment && currentClient && !targetLocationId) {
-            const clientAny = currentClient as any;
-            const prefLoc = clientAny.preferredLocation;
-            const prefSlot = clientAny.preferredSlot;
+            const prefLoc = currentClient.preferredLocation;
+            const prefSlot = currentClient.preferredSlot;
 
             if (prefLoc) {
                 const matchedLoc = allLocations.find(l => l.name === prefLoc);
@@ -145,7 +158,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 }
             }
         }
-    }, [selectedClientId, allLocations, existingEnrollment, currentClient, targetLocationId]);
+    }, [selectedClientId, allLocations, existingEnrollment, currentClient, targetLocationId, setTargetLocationId, setStartTime, setEndTime]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -158,28 +171,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         loadData();
     }, []);
 
-    // Helper: Locations Flattened
-    const allLocations = useMemo(() => {
-        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string, availability?: AvailabilitySlot[]}[] = [];
-        suppliers.forEach(s => {
-            s.locations.forEach(l => {
-                locs.push({
-                    id: l.id, name: l.name, color: l.color,
-                    supplierId: s.id, supplierName: s.companyName,
-                    availability: l.availability
-                });
-            });
-        });
-        return locs.sort((a,b) => a.name.localeCompare(b.name));
-    }, [suppliers]);
-
     // --- SMART TIME SELECTOR LOGIC ---
-    const getSlotsForContext = (locationId: string, dayOfWeek: number) => {
+    const getSlotsForContext = useCallback((locationId: string, dayOfWeek: number) => {
         if (!locationId) return [];
         const loc = allLocations.find(l => l.id === locationId);
         if (!loc || !loc.availability) return [];
         return loc.availability.filter(slot => slot.dayOfWeek === dayOfWeek).sort((a,b) => a.startTime.localeCompare(b.startTime));
-    };
+    }, [allLocations]);
 
     // Update Single Adder Time when Location or Date changes
     useEffect(() => {
@@ -197,7 +195,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         } else {
             setSingleSmartSlot('manual');
         }
-    }, [singleLocationId, singleDate]);
+    }, [singleLocationId, singleDate, getSlotsForContext]);
 
     // Update Generator Time when Location or Day changes
     useEffect(() => {
@@ -213,9 +211,9 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         } else {
             setGenSmartSlot('manual');
         }
-    }, [genLocationId, genDayOfWeek]);
+    }, [genLocationId, genDayOfWeek, getSlotsForContext]);
 
-    const handleSmartSlotChange = (val: string, setStart: any, setEnd: any, setSlot: any) => {
+    const handleSmartSlotChange = (val: string, setStart: (v: string) => void, setEnd: (v: string) => void, setSlot: (v: string) => void) => {
         setSlot(val);
         if (val !== 'manual' && val !== '') {
             const [s, e] = val.split('-');
@@ -650,7 +648,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                                                 disabled={!singleLocationId}
                                             >
                                                 <option value="" disabled>-- Seleziona Slot Ufficiale --</option>
-                                                {singleLocationId && getSlotsForContext(singleLocationId, new Date(singleDate).getDay()).map((slot, i) => (
+                                                {singleLocationId && getSlotsForContext(singleLocationId, new Date(singleDate).getDay()).map((slot: AvailabilitySlot, i: number) => (
                                                     <option key={i} value={`${slot.startTime}-${slot.endTime}`}>
                                                         {slot.startTime} - {slot.endTime}
                                                     </option>
@@ -700,7 +698,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                                                 disabled={!genLocationId}
                                             >
                                                 <option value="" disabled>Slot...</option>
-                                                {genLocationId && getSlotsForContext(genLocationId, genDayOfWeek).map((slot, i) => (
+                                                {genLocationId && getSlotsForContext(genLocationId, genDayOfWeek).map((slot: AvailabilitySlot, i: number) => (
                                                     <option key={i} value={`${slot.startTime}-${slot.endTime}`}>
                                                         {slot.startTime} - {slot.endTime}
                                                     </option>
