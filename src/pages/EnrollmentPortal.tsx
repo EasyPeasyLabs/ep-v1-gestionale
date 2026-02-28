@@ -40,6 +40,11 @@ const generateUUID = () => {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 };
 
+const normalizeString = (str?: string) => {
+  if (!str) return '';
+  return str.toLowerCase().replace(/\s+/g, '').trim();
+};
+
 interface Lead {
   id: string;
   nome: string;
@@ -166,16 +171,22 @@ const EnrollmentPortal: React.FC = () => {
         }));
 
         // Try to match location name to ID
-        const matchedLoc = locs.find(l => l.name === leadData.selectedLocation);
+        const leadLocNormalized = normalizeString(leadData.selectedLocation);
+        const matchedLoc = locs.find(l => 
+          normalizeString(l.name) === leadLocNormalized || 
+          normalizeString(l.id) === leadLocNormalized
+        );
+        
         if (matchedLoc) {
-          setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id }));
+          setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id, selectedLocationName: matchedLoc.name }));
           
           // Try to match slot time
           // leadData.selectedSlot might be "Lunedì 16:30 - 18:00" or just "16:30 - 18:00"
-          const slotToMatch = leadData.selectedSlot || '';
-          const matchedSlot = matchedLoc.slots.find(s => 
-            slotToMatch.includes(s.time) || s.time.includes(slotToMatch)
-          );
+          const slotToMatch = normalizeString(leadData.selectedSlot);
+          const matchedSlot = matchedLoc.slots.find(s => {
+            const sTime = normalizeString(s.time);
+            return slotToMatch.includes(sTime) || sTime.includes(slotToMatch);
+          });
           
           if (matchedSlot) {
             setFormData(prev => ({ ...prev, selectedSlot: matchedSlot.time }));
@@ -634,8 +645,17 @@ const EnrollmentPortal: React.FC = () => {
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {locations
-                      .filter(loc => showAllOptions || !lead?.selectedLocation || loc.name === lead.selectedLocation)
-                      .map(loc => (
+                      .filter(loc => {
+                        if (showAllOptions || !lead?.selectedLocation) return true;
+                        const leadLocNormalized = normalizeString(lead.selectedLocation);
+                        return normalizeString(loc.name) === leadLocNormalized || normalizeString(loc.id) === leadLocNormalized;
+                      })
+                      .map(loc => {
+                        const isPreferred = lead?.selectedLocation && (
+                          normalizeString(loc.name) === normalizeString(lead.selectedLocation) || 
+                          normalizeString(loc.id) === normalizeString(lead.selectedLocation)
+                        );
+                        return (
                       <button 
                         key={loc.id}
                         onClick={() => setFormData({...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: ''})}
@@ -643,11 +663,11 @@ const EnrollmentPortal: React.FC = () => {
                       >
                         <div className="w-3 h-3 rounded-full mb-2" style={{ backgroundColor: loc.color }}></div>
                         <span className="font-black text-gray-800">{loc.name}</span>
-                        {lead?.selectedLocation === loc.name && !showAllOptions && (
+                        {isPreferred && !showAllOptions && (
                           <span className="block text-[10px] text-indigo-600 font-bold mt-1 uppercase">Sede Preferita</span>
                         )}
                       </button>
-                    ))}
+                    )})}
                   </div>
                 </div>
 
