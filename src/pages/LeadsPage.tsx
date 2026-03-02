@@ -153,40 +153,66 @@ export const LeadsPage: React.FC = () => {
 
   const handleConvertToStudent = async (lead: Lead) => {
     openConfirmModal(
-      "Creazione Studente",
-      `Vuoi creare un nuovo studente per ${lead.childName}?`,
+      "Creazione Cliente",
+      `Vuoi creare un nuovo cliente e iscrizione per ${lead.childName}?`,
       async () => {
         try {
-          // 1. Crea Studente
-          const studentData = {
-            firstName: lead.childName,
-            lastName: lead.cognome, // Assumiamo cognome genitore = cognome figlio per ora
-            dateOfBirth: '', // Da chiedere
-            fiscalCode: '',
-            gender: 'M', // Default, da cambiare
+          // 1. Crea Cliente (nella collezione corretta 'clients')
+          const clientData = {
+            clientType: 'parent', // ClientType.Parent
+            firstName: lead.nome,
+            lastName: lead.cognome,
+            email: lead.email,
+            phone: lead.telefono,
+            taxCode: '',
             address: '',
             city: '',
-            parentFirstName: lead.nome,
-            parentLastName: lead.cognome,
-            parentEmail: lead.email,
-            parentPhone: lead.telefono,
-            preferredLocation: lead.selectedLocation || '',
-            preferredSlot: lead.selectedSlot || '',
+            province: '',
+            zipCode: '',
+            children: [{
+              id: crypto.randomUUID(),
+              name: lead.childName,
+              age: lead.childAge,
+              dateOfBirth: '',
+              notes: '',
+              notesHistory: [],
+              tags: [],
+              rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+            }],
             status: 'Active',
-            createdAt: serverTimestamp(),
+            notesHistory: [],
+            tags: [],
+            rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
+            createdAt: new Date().toISOString(),
             source: 'web_lead'
           };
 
-          const studentRef = await addDoc(collection(db, 'students'), studentData);
+          const clientRef = await addDoc(collection(db, 'clients'), clientData);
 
-          // 2. Aggiorna Lead come convertito
-          await updateDoc(doc(db, 'incoming_leads', lead.id), {
-            status: 'converted',
-            convertedStudentId: studentRef.id,
-            convertedAt: new Date().toISOString()
-          });
+          // 2. Crea Iscrizione Bozza (Pending)
+          const enrollmentData = {
+            clientId: clientRef.id,
+            clientName: `${lead.nome} ${lead.cognome}`,
+            childId: clientData.children[0].id,
+            childName: lead.childName,
+            subscriptionTypeId: '',
+            subscriptionName: 'Da definire',
+            locationId: 'unassigned',
+            locationName: lead.selectedLocation || 'Sede Preferita',
+            price: 0,
+            lessonsTotal: 0,
+            lessonsRemaining: 0,
+            status: 'Pending', // EnrollmentStatus.Pending
+            appointments: [],
+            createdAt: new Date().toISOString()
+          };
+          
+          await addDoc(collection(db, 'enrollments'), enrollmentData);
 
-          alert(`Studente creato con successo! ID: ${studentRef.id}`);
+          // 3. Elimina il Lead (Traslazione completata)
+          await deleteDoc(doc(db, 'incoming_leads', lead.id));
+
+          alert(`Cliente e Iscrizione creati con successo!`);
         } catch (error) {
           console.error("Error converting lead:", error);
           alert("Errore nella conversione del lead");

@@ -187,7 +187,13 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const common = { email, phone, address, zipCode, city, province, clientType, notesHistory };
+        const common: any = { email, phone, address, zipCode, city, province, clientType, notesHistory };
+        
+        // Add source if it's a new client
+        if (!client?.id) {
+            common.source = 'manual';
+            common.createdAt = new Date().toISOString();
+        }
         
         if (clientType === ClientType.Parent) {
             const parentData: any = {

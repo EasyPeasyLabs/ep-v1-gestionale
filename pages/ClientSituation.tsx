@@ -949,9 +949,21 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                 >
                                     <div className="flex justify-between items-start mb-2">
                                         <h3 className="font-bold text-gray-800 text-lg group-hover:text-indigo-700 leading-tight">{getClientName(client)}</h3>
-                                        <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${client.clientType === ClientType.Parent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
-                                            {client.clientType === ClientType.Parent ? 'Genitore' : 'Ente'}
-                                        </span>
+                                        <div className="flex flex-col items-end gap-1">
+                                            <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${client.clientType === ClientType.Parent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
+                                                {client.clientType === ClientType.Parent ? 'Genitore' : 'Ente'}
+                                            </span>
+                                            {client.source === 'web_lead' && (
+                                                <span className="text-[10px] uppercase px-2 py-1 rounded font-bold bg-blue-100 text-blue-800">
+                                                    Lead
+                                                </span>
+                                            )}
+                                            {client.source === 'portal' && (
+                                                <span className="text-[10px] uppercase px-2 py-1 rounded font-bold bg-green-100 text-green-800">
+                                                    Portal
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     
                                     <div className="mt-auto pt-3 border-t border-dashed border-gray-100 grid grid-cols-3 gap-2 text-center text-xs">
@@ -989,7 +1001,17 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 <div className="space-y-6 animate-slide-up">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* 1. Anagrafica */}
-                        <div className="md-card p-6 bg-white border-l-4 border-indigo-500">
+                        <div className="md-card p-6 bg-white border-l-4 border-indigo-500 relative">
+                            {selectedClient.source === 'web_lead' && (
+                                <span className="absolute top-4 right-4 text-[10px] uppercase px-2 py-1 rounded font-bold bg-blue-100 text-blue-800">
+                                    Lead
+                                </span>
+                            )}
+                            {selectedClient.source === 'portal' && (
+                                <span className="absolute top-4 right-4 text-[10px] uppercase px-2 py-1 rounded font-bold bg-green-100 text-green-800">
+                                    Portal
+                                </span>
+                            )}
                             <h3 className="text-lg font-bold text-gray-800 mb-4 uppercase tracking-tight">Anagrafica</h3>
                             <div className="space-y-3 text-sm">
                                 <div><label className="text-xs text-gray-400 uppercase font-bold">Nome</label><p className="font-bold text-gray-900">{getClientName(selectedClient)}</p></div>

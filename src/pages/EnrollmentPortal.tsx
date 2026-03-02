@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { 
   CheckCircle, 
@@ -243,7 +243,8 @@ const EnrollmentPortal: React.FC = () => {
         notesHistory: [],
         tags: [],
         rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        source: 'portal'
       };
       const clientRef = await addDoc(collection(db, 'clients'), clientData);
 
@@ -342,11 +343,8 @@ const EnrollmentPortal: React.FC = () => {
       };
       await addDoc(collection(db, 'enrollments'), enrollmentData);
 
-      // 3. Update Lead
-      await updateDoc(doc(db, 'incoming_leads', lead.id), {
-        status: 'converted',
-        convertedAt: new Date().toISOString()
-      });
+      // 3. Update Lead (Delete it)
+      await deleteDoc(doc(db, 'incoming_leads', lead.id));
 
       setSuccessMode('booking');
       setIsSuccess(true);
@@ -386,7 +384,8 @@ const EnrollmentPortal: React.FC = () => {
         notesHistory: [],
         tags: [],
         rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        source: 'portal'
       };
       const clientRef = await addDoc(collection(db, 'clients'), clientData);
 
@@ -524,11 +523,8 @@ const EnrollmentPortal: React.FC = () => {
         await addDoc(collection(db, 'invoices'), invoiceData);
       }
 
-      // 5. Update Lead
-      await updateDoc(doc(db, 'incoming_leads', lead.id), {
-        status: 'converted',
-        convertedAt: new Date().toISOString()
-      });
+      // 5. Update Lead (Delete it)
+      await deleteDoc(doc(db, 'incoming_leads', lead.id));
 
       setSuccessMode('paid');
       setIsSuccess(true);

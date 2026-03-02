@@ -20,6 +20,7 @@ export interface Client {
     isDeleted?: boolean;
     preferredLocation?: string;
     preferredSlot?: string;
+    source?: 'web_lead' | 'portal' | 'manual';
 }
 
 export interface ParentClient extends Client {
