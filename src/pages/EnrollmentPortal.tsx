@@ -339,7 +339,8 @@ const EnrollmentPortal: React.FC = () => {
           childName: formData.childName,
           status: 'Scheduled'
         }],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        source: 'portal'
       };
       await addDoc(collection(db, 'enrollments'), enrollmentData);
 
@@ -480,7 +481,8 @@ const EnrollmentPortal: React.FC = () => {
           childName: formData.childName,
           status: 'Scheduled'
         }],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        source: 'portal'
       };
       const enrRef = await addDoc(collection(db, 'enrollments'), enrollmentData);
 

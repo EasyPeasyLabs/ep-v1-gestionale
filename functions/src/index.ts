@@ -75,27 +75,8 @@ export const sendEmail = onCall({
     }
 });
 
-// --- TRIGGER NOTIFICHE PUSH PER NUOVI LEAD ---
-export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async (event) => {
-    const snapshot = event.data;
-    if (!snapshot) {
-        logger.error("No data associated with the event");
-        return;
-    }
-
-    const leadData = snapshot.data();
-    const leadId = event.params.leadId;
-
-    // Determina il tipo di lead per il messaggio
-    const isEnrollment = 
-        leadData.source === 'enrollment_form' || 
-        leadData.source === 'project_c' ||
-        leadData.notes?.toLowerCase().includes('iscrizione') ||
-        leadData.notes?.toLowerCase().includes('progetto c');
-
-    const title = isEnrollment ? "Nuova Iscrizione Web! 🍋" : "Nuova Richiesta Info! 🍋";
-    const body = `Hai ricevuto un nuovo lead da ${leadData.nome} ${leadData.cognome} per la sede ${leadData.selectedLocation || 'non specificata'}.`;
-
+// --- HELPER PER INVIO NOTIFICHE PUSH ---
+async function sendPushToAllTokens(title: string, body: string, extraData: Record<string, string>) {
     try {
         // Recupera tutti i token FCM registrati
         const tokensSnapshot = await admin.firestore().collection("fcm_tokens").get();
@@ -120,11 +101,7 @@ export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async 
                 title: title,
                 body: body,
             },
-            data: {
-                leadId: leadId,
-                type: isEnrollment ? 'enrollment' : 'lead',
-                click_action: 'FLUTTER_NOTIFICATION_CLICK', // Per compatibilità mobile se necessaria
-            },
+            data: extraData,
             android: {
                 notification: {
                     icon: 'stock_ticker_update',
@@ -146,7 +123,7 @@ export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async 
         
         logger.info(`Notifications sent: ${response.successCount} success, ${response.failureCount} failure`);
 
-        // Gestione dei token non validi (pulizia opzionale)
+        // Gestione dei token non validi (pulizia)
         if (response.failureCount > 0) {
             const failedTokens: string[] = [];
             response.responses.forEach((resp, idx) => {
@@ -168,8 +145,64 @@ export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async 
                 await batch.commit();
             }
         }
-
     } catch (error) {
         logger.error("Error sending push notifications:", error);
     }
+}
+
+// Helper per formattare la data in italiano
+const formatItalianDate = (isoString: string) => {
+    try {
+        const date = new Date(isoString);
+        const days = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        const dayName = days[date.getDay()];
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        return `${dayName} ${day}/${month}`;
+    } catch (e) {
+        return 'Data non valida';
+    }
+};
+
+// --- TRIGGER NOTIFICHE PUSH PER NUOVI LEAD ---
+export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const leadData = snapshot.data();
+    const title = "Nuovo Lead";
+    const body = `Hai una nuova richiesta da ${leadData.nome} ${leadData.cognome}`;
+
+    await sendPushToAllTokens(title, body, {
+        leadId: event.params.leadId,
+        type: 'lead'
+    });
+});
+
+// --- TRIGGER NOTIFICHE PUSH PER NUOVE ISCRIZIONI ---
+export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}", async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const enrData = snapshot.data();
+    
+    // Solo per iscrizioni da portale
+    if (enrData.source !== 'portal') {
+        logger.info(`Enrollment ${event.params.enrollmentId} skipped (source: ${enrData.source || 'manual'})`);
+        return;
+    }
+    
+    // Formattazione dati per il messaggio
+    const firstApp = enrData.appointments?.[0];
+    const giorno = firstApp ? formatItalianDate(firstApp.date) : 'da definire';
+    const slot = firstApp ? `${firstApp.startTime} - ${firstApp.endTime}` : 'da definire';
+    const sede = enrData.locationName || 'Sede Preferita';
+
+    const title = "Nuova Iscrizione";
+    const body = `Hai una nuova iscrizione da ${enrData.clientName} per ${enrData.childName} per ${giorno} - ${slot} presso ${sede}`;
+
+    await sendPushToAllTokens(title, body, {
+        enrollmentId: event.params.enrollmentId,
+        type: 'enrollment'
+    });
 });
