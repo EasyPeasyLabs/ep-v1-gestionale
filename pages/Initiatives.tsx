@@ -15,6 +15,153 @@ import Pagination from '../components/Pagination';
 
 // --- SUB-COMPONENTS ---
 
+const TagInput: React.FC<{
+    label: string;
+    value: string[];
+    onChange: (tags: string[]) => void;
+    suggestions: string[];
+}> = ({ label, value, onChange, suggestions }) => {
+    const [input, setInput] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+
+    const handleAdd = (tag: string) => {
+        const trimmed = tag.trim();
+        if (trimmed && !value.includes(trimmed)) {
+            onChange([...value, trimmed]);
+        }
+        setInput('');
+        setIsOpen(false);
+    };
+
+    const handleRemove = (tag: string) => {
+        onChange(value.filter(t => t !== tag));
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            handleAdd(input);
+        }
+    };
+
+    const filteredSuggestions = suggestions.filter(s => s.toLowerCase().includes(input.toLowerCase()) && !value.includes(s));
+
+    return (
+        <div className="relative mb-4">
+            <label className="block text-xs font-bold text-gray-700 mb-1">{label}</label>
+            <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                    {value.map(tag => (
+                        <span key={tag} className="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5 font-medium shadow-sm">
+                            {tag}
+                            <button type="button" onClick={() => handleRemove(tag)} className="text-indigo-400 hover:text-indigo-800 focus:outline-none bg-indigo-100 hover:bg-indigo-200 rounded-full w-4 h-4 flex items-center justify-center transition-colors">&times;</button>
+                        </span>
+                    ))}
+                </div>
+                <div className="relative">
+                    <input 
+                        type="text" 
+                        value={input} 
+                        onChange={e => { setInput(e.target.value); setIsOpen(true); }} 
+                        onKeyDown={handleKeyDown}
+                        onFocus={() => setIsOpen(true)}
+                        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
+                        className="w-full p-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-shadow" 
+                        placeholder={`Aggiungi ${label.toLowerCase()}... (Invio per creare)`} 
+                    />
+                    {isOpen && filteredSuggestions.length > 0 && (
+                        <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-xl mt-1 max-h-48 overflow-y-auto">
+                            {filteredSuggestions.map(s => (
+                                <div key={s} className="px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm text-gray-700 border-b border-gray-50 last:border-0" onMouseDown={(e) => { e.preventDefault(); handleAdd(s); }}>
+                                    {s}
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const BookForm: React.FC<{
+    book?: Book | null;
+    locations: {id: string, name: string}[];
+    allBooks: Book[];
+    onSave: (data: BookInput | Book) => void;
+    onCancel: () => void;
+}> = ({ book, locations, allBooks, onSave, onCancel }) => {
+    const [title, setTitle] = useState(book?.title || '');
+    const [authors, setAuthors] = useState(book?.authors || '');
+    const [publisher, setPublisher] = useState(book?.publisher || '');
+    const [homeLocationId, setHomeLocationId] = useState(book?.homeLocationId || '');
+    const [targetTags, setTargetTags] = useState<string[]>(book?.targetTags || []);
+    const [categoryTags, setCategoryTags] = useState<string[]>(book?.categoryTags || []);
+    const [themeTags, setThemeTags] = useState<string[]>(book?.themeTags || []);
+
+    // Extract unique tags from allBooks to use as suggestions
+    const defaultTargetTags = ['piccolissimi', 'piccoli', 'grandi'];
+    const defaultCategoryTags = ['solo testo', 'solo immagini', 'testo & immagini', 'tattile'];
+    const defaultThemeTags = ['animali', 'stagioni', 'eventi', 'società'];
+
+    const existingTargetTags = Array.from(new Set([...defaultTargetTags, ...allBooks.flatMap(b => b.targetTags || [])]));
+    const existingCategoryTags = Array.from(new Set([...defaultCategoryTags, ...allBooks.flatMap(b => b.categoryTags || [])]));
+    const existingThemeTags = Array.from(new Set([...defaultThemeTags, ...allBooks.flatMap(b => b.themeTags || [])]));
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const data: BookInput = {
+            title,
+            authors,
+            publisher,
+            homeLocationId,
+            targetTags,
+            categoryTags,
+            themeTags,
+            isAvailable: book ? book.isAvailable : true
+        };
+        if (book?.id) onSave({ ...data, id: book.id });
+        else onSave(data);
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col h-full bg-gray-50/50">
+            <div className="p-6 border-b bg-white"><h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3></div>
+            <div className="flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Colonna Sinistra: Dati Principali */}
+                    <div className="space-y-6">
+                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Dati Principali</h4>
+                        <div className="md-input-group"><input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " /><label className="md-input-label">Titolo</label></div>
+                        <div className="md-input-group"><input type="text" value={authors} onChange={e => setAuthors(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Autori</label></div>
+                        <div className="md-input-group"><input type="text" value={publisher} onChange={e => setPublisher(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Casa Editrice</label></div>
+                        
+                        <div className="pt-2">
+                            <label className="block text-xs font-bold text-gray-700 mb-1">Sede Base</label>
+                            <select value={homeLocationId} onChange={e => setHomeLocationId(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="">Nessuna Sede Base</option>
+                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Colonna Destra: Classificazione */}
+                    <div className="space-y-6">
+                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Classificazione (Tag)</h4>
+                        <TagInput label="Destinatari" value={targetTags} onChange={setTargetTags} suggestions={existingTargetTags} />
+                        <TagInput label="Categoria" value={categoryTags} onChange={setCategoryTags} suggestions={existingCategoryTags} />
+                        <TagInput label="Tema" value={themeTags} onChange={setThemeTags} suggestions={existingThemeTags} />
+                    </div>
+                </div>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-3 bg-white">
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat text-gray-600">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-primary px-6">Salva Libro</button>
+            </div>
+        </form>
+    );
+};
+
 // 1. Initiative Form (Standard CRUD)
 const InitiativeForm: React.FC<{ 
     initiative?: Initiative | null;
@@ -92,8 +239,14 @@ const BookManager: React.FC = () => {
     const [selBookId, setSelBookId] = useState('');
     
     // Inventory State
-    const [newBookTitle, setNewBookTitle] = useState('');
     const [invSearch, setInvSearch] = useState('');
+    const [filterTarget, setFilterTarget] = useState('');
+    const [filterCategory, setFilterCategory] = useState('');
+    const [filterTheme, setFilterTheme] = useState('');
+    const [filterLocation, setFilterLocation] = useState('');
+
+    const [isBookModalOpen, setIsBookModalOpen] = useState(false);
+    const [editingBook, setEditingBook] = useState<Book | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -121,6 +274,38 @@ const BookManager: React.FC = () => {
     }, [selLocationId, enrollments]);
 
     const availableBooks = useMemo(() => books.filter(b => b.isAvailable).sort((a,b) => a.title.localeCompare(b.title)), [books]);
+
+    const allTargetTags = useMemo(() => Array.from(new Set(books.flatMap(b => b.targetTags || []))).sort(), [books]);
+    const allCategoryTags = useMemo(() => Array.from(new Set(books.flatMap(b => b.categoryTags || []))).sort(), [books]);
+    const allThemeTags = useMemo(() => Array.from(new Set(books.flatMap(b => b.themeTags || []))).sort(), [books]);
+
+    const filteredBooks = useMemo(() => {
+        return books.filter(b => {
+            // Text search
+            if (invSearch) {
+                const term = invSearch.toLowerCase();
+                const matchTitle = b.title.toLowerCase().includes(term);
+                const matchAuthors = b.authors?.toLowerCase().includes(term);
+                const matchPublisher = b.publisher?.toLowerCase().includes(term);
+                if (!matchTitle && !matchAuthors && !matchPublisher) return false;
+            }
+            
+            // Tags
+            if (filterTarget && !(b.targetTags || []).includes(filterTarget)) return false;
+            if (filterCategory && !(b.categoryTags || []).includes(filterCategory)) return false;
+            if (filterTheme && !(b.themeTags || []).includes(filterTheme)) return false;
+            
+            // Location
+            if (filterLocation) {
+                // Find if it's currently loaned out
+                const activeLoan = loans.find(l => l.bookId === b.id);
+                const currentLocationId = activeLoan ? activeLoan.locationId : b.homeLocationId;
+                if (currentLocationId !== filterLocation) return false;
+            }
+            
+            return true;
+        });
+    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation]);
 
     // Actions
     const handleCheckout = async () => {
@@ -152,11 +337,14 @@ const BookManager: React.FC = () => {
         }
     };
 
-    const handleAddBook = async () => {
-        if(!newBookTitle.trim()) return;
+    const handleSaveBook = async (data: BookInput | Book) => {
         setLoading(true);
-        await addBook({ title: newBookTitle, isAvailable: true });
-        setNewBookTitle('');
+        if ('id' in data) {
+            await updateBook(data.id, data);
+        } else {
+            await addBook(data);
+        }
+        setIsBookModalOpen(false);
         await fetchData();
     };
 
@@ -243,26 +431,86 @@ const BookManager: React.FC = () => {
                 )}
 
                 {activeTab === 'inventory' && (
-                    <div className="space-y-4">
-                        <div className="flex gap-2">
-                            <input type="text" value={newBookTitle} onChange={e => setNewBookTitle(e.target.value)} placeholder="Titolo nuovo libro..." className="flex-1 md-input" />
-                            <button onClick={handleAddBook} disabled={!newBookTitle} className="md-btn md-btn-raised md-btn-green"><PlusIcon/></button>
+                    <div className="space-y-4 flex flex-col h-full">
+                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <h4 className="font-bold text-gray-700">Catalogo Libri</h4>
+                            <button onClick={() => { setEditingBook(null); setIsBookModalOpen(true); }} className="md-btn md-btn-sm md-btn-raised md-btn-primary flex items-center gap-1">
+                                <PlusIcon/> Nuovo Libro
+                            </button>
                         </div>
-                        <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca nell'inventario..." className="w-full p-2 border rounded text-xs bg-gray-50" />
-                        <div className="space-y-1 max-h-80 overflow-y-auto">
-                            {books.filter(b => b.title.toLowerCase().includes(invSearch.toLowerCase())).map(b => (
-                                <div key={b.id} className="flex justify-between items-center p-2 hover:bg-gray-50 border-b border-gray-100">
-                                    <div className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                        <span className={`text-sm ${!b.isAvailable ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{b.title}</span>
+                        
+                        {/* Filters */}
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                            <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, autore, editore..." className="md-input text-xs" />
+                            <select value={filterTarget} onChange={e => setFilterTarget(e.target.value)} className="md-input text-xs">
+                                <option value="">Tutti i Destinatari</option>
+                                {allTargetTags.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="md-input text-xs">
+                                <option value="">Tutte le Categorie</option>
+                                {allCategoryTags.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <select value={filterTheme} onChange={e => setFilterTheme(e.target.value)} className="md-input text-xs">
+                                <option value="">Tutti i Temi</option>
+                                {allThemeTags.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                            <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input text-xs">
+                                <option value="">Tutte le Ubicazioni</option>
+                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                            </select>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                            {filteredBooks.map(b => {
+                                const activeLoan = loans.find(l => l.bookId === b.id);
+                                const currentLocationName = activeLoan ? activeLoan.locationName : (locations.find(l => l.id === b.homeLocationId)?.name || 'Nessuna Sede Base');
+                                
+                                return (
+                                <div key={b.id} className="flex flex-col p-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={`w-2.5 h-2.5 rounded-full ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
+                                                <span className={`font-bold text-lg ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</span>
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-1 flex gap-2">
+                                                {b.authors && <span><span className="font-bold">Autori:</span> {b.authors}</span>}
+                                                {b.publisher && <span><span className="font-bold">Ed:</span> {b.publisher}</span>}
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => { setEditingBook(b); setIsBookModalOpen(true); }} className="text-gray-400 hover:text-indigo-600"><PencilIcon/></button>
+                                            <button onClick={() => handleDeleteBook(b.id)} className="text-gray-400 hover:text-red-600"><TrashIcon/></button>
+                                        </div>
                                     </div>
-                                    <button onClick={() => handleDeleteBook(b.id)} className="text-gray-300 hover:text-red-500"><TrashIcon/></button>
+                                    
+                                    <div className="mt-3 flex flex-wrap gap-1 items-center">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.isAvailable ? 'bg-gray-100 text-gray-600' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                                            📍 {currentLocationName} {activeLoan ? `(In prestito a ${activeLoan.studentName})` : ''}
+                                        </span>
+                                        {b.targetTags?.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{t}</span>)}
+                                        {b.categoryTags?.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">{t}</span>)}
+                                        {b.themeTags?.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{t}</span>)}
+                                    </div>
                                 </div>
-                            ))}
+                            )})}
+                            {filteredBooks.length === 0 && <p className="text-center text-gray-400 italic py-8">Nessun libro trovato con questi filtri.</p>}
                         </div>
                     </div>
                 )}
             </div>
+
+            {isBookModalOpen && (
+                <Modal onClose={() => setIsBookModalOpen(false)} size="lg">
+                    <BookForm 
+                        book={editingBook} 
+                        locations={locations} 
+                        allBooks={books} 
+                        onSave={handleSaveBook} 
+                        onCancel={() => setIsBookModalOpen(false)} 
+                    />
+                </Modal>
+            )}
         </div>
     );
 };

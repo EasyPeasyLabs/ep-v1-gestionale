@@ -364,6 +364,29 @@ const FixWizard: React.FC<{
                                                 </div>
                                             )}
                                         </div>
+
+                                        <div 
+                                            className={`p-4 border rounded-xl transition-all cursor-pointer group ${strategy === 'cash' ? 'border-green-600 bg-green-50 ring-1 ring-green-600' : 'hover:border-green-300 hover:bg-gray-50'}`}
+                                            onClick={() => setStrategy('cash')}
+                                        >
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${strategy === 'cash' ? 'border-green-600 bg-green-600' : 'border-gray-300'}`}>
+                                                    {strategy === 'cash' && <div className="w-2 h-2 bg-white rounded-full" />}
+                                                </div>
+                                                <span className={`font-bold ${strategy === 'cash' ? 'text-green-900' : 'text-gray-700'}`}>Registra Incasso in Contanti</span>
+                                            </div>
+                                            <p className="text-sm text-gray-500 ml-8">Sana l'anomalia registrando un pagamento in contanti senza emettere fattura (es. accordi specifici con enti).</p>
+                                            
+                                            {strategy === 'cash' && (
+                                                <div className="ml-8 mt-4 pt-4 border-t border-green-100 animate-fade-in">
+                                                    <label className="block text-xs font-bold text-green-800 mb-1">Data Incasso</label>
+                                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input w-full mb-3" />
+                                                    <button onClick={() => handleResolve('cash')} disabled={loading} className="md-btn md-btn-green w-full shadow-lg">
+                                                        {loading ? <Spinner /> : 'Conferma Incasso Contanti'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 

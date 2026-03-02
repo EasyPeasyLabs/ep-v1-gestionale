@@ -46,7 +46,16 @@ export const getBooks = async (): Promise<Book[]> => {
 };
 
 export const addBook = async (book: BookInput): Promise<string> => {
-    const docRef = await addDoc(bookCollectionRef, { ...book, isAvailable: true });
+    const docRef = await addDoc(bookCollectionRef, { 
+        ...book, 
+        isAvailable: true,
+        publisher: book.publisher || '',
+        authors: book.authors || '',
+        targetTags: book.targetTags || [],
+        categoryTags: book.categoryTags || [],
+        themeTags: book.themeTags || [],
+        homeLocationId: book.homeLocationId || ''
+    });
     return docRef.id;
 };
 

@@ -551,6 +551,12 @@ export interface Book {
     id: string;
     title: string;
     isAvailable: boolean;
+    publisher?: string;
+    authors?: string;
+    targetTags?: string[];
+    categoryTags?: string[];
+    themeTags?: string[];
+    homeLocationId?: string;
 }
 
 export type BookInput = Omit<Book, 'id'>;
