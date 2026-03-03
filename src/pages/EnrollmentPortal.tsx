@@ -263,7 +263,7 @@ const EnrollmentPortal: React.FC = () => {
         const targetDay = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
         
         const now = new Date();
-        let startDate = new Date(now);
+        const startDate = new Date(now);
         
         if (targetDay !== -1) {
           const currentDay = startDate.getDay();
@@ -281,7 +281,7 @@ const EnrollmentPortal: React.FC = () => {
 
         startDate.setHours(0, 0, 0, 0);
         
-        let endDate = new Date(startDate);
+        const endDate = new Date(startDate);
         let validSlots = 1; // La startDate conta come primo slot
         let loops = 0;
         
@@ -405,7 +405,7 @@ const EnrollmentPortal: React.FC = () => {
         const targetDay = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
         
         const now = new Date();
-        let startDate = new Date(now);
+        const startDate = new Date(now);
         
         if (targetDay !== -1) {
           const currentDay = startDate.getDay();
@@ -423,7 +423,7 @@ const EnrollmentPortal: React.FC = () => {
 
         startDate.setHours(0, 0, 0, 0);
         
-        let endDate = new Date(startDate);
+        const endDate = new Date(startDate);
         let validSlots = 1; // La startDate conta come primo slot
         let loops = 0;
         

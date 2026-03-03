@@ -30,6 +30,9 @@ export const getTransactions = async (): Promise<Transaction[]> => {
 };
 
 export const addTransaction = async (t: TransactionInput): Promise<string> => {
+    if (t.transactionNumber === undefined) {
+        t.transactionNumber = await getNextTransactionNumber(t.date);
+    }
     const docRef = await addDoc(transactionsCollectionRef, t);
     return docRef.id;
 };
@@ -114,7 +117,7 @@ export const convertQuoteToInvoice = async (quoteId: string) => {
         globalDiscountType: quote.globalDiscountType,
         isGhost: false, 
         isDeleted: false, 
-        relatedQuoteNumber: quote.quoteNumber 
+        relatedQuoteNumber: quote.quoteNumber
     };
     const newInvoiceId = await addInvoice(invoiceInput);
     await updateDoc(quoteRef, { status: DocumentStatus.Sent }); // Or converted status if available
@@ -279,9 +282,12 @@ export const createRentTransactionsBatch = async (results: RentAnalysisResult[],
     const dateObj = new Date(date);
     const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}`;
 
+    let nextNum = await getNextTransactionNumber(date);
+
     results.forEach(res => {
         const ref = doc(transactionsCollectionRef);
         const t: TransactionInput = {
+            transactionNumber: nextNum++,
             date: date,
             description: `Nolo ${res.locationName} - ${monthLabel} (${res.usageCount} lezioni)`,
             amount: res.totalCost,
@@ -333,6 +339,26 @@ export const getNextDocumentNumber = async (collectionName: 'invoices', prefix: 
     });
 
     return `${prefix}-${year}-${String(maxNum + 1).padStart(digits, '0')}`;
+};
+
+export const getNextTransactionNumber = async (dateRef: string): Promise<number> => {
+    const year = new Date(dateRef).getFullYear();
+    const q = query(
+        collection(db, 'transactions'), 
+        where('date', '>=', `${year}-01-01`), 
+        where('date', '<=', `${year}-12-31`)
+    );
+    const snapshot = await getDocs(q);
+    
+    let maxNum = 0;
+    snapshot.docs.forEach(d => {
+        const data = d.data();
+        if (!data.isDeleted && typeof data.transactionNumber === 'number') {
+            if (data.transactionNumber > maxNum) maxNum = data.transactionNumber;
+        }
+    });
+
+    return maxNum + 1;
 };
 
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {
@@ -459,28 +485,44 @@ export const runFinancialHealthCheck = async (
 ): Promise<IntegrityIssue[]> => {
     const issues: IntegrityIssue[] = [];
 
+    // Fetch quotes to resolve relatedQuoteNumber
+    const quotesSnap = await getDocs(collection(db, 'quotes'));
+    const quotes = quotesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quote));
+
     for (const enr of enrollments) {
         if (enr.status === EnrollmentStatus.Active && enr.price > 0) {
-            const paidInv = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
+            
+            const relatedQuote = enr.relatedQuoteId ? quotes.find(q => q.id === enr.relatedQuoteId) : null;
+            const quoteNumber = relatedQuote ? relatedQuote.quoteNumber : null;
+
+            const linkedInvoices = invoices.filter(i => 
+                !i.isDeleted && 
+                (i.relatedEnrollmentId === enr.id || (quoteNumber && i.relatedQuoteNumber === quoteNumber))
+            );
+
+            const paidInv = linkedInvoices.filter(i => !i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
+            const ghostInv = linkedInvoices.filter(i => i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
+            
             const paidTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted).reduce((s, t) => s + t.amount, 0);
             const totalPaid = paidInv + paidTrans + (enr.adjustmentAmount || 0);
             
-            if (totalPaid < enr.price - 5) { // 5 eur tolerance
-                
-                // --- FIX: Resolve Parent Name ---
-                const client = clients.find(c => c.id === enr.clientId);
-                let parentName = 'N/D';
-                if (client) {
-                    if (client.clientType === ClientType.Parent) {
-                        const p = client as ParentClient;
-                        parentName = `${p.firstName} ${p.lastName}`;
-                    } else {
-                        const i = client as InstitutionalClient;
-                        parentName = i.companyName;
-                    }
-                }
-                // --------------------------------
+            const missingAmount = enr.price - totalPaid - ghostInv;
 
+            // --- FIX: Resolve Parent Name ---
+            const client = clients.find(c => c.id === enr.clientId);
+            let parentName = 'N/D';
+            if (client) {
+                if (client.clientType === ClientType.Parent) {
+                    const p = client as ParentClient;
+                    parentName = `${p.firstName} ${p.lastName}`;
+                } else {
+                    const i = client as InstitutionalClient;
+                    parentName = i.companyName;
+                }
+            }
+            // --------------------------------
+
+            if (missingAmount > 5) { // 5 eur tolerance
                 issues.push({
                     id: `health-${enr.id}`,
                     type: 'missing_invoice',
@@ -490,8 +532,26 @@ export const runFinancialHealthCheck = async (
                     parentName: parentName, // Assigned
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal, // Added missing mapping for UI
-                    amount: enr.price - totalPaid,
+                    amount: missingAmount,
                     suggestions: [] 
+                });
+            }
+
+            // Check for overdue ghost invoices (Pro-forma scadute)
+            const today = new Date().toISOString().split('T')[0];
+            const overdueGhosts = linkedInvoices.filter(i => i.isGhost && i.dueDate && i.dueDate < today);
+            for (const ghost of overdueGhosts) {
+                issues.push({
+                    id: `health-ghost-${ghost.id}`,
+                    type: 'missing_invoice',
+                    date: ghost.dueDate,
+                    description: `Rata scaduta non fatturata: ${enr.childName}`,
+                    entityName: enr.childName,
+                    parentName: parentName,
+                    subscriptionName: enr.subscriptionName,
+                    lessonsTotal: enr.lessonsTotal,
+                    amount: ghost.totalAmount,
+                    suggestions: []
                 });
             }
         }

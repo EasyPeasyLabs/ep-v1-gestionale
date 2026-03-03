@@ -186,6 +186,15 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
             if (sortConfig.key === 'date') {
                 valA = new Date(a.date || a.issueDate).getTime();
                 valB = new Date(b.date || b.issueDate).getTime();
+                
+                // Fallback to document number if dates are identical
+                if (valA === valB) {
+                    const numA = a.invoiceNumber || a.quoteNumber || ('id' in a ? a.id : '');
+                    const numB = b.invoiceNumber || b.quoteNumber || ('id' in b ? b.id : '');
+                    if (numA < numB) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (numA > numB) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                }
             } else if (sortConfig.key === 'number') {
                 valA = a.invoiceNumber || a.quoteNumber || ('id' in a ? a.id : '');
                 valB = b.invoiceNumber || b.quoteNumber || ('id' in b ? b.id : '');
@@ -219,6 +228,8 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     const getDocumentNumber = (item: any) => {
         if ('invoiceNumber' in item) return item.invoiceNumber;
         if ('quoteNumber' in item) return item.quoteNumber;
+        if (item.relatedDocumentId && item.relatedDocumentId.startsWith('FT-')) return item.relatedDocumentId;
+        if (item.transactionNumber) return item.transactionNumber.toString();
         return 'TRX-' + item.id.substring(0, 5).toUpperCase();
     };
 
@@ -233,7 +244,9 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
             if(!confirm("Fornitore 'Simona Puddu' non trovato. Procedere comunque?")) return;
             phone = ""; 
         }
-        const selectedInvoices = invoices.filter(i => selectedItems.includes(i.id));
+        
+        // Usa filteredList invece di invoices per mantenere l'ordinamento visivo
+        const selectedInvoices = filteredList.filter(i => selectedItems.includes(i.id));
         let message = `*REPORT FATTURE SDI*\n------------------\n`;
         selectedInvoices.forEach(inv => {
             const dateStr = new Date(inv.issueDate).toLocaleDateString('it-IT');

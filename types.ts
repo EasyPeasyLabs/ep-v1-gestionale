@@ -195,6 +195,7 @@ export enum TransactionStatus {
 
 export interface Transaction {
     id: string;
+    transactionNumber?: number;
     date: string;
     description: string;
     amount: number;

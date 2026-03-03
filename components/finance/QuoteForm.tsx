@@ -30,8 +30,12 @@ const QuoteForm: React.FC<{
     const [manualStampMode, setManualStampMode] = useState<boolean>(false);
 
     // Payment Configuration Wizard State
-    const [paymentStrategy, setPaymentStrategy] = useState<'single' | 'multiple'>('single');
-    const [installmentsCount, setInstallmentsCount] = useState<number>(2);
+    const [paymentStrategy, setPaymentStrategy] = useState<'single' | 'multiple'>(
+        (quote?.installments && quote.installments.length > 1) ? 'multiple' : 'single'
+    );
+    const [installmentsCount, setInstallmentsCount] = useState<number>(
+        (quote?.installments && quote.installments.length > 1) ? quote.installments.length : 2
+    );
     const [paymentTerms, setPaymentTerms] = useState<string>('immed'); // immed, 30df, 60df, 30dffm, 60dffm
     const [paymentMode, setPaymentMode] = useState<string>('bank_transfer');
     
@@ -44,10 +48,6 @@ const QuoteForm: React.FC<{
 
     // Init Logic
     useEffect(() => {
-        if (quote?.installments && quote.installments.length > 1) {
-            setPaymentStrategy('multiple');
-            setInstallmentsCount(quote.installments.length);
-        }
         if (quote) {
             setHasStampDuty(quote.hasStampDuty || false);
             setManualStampMode(true); 

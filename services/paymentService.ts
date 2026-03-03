@@ -8,7 +8,7 @@ import {
     Client, ClientType, ParentClient, InstitutionalClient
 } from '../types';
 import { logFinancialAction } from './auditService';
-import { getNextDocumentNumber, getNextGhostInvoiceNumber } from './financeService';
+import { getNextDocumentNumber, getNextGhostInvoiceNumber, getNextTransactionNumber } from './financeService';
 
 interface PaymentResult {
     success: boolean;
@@ -49,6 +49,8 @@ export const processPayment = async (
         if (createInvoice || ghostInvoiceIdToPromote) {
             nextRealInvoiceNumber = await getNextDocumentNumber('invoices', 'FT', 3, date);
         }
+
+        const nextTransactionNumber = await getNextTransactionNumber(date);
 
         const cleanAmount = Number(amount) || 0;
         const paymentDate = new Date(date).toISOString();
@@ -151,6 +153,7 @@ export const processPayment = async (
                 }
 
                 const transactionData: any = {
+                    transactionNumber: nextTransactionNumber,
                     date: paymentDate,
                     description: transDesc,
                     amount: cleanAmount,
