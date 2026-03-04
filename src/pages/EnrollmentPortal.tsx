@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, addDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { 
   CheckCircle, 
@@ -14,7 +14,8 @@ import {
   AlertCircle,
   Info,
   ExternalLink,
-  Copy
+  Copy,
+  Calendar
 } from 'lucide-react';
 import { 
   SubscriptionType, 
@@ -33,6 +34,8 @@ import { getSuppliers } from '../../services/supplierService';
 import Spinner from '../../components/Spinner';
 import Modal from '../../components/Modal';
 import { isItalianHoliday } from '../../utils/dateUtils';
+import { format, parseISO } from 'date-fns';
+import { it } from 'date-fns/locale';
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -58,6 +61,7 @@ interface Lead {
   selectedSlot: string;
   notes?: string;
   status: string;
+  relatedEnrollmentId?: string;
 }
 
 const EnrollmentPortal: React.FC = () => {
@@ -68,6 +72,7 @@ const EnrollmentPortal: React.FC = () => {
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
   const [locations, setLocations] = useState<{id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
+  const [existingEnrollment, setExistingEnrollment] = useState<any | null>(null);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -130,6 +135,17 @@ const EnrollmentPortal: React.FC = () => {
         }
 
         const leadData = { id: leadSnap.id, ...leadSnap.data() } as Lead;
+
+        // Check if already converted
+        if (leadData.status === 'converted' && leadData.relatedEnrollmentId) {
+            const enrSnap = await getDoc(doc(db, 'enrollments', leadData.relatedEnrollmentId));
+            if (enrSnap.exists()) {
+                setExistingEnrollment(enrSnap.data());
+                setLoading(false);
+                return;
+            }
+        }
+
         setLead(leadData);
         setCompanyInfo(company);
         setSubscriptionTypes(subs);
@@ -342,10 +358,14 @@ const EnrollmentPortal: React.FC = () => {
         createdAt: new Date().toISOString(),
         source: 'portal'
       };
-      await addDoc(collection(db, 'enrollments'), enrollmentData);
+      const enrRef = await addDoc(collection(db, 'enrollments'), enrollmentData);
 
-      // 3. Update Lead (Delete it)
-      await deleteDoc(doc(db, 'incoming_leads', lead.id));
+      // 3. Update Lead (Mark as Converted)
+      await updateDoc(doc(db, 'incoming_leads', lead.id), {
+        status: 'converted',
+        relatedEnrollmentId: enrRef.id,
+        convertedAt: new Date().toISOString()
+      });
 
       setSuccessMode('booking');
       setIsSuccess(true);
@@ -525,8 +545,12 @@ const EnrollmentPortal: React.FC = () => {
         await addDoc(collection(db, 'invoices'), invoiceData);
       }
 
-      // 5. Update Lead (Delete it)
-      await deleteDoc(doc(db, 'incoming_leads', lead.id));
+      // 5. Update Lead (Mark as Converted)
+      await updateDoc(doc(db, 'incoming_leads', lead.id), {
+        status: 'converted',
+        relatedEnrollmentId: enrRef.id,
+        convertedAt: new Date().toISOString()
+      });
 
       setSuccessMode('paid');
       setIsSuccess(true);
@@ -539,13 +563,75 @@ const EnrollmentPortal: React.FC = () => {
   };
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Spinner /></div>;
+  
+  // Summary View for Existing Enrollments
+  if (existingEnrollment) {
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl text-center border border-green-100 animate-fade-in">
+            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-12 h-12" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-900 mb-2">
+              Iscrizione Già Completata!
+            </h2>
+            <p className="text-gray-600 mb-8 leading-relaxed">
+              Hai già completato l'iscrizione per {existingEnrollment.childName}.
+              Ecco il riepilogo dei dettagli:
+            </p>
+            
+            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 text-left space-y-4 mb-8">
+                <div className="flex items-center gap-3">
+                    <MapPin className="w-5 h-5 text-indigo-500" />
+                    <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p>
+                        <p className="font-bold text-gray-800">{existingEnrollment.locationName}</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
+                    <Clock className="w-5 h-5 text-indigo-500" />
+                    <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
+                        <p className="font-bold text-gray-800">
+                            {existingEnrollment.appointments?.[0] ? 
+                                `${format(parseISO(existingEnrollment.appointments[0].date), 'EEEE', { locale: it })} ${existingEnrollment.appointments[0].startTime} - ${existingEnrollment.appointments[0].endTime}` 
+                                : 'Orario da definire'}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-indigo-500" />
+                    <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Inizio Corso</p>
+                        <p className="font-bold text-gray-800">
+                            {existingEnrollment.startDate ? format(parseISO(existingEnrollment.startDate), 'd MMMM yyyy', { locale: it }) : 'Data da definire'}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3">
+                    <CreditCard className="w-5 h-5 text-indigo-500" />
+                    <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Importo Abbonamento</p>
+                        <p className="font-bold text-gray-800">€ {existingEnrollment.price}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+              <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
+            </div>
+          </div>
+        </div>
+      );
+  }
+
   if (error) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
       <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl text-center border border-red-100">
         <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Ops!</h2>
         <p className="text-gray-600 mb-6">{error}</p>
-        <button onClick={() => window.location.href = '/'} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl">Torna alla Home</button>
+        {/* Removed dangerous button */}
       </div>
     </div>
   );
@@ -913,7 +999,21 @@ const EnrollmentPortal: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {subscriptionTypes
-                    .filter(sub => sub.statusConfig?.status === 'active' && sub.isPubliclyVisible !== false)
+                    .filter(sub => {
+                        if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
+                        
+                        // Check allowed days
+                        if (!sub.allowedDays || sub.allowedDays.length === 0) return true;
+                        
+                        // Parse day from selectedSlot
+                        const dayName = formData.selectedSlot.split(',')[0].trim().split(' ')[0].trim();
+                        const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                        const dayIndex = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
+                        
+                        if (dayIndex === -1) return true; // Fallback
+                        
+                        return sub.allowedDays.includes(dayIndex);
+                    })
                     .map(sub => {
                       // Smart Name Parsing
                       const nameParts = sub.name.split('.');

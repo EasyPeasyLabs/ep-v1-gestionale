@@ -187,7 +187,11 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const common: any = { email, phone, address, zipCode, city, province, clientType, notesHistory };
+        const common: any = { 
+            email, phone, address, zipCode, city, province, clientType, notesHistory,
+            preferredLocation: client?.preferredLocation,
+            preferredSlot: client?.preferredSlot
+        };
         
         // Add source if it's a new client
         if (!client?.id) {

@@ -159,6 +159,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     const [target, setTarget] = useState<'kid' | 'adult'>('kid');
     const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' });
     const [isPubliclyVisible, setIsPubliclyVisible] = useState(true);
+    const [allowedDays, setAllowedDays] = useState<number[]>([]);
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
     useEffect(() => {
@@ -176,6 +177,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setTarget(sub.target || 'kid');
             setStatusConfig(sub.statusConfig || { status: 'active' });
             setIsPubliclyVisible(sub.isPubliclyVisible !== undefined ? sub.isPubliclyVisible : true);
+            setAllowedDays(sub.allowedDays || []);
         } else {
             setName('');
             setYear(new Date().getFullYear().toString());
@@ -189,6 +191,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setTarget('kid');
             setStatusConfig({ status: 'active' });
             setIsPubliclyVisible(true);
+            setAllowedDays([]);
         }
     }, [sub?.id]);
 
@@ -212,7 +215,8 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             durationInDays: Number(durationInDays),
             target,
             statusConfig,
-            isPubliclyVisible
+            isPubliclyVisible,
+            allowedDays
         };
         try {
             if (sub?.id) {
@@ -236,6 +240,18 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             default: return 'Attivo';
         }
     };
+
+    const toggleAllowedDay = (dayIndex: number) => {
+        setAllowedDays(prev => {
+            if (prev.includes(dayIndex)) {
+                return prev.filter(d => d !== dayIndex);
+            } else {
+                return [...prev, dayIndex].sort();
+            }
+        });
+    };
+
+    const daysMap = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
@@ -306,6 +322,28 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                         </div>
                     </div>
                     <p className="text-[10px] text-indigo-500 mt-2 text-center font-bold">Totale: {Number(labCount) + Number(sgCount) + Number(evtCount)} lezioni</p>
+                </div>
+
+                {/* Allowed Days Selection */}
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <h3 className="text-xs font-bold text-gray-700 uppercase mb-3 tracking-wider">Giorni Validi (Opzionale)</h3>
+                    <p className="text-[10px] text-gray-500 mb-2">Seleziona i giorni in cui questo abbonamento è valido. Se nessuno è selezionato, è valido tutti i giorni.</p>
+                    <div className="flex flex-wrap gap-2">
+                        {daysMap.map((dayName, index) => (
+                            <button
+                                key={index}
+                                type="button"
+                                onClick={() => toggleAllowedDay(index)}
+                                className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
+                                    allowedDays.includes(index)
+                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
+                                }`}
+                            >
+                                {dayName}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-2 mt-2">

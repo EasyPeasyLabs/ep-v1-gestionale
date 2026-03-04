@@ -342,6 +342,7 @@ export interface SubscriptionType {
     target: 'kid' | 'adult';
     statusConfig?: SubscriptionStatusConfig;
     isPubliclyVisible?: boolean;
+    allowedDays?: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday. If undefined/empty, all days allowed.
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
