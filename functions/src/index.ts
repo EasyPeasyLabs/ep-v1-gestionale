@@ -236,7 +236,9 @@ export const getAvailableSlots = onCall({ cors: true }, async () => {
                             dayOfWeek: s.dayOfWeek,
                             startTime: s.startTime,
                             endTime: s.endTime,
-                            type: s.type || 'LAB'
+                            type: s.type || 'LAB',
+                            minAge: s.minAge || 0,     // 5. Età Minima
+                            maxAge: s.maxAge || 99     // 6. Età Massima
                         }))
                     });
                 }
