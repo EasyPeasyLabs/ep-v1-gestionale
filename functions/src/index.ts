@@ -232,14 +232,18 @@ export const getAvailableSlots = onCall({ cors: true }, async () => {
                         address: loc.address || '',
                         city: loc.city || supplierData.city || '', // 3. Campo Città (fallback su città fornitore)
                         googleMapsLink: loc.googleMapsLink || '',   // 4. Campo Google Maps Link
-                        slots: visibleSlots.map((s: any) => ({
-                            dayOfWeek: s.dayOfWeek,
-                            startTime: s.startTime,
-                            endTime: s.endTime,
-                            type: s.type || 'LAB',
-                            minAge: s.minAge || 0,     // 5. Età Minima
-                            maxAge: s.maxAge || 99     // 6. Età Massima
-                        }))
+                        slots: visibleSlots.map((s: any) => {
+                            const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
+                            const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
+                            return {
+                                dayOfWeek: s.dayOfWeek,
+                                startTime: s.startTime,
+                                endTime: s.endTime,
+                                type: s.type || 'LAB',
+                                minAge: isNaN(minAge) ? 0 : minAge,
+                                maxAge: isNaN(maxAge) ? 99 : maxAge
+                            };
+                        })
                     });
                 }
             });
