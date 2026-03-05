@@ -213,17 +213,37 @@ export const getAvailableSlots = onCall({ cors: true }, async () => {
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
         const results: any[] = [];
 
+        logger.info(`Found ${suppliersSnap.size} suppliers.`);
+
         suppliersSnap.forEach(doc => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
 
             locations.forEach((loc: any) => {
+                // DEBUG LOGS
+                logger.info(`Processing Location: ${loc.name} (${loc.id})`);
+                logger.info(`  - isPubliclyVisible (raw): ${loc.isPubliclyVisible} (type: ${typeof loc.isPubliclyVisible})`);
+                logger.info(`  - closedAt: ${loc.closedAt}`);
+
                 // 1. Filtro Visibilità
-                if (loc.isPubliclyVisible === false) return;
-                if (loc.closedAt) return; // Sede chiusa
+                if (loc.isPubliclyVisible === false) {
+                    logger.info(`  -> SKIPPED (Hidden)`);
+                    return;
+                }
+                if (loc.closedAt) {
+                    logger.info(`  -> SKIPPED (Closed)`);
+                    return; 
+                }
 
                 // 2. Filtro Slot Visibili
-                const visibleSlots = (loc.availability || []).filter((slot: any) => slot.isPubliclyVisible !== false);
+                const allSlots = loc.availability || [];
+                const visibleSlots = allSlots.filter((slot: any) => {
+                    const isVisible = slot.isPubliclyVisible !== false;
+                    if (!isVisible) {
+                        logger.info(`  -> Slot Hidden: ${slot.dayOfWeek} ${slot.startTime}`);
+                    }
+                    return isVisible;
+                });
 
                 if (visibleSlots.length > 0) {
                     results.push({
@@ -235,6 +255,12 @@ export const getAvailableSlots = onCall({ cors: true }, async () => {
                         slots: visibleSlots.map((s: any) => {
                             const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
                             const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
+                            
+                            // DEBUG LOGS FOR SLOTS
+                            if (s.minAge !== undefined || s.maxAge !== undefined) {
+                                logger.info(`    Slot Age Data: min=${s.minAge} -> ${minAge}, max=${s.maxAge} -> ${maxAge}`);
+                            }
+
                             return {
                                 dayOfWeek: s.dayOfWeek,
                                 startTime: s.startTime,
@@ -245,6 +271,8 @@ export const getAvailableSlots = onCall({ cors: true }, async () => {
                             };
                         })
                     });
+                } else {
+                    logger.info(`  -> SKIPPED (No visible slots)`);
                 }
             });
         });
