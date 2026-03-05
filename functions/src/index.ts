@@ -1,4 +1,4 @@
-import { onCall } from "firebase-functions/v2/https";
+import { onCall, onRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import { google } from "googleapis";
@@ -208,7 +208,7 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
 });
 
 // --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) ---
-export const getAvailableSlots = onCall({ cors: true }, async () => {
+export const getAvailableSlots = onRequest({ cors: true }, async (req, res) => {
     try {
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
         const results: any[] = [];
@@ -277,9 +277,9 @@ export const getAvailableSlots = onCall({ cors: true }, async () => {
             });
         });
 
-        return { success: true, data: results };
+        res.status(200).json({ success: true, data: results });
     } catch (error) {
         logger.error("Error fetching available slots:", error);
-        throw new Error("Failed to fetch slots");
+        res.status(500).json({ error: "Failed to fetch slots" });
     }
 });
