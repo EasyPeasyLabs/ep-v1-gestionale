@@ -206,3 +206,46 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
         type: 'enrollment'
     });
 });
+
+// --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) ---
+export const getAvailableSlots = onCall({ cors: true }, async () => {
+    try {
+        const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
+        const results: any[] = [];
+
+        suppliersSnap.forEach(doc => {
+            const supplierData = doc.data();
+            const locations = supplierData.locations || [];
+
+            locations.forEach((loc: any) => {
+                // 1. Filtro Visibilità
+                if (loc.isPubliclyVisible === false) return;
+                if (loc.closedAt) return; // Sede chiusa
+
+                // 2. Filtro Slot Visibili
+                const visibleSlots = (loc.availability || []).filter((slot: any) => slot.isPubliclyVisible !== false);
+
+                if (visibleSlots.length > 0) {
+                    results.push({
+                        id: loc.id,
+                        name: loc.name,
+                        address: loc.address || '',
+                        city: loc.city || supplierData.city || '', // 3. Campo Città (fallback su città fornitore)
+                        googleMapsLink: loc.googleMapsLink || '',   // 4. Campo Google Maps Link
+                        slots: visibleSlots.map((s: any) => ({
+                            dayOfWeek: s.dayOfWeek,
+                            startTime: s.startTime,
+                            endTime: s.endTime,
+                            type: s.type || 'LAB'
+                        }))
+                    });
+                }
+            });
+        });
+
+        return { success: true, data: results };
+    } catch (error) {
+        logger.error("Error fetching available slots:", error);
+        throw new Error("Failed to fetch slots");
+    }
+});
