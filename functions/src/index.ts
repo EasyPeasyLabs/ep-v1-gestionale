@@ -208,6 +208,7 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
 });
 
 // --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) ---
+// Re-deploying as onRequest to fix auth issues
 export const getAvailableSlots = onRequest({ cors: true }, async (req, res) => {
     try {
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
