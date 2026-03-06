@@ -37,12 +37,23 @@ exports.receiveLead = onRequest(
     // Inizializza servizi
     const { db } = getServices();
 
-    // 1. Controllo Metodo
+    // 1. Gestione Manuale CORS (Preflight & Headers)
+    res.set('Access-Control-Allow-Origin', '*');
+    
+    if (req.method === 'OPTIONS') {
+      res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.set('Access-Control-Max-Age', '3600');
+      res.status(204).send('');
+      return;
+    }
+
+    // 2. Controllo Metodo
     if (req.method !== "POST") {
       return res.status(405).send("Method Not Allowed");
     }
 
-    // 2. Controllo Sicurezza (Bearer Token)
+    // 3. Controllo Sicurezza (Bearer Token)
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res
@@ -57,7 +68,7 @@ exports.receiveLead = onRequest(
       return res.status(403).json({ error: "Forbidden: Invalid API Key" });
     }
 
-    // 3. Validazione Payload JSON
+    // 4. Validazione Payload JSON
     const data = req.body;
 
     // Controlli minimi obbligatori
@@ -77,7 +88,7 @@ exports.receiveLead = onRequest(
         });
     }
 
-    // 3.5 Controllo Duplicati (Deduplication)
+    // 5. Controllo Duplicati (Deduplication)
     // Cerchiamo lead pendenti con la stessa email
     const leadsRef = db.collection("incoming_leads");
     const duplicateQuery = await leadsRef
@@ -112,7 +123,7 @@ exports.receiveLead = onRequest(
     }
 
     try {
-      // 4. Persistenza su Firestore
+      // 6. Persistenza su Firestore
       // Salviamo nella collezione "buffer" per non sporcare i dati reali
       const leadDoc = {
         ...data,
@@ -131,7 +142,7 @@ exports.receiveLead = onRequest(
 
       console.log(`[API] Lead ricevuto e salvato con ID: ${docRef.id}`);
 
-      // 5. Risposta al mittente
+      // 7. Risposta al mittente
       return res.status(200).json({
         success: true,
         message: "Lead received and stored successfully.",
