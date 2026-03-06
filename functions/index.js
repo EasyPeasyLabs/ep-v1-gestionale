@@ -146,9 +146,9 @@ exports.receiveLead = onRequest(
   },
 );
 
-// --- FUNZIONE 1.1: ENDPOINT DISPONIBILITÀ SEDI (Nuova) ---
-// Url previsto: https://europe-west1-ep-gestionale-v1.cloudfunctions.net/getAvailableSlots
-exports.getAvailableSlots = onRequest(
+// --- FUNZIONE 1.1: ENDPOINT DISPONIBILITÀ SEDI (Nuova - V2 Pubblica) ---
+// Url previsto: https://europe-west1-ep-gestionale-v1.cloudfunctions.net/getPublicSlots
+exports.getPublicSlots = onRequest(
   {
     region: "europe-west1",
     cors: true,
@@ -163,7 +163,7 @@ exports.getAvailableSlots = onRequest(
     
     if (req.method === 'OPTIONS') {
       res.set('Access-Control-Allow-Methods', 'GET');
-      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.set('Access-Control-Allow-Headers', 'Content-Type');
       res.set('Access-Control-Max-Age', '3600');
       res.status(204).send('');
       return;
@@ -174,90 +174,99 @@ exports.getAvailableSlots = onRequest(
       return res.status(405).send("Method Not Allowed");
     }
 
-    // 3. Controllo Sicurezza (Bearer Token)
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res
-        .status(401)
-        .json({ error: "Unauthorized: Missing Bearer Token" });
-    }
-
-    const token = authHeader.split("Bearer ")[1];
-    if (token !== API_SHARED_SECRET) {
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      return res.status(403).json({ error: "Forbidden: Invalid API Key" });
-    }
+    // 3. NESSUN Controllo Bearer Token (Funzione Pubblica)
 
     try {
-      // 3. Recupero Sedi (dai Suppliers)
-      const suppliersSnap = await db.collection("suppliers").get();
-      const locations = [];
-      suppliersSnap.forEach((doc) => {
-        const supplier = doc.data();
-        if (supplier.locations && Array.isArray(supplier.locations)) {
-          supplier.locations.forEach((loc) => {
-            locations.push({
-              id: loc.id,
-              name: loc.name,
-              address: loc.address || "",
-              city: loc.city || "",
-              capacity: loc.capacity || 0,
-              availability: loc.availability || [],
-            });
+      // 4. Recupero Fornitori Attivi
+      const suppliersSnap = await db.collection("suppliers").where("isDeleted", "==", false).get();
+      
+      // 5. Recupero TUTTE le iscrizioni attive per il calcolo posti
+      // Ottimizzazione: leggiamo tutte le iscrizioni attive in una volta sola
+      const enrollmentsSnap = await db.collection("enrollments")
+          .where("status", "in", ["active", "pending", "confirmed", "Active", "Pending", "Confirmed"]) // Case-insensitive safety
+          .get();
+
+      // 6. Costruisci Mappa Occupazione: { "locationId_day_startTime": count }
+      const occupancyMap = new Map();
+
+      enrollmentsSnap.forEach(doc => {
+          const data = doc.data();
+          const locId = data.locationId;
+          const appts = data.appointments || [];
+
+          if (locId && appts.length > 0) {
+              // Prendiamo il primo appuntamento come riferimento per il giorno/ora ricorrente
+              const mainAppt = appts[0]; 
+              if (mainAppt && (mainAppt.dayOfWeek !== undefined) && mainAppt.startTime) {
+                  // Normalizziamo dayOfWeek a numero (0-6) se necessario
+                  const day = typeof mainAppt.dayOfWeek === 'string' ? parseInt(mainAppt.dayOfWeek) : mainAppt.dayOfWeek;
+                  const key = `${locId}_${day}_${mainAppt.startTime}`;
+                  const currentCount = occupancyMap.get(key) || 0;
+                  occupancyMap.set(key, currentCount + 1);
+              }
+          }
+      });
+
+      const results = [];
+      logger.info(`[getPublicSlots] Found ${suppliersSnap.size} suppliers and ${enrollmentsSnap.size} active enrollments.`);
+
+      suppliersSnap.forEach(doc => {
+          const supplierData = doc.data();
+          const locations = supplierData.locations || [];
+
+          locations.forEach((loc) => {
+              // Filtro Visibilità Sede
+              if (loc.isPubliclyVisible === false || loc.closedAt) {
+                  return; 
+              }
+
+              // Capacità Sede (Default 15 se non specificata)
+              const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
+
+              // Filtro e Processamento Slot
+              const allSlots = loc.availability || [];
+              const visibleSlots = allSlots.filter((slot) => {
+                  return slot.isPubliclyVisible !== false;
+              }).map((s) => {
+                  // Normalizzazione Età
+                  const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
+                  const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
+
+                  // Calcolo Posti Disponibili
+                  const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
+                  const occupiedSeats = occupancyMap.get(key) || 0;
+                  const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+                  
+                  return {
+                      dayOfWeek: s.dayOfWeek, // 0-6 (Domenica-Sabato) o 1-7 (Lunedì-Domenica) a seconda del sistema
+                      startTime: s.startTime,
+                      endTime: s.endTime,
+                      type: s.type || 'LAB',
+                      minAge: isNaN(minAge) ? 0 : minAge,
+                      maxAge: isNaN(maxAge) ? 99 : maxAge,
+                      capacity: locationCapacity,
+                      enrolledCount: occupiedSeats,
+                      availableSeats: availableSeats,
+                      isFull: availableSeats === 0
+                  };
+              });
+
+              if (visibleSlots.length > 0) {
+                  results.push({
+                      id: loc.id,
+                      name: loc.name,
+                      address: loc.address || '',
+                      city: loc.city || supplierData.city || '',
+                      googleMapsLink: loc.googleMapsLink || '',
+                      slots: visibleSlots
+                  });
+              }
           });
-        }
       });
 
-      // 4. Recupero Iscrizioni Attive per calcolo saturazione
-      const enrollmentsSnap = await db
-        .collection("enrollments")
-        .where("status", "==", "Active")
-        .get();
-
-      const enrollmentData = enrollmentsSnap.docs.map((doc) => doc.data());
-
-      // 5. Elaborazione Disponibilità
-      const result = locations.map((loc) => {
-        const slots = loc.availability.map((slot) => {
-          // Contiamo quante iscrizioni uniche occupano questo slot
-          // Uno slot è definito da locationId, dayOfWeek e startTime
-          const occupied = enrollmentData.filter((enr) => {
-            if (enr.locationId !== loc.id) return false;
-            
-            // Verifichiamo se l'iscrizione ha appuntamenti che matchano il giorno e l'ora
-            return (
-              enr.appointments &&
-              enr.appointments.some((app) => {
-                const appDate = new Date(app.date);
-                return (
-                  appDate.getDay() === slot.dayOfWeek &&
-                  app.startTime === slot.startTime
-                );
-              })
-            );
-          }).length;
-
-          const remaining = Math.max(0, loc.capacity - occupied);
-
-          return {
-            giorno: daysOfWeekMap[slot.dayOfWeek],
-            orario: `${slot.startTime} - ${slot.endTime}`,
-            postiRimanenti: remaining,
-            esaurito: remaining <= 0,
-          };
-        });
-
-        return {
-          sedeId: loc.id,
-          nomeSede: loc.name,
-          indirizzo: `${loc.address}${loc.city ? ", " + loc.city : ""}`,
-          slot: slots,
-        };
-      });
-
-      return res.status(200).json(result);
+      return res.status(200).json({ success: true, data: results });
     } catch (error) {
-      console.error("[API] Error fetching availability:", error);
+      console.error("[API] Error fetching public slots:", error);
       return res
         .status(500)
         .json({ error: "Internal Server Error", details: error.message });
