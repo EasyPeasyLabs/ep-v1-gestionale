@@ -207,43 +207,84 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
     });
 });
 
-// --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) ---
-// Renamed to getPublicSlots to force clean deploy and fix auth issues
-export const getPublicSlots = onRequest({ cors: true }, async (req, res) => {
+// --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V2 ---
+// Include calcolo posti disponibili e filtro età robusto
+export const getPublicSlotsV2 = onRequest({ cors: true }, async (req, res) => {
     try {
+        // 1. Recupera Fornitori Attivi
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
-        const results: any[] = [];
+        
+        // 2. Recupera TUTTE le iscrizioni attive per il calcolo posti (Ottimizzazione: una sola query)
+        // Filtriamo per status 'active' (o altri status che occupano posto)
+        const enrollmentsSnap = await admin.firestore().collection('enrollments')
+            .where('status', 'in', ['active', 'pending', 'confirmed']) 
+            .get();
 
-        logger.info(`Found ${suppliersSnap.size} suppliers.`);
+        // 3. Costruisci Mappa Occupazione: { "locationId_day_startTime": count }
+        const occupancyMap = new Map<string, number>();
+
+        enrollmentsSnap.forEach(doc => {
+            const data = doc.data();
+            const locId = data.locationId;
+            const appts = data.appointments || [];
+
+            // Se l'iscrizione ha appuntamenti ricorrenti, contiamo l'occupazione
+            // Assumiamo che appointments[0] definisca il giorno/ora ricorrente per semplicità
+            // O iteriamo su tutti se l'iscrizione occupa più slot settimanali
+            if (locId && appts.length > 0) {
+                // Prendiamo il primo appuntamento come riferimento per il giorno/ora ricorrente
+                // In un sistema più complesso, bisognerebbe analizzare la ricorrenza esatta
+                const mainAppt = appts[0]; 
+                if (mainAppt && mainAppt.dayOfWeek && mainAppt.startTime) {
+                    const key = `${locId}_${mainAppt.dayOfWeek}_${mainAppt.startTime}`;
+                    const currentCount = occupancyMap.get(key) || 0;
+                    occupancyMap.set(key, currentCount + 1);
+                }
+            }
+        });
+
+        const results: any[] = [];
+        logger.info(`Found ${suppliersSnap.size} suppliers and ${enrollmentsSnap.size} active enrollments.`);
 
         suppliersSnap.forEach(doc => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
 
             locations.forEach((loc: any) => {
-                // DEBUG LOGS
-                logger.info(`Processing Location: ${loc.name} (${loc.id})`);
-                logger.info(`  - isPubliclyVisible (raw): ${loc.isPubliclyVisible} (type: ${typeof loc.isPubliclyVisible})`);
-                logger.info(`  - closedAt: ${loc.closedAt}`);
-
-                // 1. Filtro Visibilità
-                if (loc.isPubliclyVisible === false) {
-                    logger.info(`  -> SKIPPED (Hidden)`);
-                    return;
-                }
-                if (loc.closedAt) {
-                    logger.info(`  -> SKIPPED (Closed)`);
+                // 1. Filtro Visibilità Sede
+                if (loc.isPubliclyVisible === false || loc.closedAt) {
                     return; 
                 }
 
-                // 2. Filtro Slot Visibili
+                // Capacità Sede (Default 15 se non specificata)
+                const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
+
+                // 2. Filtro e Processamento Slot
                 const allSlots = loc.availability || [];
                 const visibleSlots = allSlots.filter((slot: any) => {
-                    const isVisible = slot.isPubliclyVisible !== false;
-                    if (!isVisible) {
-                        logger.info(`  -> Slot Hidden: ${slot.dayOfWeek} ${slot.startTime}`);
-                    }
-                    return isVisible;
+                    return slot.isPubliclyVisible !== false;
+                }).map((s: any) => {
+                    // Normalizzazione Età
+                    const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
+                    const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
+
+                    // Calcolo Posti Disponibili
+                    const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
+                    const occupiedSeats = occupancyMap.get(key) || 0;
+                    const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+                    
+                    return {
+                        dayOfWeek: s.dayOfWeek,
+                        startTime: s.startTime,
+                        endTime: s.endTime,
+                        type: s.type || 'LAB',
+                        minAge: isNaN(minAge) ? 0 : minAge,
+                        maxAge: isNaN(maxAge) ? 99 : maxAge,
+                        capacity: locationCapacity,
+                        enrolledCount: occupiedSeats,
+                        availableSeats: availableSeats,
+                        isFull: availableSeats === 0
+                    };
                 });
 
                 if (visibleSlots.length > 0) {
@@ -251,36 +292,17 @@ export const getPublicSlots = onRequest({ cors: true }, async (req, res) => {
                         id: loc.id,
                         name: loc.name,
                         address: loc.address || '',
-                        city: loc.city || supplierData.city || '', // 3. Campo Città (fallback su città fornitore)
-                        googleMapsLink: loc.googleMapsLink || '',   // 4. Campo Google Maps Link
-                        slots: visibleSlots.map((s: any) => {
-                            const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
-                            const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
-                            
-                            // DEBUG LOGS FOR SLOTS
-                            if (s.minAge !== undefined || s.maxAge !== undefined) {
-                                logger.info(`    Slot Age Data: min=${s.minAge} -> ${minAge}, max=${s.maxAge} -> ${maxAge}`);
-                            }
-
-                            return {
-                                dayOfWeek: s.dayOfWeek,
-                                startTime: s.startTime,
-                                endTime: s.endTime,
-                                type: s.type || 'LAB',
-                                minAge: isNaN(minAge) ? 0 : minAge,
-                                maxAge: isNaN(maxAge) ? 99 : maxAge
-                            };
-                        })
+                        city: loc.city || supplierData.city || '',
+                        googleMapsLink: loc.googleMapsLink || '',
+                        slots: visibleSlots
                     });
-                } else {
-                    logger.info(`  -> SKIPPED (No visible slots)`);
                 }
             });
         });
 
         res.status(200).json({ success: true, data: results });
     } catch (error) {
-        logger.error("Error fetching available slots:", error);
+        logger.error("Error fetching public slots v2:", error);
         res.status(500).json({ error: "Failed to fetch slots" });
     }
 });
