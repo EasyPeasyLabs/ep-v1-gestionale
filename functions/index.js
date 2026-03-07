@@ -124,17 +124,49 @@ exports.receiveLead = onRequest(
 
     try {
       // 6. Persistenza su Firestore
-      // Salviamo nella collezione "buffer" per non sporcare i dati reali
+      // Adattamento del payload dal formato Progetto B al formato atteso da LeadsPage.tsx
+      
+      // Mappatura giorni della settimana per formattare lo slot come stringa
+      const daysMap = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+      
+      let formattedSlot = "Orario non specificato";
+      if (data.selectedSlot && typeof data.selectedSlot === 'object') {
+          const dayName = daysMap[data.selectedSlot.dayOfWeek] || "";
+          formattedSlot = `${dayName} ${data.selectedSlot.startTime || ''} - ${data.selectedSlot.endTime || ''}`.trim();
+      } else if (typeof data.selectedSlot === 'string') {
+          formattedSlot = data.selectedSlot; // Fallback se arriva già come stringa
+      }
+
       const leadDoc = {
-        ...data,
+        // Dati base
+        nome: data.nome || "",
+        cognome: data.cognome || "",
+        email: data.email || "",
+        telefono: data.telefono || "",
+        childName: data.childName || "",
+        childAge: data.childAge ? String(data.childAge) : "", // LeadsPage si aspetta una stringa
+        
+        // Dati Sede e Slot adattati per LeadsPage.tsx
+        selectedLocation: data.locationName || data.selectedLocation || "Sede non specificata",
+        selectedSlot: formattedSlot,
+        
+        // Altri dati
+        notes: data.notes || "",
+        privacyAccepted: data.privacyAccepted || false,
+        marketingAccepted: data.marketingAccepted || false,
+        
+        // Campi di sistema
         source: "projectB_api",
         status: "pending", // pending | processed | rejected
-        receivedAt: new Date().toISOString(),
-        // Aggiungiamo campi di utilità per ricerca
-        searchableName: (data.nome + " " + data.cognome).toLowerCase(),
+        createdAt: new Date().toISOString(), // CRITICO: LeadsPage ordina per 'createdAt', non 'receivedAt'
+        
+        // Campi di utilità per ricerca e debug
+        searchableName: ((data.nome || "") + " " + (data.cognome || "")).toLowerCase(),
         metadata: {
           userAgent: req.headers["user-agent"],
           ip: req.ip,
+          originalLocationId: data.locationId || null, // Salviamo l'ID originale per usi futuri
+          originalSlotData: data.selectedSlot || null  // Salviamo l'oggetto originale per usi futuri
         },
       };
 
