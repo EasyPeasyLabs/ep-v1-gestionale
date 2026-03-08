@@ -220,30 +220,38 @@ exports.getPublicSlots = onRequest(
     // 3. NESSUN Controllo Bearer Token (Funzione Pubblica)
 
     try {
-      // 4. Recupero Fornitori Attivi
-      const suppliersSnap = await db.collection("suppliers").where("isDeleted", "==", false).get();
-      
-      // 5. Recupero TUTTE le iscrizioni attive per il calcolo posti
-      // Ottimizzazione: leggiamo tutte le iscrizioni attive in una volta sola
-      const enrollmentsSnap = await db.collection("enrollments")
-          .where("status", "in", ["active", "pending", "confirmed", "Active", "Pending", "Confirmed"]) // Case-insensitive safety
-          .get();
+      // 4. Recupero Fornitori, Iscrizioni e Abbonamenti
+      const [suppliersSnap, enrollmentsSnap, subscriptionsSnap] = await Promise.all([
+          db.collection("suppliers").where("isDeleted", "==", false).get(),
+          db.collection("enrollments").where("status", "in", ["active", "pending", "confirmed", "Active", "Pending", "Confirmed"]).get(),
+          db.collection("subscriptions").get()
+      ]);
 
-      // 6. Costruisci Mappa Occupazione: { "locationId_day_startTime": count }
+      // 5. Filtra Abbonamenti Pubblici
+      const activeSubs = [];
+      subscriptionsSnap.forEach(doc => {
+          const sub = doc.data();
+          if (sub.isPubliclyVisible !== false) {
+              activeSubs.push({ id: doc.id, ...sub });
+          }
+      });
+
+      // 6. Costruisci Mappa Occupazione per Bundle: { "locationId_dayOfWeek_subscriptionId": count }
       const occupancyMap = new Map();
 
       enrollmentsSnap.forEach(doc => {
           const data = doc.data();
           const locId = data.locationId;
+          const subId = data.subscriptionTypeId;
           const appts = data.appointments || [];
+          const lessonsRemaining = data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 1;
 
-          if (locId && appts.length > 0) {
-              // Prendiamo il primo appuntamento come riferimento per il giorno/ora ricorrente
+          // Consideriamo solo iscrizioni con lezioni residue (non esaurite)
+          if (locId && subId && appts.length > 0 && lessonsRemaining > 0) {
               const mainAppt = appts[0]; 
-              if (mainAppt && (mainAppt.dayOfWeek !== undefined) && mainAppt.startTime) {
-                  // Normalizziamo dayOfWeek a numero (0-6) se necessario
+              if (mainAppt && (mainAppt.dayOfWeek !== undefined)) {
                   const day = typeof mainAppt.dayOfWeek === 'string' ? parseInt(mainAppt.dayOfWeek) : mainAppt.dayOfWeek;
-                  const key = `${locId}_${day}_${mainAppt.startTime}`;
+                  const key = `${locId}_${day}_${subId}`;
                   const currentCount = occupancyMap.get(key) || 0;
                   occupancyMap.set(key, currentCount + 1);
               }
@@ -251,7 +259,7 @@ exports.getPublicSlots = onRequest(
       });
 
       const results = [];
-      logger.info(`[getPublicSlots] Found ${suppliersSnap.size} suppliers and ${enrollmentsSnap.size} active enrollments.`);
+      logger.info(`[getPublicSlots] Found ${suppliersSnap.size} suppliers, ${enrollmentsSnap.size} enrollments, ${activeSubs.length} active subs.`);
 
       suppliersSnap.forEach(doc => {
           const supplierData = doc.data();
@@ -266,42 +274,113 @@ exports.getPublicSlots = onRequest(
               // Capacità Sede (Default 15 se non specificata)
               const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
 
-              // Filtro e Processamento Slot
+              // Filtro e Processamento Slot Fisici
               const allSlots = loc.availability || [];
               const visibleSlots = allSlots.filter((slot) => {
                   return slot.isPubliclyVisible !== false;
               }).map((s) => {
-                  // Normalizzazione Età
                   const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
                   const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
-
-                  // Calcolo Posti Disponibili
-                  const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
-                  const occupiedSeats = occupancyMap.get(key) || 0;
-                  const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
-                  
                   return {
-                      dayOfWeek: s.dayOfWeek, // 0-6 (Domenica-Sabato) o 1-7 (Lunedì-Domenica) a seconda del sistema
+                      dayOfWeek: typeof s.dayOfWeek === 'string' ? parseInt(s.dayOfWeek) : s.dayOfWeek,
                       startTime: s.startTime,
                       endTime: s.endTime,
                       type: s.type || 'LAB',
                       minAge: isNaN(minAge) ? 0 : minAge,
                       maxAge: isNaN(maxAge) ? 99 : maxAge,
-                      capacity: locationCapacity,
-                      enrolledCount: occupiedSeats,
-                      availableSeats: availableSeats,
-                      isFull: availableSeats === 0
                   };
               });
 
-              if (visibleSlots.length > 0) {
+              // Raggruppa slot per giorno
+              const slotsByDay = {};
+              visibleSlots.forEach(s => {
+                  if (!slotsByDay[s.dayOfWeek]) slotsByDay[s.dayOfWeek] = [];
+                  slotsByDay[s.dayOfWeek].push(s);
+              });
+
+              const locationBundles = [];
+
+              // Motore di Incrocio (Matching Engine)
+              for (const dayStr in slotsByDay) {
+                  const dayOfWeek = parseInt(dayStr);
+                  const daySlots = slotsByDay[dayStr];
+
+                  activeSubs.forEach(sub => {
+                      // Verifica giorni consentiti dall'abbonamento
+                      if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+                          if (!sub.allowedDays.includes(dayOfWeek)) {
+                              return; // Salta se il giorno non è permesso
+                          }
+                      }
+
+                      const requiresLab = (sub.labCount || 0) > 0;
+                      const requiresSg = (sub.sgCount || 0) > 0;
+                      const requiresEvt = (sub.evtCount || 0) > 0;
+
+                      // Ignora abbonamenti che non richiedono slot fisici
+                      if (!requiresLab && !requiresSg && !requiresEvt) {
+                          return; 
+                      }
+
+                      const hasLab = daySlots.some(s => s.type === 'LAB');
+                      const hasSg = daySlots.some(s => s.type === 'SG');
+                      const hasEvt = daySlots.some(s => s.type === 'EVT');
+
+                      // Se la sede in questo giorno offre tutti gli slot richiesti dall'abbonamento
+                      if ((!requiresLab || hasLab) && (!requiresSg || hasSg) && (!requiresEvt || hasEvt)) {
+                          
+                          const includedSlots = daySlots.filter(s => 
+                              (requiresLab && s.type === 'LAB') || 
+                              (requiresSg && s.type === 'SG') || 
+                              (requiresEvt && s.type === 'EVT')
+                          );
+
+                          // Calcolo età min/max del pacchetto (intersezione più restrittiva)
+                          let bundleMinAge = 0;
+                          let bundleMaxAge = 99;
+                          includedSlots.forEach(s => {
+                              if (s.minAge > bundleMinAge) bundleMinAge = s.minAge;
+                              if (s.maxAge < bundleMaxAge) bundleMaxAge = s.maxAge;
+                          });
+                          if (bundleMinAge > bundleMaxAge) bundleMaxAge = bundleMinAge; // Fallback di sicurezza
+
+                          // Calcolo Disponibilità (Bundle-Level Logic)
+                          const occupancyKey = `${loc.id}_${dayOfWeek}_${sub.id}`;
+                          const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
+                          const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+
+                          locationBundles.push({
+                              bundleId: sub.id,
+                              name: sub.name,
+                              description: sub.description || '',
+                              price: sub.price || 0,
+                              dayOfWeek: dayOfWeek,
+                              minAge: bundleMinAge,
+                              maxAge: bundleMaxAge,
+                              capacity: locationCapacity,
+                              enrolledCount: occupiedSeats,
+                              availableSeats: availableSeats,
+                              isFull: availableSeats === 0,
+                              includedSlots: includedSlots.map(s => ({
+                                  type: s.type,
+                                  startTime: s.startTime,
+                                  endTime: s.endTime,
+                                  minAge: s.minAge,
+                                  maxAge: s.maxAge
+                              }))
+                          });
+                      }
+                  });
+              }
+
+              if (locationBundles.length > 0) {
                   results.push({
                       id: loc.id,
                       name: loc.name,
                       address: loc.address || '',
                       city: loc.city || supplierData.city || '',
                       googleMapsLink: loc.googleMapsLink || '',
-                      slots: visibleSlots
+                      bundles: locationBundles
                   });
               }
           });

@@ -97,13 +97,26 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
         3.  **Build Pipeline:** Rimozione delle dipendenze PostCSS dalla build di Vite. Vercel ora compila solo il JS/TS, trattando gli stili come asset statici immutabili.
     - **Risultato:** Una configurazione di deploy "intoccabile" e robusta, immune agli aggiornamenti delle dipendenze di build.
 
+### Milestone Marzo 2026
+- **06/03:** **Integrazione Bridge (Project A <-> Project B).**
+    - **CORS & Security:** Risoluzione del blocco CORS sulla Cloud Function `receiveLead` (Project A) abilitando il preflight (`OPTIONS`) e l'header `Authorization`. Configurazione di Cloud Run per consentire invocazioni non autenticate, delegando la sicurezza al controllo del Bearer Token nel codice.
+    - **Degrado Grazioso (Project B):** Implementazione di un sistema di salvataggio locale prioritario nel frontend pubblico. Se l'API del Gestionale fallisce, il lead viene salvato in locale con stato `pending_sync`, garantendo zero perdita di dati e un'esperienza utente fluida.
+- **07/03 (Mattina):** **Adattamento Payload e Data-Driven Bundles.**
+    - **Payload Translation:** Modifica chirurgica della funzione `receiveLead` per tradurre il payload strutturato in arrivo dal Progetto B (es. `locationName`, oggetto `selectedSlot`) nel formato "legacy" atteso dalla pagina `LeadsPage.tsx` del Gestionale (es. `selectedLocation`, stringa `selectedSlot`, e campo `createdAt` per l'ordinamento). Questo garantisce la retrocompatibilità senza toccare il frontend del Gestionale.
+    - **Strategia "Bundle" (Pacchetti Commerciali):** Definizione dell'architettura per mostrare slot raggruppati (es. "LAB + SG") nella Pagina Pubblica. Invece di stravolgere il database del Gestionale creando una nuova entità, si è optato per un approccio *Data-Driven* che sfrutta la collezione esistente `subscriptions` (Abbonamenti).
+        - **Il Motore di Incrocio (Matching Engine):** L'API pubblica (`getPublicSlots` o una nuova `getPublicBundles`) leggerà sia gli slot fisici delle sedi (`suppliers`) sia le regole di composizione degli abbonamenti (`subscriptions`). Per ogni sede e per ogni giorno della settimana, l'API verificherà se esistono tutti gli slot fisici richiesti da un abbonamento (es. un LAB e un SG di Sabato). Se il match ha successo, l'API genererà un "Pacchetto Virtuale" (Bundle).
+        - **Calcolo Disponibilità (Bundle-Level Logic):** La disponibilità non è calcolata sui singoli slot fisici, ma a livello di pacchetto. Il numero di posti disponibili per un pacchetto (es. LAB + SG) in un dato giorno (es. Sabato) è uguale alla capienza della sede meno i posti già assegnati ad altri clienti per lo *stesso pacchetto* in quello *stesso giorno* (considerando solo le iscrizioni attive con lezioni ancora da fruire, ovvero non esaurite). Quando un cliente esaurisce il suo pacchetto, il posto si libera automaticamente.
+        - **Formattazione Output:** Il JSON in uscita sarà pre-strutturato gerarchicamente (Sede -> Bundles -> Slot Inclusi). Questo solleva il frontend del Progetto B (Pagina Pubblica) dall'onere di calcolare logiche commerciali complesse, permettendogli di limitarsi al rendering visivo delle card (es. titolo "LAB + SG" con i dettagli dei singoli orari all'interno).
+        - **Impatto e Retrocompatibilità:** Questa soluzione garantisce un impatto ZERO sul codice frontend e sul database del Gestionale (Progetto A), preservando intatte le logiche di Calendario, Presenze e Finanza. Il Progetto B riceverà dati già "digeriti" e pronti per l'interfaccia utente desiderata.
+
 ---
 
 ## 5. Roadmap Evolutiva
 - [ ] **Paginazione Server-Side:** Ottimizzazione performance per gestire >10.000 record (caricamento incrementale "Load More" / Pagine).
 - [ ] **Modulo Sondaggi WhatsApp:** Template automatici per invio survey di soddisfazione a gruppi filtrati per Sede.
-- [ ] **Integrazione Bridge:** Connessione protetta tra Project A e Project B per importazione lead.
+- [x] **Integrazione Bridge:** Connessione protetta tra Project A e Project B per importazione lead.
+- [ ] **Implementazione API Bundles:** Modifica di `getPublicSlots` per generare pacchetti virtuali basati sugli Abbonamenti.
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 25 Febbraio 2026.*
+*Documentazione aggiornata al 07 Marzo 2026.*
