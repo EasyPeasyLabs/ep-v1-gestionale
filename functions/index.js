@@ -352,6 +352,7 @@ exports.getPublicSlots = onRequest(
                           locationBundles.push({
                               bundleId: sub.id,
                               name: sub.name,
+                              publicName: sub.publicName || null,
                               description: sub.description || '',
                               price: sub.price || 0,
                               dayOfWeek: dayOfWeek,
