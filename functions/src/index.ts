@@ -10,6 +10,9 @@ import * as admin from "firebase-admin";
 // Inizializza Firebase Admin SDK
 admin.initializeApp();
 
+// --- CONFIGURAZIONE SICUREZZA ---
+const API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
+
 // --- CONFIGURAZIONE GMAIL OAUTH2 (SECRETS) ---
 const gmailClientId = defineSecret("GMAIL_CLIENT_ID");
 const gmailClientSecret = defineSecret("GMAIL_CLIENT_SECRET");
@@ -66,10 +69,9 @@ export const sendEmail = onCall({
         logger.info("Email sent successfully:", info.messageId);
         return { success: true, messageId: info.messageId };
 
-    } catch (error: unknown) {
-        const err = error as Error;
-        logger.error("Error sending email:", err);
-        throw new Error(`Email sending failed: ${err.message}`);
+    } catch (error: any) {
+        logger.error("Error sending email:", error?.message || error);
+        throw new Error(`Email sending failed: ${error?.message || 'Unknown error'}`);
     }
 });
 
@@ -139,8 +141,8 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
                 await batch.commit();
             }
         }
-    } catch (error) {
-        logger.error("Error sending push notifications:", error);
+    } catch (error: any) {
+        logger.error("Error sending push notifications:", error?.message || error);
     }
 }
 
@@ -319,9 +321,38 @@ export const getPublicSlotsV2 = onRequest({
             });
         });
         res.status(200).json({ success: true, data: results });
-    } catch (error) {
-        logger.error("Error fetching public slots v2:", error);
-        res.status(500).json({ error: "Failed to fetch slots" });
+    } catch (error: any) {
+        logger.error("Error fetching public slots v2:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch slots", details: error?.message });
+    }
+});
+
+// --- API RICEZIONE LEAD V2 (PROGETTO B) ---
+export const receiveLeadV2 = onRequest({ 
+    region: "europe-west1",
+    cors: true 
+}, async (req, res) => {
+    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${API_SHARED_SECRET}`) {
+        return res.status(403).json({ error: "Forbidden: Invalid API Key" });
+    }
+
+    try {
+        const data = req.body;
+        const leadDoc = {
+            ...data,
+            source: "projectB_api_v2",
+            status: "pending",
+            createdAt: new Date().toISOString()
+        };
+
+        const docRef = await admin.firestore().collection("incoming_leads").add(leadDoc);
+        res.status(200).json({ success: true, referenceId: docRef.id });
+    } catch (error: any) {
+        logger.error("Error saving lead v2:", error?.message || error);
+        res.status(500).json({ error: "Internal Server Error", details: error?.message });
     }
 });
 
@@ -331,47 +362,48 @@ export const checkPeriodicNotifications = onSchedule({
     timeZone: "Europe/Rome",
     region: "europe-west1",
 }, async (event) => {
-    const db = admin.firestore();
-    const now = new Date();
-    
-    // Calcolo ora e giorno in Italia
-    const formatter = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/Rome',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit'
-    });
-    const parts = formatter.formatToParts(now);
-    const getPart = (type: string) => parts.find(p => p.type === type)?.value;
-    const currentHour = `${getPart('hour')}:${getPart('minute')}`;
-    const romeDate = new Date(Date.UTC(Number(getPart('year')), Number(getPart('month')) - 1, Number(getPart('day'))));
-    const currentDay = romeDate.getUTCDay();
-    const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+    try {
+        const db = admin.firestore();
+        const now = new Date();
+        
+        const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/Rome',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        });
+        const parts = formatter.formatToParts(now);
+        const getPart = (type: string) => parts.find(p => p.type === type)?.value;
+        const currentHour = `${getPart('hour')}:${getPart('minute')}`;
+        const romeDate = new Date(Date.UTC(Number(getPart('year')), Number(getPart('month')) - 1, Number(getPart('day'))));
+        const currentDay = romeDate.getUTCDay();
+        const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
 
-    const tokensSnapshot = await db.collection("fcm_tokens").get();
-    const allTokens: string[] = [];
-    tokensSnapshot.forEach(doc => { if (doc.data().token) allTokens.push(doc.data().token); });
-    if (allTokens.length === 0) return;
+        const tokensSnapshot = await db.collection("fcm_tokens").get();
+        const allTokens: string[] = [];
+        tokensSnapshot.forEach(doc => { if (doc.data().token) allTokens.push(doc.data().token); });
+        if (allTokens.length === 0) return;
 
-    const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
-    
-    for (const doc of rulesSnapshot.docs) {
-        const rule = doc.data();
-        if (rule.days && rule.days.includes(currentDay)) {
-            const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
-            const [currH, currM] = currentHour.split(":").map(Number);
-            const diff = (currH * 60 + currM) - (ruleH * 60 + ruleM);
+        const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
+        
+        for (const doc of rulesSnapshot.docs) {
+            const rule = doc.data();
+            if (rule.days && rule.days.includes(currentDay)) {
+                const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
+                const [currH, currM] = currentHour.split(":").map(Number);
+                const diff = (currH * 60 + currM) - (ruleH * 60 + ruleM);
 
-            if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
-                await doc.ref.update({ lastSentDate: todayStr });
-                
-                // Invia notifica (Logica semplificata per brevità ma completa nelle funzioni)
-                const message = {
-                    tokens: allTokens,
-                    notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
-                    data: { link: "/", ruleId: rule.id }
-                };
-                await admin.messaging().sendEachForMulticast(message);
+                if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
+                    await doc.ref.update({ lastSentDate: todayStr });
+                    const message = {
+                        tokens: allTokens,
+                        notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
+                        data: { link: "/", ruleId: rule.id }
+                    };
+                    await admin.messaging().sendEachForMulticast(message);
+                }
             }
         }
+    } catch (error: any) {
+        logger.error("Error in periodic notifications:", error?.message || error);
     }
 });

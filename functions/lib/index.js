@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkPeriodicNotifications = exports.getPublicSlotsV2 = exports.enrollmentGateway = exports.onEnrollmentCreated = exports.onLeadCreated = exports.sendEmail = void 0;
+exports.checkPeriodicNotifications = exports.receiveLeadV2 = exports.getPublicSlotsV2 = exports.enrollmentGateway = exports.onEnrollmentCreated = exports.onLeadCreated = exports.sendEmail = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
@@ -43,6 +43,7 @@ const nodemailer = __importStar(require("nodemailer"));
 const params_1 = require("firebase-functions/params");
 const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
+const API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
 const gmailClientId = (0, params_1.defineSecret)("GMAIL_CLIENT_ID");
 const gmailClientSecret = (0, params_1.defineSecret)("GMAIL_CLIENT_SECRET");
 const gmailRefreshToken = (0, params_1.defineSecret)("GMAIL_REFRESH_TOKEN");
@@ -90,9 +91,8 @@ exports.sendEmail = (0, https_1.onCall)({
         return { success: true, messageId: info.messageId };
     }
     catch (error) {
-        const err = error;
-        logger.error("Error sending email:", err);
-        throw new Error(`Email sending failed: ${err.message}`);
+        logger.error("Error sending email:", error?.message || error);
+        throw new Error(`Email sending failed: ${error?.message || 'Unknown error'}`);
     }
 });
 async function sendPushToAllTokens(title, body, extraData) {
@@ -155,7 +155,7 @@ async function sendPushToAllTokens(title, body, extraData) {
         }
     }
     catch (error) {
-        logger.error("Error sending push notifications:", error);
+        logger.error("Error sending push notifications:", error?.message || error);
     }
 }
 exports.onLeadCreated = (0, firestore_1.onDocumentCreated)({
@@ -314,8 +314,34 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
         res.status(200).json({ success: true, data: results });
     }
     catch (error) {
-        logger.error("Error fetching public slots v2:", error);
-        res.status(500).json({ error: "Failed to fetch slots" });
+        logger.error("Error fetching public slots v2:", error?.message || error);
+        res.status(500).json({ error: "Failed to fetch slots", details: error?.message });
+    }
+});
+exports.receiveLeadV2 = (0, https_1.onRequest)({
+    region: "europe-west1",
+    cors: true
+}, async (req, res) => {
+    if (req.method !== "POST")
+        return res.status(405).send("Method Not Allowed");
+    const authHeader = req.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${API_SHARED_SECRET}`) {
+        return res.status(403).json({ error: "Forbidden: Invalid API Key" });
+    }
+    try {
+        const data = req.body;
+        const leadDoc = {
+            ...data,
+            source: "projectB_api_v2",
+            status: "pending",
+            createdAt: new Date().toISOString()
+        };
+        const docRef = await admin.firestore().collection("incoming_leads").add(leadDoc);
+        res.status(200).json({ success: true, referenceId: docRef.id });
+    }
+    catch (error) {
+        logger.error("Error saving lead v2:", error?.message || error);
+        res.status(500).json({ error: "Internal Server Error", details: error?.message });
     }
 });
 exports.checkPeriodicNotifications = (0, scheduler_1.onSchedule)({
@@ -323,42 +349,47 @@ exports.checkPeriodicNotifications = (0, scheduler_1.onSchedule)({
     timeZone: "Europe/Rome",
     region: "europe-west1",
 }, async (event) => {
-    const db = admin.firestore();
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/Rome',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit'
-    });
-    const parts = formatter.formatToParts(now);
-    const getPart = (type) => parts.find(p => p.type === type)?.value;
-    const currentHour = `${getPart('hour')}:${getPart('minute')}`;
-    const romeDate = new Date(Date.UTC(Number(getPart('year')), Number(getPart('month')) - 1, Number(getPart('day'))));
-    const currentDay = romeDate.getUTCDay();
-    const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
-    const tokensSnapshot = await db.collection("fcm_tokens").get();
-    const allTokens = [];
-    tokensSnapshot.forEach(doc => { if (doc.data().token)
-        allTokens.push(doc.data().token); });
-    if (allTokens.length === 0)
-        return;
-    const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
-    for (const doc of rulesSnapshot.docs) {
-        const rule = doc.data();
-        if (rule.days && rule.days.includes(currentDay)) {
-            const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
-            const [currH, currM] = currentHour.split(":").map(Number);
-            const diff = (currH * 60 + currM) - (ruleH * 60 + ruleM);
-            if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
-                await doc.ref.update({ lastSentDate: todayStr });
-                const message = {
-                    tokens: allTokens,
-                    notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
-                    data: { link: "/", ruleId: rule.id }
-                };
-                await admin.messaging().sendEachForMulticast(message);
+    try {
+        const db = admin.firestore();
+        const now = new Date();
+        const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: 'Europe/Rome',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit'
+        });
+        const parts = formatter.formatToParts(now);
+        const getPart = (type) => parts.find(p => p.type === type)?.value;
+        const currentHour = `${getPart('hour')}:${getPart('minute')}`;
+        const romeDate = new Date(Date.UTC(Number(getPart('year')), Number(getPart('month')) - 1, Number(getPart('day'))));
+        const currentDay = romeDate.getUTCDay();
+        const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+        const tokensSnapshot = await db.collection("fcm_tokens").get();
+        const allTokens = [];
+        tokensSnapshot.forEach(doc => { if (doc.data().token)
+            allTokens.push(doc.data().token); });
+        if (allTokens.length === 0)
+            return;
+        const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
+        for (const doc of rulesSnapshot.docs) {
+            const rule = doc.data();
+            if (rule.days && rule.days.includes(currentDay)) {
+                const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
+                const [currH, currM] = currentHour.split(":").map(Number);
+                const diff = (currH * 60 + currM) - (ruleH * 60 + ruleM);
+                if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
+                    await doc.ref.update({ lastSentDate: todayStr });
+                    const message = {
+                        tokens: allTokens,
+                        notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
+                        data: { link: "/", ruleId: rule.id }
+                    };
+                    await admin.messaging().sendEachForMulticast(message);
+                }
             }
         }
+    }
+    catch (error) {
+        logger.error("Error in periodic notifications:", error?.message || error);
     }
 });
 //# sourceMappingURL=index.js.map
