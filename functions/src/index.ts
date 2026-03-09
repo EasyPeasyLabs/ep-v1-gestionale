@@ -170,12 +170,17 @@ export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async 
     if (!snapshot) return;
 
     const leadData = snapshot.data();
-    const title = "Nuovo Lead";
-    const body = `Hai una nuova richiesta da ${leadData.nome} ${leadData.cognome}`;
+    const nome = leadData.nome || leadData.firstName || 'Nuovo';
+    const cognome = leadData.cognome || leadData.lastName || 'Contatto';
+    const sede = leadData.sede || leadData.selectedLocation || 'Sede non specificata';
+    
+    const title = "👤 Nuovo Contatto Web";
+    const body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
 
     await sendPushToAllTokens(title, body, {
         leadId: event.params.leadId,
-        type: 'lead'
+        type: 'lead',
+        click_action: 'WEB_REQUESTS'
     });
 });
 
@@ -192,18 +197,54 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
         return;
     }
     
-    // Formattazione dati per il messaggio
-    const firstApp = enrData.appointments?.[0];
-    const giorno = firstApp ? formatItalianDate(firstApp.date) : 'da definire';
-    const slot = firstApp ? `${firstApp.startTime} - ${firstApp.endTime}` : 'da definire';
-    const sede = enrData.locationName || 'Sede Preferita';
-
-    const title = "Nuova Iscrizione";
-    const body = `Hai una nuova iscrizione da ${enrData.clientName} per ${enrData.childName} per ${giorno} - ${slot} presso ${sede}`;
+    const clientName = enrData.clientName || 'Genitore';
+    const childName = enrData.childName || 'Allievo';
+    const subName = enrData.subscriptionName || 'Abbonamento';
+    const price = enrData.price || 0;
+    const status = enrData.status || 'pending';
+    const isPaid = status === 'active';
+    
+    // 1. Notifica Base Iscrizione
+    const title = isPaid ? "🎓 Nuova Iscrizione Portal (PAGATA)" : "🎓 Nuova Iscrizione Portal (DA SALDARE)";
+    const body = `${clientName} ha iscritto ${childName} a ${subName}. Stato: ${isPaid ? 'Pagato' : 'In attesa di saldo'}.`;
 
     await sendPushToAllTokens(title, body, {
         enrollmentId: event.params.enrollmentId,
-        type: 'enrollment'
+        type: 'enrollment',
+        click_action: 'ENROLLMENTS'
+    });
+
+    // 2. Promemoria Incasso (se in sede)
+    if (!isPaid) {
+        const reminderTitle = "💰 Promemoria Incasso in Sede";
+        const reminderBody = `Attenzione: ${childName} ha prenotato il posto. Ricordati di registrare l'incasso di ${price}€ al suo arrivo.`;
+        
+        // Ritardo minimo per non sovrapporre le notifiche
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await sendPushToAllTokens(reminderTitle, reminderBody, {
+            enrollmentId: event.params.enrollmentId,
+            type: 'payment_reminder'
+        });
+    }
+
+    // 3. Promemoria Fattura e Bollo Virtuale
+    const needsStampDuty = price >= 77;
+    const invoiceReminderTitle = needsStampDuty ? "⚠️ AVVISO BOLLO - Fatturazione" : "📄 Nuova Fattura da Emettere";
+    
+    let invoiceReminderBody = "";
+    if (needsStampDuty) {
+        const totalPrice = price + 2;
+        invoiceReminderBody = `Emetti fattura per ${childName}. Importo ≥ 77€: verifica l'aggiunta dei 2€ di bollo (Totale dovuto: ${totalPrice}€).`;
+    } else {
+        invoiceReminderBody = `Emetti fattura per ${childName} - Importo: ${price}€.`;
+    }
+
+    // Ritardo per sequenzialità
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    await sendPushToAllTokens(invoiceReminderTitle, invoiceReminderBody, {
+        enrollmentId: event.params.enrollmentId,
+        type: 'invoice_reminder',
+        needsStampDuty: String(needsStampDuty)
     });
 });
 

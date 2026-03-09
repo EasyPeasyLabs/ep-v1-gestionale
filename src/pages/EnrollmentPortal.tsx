@@ -1017,7 +1017,7 @@ const EnrollmentPortal: React.FC = () => {
                     .map(sub => {
                       // Smart Name Parsing
                       const nameParts = sub.name.split('.');
-                      const shortName = nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase();
+                      const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
                       
                       const breakdown = [
                         (sub.labCount || 0) > 0 ? `${sub.labCount} Lab` : null,
@@ -1086,12 +1086,59 @@ const EnrollmentPortal: React.FC = () => {
                   </div>
                   <div className="flex justify-between items-center border-b border-gray-200 pb-3">
                     <span className="text-xs font-black text-gray-400 uppercase">Orario</span>
-                    <span className="font-bold">{formData.selectedSlot}</span>
+                    <span className="font-bold text-right">
+                      {(() => {
+                        const slotString = formData.selectedSlot;
+                        const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
+                        
+                        if (slotString && slotString.includes('&')) {
+                          try {
+                            const parts = slotString.split('-');
+                            if (parts.length === 2) {
+                              const leftPart = parts[0].trim();
+                              const rightPart = parts[1].trim();
+                              
+                              const dayMatch = leftPart.match(/^[a-zA-Zì]+,?\s/);
+                              const day = dayMatch ? dayMatch[0].trim().replace(',', '') : '';
+                              
+                              const startTimesStr = dayMatch ? leftPart.substring(dayMatch[0].length) : leftPart;
+                              const startTimes = startTimesStr.split('&').map(s => s.trim());
+                              const endTimes = rightPart.split('&').map(s => s.trim());
+                              
+                              if (startTimes.length === 2 && endTimes.length === 2) {
+                                const labCount = sub?.labCount || 0;
+                                const sgCount = sub?.sgCount || 0;
+                                
+                                const lines = [];
+                                if (labCount > 0) {
+                                  lines.push(`${labCount} ingress${labCount === 1 ? 'o' : 'i'} ${day} (LAB) ${startTimes[0]} - ${endTimes[0]}`);
+                                }
+                                if (sgCount > 0) {
+                                  lines.push(`${sgCount} ingress${sgCount === 1 ? 'o' : 'i'} ${day} (SG) ${startTimes[1]} - ${endTimes[1]}`);
+                                }
+                                
+                                if (lines.length > 0) {
+                                  return lines.map((line, i) => <div key={i}>{line}</div>);
+                                }
+                              }
+                            }
+                          } catch (e) {
+                            console.error(e);
+                          }
+                        }
+                        
+                        return <div>{slotString}</div>;
+                      })()}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center pt-2">
                     <span className="text-xs font-black text-gray-400 uppercase">Totale</span>
                     <span className="text-3xl font-black text-blue-900">
-                      {subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price}€
+                      {(() => {
+                        const basePrice = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price || 0;
+                        const totalPrice = basePrice >= 77 ? basePrice + 2 : basePrice;
+                        return `${totalPrice}€`;
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -1263,7 +1310,13 @@ const EnrollmentPortal: React.FC = () => {
               <p className="text-gray-600 leading-relaxed">
                 Posto bloccato con successo! Ti aspettiamo in sede il <strong>{formData.selectedSlot.split(' ')[0] || 'giorno stabilito'}</strong>. 
                 <br/><br/>
-                Potrai saldare la quota di <strong className="text-blue-900 text-lg">{subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price}€</strong> direttamente in contanti prima dell'inizio della lezione.
+                Potrai saldare la quota di <strong className="text-blue-900 text-lg">
+                  {(() => {
+                    const basePrice = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price || 0;
+                    const totalPrice = basePrice >= 77 ? basePrice + 2 : basePrice;
+                    return `${totalPrice}€`;
+                  })()}
+                </strong> direttamente in contanti prima dell'inizio della lezione.
               </p>
             </div>
 
