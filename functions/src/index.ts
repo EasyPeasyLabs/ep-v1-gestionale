@@ -150,20 +150,6 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
     }
 }
 
-// Helper per formattare la data in italiano
-const formatItalianDate = (isoString: string) => {
-    try {
-        const date = new Date(isoString);
-        const days = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-        const dayName = days[date.getDay()];
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        return `${dayName} ${day}/${month}`;
-    } catch (e) {
-        return 'Data non valida';
-    }
-};
-
 // --- TRIGGER NOTIFICHE PUSH PER NUOVI LEAD ---
 export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async (event) => {
     const snapshot = event.data;
@@ -246,6 +232,61 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
         type: 'invoice_reminder',
         needsStampDuty: String(needsStampDuty)
     });
+});
+
+// --- GATEWAY PER ISCRIZIONI (ISOLAMENTO DOMINIO & WHATSAPP PREVIEW) ---
+// Questa funzione serve come "scudo" per il Gestionale (Progetto A)
+// Riceve l'ID del lead, mostra i meta-tag per WhatsApp e reindirizza al portale reale.
+export const enrollmentGateway = onRequest({ cors: true }, async (req, res) => {
+    const id = req.query.id as string || req.path.split('/').pop();
+    
+    if (!id || id === 'i') {
+        res.status(400).send("ID Iscrizione mancante.");
+        return;
+    }
+
+    // URL del logo (assoluto) - Usiamo quello del gestionale su Vercel
+    const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
+    // URL di destinazione reale (Progetto C)
+    const destinationUrl = `https://ep-v1-gestionale.vercel.app/#/iscrizione?id=${id}`;
+
+    const html = `
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Easy Peasy Labs</title>
+    
+    <!-- Open Graph / WhatsApp Preview -->
+    <meta property="og:title" content="Easy Peasy Labs" />
+    <meta property="og:description" content="${id}" />
+    <meta property="og:image" content="${logoUrl}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://easypeasylabs.vercel.app/i/${id}" />
+
+    <style>
+        body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f6f8fa; color: #3C3C52; }
+        .loader { border: 4px solid #e5e7eb; border-top: 4px solid #3C3C52; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+
+    <script>
+        // Redirezione immediata al portale reale nel Progetto A
+        // L'utente non vedrà mai l'URL tecnico del Gestionale nel messaggio WhatsApp
+        window.location.href = "${destinationUrl}";
+    </script>
+</head>
+<body>
+    <div style="text-align: center;">
+        <div class="loader" style="margin: 0 auto 20px;"></div>
+        <p>Caricamento modulo di iscrizione...</p>
+    </div>
+</body>
+</html>
+    `;
+
+    res.status(200).send(html);
 });
 
 // --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V2 ---

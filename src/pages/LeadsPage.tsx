@@ -95,18 +95,19 @@ export const LeadsPage: React.FC = () => {
   };
 
   const generateEnrollmentLink = (leadId: string) => {
-    const baseUrl = window.location.origin;
-    // Use hash routing to avoid 404 on direct links in SPA
-    return `${baseUrl}/#/iscrizione?id=${leadId}`;
+    // GATEWAY ISOLATION: Usiamo il Progetto B (Pagina Pubblica) come scudo
+    // Questo nasconde l'URL tecnico del Gestionale (Progetto A) e abilita l'anteprima con Logo
+    return `https://easypeasylabs.vercel.app/i/${leadId}`;
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert("Link copiato negli appunti!");
+    alert("Link abbreviato copiato!");
   };
 
   const sendLinkWhatsApp = (lead: Lead) => {
     const link = generateEnrollmentLink(lead.id);
+    // Messaggio formattato per massimizzare l'impatto dell'anteprima (Logo + ID)
     const message = `*Easy Peasy Labs*\n\nCiao ${lead.nome}, siamo felici del tuo interesse!\n\nPer completare l'iscrizione e bloccare il tuo posto, compila questo modulo:\n\n${link}`;
     const cleanPhone = lead.telefono.replace(/\D/g, '');
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;

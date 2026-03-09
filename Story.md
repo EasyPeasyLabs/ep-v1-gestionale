@@ -112,6 +112,7 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
         2. **Nuove Iscrizioni:** Avviso immediato per iscrizioni da Portale (distinguendo tra Pagate e Da Saldare).
         3. **Payment Reminder:** Promemoria automatico per la registrazione dell'incasso in caso di scelta "Paga in Sede".
         4. **Fiscal Assistant:** Notifica intelligente per l'emissione fattura, con alert specifico per la soglia dei 77€ per prevenire l'omissione del bollo virtuale.
+        5. **Public Gateway Isolation (Security Shield):** Implementazione di una Cloud Function `enrollmentGateway` che funge da proxy sicuro. Il link inviato su WhatsApp punta ora al Progetto B (Pagina Pubblica), nascondendo l'URL tecnico del Gestionale e abilitando l'anteprima con Logo e ID unico tramite Meta Tag Open Graph dinamici. In una frazione di secondo, il gateway reindirizza l'utente al modulo di iscrizione reale in modo invisibile.
 
 ---
 
