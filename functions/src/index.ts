@@ -17,6 +17,7 @@ const SENDER_EMAIL = "labeasypeasy@gmail.com";
 const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 
 export const sendEmail = onCall({ 
+    region: "europe-west1",
     cors: true, 
     secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken] 
 }, async (request) => {
@@ -151,7 +152,10 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
 }
 
 // --- TRIGGER NOTIFICHE PUSH PER NUOVI LEAD ---
-export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async (event) => {
+export const onLeadCreated = onDocumentCreated({
+    region: "europe-west1",
+    document: "incoming_leads/{leadId}"
+}, async (event) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
@@ -170,8 +174,12 @@ export const onLeadCreated = onDocumentCreated("incoming_leads/{leadId}", async 
     });
 });
 
+// --- TRIGGER NOTIFICHE PUSH PER NUOVI LEAD ---
 // --- TRIGGER NOTIFICHE PUSH PER NUOVE ISCRIZIONI ---
-export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}", async (event) => {
+export const onEnrollmentCreated = onDocumentCreated({
+    region: "europe-west1",
+    document: "enrollments/{enrollmentId}"
+}, async (event) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
@@ -237,7 +245,10 @@ export const onEnrollmentCreated = onDocumentCreated("enrollments/{enrollmentId}
 // --- GATEWAY PER ISCRIZIONI (ISOLAMENTO DOMINIO & WHATSAPP PREVIEW) ---
 // Questa funzione serve come "scudo" per il Gestionale (Progetto A)
 // Riceve l'ID del lead, mostra i meta-tag per WhatsApp e reindirizza al portale reale.
-export const enrollmentGateway = onRequest({ cors: true }, async (req, res) => {
+export const enrollmentGateway = onRequest({ 
+    region: "europe-west1",
+    cors: true 
+}, async (req, res) => {
     const id = req.query.id as string || req.path.split('/').pop();
     
     if (!id || id === 'i') {
@@ -291,7 +302,10 @@ export const enrollmentGateway = onRequest({ cors: true }, async (req, res) => {
 
 // --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V2 ---
 // Include calcolo posti disponibili e filtro età robusto
-export const getPublicSlotsV2 = onRequest({ cors: true }, async (req, res) => {
+export const getPublicSlotsV2 = onRequest({ 
+    region: "europe-west1",
+    cors: true 
+}, async (req, res) => {
     try {
         // 1. Recupera Fornitori Attivi
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
