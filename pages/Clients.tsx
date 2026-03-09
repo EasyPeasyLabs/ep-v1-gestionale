@@ -118,11 +118,63 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     
     // Common
     const [email, setEmail] = useState(client?.email || '');
-    const [phone, setPhone] = useState(client?.phone || '');
+    const [phone, setPhone] = useState(() => {
+        const initialPhone = client?.phone || '';
+        if (!initialPhone) return '';
+        // Format initial phone for display if it's just numbers and starts with +39
+        if (initialPhone.startsWith('+39') && initialPhone.length > 3) {
+            const num = initialPhone.substring(3).replace(/\D/g, '');
+            if (num.length >= 6) {
+                return `+39 ${num.substring(0, 3)} ${num.substring(3, 6)} ${num.substring(6)}`;
+            } else if (num.length >= 3) {
+                return `+39 ${num.substring(0, 3)} ${num.substring(3)}`;
+            }
+            return `+39 ${num}`;
+        }
+        return initialPhone;
+    });
     const [address, setAddress] = useState(client?.address || '');
     const [zipCode, setZipCode] = useState(client?.zipCode || '');
     const [city, setCity] = useState(client?.city || '');
     const [province, setProvince] = useState(client?.province || '');
+
+    const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value;
+        
+        // Remove all non-numeric characters except the leading +
+        let cleaned = val.replace(/(?!^\+)[^\d]/g, '');
+        
+        if (!cleaned) {
+            setPhone('');
+            return;
+        }
+
+        // Auto-inject +39 if user starts typing a typical Italian mobile number (starts with 3)
+        if (cleaned.startsWith('3') && cleaned.length >= 1) {
+            cleaned = '+39' + cleaned;
+        } else if (cleaned.startsWith('39') && cleaned.length >= 2) {
+            cleaned = '+' + cleaned;
+        }
+
+        // Apply visual mask: +39 XXX XXX XXXX
+        if (cleaned.startsWith('+39')) {
+            const numPart = cleaned.substring(3);
+            let formatted = '+39';
+            if (numPart.length > 0) {
+                formatted += ' ' + numPart.substring(0, 3);
+            }
+            if (numPart.length > 3) {
+                formatted += ' ' + numPart.substring(3, 6);
+            }
+            if (numPart.length > 6) {
+                formatted += ' ' + numPart.substring(6, 10); // Limit to 10 digits after +39
+            }
+            setPhone(formatted);
+        } else {
+            // If it doesn't start with +39 (e.g., user is typing an international number manually), just allow it
+            setPhone(cleaned);
+        }
+    };
 
     // Parent
     const [firstName, setFirstName] = useState((client as ParentClient)?.firstName || '');
@@ -187,8 +239,12 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Clean phone number before saving (remove spaces)
+        const cleanPhone = phone.replace(/\s/g, '');
+
         const common: any = { 
-            email, phone, address, zipCode, city, province, clientType, notesHistory,
+            email, phone: cleanPhone, address, zipCode, city, province, clientType, notesHistory,
             preferredLocation: client?.preferredLocation,
             preferredSlot: client?.preferredSlot
         };
@@ -261,7 +317,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="md-input-group"><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Email</label></div>
-                            <div className="md-input-group"><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
+                            <div className="md-input-group"><input type="tel" value={phone} onChange={handlePhoneChange} className="md-input" placeholder=" "/><label className="md-input-label">Telefono</label></div>
                         </div>
                         <div className="md-input-group"><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">Indirizzo</label></div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

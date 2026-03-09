@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
+import { getEnrollmentsForClient } from '../services/enrollmentService';
 import Spinner from './Spinner';
 import SearchIcon from './icons/SearchIcon';
 import PlusIcon from './icons/PlusIcon';
@@ -105,6 +106,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [isChildDropdownOpen, setIsChildDropdownOpen] = useState(false);
     const [clientSearchTerm, setClientSearchTerm] = useState('');
     const clientSort = 'surname_asc';
+    const [clientHistory, setClientHistory] = useState<Enrollment[]>([]);
 
     const initialValues = useRef({
         startDate: existingEnrollment ? existingEnrollment.startDate.split('T')[0] : '',
@@ -117,6 +119,23 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const currentClient = clients.find(p => p.id === selectedClientId);
     const isInstitutional = currentClient?.clientType === ClientType.Institutional || existingEnrollment?.clientType === ClientType.Institutional;
     const isCustomMode = isInstitutional || subscriptionTypeId === 'quote-based';
+
+    // Fetch client history
+    useEffect(() => {
+        if (!selectedClientId) {
+            setClientHistory([]);
+            return;
+        }
+        const fetchHistory = async () => {
+            try {
+                const history = await getEnrollmentsForClient(selectedClientId);
+                setClientHistory(history);
+            } catch (e) {
+                console.error("Error fetching client history:", e);
+            }
+        };
+        fetchHistory();
+    }, [selectedClientId]);
 
     // Helper: Locations Flattened
     const allLocations = useMemo(() => {
@@ -132,6 +151,76 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         });
         return locs.sort((a,b) => a.name.localeCompare(b.name));
     }, [suppliers]);
+
+    // Auto-select last plan and timeslot based on history and child age
+    const hasAutoSelected = useRef(false);
+    useEffect(() => {
+        if (existingEnrollment || !selectedClientId || selectedChildIds.length === 0 || clientHistory.length === 0) {
+            return;
+        }
+
+        // Only auto-select once per new enrollment session to avoid overwriting user manual changes
+        if (hasAutoSelected.current) return;
+
+        const childId = selectedChildIds[0];
+        const childHistory = clientHistory
+            .filter(e => e.childId === childId)
+            .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+        
+        const lastEnrollment = childHistory[0];
+        
+        let didAutoSelect = false;
+
+        // 1. Auto-select last plan
+        if (lastEnrollment && !subscriptionTypeId) {
+            setSubscriptionTypeId(lastEnrollment.subscriptionTypeId);
+            didAutoSelect = true;
+        }
+
+        // 2. Auto-select timeslot based on age and location
+        const client = clients.find(c => c.id === selectedClientId);
+        if (client && client.clientType === ClientType.Parent) {
+            const parent = client as ParentClient;
+            const child = parent.children.find(c => c.id === childId);
+            if (child) {
+                let age = 0;
+                if (child.dateOfBirth) {
+                    const dob = new Date(child.dateOfBirth);
+                    const ageDifMs = Date.now() - dob.getTime();
+                    const ageDate = new Date(ageDifMs);
+                    age = Math.abs(ageDate.getUTCFullYear() - 1970);
+                } else if (child.age) {
+                    age = parseInt(child.age);
+                }
+                
+                // Determine location: last attended or currently selected
+                const locIdToUse = lastEnrollment ? lastEnrollment.locationId : targetLocationId;
+                
+                if (locIdToUse && locIdToUse !== 'unassigned') {
+                    const loc = allLocations.find(l => l.id === locIdToUse);
+                    if (loc && loc.availability) {
+                        // Find a slot that fits the age
+                        const suitableSlot = loc.availability.find(slot => {
+                            const min = slot.minAge || 0;
+                            const max = slot.maxAge || 99;
+                            return age >= min && age <= max;
+                        });
+                        
+                        if (suitableSlot) {
+                            setTargetLocationId(loc.id);
+                            setStartTime(suitableSlot.startTime);
+                            setEndTime(suitableSlot.endTime);
+                            didAutoSelect = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (didAutoSelect) {
+            hasAutoSelected.current = true;
+        }
+    }, [selectedChildIds, clientHistory, clients, selectedClientId, existingEnrollment, allLocations, subscriptionTypeId, targetLocationId]);
 
     // Auto-select based on client preferences
     useEffect(() => {
@@ -159,6 +248,48 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             }
         }
     }, [selectedClientId, allLocations, existingEnrollment, currentClient, targetLocationId, setTargetLocationId, setStartTime, setEndTime]);
+
+    // Auto-update timeslot when location changes based on child age
+    const prevLocationIdRef = useRef(targetLocationId);
+    useEffect(() => {
+        if (targetLocationId !== prevLocationIdRef.current) {
+            prevLocationIdRef.current = targetLocationId;
+            
+            if (targetLocationId && targetLocationId !== 'unassigned' && selectedChildIds.length > 0) {
+                const childId = selectedChildIds[0];
+                const client = clients.find(c => c.id === selectedClientId);
+                if (client && client.clientType === ClientType.Parent) {
+                    const parent = client as ParentClient;
+                    const child = parent.children.find(c => c.id === childId);
+                    if (child) {
+                        let age = 0;
+                        if (child.dateOfBirth) {
+                            const dob = new Date(child.dateOfBirth);
+                            const ageDifMs = Date.now() - dob.getTime();
+                            const ageDate = new Date(ageDifMs);
+                            age = Math.abs(ageDate.getUTCFullYear() - 1970);
+                        } else if (child.age) {
+                            age = parseInt(child.age);
+                        }
+                        
+                        const loc = allLocations.find(l => l.id === targetLocationId);
+                        if (loc && loc.availability) {
+                            const suitableSlot = loc.availability.find(slot => {
+                                const min = slot.minAge || 0;
+                                const max = slot.maxAge || 99;
+                                return age >= min && age <= max;
+                            });
+                            
+                            if (suitableSlot) {
+                                setStartTime(suitableSlot.startTime);
+                                setEndTime(suitableSlot.endTime);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }, [targetLocationId, selectedChildIds, clients, selectedClientId, allLocations]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -284,10 +415,22 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
     // --- STANDARD LOGIC ---
     // (Existing slot calculation logic for non-institutional)
+    const hasHistory = useMemo(() => {
+        if (!clientHistory.length) return false;
+        const now = new Date();
+        const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        return clientHistory.some(e => e.startDate < currentMonthStart);
+    }, [clientHistory]);
+
     const availableSubscriptions = useMemo(() => {
         const isVisible = (s: SubscriptionType) => {
+            if (hasHistory) return true; // Show all if has history
+            
+            // For new clients, strictly check status and name
             const status = s.statusConfig?.status || 'active'; 
-            return status === 'active' || status === 'promo' || (existingEnrollment && existingEnrollment.subscriptionTypeId === s.id);
+            const isOld = s.name.includes('(OLD)');
+            
+            return (status === 'active' || status === 'promo') && !isOld;
         };
         if (isInstitutional) return subscriptionTypes.filter(isVisible);
         return subscriptionTypes.filter(s => {
@@ -296,7 +439,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             else { const isAdultName = s.name.startsWith('A -'); matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName; }
             return matchesTarget && isVisible(s);
         });
-    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, existingEnrollment]);
+    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory]);
 
     const calculatedDates = useMemo(() => {
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
