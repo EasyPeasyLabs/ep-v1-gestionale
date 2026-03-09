@@ -33,9 +33,10 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPublicSlotsV2 = exports.enrollmentGateway = exports.onEnrollmentCreated = exports.onLeadCreated = exports.sendEmail = void 0;
+exports.checkPeriodicNotifications = exports.getPublicSlotsV2 = exports.enrollmentGateway = exports.onEnrollmentCreated = exports.onLeadCreated = exports.sendEmail = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
+const scheduler_1 = require("firebase-functions/v2/scheduler");
 const logger = __importStar(require("firebase-functions/logger"));
 const googleapis_1 = require("googleapis");
 const nodemailer = __importStar(require("nodemailer"));
@@ -245,23 +246,17 @@ exports.enrollmentGateway = (0, https_1.onRequest)({
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Easy Peasy Labs</title>
-    
-    <!-- Open Graph / WhatsApp Preview -->
     <meta property="og:title" content="Easy Peasy Labs" />
     <meta property="og:description" content="${id}" />
     <meta property="og:image" content="${logoUrl}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://easypeasylabs.vercel.app/i/${id}" />
-
     <style>
         body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f6f8fa; color: #3C3C52; }
         .loader { border: 4px solid #e5e7eb; border-top: 4px solid #3C3C52; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
-
     <script>
-        // Redirezione immediata al portale reale nel Progetto A
-        // L'utente non vedrà mai l'URL tecnico del Gestionale nel messaggio WhatsApp
         window.location.href = "${destinationUrl}";
     </script>
 </head>
@@ -293,52 +288,26 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
                 const mainAppt = appts[0];
                 if (mainAppt && mainAppt.dayOfWeek && mainAppt.startTime) {
                     const key = `${locId}_${mainAppt.dayOfWeek}_${mainAppt.startTime}`;
-                    const currentCount = occupancyMap.get(key) || 0;
-                    occupancyMap.set(key, currentCount + 1);
+                    occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
                 }
             }
         });
         const results = [];
-        logger.info(`Found ${suppliersSnap.size} suppliers and ${enrollmentsSnap.size} active enrollments.`);
         suppliersSnap.forEach(doc => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
             locations.forEach((loc) => {
-                if (loc.isPubliclyVisible === false || loc.closedAt) {
+                if (loc.isPubliclyVisible === false || loc.closedAt)
                     return;
-                }
                 const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
-                const allSlots = loc.availability || [];
-                const visibleSlots = allSlots.filter((slot) => {
-                    return slot.isPubliclyVisible !== false;
-                }).map((s) => {
-                    const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
-                    const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
+                const visibleSlots = (loc.availability || []).filter((slot) => slot.isPubliclyVisible !== false).map((s) => {
                     const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
                     const occupiedSeats = occupancyMap.get(key) || 0;
                     const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
-                    return {
-                        dayOfWeek: s.dayOfWeek,
-                        startTime: s.startTime,
-                        endTime: s.endTime,
-                        type: s.type || 'LAB',
-                        minAge: isNaN(minAge) ? 0 : minAge,
-                        maxAge: isNaN(maxAge) ? 99 : maxAge,
-                        capacity: locationCapacity,
-                        enrolledCount: occupiedSeats,
-                        availableSeats: availableSeats,
-                        isFull: availableSeats === 0
-                    };
+                    return { ...s, availableSeats, isFull: availableSeats === 0 };
                 });
                 if (visibleSlots.length > 0) {
-                    results.push({
-                        id: loc.id,
-                        name: loc.name,
-                        address: loc.address || '',
-                        city: loc.city || supplierData.city || '',
-                        googleMapsLink: loc.googleMapsLink || '',
-                        slots: visibleSlots
-                    });
+                    results.push({ id: loc.id, name: loc.name, slots: visibleSlots });
                 }
             });
         });
@@ -347,6 +316,49 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
     catch (error) {
         logger.error("Error fetching public slots v2:", error);
         res.status(500).json({ error: "Failed to fetch slots" });
+    }
+});
+exports.checkPeriodicNotifications = (0, scheduler_1.onSchedule)({
+    schedule: "* * * * *",
+    timeZone: "Europe/Rome",
+    region: "europe-west1",
+}, async (event) => {
+    const db = admin.firestore();
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Rome',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    });
+    const parts = formatter.formatToParts(now);
+    const getPart = (type) => parts.find(p => p.type === type)?.value;
+    const currentHour = `${getPart('hour')}:${getPart('minute')}`;
+    const romeDate = new Date(Date.UTC(Number(getPart('year')), Number(getPart('month')) - 1, Number(getPart('day'))));
+    const currentDay = romeDate.getUTCDay();
+    const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+    const tokensSnapshot = await db.collection("fcm_tokens").get();
+    const allTokens = [];
+    tokensSnapshot.forEach(doc => { if (doc.data().token)
+        allTokens.push(doc.data().token); });
+    if (allTokens.length === 0)
+        return;
+    const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
+    for (const doc of rulesSnapshot.docs) {
+        const rule = doc.data();
+        if (rule.days && rule.days.includes(currentDay)) {
+            const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
+            const [currH, currM] = currentHour.split(":").map(Number);
+            const diff = (currH * 60 + currM) - (ruleH * 60 + ruleM);
+            if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
+                await doc.ref.update({ lastSentDate: todayStr });
+                const message = {
+                    tokens: allTokens,
+                    notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
+                    data: { link: "/", ruleId: rule.id }
+                };
+                await admin.messaging().sendEachForMulticast(message);
+            }
+        }
     }
 });
 //# sourceMappingURL=index.js.map
