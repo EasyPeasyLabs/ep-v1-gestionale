@@ -1,5 +1,6 @@
 import { onCall, onRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import { google } from "googleapis";
 import * as nodemailer from "nodemailer";
@@ -16,6 +17,7 @@ const gmailRefreshToken = defineSecret("GMAIL_REFRESH_TOKEN");
 const SENDER_EMAIL = "labeasypeasy@gmail.com";
 const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 
+// --- FUNZIONE: INVIO EMAIL ---
 export const sendEmail = onCall({ 
     region: "europe-west1",
     cors: true, 
@@ -35,13 +37,11 @@ export const sendEmail = onCall({
         const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
         oAuth2Client.setCredentials({ refresh_token: refreshToken });
 
-        // 1. Ottieni Access Token fresco
         const accessToken = await oAuth2Client.getAccessToken();
         if (!accessToken.token) {
             throw new Error("Failed to generate access token");
         }
 
-        // 2. Configura Nodemailer con OAuth2
         const transporter = nodemailer.createTransport({
             service: "gmail",
             auth: {
@@ -54,7 +54,6 @@ export const sendEmail = onCall({
             },
         });
 
-        // 3. Prepara gli allegati (se presenti)
         const mailOptions = {
             from: `Lab Easy Peasy <${SENDER_EMAIL}>`,
             to: Array.isArray(to) ? to.join(",") : to,
@@ -63,9 +62,7 @@ export const sendEmail = onCall({
             attachments: attachments || [],
         };
 
-        // 4. Invia Email
         const info = await transporter.sendMail(mailOptions);
-        
         logger.info("Email sent successfully:", info.messageId);
         return { success: true, messageId: info.messageId };
 
@@ -79,7 +76,6 @@ export const sendEmail = onCall({
 // --- HELPER PER INVIO NOTIFICHE PUSH ---
 async function sendPushToAllTokens(title: string, body: string, extraData: Record<string, string>) {
     try {
-        // Recupera tutti i token FCM registrati
         const tokensSnapshot = await admin.firestore().collection("fcm_tokens").get();
         const tokens: string[] = [];
         
@@ -95,7 +91,6 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
             return;
         }
 
-        // Prepara il messaggio
         const message: admin.messaging.MulticastMessage = {
             tokens: tokens,
             notification: {
@@ -119,12 +114,10 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
             },
         };
 
-        // Invia la notifica multicast
         const response = await admin.messaging().sendEachForMulticast(message);
         
         logger.info(`Notifications sent: ${response.successCount} success, ${response.failureCount} failure`);
 
-        // Gestione dei token non validi (pulizia)
         if (response.failureCount > 0) {
             const failedTokens: string[] = [];
             response.responses.forEach((resp, idx) => {
@@ -174,7 +167,6 @@ export const onLeadCreated = onDocumentCreated({
     });
 });
 
-// --- TRIGGER NOTIFICHE PUSH PER NUOVI LEAD ---
 // --- TRIGGER NOTIFICHE PUSH PER NUOVE ISCRIZIONI ---
 export const onEnrollmentCreated = onDocumentCreated({
     region: "europe-west1",
@@ -185,7 +177,6 @@ export const onEnrollmentCreated = onDocumentCreated({
 
     const enrData = snapshot.data();
     
-    // Solo per iscrizioni da portale
     if (enrData.source !== 'portal') {
         logger.info(`Enrollment ${event.params.enrollmentId} skipped (source: ${enrData.source || 'manual'})`);
         return;
@@ -198,7 +189,6 @@ export const onEnrollmentCreated = onDocumentCreated({
     const status = enrData.status || 'pending';
     const isPaid = status === 'active';
     
-    // 1. Notifica Base Iscrizione
     const title = isPaid ? "🎓 Nuova Iscrizione Portal (PAGATA)" : "🎓 Nuova Iscrizione Portal (DA SALDARE)";
     const body = `${clientName} ha iscritto ${childName} a ${subName}. Stato: ${isPaid ? 'Pagato' : 'In attesa di saldo'}.`;
 
@@ -208,12 +198,9 @@ export const onEnrollmentCreated = onDocumentCreated({
         click_action: 'ENROLLMENTS'
     });
 
-    // 2. Promemoria Incasso (se in sede)
     if (!isPaid) {
         const reminderTitle = "💰 Promemoria Incasso in Sede";
         const reminderBody = `Attenzione: ${childName} ha prenotato il posto. Ricordati di registrare l'incasso di ${price}€ al suo arrivo.`;
-        
-        // Ritardo minimo per non sovrapporre le notifiche
         await new Promise(resolve => setTimeout(resolve, 2000));
         await sendPushToAllTokens(reminderTitle, reminderBody, {
             enrollmentId: event.params.enrollmentId,
@@ -221,7 +208,6 @@ export const onEnrollmentCreated = onDocumentCreated({
         });
     }
 
-    // 3. Promemoria Fattura e Bollo Virtuale
     const needsStampDuty = price >= 77;
     const invoiceReminderTitle = needsStampDuty ? "⚠️ AVVISO BOLLO - Fatturazione" : "📄 Nuova Fattura da Emettere";
     
@@ -233,7 +219,6 @@ export const onEnrollmentCreated = onDocumentCreated({
         invoiceReminderBody = `Emetti fattura per ${childName} - Importo: ${price}€.`;
     }
 
-    // Ritardo per sequenzialità
     await new Promise(resolve => setTimeout(resolve, 2000));
     await sendPushToAllTokens(invoiceReminderTitle, invoiceReminderBody, {
         enrollmentId: event.params.enrollmentId,
@@ -243,8 +228,6 @@ export const onEnrollmentCreated = onDocumentCreated({
 });
 
 // --- GATEWAY PER ISCRIZIONI (ISOLAMENTO DOMINIO & WHATSAPP PREVIEW) ---
-// Questa funzione serve come "scudo" per il Gestionale (Progetto A)
-// Riceve l'ID del lead, mostra i meta-tag per WhatsApp e reindirizza al portale reale.
 export const enrollmentGateway = onRequest({ 
     region: "europe-west1",
     cors: true 
@@ -256,9 +239,7 @@ export const enrollmentGateway = onRequest({
         return;
     }
 
-    // URL del logo (assoluto) - Usiamo quello del gestionale su Vercel
     const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
-    // URL di destinazione reale (Progetto C)
     const destinationUrl = `https://ep-v1-gestionale.vercel.app/#/iscrizione?id=${id}`;
 
     const html = `
@@ -268,23 +249,17 @@ export const enrollmentGateway = onRequest({
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Easy Peasy Labs</title>
-    
-    <!-- Open Graph / WhatsApp Preview -->
     <meta property="og:title" content="Easy Peasy Labs" />
     <meta property="og:description" content="${id}" />
     <meta property="og:image" content="${logoUrl}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://easypeasylabs.vercel.app/i/${id}" />
-
     <style>
         body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f6f8fa; color: #3C3C52; }
         .loader { border: 4px solid #e5e7eb; border-top: 4px solid #3C3C52; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
-
     <script>
-        // Redirezione immediata al portale reale nel Progetto A
-        // L'utente non vedrà mai l'URL tecnico del Gestionale nel messaggio WhatsApp
         window.location.href = "${destinationUrl}";
     </script>
 </head>
@@ -296,109 +271,107 @@ export const enrollmentGateway = onRequest({
 </body>
 </html>
     `;
-
     res.status(200).send(html);
 });
 
 // --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V2 ---
-// Include calcolo posti disponibili e filtro età robusto
 export const getPublicSlotsV2 = onRequest({ 
     region: "europe-west1",
     cors: true 
 }, async (req, res) => {
     try {
-        // 1. Recupera Fornitori Attivi
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
-        
-        // 2. Recupera TUTTE le iscrizioni attive per il calcolo posti (Ottimizzazione: una sola query)
-        // Filtriamo per status 'active' (o altri status che occupano posto)
         const enrollmentsSnap = await admin.firestore().collection('enrollments')
             .where('status', 'in', ['active', 'pending', 'confirmed']) 
             .get();
 
-        // 3. Costruisci Mappa Occupazione: { "locationId_day_startTime": count }
         const occupancyMap = new Map<string, number>();
 
         enrollmentsSnap.forEach(doc => {
             const data = doc.data();
             const locId = data.locationId;
             const appts = data.appointments || [];
-
-            // Se l'iscrizione ha appuntamenti ricorrenti, contiamo l'occupazione
-            // Assumiamo che appointments[0] definisca il giorno/ora ricorrente per semplicità
-            // O iteriamo su tutti se l'iscrizione occupa più slot settimanali
             if (locId && appts.length > 0) {
-                // Prendiamo il primo appuntamento come riferimento per il giorno/ora ricorrente
-                // In un sistema più complesso, bisognerebbe analizzare la ricorrenza esatta
                 const mainAppt = appts[0]; 
                 if (mainAppt && mainAppt.dayOfWeek && mainAppt.startTime) {
                     const key = `${locId}_${mainAppt.dayOfWeek}_${mainAppt.startTime}`;
-                    const currentCount = occupancyMap.get(key) || 0;
-                    occupancyMap.set(key, currentCount + 1);
+                    occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
                 }
             }
         });
 
         const results: any[] = [];
-        logger.info(`Found ${suppliersSnap.size} suppliers and ${enrollmentsSnap.size} active enrollments.`);
-
         suppliersSnap.forEach(doc => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
-
             locations.forEach((loc: any) => {
-                // 1. Filtro Visibilità Sede
-                if (loc.isPubliclyVisible === false || loc.closedAt) {
-                    return; 
-                }
-
-                // Capacità Sede (Default 15 se non specificata)
+                if (loc.isPubliclyVisible === false || loc.closedAt) return;
                 const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
-
-                // 2. Filtro e Processamento Slot
-                const allSlots = loc.availability || [];
-                const visibleSlots = allSlots.filter((slot: any) => {
-                    return slot.isPubliclyVisible !== false;
-                }).map((s: any) => {
-                    // Normalizzazione Età
-                    const minAge = s.minAge !== undefined ? parseFloat(String(s.minAge)) : 0;
-                    const maxAge = s.maxAge !== undefined ? parseFloat(String(s.maxAge)) : 99;
-
-                    // Calcolo Posti Disponibili
+                const visibleSlots = (loc.availability || []).filter((slot: any) => slot.isPubliclyVisible !== false).map((s: any) => {
                     const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
                     const occupiedSeats = occupancyMap.get(key) || 0;
                     const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
-                    
-                    return {
-                        dayOfWeek: s.dayOfWeek,
-                        startTime: s.startTime,
-                        endTime: s.endTime,
-                        type: s.type || 'LAB',
-                        minAge: isNaN(minAge) ? 0 : minAge,
-                        maxAge: isNaN(maxAge) ? 99 : maxAge,
-                        capacity: locationCapacity,
-                        enrolledCount: occupiedSeats,
-                        availableSeats: availableSeats,
-                        isFull: availableSeats === 0
-                    };
+                    return { ...s, availableSeats, isFull: availableSeats === 0 };
                 });
-
                 if (visibleSlots.length > 0) {
-                    results.push({
-                        id: loc.id,
-                        name: loc.name,
-                        address: loc.address || '',
-                        city: loc.city || supplierData.city || '',
-                        googleMapsLink: loc.googleMapsLink || '',
-                        slots: visibleSlots
-                    });
+                    results.push({ id: loc.id, name: loc.name, slots: visibleSlots });
                 }
             });
         });
-
         res.status(200).json({ success: true, data: results });
     } catch (error) {
         logger.error("Error fetching public slots v2:", error);
         res.status(500).json({ error: "Failed to fetch slots" });
+    }
+});
+
+// --- CRON JOB NOTIFICHE PERIODICHE ---
+export const checkPeriodicNotifications = onSchedule({
+    schedule: "* * * * *",
+    timeZone: "Europe/Rome",
+    region: "europe-west1",
+}, async (event) => {
+    const db = admin.firestore();
+    const now = new Date();
+    
+    // Calcolo ora e giorno in Italia
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Europe/Rome',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    });
+    const parts = formatter.formatToParts(now);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value;
+    const currentHour = `${getPart('hour')}:${getPart('minute')}`;
+    const romeDate = new Date(Date.UTC(Number(getPart('year')), Number(getPart('month')) - 1, Number(getPart('day'))));
+    const currentDay = romeDate.getUTCDay();
+    const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+
+    const tokensSnapshot = await db.collection("fcm_tokens").get();
+    const allTokens: string[] = [];
+    tokensSnapshot.forEach(doc => { if (doc.data().token) allTokens.push(doc.data().token); });
+    if (allTokens.length === 0) return;
+
+    const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
+    
+    for (const doc of rulesSnapshot.docs) {
+        const rule = doc.data();
+        if (rule.days && rule.days.includes(currentDay)) {
+            const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
+            const [currH, currM] = currentHour.split(":").map(Number);
+            const diff = (currH * 60 + currM) - (ruleH * 60 + ruleM);
+
+            if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
+                await doc.ref.update({ lastSentDate: todayStr });
+                
+                // Invia notifica (Logica semplificata per brevità ma completa nelle funzioni)
+                const message = {
+                    tokens: allTokens,
+                    notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
+                    data: { link: "/", ruleId: rule.id }
+                };
+                await admin.messaging().sendEachForMulticast(message);
+            }
+        }
     }
 });
