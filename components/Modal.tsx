@@ -42,7 +42,7 @@ const Modal: React.FC<ModalProps> = ({ children, onClose, size = 'md' }) => {
       onClick={onClose}
     >
       <div 
-        className={`relative w-full ${sizeClasses[size]} bg-white rounded-xl shadow-2xl flex flex-col max-h-[95dvh] h-fit overflow-hidden md-card border-0`}
+        className={`relative w-full ${sizeClasses[size]} bg-white rounded-xl shadow-2xl flex flex-col max-h-[calc(100dvh-1rem)] md:max-h-[90dvh] overflow-hidden md-card border-0`}
         onClick={e => e.stopPropagation()}
       >
         {children}

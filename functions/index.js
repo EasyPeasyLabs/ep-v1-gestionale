@@ -224,7 +224,7 @@ exports.getPublicSlots = onRequest(
       const [suppliersSnap, enrollmentsSnap, subscriptionsSnap] = await Promise.all([
           db.collection("suppliers").where("isDeleted", "==", false).get(),
           db.collection("enrollments").where("status", "in", ["active", "pending", "confirmed", "Active", "Pending", "Confirmed"]).get(),
-          db.collection("subscriptions").get()
+          db.collection("subscriptionTypes").get()
       ]);
 
       // 5. Filtra Abbonamenti Pubblici
@@ -322,17 +322,17 @@ exports.getPublicSlots = onRequest(
                           return; 
                       }
 
-                      const hasLab = daySlots.some(s => s.type === 'LAB');
-                      const hasSg = daySlots.some(s => s.type === 'SG');
-                      const hasEvt = daySlots.some(s => s.type === 'EVT');
+                      const hasLab = daySlots.some(s => (s.type || '').toUpperCase() === 'LAB');
+                      const hasSg = daySlots.some(s => (s.type || '').toUpperCase() === 'SG');
+                      const hasEvt = daySlots.some(s => (s.type || '').toUpperCase() === 'EVT');
 
                       // Se la sede in questo giorno offre tutti gli slot richiesti dall'abbonamento
                       if ((!requiresLab || hasLab) && (!requiresSg || hasSg) && (!requiresEvt || hasEvt)) {
                           
                           const includedSlots = daySlots.filter(s => 
-                              (requiresLab && s.type === 'LAB') || 
-                              (requiresSg && s.type === 'SG') || 
-                              (requiresEvt && s.type === 'EVT')
+                              (requiresLab && (s.type || '').toUpperCase() === 'LAB') || 
+                              (requiresSg && (s.type || '').toUpperCase() === 'SG') || 
+                              (requiresEvt && (s.type || '').toUpperCase() === 'EVT')
                           );
 
                           // Calcolo età min/max del pacchetto (intersezione più restrittiva)

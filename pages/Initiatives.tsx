@@ -125,12 +125,12 @@ const BookForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full bg-gray-50/50">
-            <div className="p-6 border-b bg-white"><h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3></div>
-            <div className="flex-1 overflow-y-auto p-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 bg-gray-50/50">
+            <div className="p-4 md:p-6 border-b bg-white"><h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3></div>
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                     {/* Colonna Sinistra: Dati Principali */}
-                    <div className="space-y-6">
+                    <div className="space-y-4 md:space-y-6">
                         <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Dati Principali</h4>
                         <div className="md-input-group"><input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " /><label className="md-input-label">Titolo</label></div>
                         <div className="md-input-group"><input type="text" value={authors} onChange={e => setAuthors(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Autori</label></div>
@@ -146,7 +146,7 @@ const BookForm: React.FC<{
                     </div>
 
                     {/* Colonna Destra: Classificazione */}
-                    <div className="space-y-6">
+                    <div className="space-y-4 md:space-y-6">
                         <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Classificazione (Tag)</h4>
                         <TagInput label="Destinatari" value={targetTags} onChange={setTargetTags} suggestions={existingTargetTags} />
                         <TagInput label="Categoria" value={categoryTags} onChange={setCategoryTags} suggestions={existingCategoryTags} />
@@ -200,16 +200,16 @@ const InitiativeForm: React.FC<{
     };
 
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col h-full">
-            <div className="p-6 border-b"><h3 className="text-xl font-bold">{initiative ? 'Modifica Iniziativa' : 'Nuova Iniziativa'}</h3></div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+            <div className="p-4 md:p-6 border-b"><h3 className="text-xl font-bold">{initiative ? 'Modifica Iniziativa' : 'Nuova Iniziativa'}</h3></div>
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
                 <div className="md-input-group"><input type="text" value={name} onChange={e => setName(e.target.value)} required className="md-input" placeholder=" " /><label className="md-input-label">Nome Iniziativa</label></div>
                 <div className="md-input-group"><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} className="md-input" placeholder="Descrizione..." /></div>
                 <div className="md-input-group"><textarea rows={3} value={materials} onChange={e => setMaterials(e.target.value)} className="md-input" placeholder="Materiali necessari (lista)..." /></div>
                 
                 <div className="border-t pt-2">
                     <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Destinatari (Recinti)</label>
-                    <div className="max-h-40 overflow-y-auto border rounded p-2 grid grid-cols-2 gap-2">
+                    <div className="max-h-40 overflow-y-auto border rounded p-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {allLocations.map(l => (
                             <label key={l.id} className="flex items-center gap-2 text-sm p-1 hover:bg-gray-50">
                                 <input type="checkbox" checked={selectedLocIds.includes(l.id)} onChange={() => toggleLocation(l.id)} className="rounded text-indigo-600"/>
@@ -349,15 +349,26 @@ const BookManager: React.FC = () => {
     };
 
     const handleDeleteBook = async (id: string) => {
+        if (loans.some(l => l.bookId === id)) {
+            alert("Non puoi eliminare un libro attualmente in prestito. Restituiscilo prima di eliminarlo.");
+            return;
+        }
         if(confirm("Eliminare questo libro dall'inventario?")) {
             setLoading(true);
-            await deleteBook(id);
-            await fetchData();
+            try {
+                await deleteBook(id);
+                setBooks(prev => prev.filter(b => b.id !== id)); // Optimistic UI update
+                await fetchData();
+            } catch (error) {
+                console.error("Errore durante l'eliminazione del libro:", error);
+                alert("Si è verificato un errore durante l'eliminazione.");
+                setLoading(false);
+            }
         }
     };
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[600px]">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
             {/* Header / Tabs */}
             <div className="bg-amber-50 border-b border-amber-100 p-4 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div>
@@ -366,34 +377,36 @@ const BookManager: React.FC = () => {
                     </h3>
                     <p className="text-xs text-amber-700">Sistema Prestito Libri</p>
                 </div>
-                <div className="flex bg-white rounded-lg p-1 border border-amber-200 shadow-sm">
-                    <button onClick={() => setActiveTab('loans')} className={`px-3 py-1 text-xs font-bold rounded ${activeTab === 'loans' ? 'bg-amber-100 text-amber-800' : 'text-gray-500'}`}>Prestiti Attivi ({loans.length})</button>
-                    <button onClick={() => setActiveTab('checkout')} className={`px-3 py-1 text-xs font-bold rounded ${activeTab === 'checkout' ? 'bg-amber-100 text-amber-800' : 'text-gray-500'}`}>Nuovo Prestito</button>
-                    <button onClick={() => setActiveTab('inventory')} className={`px-3 py-1 text-xs font-bold rounded ${activeTab === 'inventory' ? 'bg-amber-100 text-amber-800' : 'text-gray-500'}`}>Inventario ({books.length})</button>
+                <div className="w-full sm:w-auto mt-2 sm:mt-0">
+                    <div className="grid grid-cols-2 gap-1 bg-white rounded-lg p-1 border border-amber-200 shadow-sm w-full sm:w-80">
+                        <button onClick={() => setActiveTab('loans')} className={`px-2 py-2 text-xs font-bold rounded transition-colors ${activeTab === 'loans' ? 'bg-amber-100 text-amber-800' : 'text-gray-500 hover:bg-gray-50'}`}>Prestiti Attivi ({loans.length})</button>
+                        <button onClick={() => setActiveTab('checkout')} className={`px-2 py-2 text-xs font-bold rounded transition-colors ${activeTab === 'checkout' ? 'bg-amber-100 text-amber-800' : 'text-gray-500 hover:bg-gray-50'}`}>Nuovo Prestito</button>
+                        <button onClick={() => setActiveTab('inventory')} className={`col-span-2 px-3 py-2 text-xs font-bold rounded transition-colors ${activeTab === 'inventory' ? 'bg-amber-100 text-amber-800' : 'text-gray-500 hover:bg-gray-50'}`}>Inventario ({books.length})</button>
+                    </div>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 relative">
+            <div className="p-4 md:p-6 relative">
                 {loading && <div className="absolute inset-0 bg-white/50 flex justify-center items-center z-10"><Spinner /></div>}
 
                 {activeTab === 'loans' && (
-                    <div className="space-y-2">
-                        {loans.length === 0 ? <p className="text-center text-gray-400 italic mt-10">Nessun libro in prestito.</p> :
+                    <div className="space-y-3">
+                        {loans.length === 0 ? <p className="text-center text-gray-400 italic py-10">Nessun libro in prestito.</p> :
                         loans.map(loan => (
-                            <div key={loan.id} className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg hover:shadow-sm">
+                            <div key={loan.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-white border border-gray-100 rounded-xl hover:shadow-md transition-shadow gap-4">
                                 <div>
-                                    <p className="font-bold text-gray-800 text-sm">{loan.bookTitle}</p>
-                                    <div className="flex items-center gap-2 text-xs mt-1">
-                                        <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600 flex items-center gap-1">
+                                    <p className="font-bold text-gray-800 text-base">{loan.bookTitle}</p>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs mt-2">
+                                        <span className="bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full flex items-center gap-1.5 font-medium">
                                             👤 {loan.studentName}
                                         </span>
-                                        <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-600 flex items-center gap-1">
+                                        <span className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full flex items-center gap-1.5 font-medium">
                                             📍 {loan.locationName}
                                         </span>
-                                        <span className="text-gray-400">Dal: {new Date(loan.borrowDate).toLocaleDateString()}</span>
+                                        <span className="text-gray-400 font-medium">Dal: {new Date(loan.borrowDate).toLocaleDateString()}</span>
                                     </div>
                                 </div>
-                                <button onClick={() => handleReturn(loan)} className="md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100">
+                                <button onClick={() => handleReturn(loan)} className="w-full sm:w-auto md-btn md-btn-sm bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 py-2">
                                     Restituisci
                                 </button>
                             </div>
@@ -402,99 +415,109 @@ const BookManager: React.FC = () => {
                 )}
 
                 {activeTab === 'checkout' && (
-                    <div className="max-w-md mx-auto space-y-4 pt-4">
+                    <div className="max-w-md mx-auto space-y-5 py-4">
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">1. Dove siamo? (Recinto)</label>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">1. Dove siamo? (Recinto)</label>
                             <select value={selLocationId} onChange={e => { setSelLocationId(e.target.value); setSelStudentId(''); }} className="md-input bg-gray-50">
                                 <option value="">Seleziona Sede...</option>
                                 {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                             </select>
                         </div>
-                        <div className={`transition-opacity ${!selLocationId ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">2. Chi prende il libro?</label>
+                        <div className={`transition-all duration-300 ${!selLocationId ? 'opacity-30 pointer-events-none scale-95' : 'opacity-100'}`}>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">2. Chi prende il libro?</label>
                             <select value={selStudentId} onChange={e => setSelStudentId(e.target.value)} className="md-input bg-gray-50">
                                 <option value="">Seleziona Allievo...</option>
                                 {studentsInLocation.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
                         </div>
-                        <div className={`transition-opacity ${!selStudentId ? 'opacity-50 pointer-events-none' : ''}`}>
-                            <label className="block text-xs font-bold text-gray-500 mb-1">3. Quale libro?</label>
+                        <div className={`transition-all duration-300 ${!selStudentId ? 'opacity-30 pointer-events-none scale-95' : 'opacity-100'}`}>
+                            <label className="block text-xs font-bold text-gray-500 mb-1.5 uppercase tracking-wider">3. Quale libro?</label>
                             <select value={selBookId} onChange={e => setSelBookId(e.target.value)} className="md-input bg-gray-50">
                                 <option value="">Seleziona Libro Disponibile...</option>
                                 {availableBooks.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
                             </select>
                         </div>
-                        <button onClick={handleCheckout} disabled={!selBookId} className="w-full md-btn md-btn-raised md-btn-primary mt-4 disabled:opacity-50">
+                        <button onClick={handleCheckout} disabled={!selBookId} className="w-full md-btn md-btn-raised md-btn-primary py-3 mt-4 disabled:opacity-50 transition-all">
                             Registra Prestito
                         </button>
                     </div>
                 )}
 
                 {activeTab === 'inventory' && (
-                    <div className="space-y-4 flex flex-col h-full">
-                        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            <h4 className="font-bold text-gray-700">Catalogo Libri</h4>
-                            <button onClick={() => { setEditingBook(null); setIsBookModalOpen(true); }} className="md-btn md-btn-sm md-btn-raised md-btn-primary flex items-center gap-1">
-                                <PlusIcon/> Nuovo Libro
-                            </button>
+                    <div className="space-y-6">
+                        {/* Box Filtri */}
+                        <div className="bg-gray-50 p-4 md:p-6 rounded-xl border border-gray-200 space-y-4">
+                            <div className="flex justify-between items-center">
+                                <h4 className="font-bold text-gray-700 uppercase text-xs tracking-widest">Filtri Catalogo</h4>
+                                <button onClick={() => { setEditingBook(null); setIsBookModalOpen(true); }} className="md-btn md-btn-sm md-btn-raised md-btn-primary flex items-center gap-1.5">
+                                    <PlusIcon/> <span className="hidden sm:inline">Nuovo Libro</span><span className="sm:hidden">Nuovo</span>
+                                </button>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                                <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, autore..." className="md-input text-sm" />
+                                <select value={filterTarget} onChange={e => setFilterTarget(e.target.value)} className="md-input text-sm">
+                                    <option value="">Tutti i Destinatari</option>
+                                    {allTargetTags.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="md-input text-sm">
+                                    <option value="">Tutte le Categorie</option>
+                                    {allCategoryTags.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                <select value={filterTheme} onChange={e => setFilterTheme(e.target.value)} className="md-input text-sm">
+                                    <option value="">Tutti i Temi</option>
+                                    {allThemeTags.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input text-sm">
+                                    <option value="">Tutte le Ubicazioni</option>
+                                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                </select>
+                            </div>
                         </div>
                         
-                        {/* Filters */}
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-                            <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, autore, editore..." className="md-input text-xs" />
-                            <select value={filterTarget} onChange={e => setFilterTarget(e.target.value)} className="md-input text-xs">
-                                <option value="">Tutti i Destinatari</option>
-                                {allTargetTags.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="md-input text-xs">
-                                <option value="">Tutte le Categorie</option>
-                                {allCategoryTags.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <select value={filterTheme} onChange={e => setFilterTheme(e.target.value)} className="md-input text-xs">
-                                <option value="">Tutti i Temi</option>
-                                {allThemeTags.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="md-input text-xs">
-                                <option value="">Tutte le Ubicazioni</option>
-                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                            </select>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                            {filteredBooks.map(b => {
-                                const activeLoan = loans.find(l => l.bookId === b.id);
-                                const currentLocationName = activeLoan ? activeLoan.locationName : (locations.find(l => l.id === b.homeLocationId)?.name || 'Nessuna Sede Base');
-                                
-                                return (
-                                <div key={b.id} className="flex flex-col p-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg shadow-sm">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-2.5 h-2.5 rounded-full ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
-                                                <span className={`font-bold text-lg ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</span>
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-1 flex gap-2">
-                                                {b.authors && <span><span className="font-bold">Autori:</span> {b.authors}</span>}
-                                                {b.publisher && <span><span className="font-bold">Ed:</span> {b.publisher}</span>}
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => { setEditingBook(b); setIsBookModalOpen(true); }} className="text-gray-400 hover:text-indigo-600"><PencilIcon/></button>
-                                            <button onClick={() => handleDeleteBook(b.id)} className="text-gray-400 hover:text-red-600"><TrashIcon/></button>
-                                        </div>
-                                    </div>
+                        {/* Box Elenco Libri */}
+                        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                            <div className="px-4 py-3 border-b bg-gray-50/50 flex justify-between items-center">
+                                <h4 className="font-bold text-gray-700 text-sm">Risultati ({filteredBooks.length})</h4>
+                            </div>
+                            <div className="divide-y divide-gray-100">
+                                {filteredBooks.map(b => {
+                                    const activeLoan = loans.find(l => l.bookId === b.id);
+                                    const currentLocationName = activeLoan ? activeLoan.locationName : (locations.find(l => l.id === b.homeLocationId)?.name || 'Nessuna Sede Base');
                                     
-                                    <div className="mt-3 flex flex-wrap gap-1 items-center">
-                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${b.isAvailable ? 'bg-gray-100 text-gray-600' : 'bg-red-50 text-red-600 border border-red-100'}`}>
-                                            📍 {currentLocationName} {activeLoan ? `(In prestito a ${activeLoan.studentName})` : ''}
-                                        </span>
-                                        {b.targetTags?.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{t}</span>)}
-                                        {b.categoryTags?.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-100">{t}</span>)}
-                                        {b.themeTags?.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{t}</span>)}
+                                    return (
+                                    <div key={b.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
+                                        <div className="flex justify-between items-start gap-4">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
+                                                    <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
+                                                </div>
+                                                <div className="text-sm text-gray-500 mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                                                    {b.authors && <span><span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider mr-1">Autori:</span> {b.authors}</span>}
+                                                    {b.publisher && <span><span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider mr-1">Ed:</span> {b.publisher}</span>}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1 shrink-0">
+                                                <button onClick={() => { setEditingBook(b); setIsBookModalOpen(true); }} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><PencilIcon/></button>
+                                                <button onClick={() => handleDeleteBook(b.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><TrashIcon/></button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="mt-4 flex flex-wrap gap-2 items-center">
+                                            <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider ${b.isAvailable ? 'bg-gray-100 text-gray-600' : 'bg-red-50 text-red-600 border border-red-100'}`}>
+                                                📍 {currentLocationName} {activeLoan ? `(In prestito a ${activeLoan.studentName})` : ''}
+                                            </span>
+                                            {b.targetTags?.map(t => <span key={t} className="text-[10px] px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 font-bold uppercase tracking-wider">{t}</span>)}
+                                            {b.categoryTags?.map(t => <span key={t} className="text-[10px] px-3 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-100 font-bold uppercase tracking-wider">{t}</span>)}
+                                            {b.themeTags?.map(t => <span key={t} className="text-[10px] px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100 font-bold uppercase tracking-wider">{t}</span>)}
+                                        </div>
                                     </div>
-                                </div>
-                            )})}
-                            {filteredBooks.length === 0 && <p className="text-center text-gray-400 italic py-8">Nessun libro trovato con questi filtri.</p>}
+                                )})}
+                                {filteredBooks.length === 0 && <div className="py-16 text-center">
+                                    <p className="text-gray-400 italic">Nessun libro trovato con questi filtri.</p>
+                                </div>}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -558,9 +581,14 @@ const Initiatives: React.FC = () => {
 
     return (
         <div className="space-y-8 pb-10">
-            <div>
-                <h1 className="text-3xl font-bold">Iniziative</h1>
-                <p className="mt-1 text-gray-500">Gestione progetti speciali e biblioteca.</p>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900">Iniziative</h1>
+                    <p className="mt-1 text-gray-500">Gestione progetti speciali e biblioteca.</p>
+                </div>
+                <button onClick={() => { setEditingInit(null); setIsModalOpen(true); }} className="w-full sm:w-auto md-btn md-btn-sm md-btn-raised md-btn-primary flex items-center justify-center py-2.5 px-5">
+                    <PlusIcon /><span className="ml-2">Nuova Iniziativa</span>
+                </button>
             </div>
 
             {/* PEEK-A-BOOK SECTION */}
@@ -569,39 +597,40 @@ const Initiatives: React.FC = () => {
             </section>
 
             {/* OTHER INITIATIVES SECTION */}
-            <section>
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-gray-800">Altre Iniziative</h2>
-                    <button onClick={() => { setEditingInit(null); setIsModalOpen(true); }} className="md-btn md-btn-sm md-btn-raised md-btn-primary flex items-center">
-                        <PlusIcon /><span className="ml-2">Nuova Iniziativa</span>
-                    </button>
-                </div>
-
-                {loading ? <Spinner /> : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <section className="space-y-4">
+                <h2 className="text-xl font-bold text-gray-800 px-1">Altre Iniziative</h2>
+                
+                {loading ? <div className="py-20 flex justify-center"><Spinner /></div> : (
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm divide-y divide-gray-100">
                         {initiatives.map(init => (
-                            <div key={init.id} className="md-card p-5 flex flex-col hover:shadow-md transition-shadow">
-                                <h3 className="font-bold text-lg text-gray-800 mb-2">{init.name}</h3>
-                                <p className="text-sm text-gray-600 mb-4 flex-1">{init.description}</p>
-                                
-                                <div className="space-y-2 mb-4">
-                                    <div className="bg-gray-50 p-2 rounded text-xs">
-                                        <span className="font-bold block text-gray-500 mb-1">MATERIALI</span>
-                                        <p className="line-clamp-2">{init.materials || 'Nessuno specificato'}</p>
-                                    </div>
-                                    <div className="bg-indigo-50 p-2 rounded text-xs text-indigo-700">
-                                        <span className="font-bold block mb-1">DESTINATARI</span>
-                                        <p className="line-clamp-2">{init.targetLocationNames?.join(', ') || 'Nessun recinto selezionato'}</p>
+                            <div key={init.id} className="p-5 sm:p-6 hover:bg-gray-50 transition-colors">
+                                <div className="flex justify-between items-start gap-4 mb-3">
+                                    <h3 className="font-bold text-xl text-gray-900 leading-tight">{init.name}</h3>
+                                    <div className="flex gap-1 shrink-0">
+                                        <button onClick={() => { setEditingInit(init); setIsModalOpen(true); }} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><PencilIcon /></button>
+                                        <button onClick={() => setDeleteId(init.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><TrashIcon /></button>
                                     </div>
                                 </div>
-
-                                <div className="flex justify-end gap-2 pt-3 border-t border-gray-100">
-                                    <button onClick={() => { setEditingInit(init); setIsModalOpen(true); }} className="md-icon-btn edit"><PencilIcon /></button>
-                                    <button onClick={() => setDeleteId(init.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                                
+                                <p className="text-sm text-gray-600 mb-5 leading-relaxed">{init.description}</p>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                                        <span className="font-bold block text-gray-400 uppercase text-[10px] tracking-widest mb-2">Materiali Necessari</span>
+                                        <p className="text-xs text-gray-700 leading-relaxed">{init.materials || 'Nessuno specificato'}</p>
+                                    </div>
+                                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                                        <span className="font-bold block text-indigo-400 uppercase text-[10px] tracking-widest mb-2">Destinatari (Recinti)</span>
+                                        <p className="text-xs text-indigo-700 leading-relaxed font-medium">
+                                            {init.targetLocationNames?.join(', ') || 'Nessun recinto selezionato'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         ))}
-                        {initiatives.length === 0 && <p className="col-span-full text-center text-gray-400 italic py-8">Nessuna altra iniziativa attiva.</p>}
+                        {initiatives.length === 0 && <div className="py-20 text-center">
+                            <p className="text-gray-400 italic">Nessuna altra iniziativa attiva.</p>
+                        </div>}
                     </div>
                 )}
             </section>
