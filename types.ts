@@ -332,6 +332,7 @@ export type SubscriptionStatusType = 'active' | 'obsolete' | 'future' | 'promo';
 export interface SubscriptionType {
     id: string;
     name: string;
+    publicName?: string;
     description?: string;
     price: number;
     lessons: number; // Total lessons (sum of lab, sg, evt)

@@ -148,6 +148,7 @@ const SubscriptionStatusModal: React.FC<{
 
 const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: SubscriptionTypeInput | SubscriptionType) => void; onCancel: () => void; suppliers: Supplier[]; }> = ({ sub, onSave, onCancel, suppliers }) => {
     const [name, setName] = useState('');
+    const [publicName, setPublicName] = useState('');
     const [year, setYear] = useState('');
     const [annotation, setAnnotation] = useState('');
     const [description, setDescription] = useState('');
@@ -166,6 +167,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
         if (sub) {
             const parsed = parseSubscriptionName(sub.name);
             setName(parsed.name);
+            setPublicName(sub.publicName || '');
             setYear(parsed.year);
             setAnnotation(parsed.annotation);
             setDescription(sub.description || '');
@@ -180,6 +182,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setAllowedDays(sub.allowedDays || []);
         } else {
             setName('');
+            setPublicName('');
             setYear(new Date().getFullYear().toString());
             setAnnotation('standard');
             setDescription('');
@@ -206,6 +209,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
         const finalName = `${prefix}-${name}.${year}.${annotation}`;
         const subData = {
             name: finalName,
+            publicName,
             description,
             price: Number(price),
             lessons: totalLessons,
@@ -289,6 +293,12 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                         <label htmlFor="subNote" className="md-input-label">Note</label>
                     </div>
                 </div>
+                
+                <div className="md-input-group">
+                    <input id="subPublicName" type="text" value={publicName} onChange={e => setPublicName(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
+                    <label htmlFor="subPublicName" className="md-input-label">Nome VISIBILE (es. Trimestrale)</label>
+                </div>
+
                 <div className="md-input-group">
                     <textarea id="subDescription" value={description} onChange={e => setDescription(e.target.value)} className="md-input" placeholder=" " rows={2} />
                     <label htmlFor="subDescription" className="md-input-label">Descrizione Pubblica (opzionale)</label>
