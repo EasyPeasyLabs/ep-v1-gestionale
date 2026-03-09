@@ -1,3 +1,4 @@
+// TEST MODIFICA 12345
 import { onCall, onRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
