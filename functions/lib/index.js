@@ -282,19 +282,32 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
         return;
     }
     try {
-        const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
-        const enrollmentsSnap = await admin.firestore().collection('enrollments')
-            .where('status', 'in', ['active', 'pending', 'confirmed'])
-            .get();
+        const [suppliersSnap, enrollmentsSnap, subscriptionsSnap] = await Promise.all([
+            admin.firestore().collection('suppliers').where('isDeleted', '==', false).get(),
+            admin.firestore().collection('enrollments')
+                .where('status', 'in', ['active', 'pending', 'confirmed', 'Active', 'Pending', 'Confirmed'])
+                .get(),
+            admin.firestore().collection('subscriptionTypes').get()
+        ]);
+        const activeSubs = [];
+        subscriptionsSnap.forEach(doc => {
+            const sub = doc.data();
+            if (sub.isPubliclyVisible !== false) {
+                activeSubs.push({ id: doc.id, ...sub });
+            }
+        });
         const occupancyMap = new Map();
         enrollmentsSnap.forEach(doc => {
             const data = doc.data();
             const locId = data.locationId;
+            const subId = data.subscriptionTypeId;
             const appts = data.appointments || [];
-            if (locId && appts.length > 0) {
+            const lessonsRemaining = data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 1;
+            if (locId && subId && appts.length > 0 && lessonsRemaining > 0) {
                 const mainAppt = appts[0];
-                if (mainAppt && mainAppt.dayOfWeek && mainAppt.startTime) {
-                    const key = `${locId}_${mainAppt.dayOfWeek}_${mainAppt.startTime}`;
+                if (mainAppt && mainAppt.dayOfWeek !== undefined) {
+                    const day = typeof mainAppt.dayOfWeek === 'string' ? parseInt(mainAppt.dayOfWeek) : mainAppt.dayOfWeek;
+                    const key = `${locId}_${day}_${subId}`;
                     occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
                 }
             }
@@ -307,10 +320,8 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
                 if (loc.isPubliclyVisible === false || loc.closedAt)
                     return;
                 const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
-                const visibleBundles = (loc.availability || []).filter((slot) => slot.isPubliclyVisible !== false).map((s) => {
-                    const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
-                    const occupiedSeats = occupancyMap.get(key) || 0;
-                    const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+                const allSlots = loc.availability || [];
+                const visibleSlots = allSlots.filter((slot) => slot.isPubliclyVisible !== false).map((s) => {
                     let minAge = 0;
                     let maxAge = 99;
                     if (s.minAge !== undefined)
@@ -325,31 +336,88 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
                         }
                     }
                     return {
-                        bundleId: s.id || key,
-                        name: s.name || s.type || 'Corso',
-                        publicName: s.publicName || s.name || s.type || 'Corso',
-                        description: s.description || '',
-                        price: s.price || 0,
-                        dayOfWeek: s.dayOfWeek || 1,
-                        minAge: minAge,
-                        maxAge: maxAge,
-                        availableSeats: availableSeats,
-                        isFull: availableSeats === 0,
-                        includedSlots: s.includedSlots || [{
-                                type: s.type || 'LAB',
-                                startTime: s.startTime || '00:00',
-                                endTime: s.endTime || '00:00'
-                            }]
+                        dayOfWeek: typeof s.dayOfWeek === 'string' ? parseInt(s.dayOfWeek) : s.dayOfWeek,
+                        startTime: s.startTime,
+                        endTime: s.endTime,
+                        type: s.type || 'LAB',
+                        minAge: isNaN(minAge) ? 0 : minAge,
+                        maxAge: isNaN(maxAge) ? 99 : maxAge,
                     };
                 });
-                if (visibleBundles.length > 0) {
+                const slotsByDay = {};
+                visibleSlots.forEach((s) => {
+                    if (!slotsByDay[s.dayOfWeek])
+                        slotsByDay[s.dayOfWeek] = [];
+                    slotsByDay[s.dayOfWeek].push(s);
+                });
+                const locationBundles = [];
+                for (const dayStr in slotsByDay) {
+                    const dayOfWeek = parseInt(dayStr);
+                    const daySlots = slotsByDay[dayStr];
+                    activeSubs.forEach(sub => {
+                        if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+                            if (!sub.allowedDays.includes(dayOfWeek)) {
+                                return;
+                            }
+                        }
+                        const requiresLab = (sub.labCount || 0) > 0;
+                        const requiresSg = (sub.sgCount || 0) > 0;
+                        const requiresEvt = (sub.evtCount || 0) > 0;
+                        if (!requiresLab && !requiresSg && !requiresEvt) {
+                            return;
+                        }
+                        const hasLab = daySlots.some(s => (s.type || '').toUpperCase() === 'LAB');
+                        const hasSg = daySlots.some(s => (s.type || '').toUpperCase() === 'SG');
+                        const hasEvt = daySlots.some(s => (s.type || '').toUpperCase() === 'EVT');
+                        if ((!requiresLab || hasLab) && (!requiresSg || hasSg) && (!requiresEvt || hasEvt)) {
+                            const includedSlots = daySlots.filter(s => (requiresLab && (s.type || '').toUpperCase() === 'LAB') ||
+                                (requiresSg && (s.type || '').toUpperCase() === 'SG') ||
+                                (requiresEvt && (s.type || '').toUpperCase() === 'EVT'));
+                            let bundleMinAge = 0;
+                            let bundleMaxAge = 99;
+                            includedSlots.forEach(s => {
+                                if (s.minAge > bundleMinAge)
+                                    bundleMinAge = s.minAge;
+                                if (s.maxAge < bundleMaxAge)
+                                    bundleMaxAge = s.maxAge;
+                            });
+                            if (bundleMinAge > bundleMaxAge)
+                                bundleMaxAge = bundleMinAge;
+                            const occupancyKey = `${loc.id}_${dayOfWeek}_${sub.id}`;
+                            const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
+                            const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+                            locationBundles.push({
+                                bundleId: sub.id,
+                                name: sub.name,
+                                publicName: sub.publicName || sub.name,
+                                description: sub.description || '',
+                                price: sub.price || 0,
+                                dayOfWeek: dayOfWeek,
+                                minAge: bundleMinAge,
+                                maxAge: bundleMaxAge,
+                                capacity: locationCapacity,
+                                enrolledCount: occupiedSeats,
+                                availableSeats: availableSeats,
+                                isFull: availableSeats === 0,
+                                includedSlots: includedSlots.map(s => ({
+                                    type: s.type,
+                                    startTime: s.startTime,
+                                    endTime: s.endTime,
+                                    minAge: s.minAge,
+                                    maxAge: s.maxAge
+                                }))
+                            });
+                        }
+                    });
+                }
+                if (locationBundles.length > 0) {
                     results.push({
                         id: loc.id,
                         name: loc.name,
                         address: loc.address || loc.indirizzo || '',
-                        city: loc.city || loc.citta || '',
+                        city: loc.city || loc.citta || supplierData.city || '',
                         googleMapsLink: loc.googleMapsLink || '',
-                        bundles: visibleBundles
+                        bundles: locationBundles
                     });
                 }
             });
