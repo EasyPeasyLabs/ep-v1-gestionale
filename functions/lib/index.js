@@ -38,11 +38,11 @@ const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const logger = __importStar(require("firebase-functions/logger"));
-const googleapis_1 = require("googleapis");
-const nodemailer = __importStar(require("nodemailer"));
 const params_1 = require("firebase-functions/params");
 const admin = __importStar(require("firebase-admin"));
-admin.initializeApp();
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
 const API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
 const gmailClientId = (0, params_1.defineSecret)("GMAIL_CLIENT_ID");
 const gmailClientSecret = (0, params_1.defineSecret)("GMAIL_CLIENT_SECRET");
@@ -54,6 +54,8 @@ exports.sendEmail = (0, https_1.onCall)({
     cors: true,
     secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
 }, async (request) => {
+    const { google } = await Promise.resolve().then(() => __importStar(require("googleapis")));
+    const nodemailer = await Promise.resolve().then(() => __importStar(require("nodemailer")));
     const { to, subject, html, attachments } = request.data;
     if (!to || !subject || !html) {
         throw new Error("Missing required fields: to, subject, html");
@@ -62,7 +64,7 @@ exports.sendEmail = (0, https_1.onCall)({
         const clientId = gmailClientId.value();
         const clientSecret = gmailClientSecret.value();
         const refreshToken = gmailRefreshToken.value();
-        const oAuth2Client = new googleapis_1.google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
+        const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
         oAuth2Client.setCredentials({ refresh_token: refreshToken });
         const accessToken = await oAuth2Client.getAccessToken();
         if (!accessToken.token) {
@@ -274,6 +276,11 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
     region: "europe-west1",
     cors: true
 }, async (req, res) => {
+    const authHeader = req.headers['x-bridge-key'];
+    if (!authHeader || authHeader !== API_SHARED_SECRET) {
+        res.status(403).json({ error: "Forbidden: Invalid API Key" });
+        return;
+    }
     try {
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
         const enrollmentsSnap = await admin.firestore().collection('enrollments')
@@ -326,8 +333,8 @@ exports.receiveLeadV2 = (0, https_1.onRequest)({
         res.status(405).send("Method Not Allowed");
         return;
     }
-    const authHeader = req.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${API_SHARED_SECRET}`) {
+    const authHeader = req.headers['x-bridge-key'];
+    if (!authHeader || authHeader !== API_SHARED_SECRET) {
         res.status(403).json({ error: "Forbidden: Invalid API Key" });
         return;
     }
