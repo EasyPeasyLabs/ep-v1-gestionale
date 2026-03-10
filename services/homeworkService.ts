@@ -3,7 +3,7 @@ import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy } from 'firebase/firestore';
 import { Homework, HomeworkInput } from '../types';
 
-const homeworkCollectionRef = collection(db, 'homeworks');
+const getHomeworkCollectionRef = () => collection(db, 'homeworks');
 
 const docToHomework = (doc: QueryDocumentSnapshot<DocumentData>): Homework => {
     const data = doc.data();
@@ -12,7 +12,7 @@ const docToHomework = (doc: QueryDocumentSnapshot<DocumentData>): Homework => {
 
 export const getHomeworks = async (): Promise<Homework[]> => {
     // Ordiniamo per data creazione descrescente di default
-    const q = query(homeworkCollectionRef, orderBy('createdAt', 'desc'));
+    const q = query(getHomeworkCollectionRef(), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToHomework);
 };
@@ -22,7 +22,7 @@ export const addHomework = async (homework: HomeworkInput): Promise<string> => {
         ...homework,
         createdAt: new Date().toISOString()
     };
-    const docRef = await addDoc(homeworkCollectionRef, homeworkWithTimestamp);
+    const docRef = await addDoc(getHomeworkCollectionRef(), homeworkWithTimestamp);
     return docRef.id;
 };
 

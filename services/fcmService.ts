@@ -72,6 +72,8 @@ export const requestNotificationPermission = async (userId: string): Promise<{ s
           }
       }
       
+      if (!messaging) return { success: false, error: "Firebase Messaging non supportato o non inizializzato." };
+
       const currentToken = await getToken(messaging, { 
           vapidKey: VAPID_KEY,
           serviceWorkerRegistration: activeRegistration

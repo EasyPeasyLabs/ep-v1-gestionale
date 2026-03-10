@@ -19,7 +19,7 @@ export const sendEmail = async (data: { to: string | string[], subject: string, 
 };
 
 // --- LOGS ---
-const communicationCollectionRef = collection(db, 'communications');
+const getCommunicationCollectionRef = () => collection(db, 'communications');
 
 const docToCommunication = (doc: QueryDocumentSnapshot<DocumentData>): CommunicationLog => {
     const data = doc.data();
@@ -27,13 +27,13 @@ const docToCommunication = (doc: QueryDocumentSnapshot<DocumentData>): Communica
 };
 
 export const getCommunicationLogs = async (): Promise<CommunicationLog[]> => {
-    const q = query(communicationCollectionRef, orderBy('date', 'desc'));
+    const q = query(getCommunicationCollectionRef(), orderBy('date', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToCommunication);
 };
 
 export const logCommunication = async (comm: CommunicationLogInput): Promise<string> => {
-    const docRef = await addDoc(communicationCollectionRef, comm);
+    const docRef = await addDoc(getCommunicationCollectionRef(), comm);
     return docRef.id;
 };
 
@@ -48,7 +48,7 @@ export const deleteCommunicationLog = async (id: string): Promise<void> => {
 };
 
 // --- CAMPAIGNS ---
-const campaignsCollectionRef = collection(db, 'campaigns');
+const getCampaignsCollectionRef = () => collection(db, 'campaigns');
 
 const docToCampaign = (doc: QueryDocumentSnapshot<DocumentData>): Campaign => {
     const data = doc.data();
@@ -56,13 +56,13 @@ const docToCampaign = (doc: QueryDocumentSnapshot<DocumentData>): Campaign => {
 };
 
 export const getCampaigns = async (): Promise<Campaign[]> => {
-    const q = query(campaignsCollectionRef, orderBy('nextRun', 'asc'));
+    const q = query(getCampaignsCollectionRef(), orderBy('nextRun', 'asc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToCampaign);
 };
 
 export const addCampaign = async (campaign: CampaignInput): Promise<string> => {
-    const docRef = await addDoc(campaignsCollectionRef, campaign);
+    const docRef = await addDoc(getCampaignsCollectionRef(), campaign);
     return docRef.id;
 };
 

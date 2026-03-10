@@ -3,7 +3,7 @@ import { db, auth } from '../firebase/config';
 import { collection, addDoc } from 'firebase/firestore';
 import { AuditLog } from '../types';
 
-const auditCollectionRef = collection(db, 'audit_logs');
+const getAuditCollectionRef = () => collection(db, 'audit_logs');
 
 export const logFinancialAction = async (
     action: AuditLog['action'],
@@ -23,7 +23,7 @@ export const logFinancialAction = async (
             details
         };
 
-        await addDoc(auditCollectionRef, logEntry);
+        await addDoc(getAuditCollectionRef(), logEntry);
     } catch (error) {
         console.error("Failed to write audit log:", error);
         // Fail silent per non bloccare il flusso business

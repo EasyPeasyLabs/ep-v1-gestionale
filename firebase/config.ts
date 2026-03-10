@@ -1,9 +1,9 @@
 
-import { initializeApp, FirebaseApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, Firestore, clearIndexedDbPersistence } from "firebase/firestore";
+import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, Firestore, getFirestore } from "firebase/firestore";
 import { getAuth, Auth } from "firebase/auth";
 import { getStorage, FirebaseStorage } from "firebase/storage";
-import { getMessaging, Messaging } from "firebase/messaging";
+import { getMessaging, Messaging, isSupported } from "firebase/messaging";
 
 // Helper for boot monitor
 const logToScreen = (window as any).logToScreen || console.log;
@@ -25,41 +25,51 @@ let app: FirebaseApp;
 let db: Firestore;
 let auth: Auth;
 let storage: FirebaseStorage;
-let messaging: Messaging;
+let messaging: Messaging | null = null;
 
 try {
     if (!firebaseConfig.apiKey) {
         throw new Error("ERRORE CRITICO: Configurazione Firebase mancante.");
     }
 
-    // Initialize Firebase
-    app = initializeApp(firebaseConfig);
-    logToScreen("Firebase App Initialized.", "success");
-
-    // Initialize Firestore with Robust Cache Handling
-    try {
-        db = initializeFirestore(app, {
-            localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-            ignoreUndefinedProperties: true
-        });
-        logToScreen("Firestore Initialized.", "success");
-    } catch (err: any) {
-        if (err.code === 'failed-precondition') {
-            console.warn("Firestore persistence failed. Clearing cache and retrying...");
-            // Non possiamo chiamare clearIndexedDbPersistence su un'istanza non inizializzata facilmente,
-            // ma l'errore 'failed-precondition' spesso richiede un reload o un'inizializzazione senza persistenza.
-            // Fallback: Memory Cache implicita se la persistenza fallisce.
+    // Initialize Firebase safely (handles Vite HMR)
+    if (!getApps().length) {
+        app = initializeApp(firebaseConfig);
+        logToScreen("Firebase App Initialized.", "success");
+        
+        // Initialize Firestore with Robust Cache Handling only on first init
+        try {
             db = initializeFirestore(app, {
-               ignoreUndefinedProperties: true
+                localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+                ignoreUndefinedProperties: true
             });
-        } else {
-            throw err;
+            logToScreen("Firestore Initialized.", "success");
+        } catch (err: any) {
+            if (err.code === 'failed-precondition') {
+                console.warn("Firestore persistence failed. Clearing cache and retrying...");
+                db = initializeFirestore(app, {
+                   ignoreUndefinedProperties: true
+                });
+            } else {
+                throw err;
+            }
         }
+    } else {
+        app = getApp();
+        db = getFirestore(app);
+        logToScreen("Firebase App Retrieved from cache.", "info");
     }
 
     auth = getAuth(app);
     storage = getStorage(app);
-    messaging = getMessaging(app);
+    
+    // Messaging is only supported in browsers with service workers
+    isSupported().then((supported) => {
+        if (supported) {
+            messaging = getMessaging(app);
+        }
+    }).catch(console.error);
+
 } catch (e: any) {
     logToScreen("FIREBASE INIT ERROR: " + e.message, "error");
     console.error("Firebase Init Error:", e);

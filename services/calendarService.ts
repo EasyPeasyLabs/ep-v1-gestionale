@@ -4,8 +4,8 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, Q
 import { Lesson, LessonInput, SchoolClosure } from '../types';
 import { restoreSuspendedLessons, syncEnrollmentFromLessonUpdate } from './enrollmentService';
 
-const lessonCollectionRef = collection(db, 'lessons');
-const closuresCollectionRef = collection(db, 'school_closures');
+const getLessonCollectionRef = () => collection(db, 'lessons');
+const getClosuresCollectionRef = () => collection(db, 'school_closures');
 
 const docToLesson = (doc: QueryDocumentSnapshot<DocumentData>): Lesson => {
     const data = doc.data();
@@ -13,12 +13,12 @@ const docToLesson = (doc: QueryDocumentSnapshot<DocumentData>): Lesson => {
 };
 
 export const getLessons = async (): Promise<Lesson[]> => {
-    const snapshot = await getDocs(lessonCollectionRef);
+    const snapshot = await getDocs(getLessonCollectionRef());
     return snapshot.docs.map(docToLesson);
 };
 
 export const addLesson = async (lessonItem: LessonInput): Promise<string> => {
-    const docRef = await addDoc(lessonCollectionRef, lessonItem);
+    const docRef = await addDoc(getLessonCollectionRef(), lessonItem);
     return docRef.id;
 };
 
@@ -27,7 +27,7 @@ export const addLessonsBatch = async (lessons: LessonInput[]): Promise<string[]>
     const ids: string[] = [];
     
     lessons.forEach(lesson => {
-        const lessonRef = doc(lessonCollectionRef);
+        const lessonRef = doc(getLessonCollectionRef());
         batch.set(lessonRef, lesson);
         ids.push(lessonRef.id);
     });
@@ -57,12 +57,12 @@ export const deleteLesson = async (id: string): Promise<void> => {
 // --- SCHOOL CLOSURES ---
 
 export const getSchoolClosures = async (): Promise<SchoolClosure[]> => {
-    const snapshot = await getDocs(closuresCollectionRef);
+    const snapshot = await getDocs(getClosuresCollectionRef());
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SchoolClosure));
 };
 
 export const addSchoolClosure = async (date: string, reason: string): Promise<string> => {
-    const docRef = await addDoc(closuresCollectionRef, { date, reason, createdAt: new Date().toISOString() });
+    const docRef = await addDoc(getClosuresCollectionRef(), { date, reason, createdAt: new Date().toISOString() });
     return docRef.id;
 };
 
@@ -75,7 +75,7 @@ export const deleteSchoolClosure = async (id: string): Promise<void> => {
 };
 
 export const bulkDeleteAllClosures = async (): Promise<void> => {
-    const snapshot = await getDocs(closuresCollectionRef);
+    const snapshot = await getDocs(getClosuresCollectionRef());
     if (snapshot.empty) return;
 
     // 1. Ripristina le lezioni per ogni data di chiusura trovata

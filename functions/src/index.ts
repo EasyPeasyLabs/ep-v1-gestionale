@@ -2,13 +2,13 @@ import { onCall, onRequest } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
-import { google } from "googleapis";
-import * as nodemailer from "nodemailer";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 
-// Inizializza Firebase Admin SDK
-admin.initializeApp();
+// Inizializza Firebase Admin SDK solo se non già inizializzato
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
 
 // --- CONFIGURAZIONE SICUREZZA ---
 const API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
@@ -20,12 +20,16 @@ const gmailRefreshToken = defineSecret("GMAIL_REFRESH_TOKEN");
 const SENDER_EMAIL = "labeasypeasy@gmail.com";
 const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 
-// --- FUNZIONE: INVIO EMAIL ---
+// --- FUNZIONE: INVIO EMAIL (OTTIMIZZATA CON LAZY LOADING) ---
 export const sendEmail = onCall({ 
     region: "europe-west1",
     cors: true, 
     secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken] 
 }, async (request) => {
+    // Caricamento librerie pesanti solo all'esecuzione
+    const { google } = await import("googleapis");
+    const nodemailer = await import("nodemailer");
+
     const { to, subject, html, attachments } = request.data;
 
     if (!to || !subject || !html) {
@@ -54,7 +58,7 @@ export const sendEmail = onCall({
                 clientSecret: clientSecret,
                 refreshToken: refreshToken,
                 accessToken: accessToken.token,
-            },
+            } as any,
         });
 
         const mailOptions = {
@@ -281,6 +285,12 @@ export const getPublicSlotsV2 = onRequest({
     region: "europe-west1",
     cors: true 
 }, async (req, res) => {
+    const authHeader = req.headers['x-bridge-key'];
+    if (!authHeader || authHeader !== API_SHARED_SECRET) {
+        res.status(403).json({ error: "Forbidden: Invalid API Key" });
+        return;
+    }
+
     try {
         const suppliersSnap = await admin.firestore().collection('suppliers').where('isDeleted', '==', false).get();
         const enrollmentsSnap = await admin.firestore().collection('enrollments')
@@ -337,8 +347,8 @@ export const receiveLeadV2 = onRequest({
         return;
     }
 
-    const authHeader = req.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${API_SHARED_SECRET}`) {
+    const authHeader = req.headers['x-bridge-key'];
+    if (!authHeader || authHeader !== API_SHARED_SECRET) {
         res.status(403).json({ error: "Forbidden: Invalid API Key" });
         return;
     }

@@ -13,9 +13,9 @@ import { getClients } from './parentService';
 import { isYearClosed } from './fiscalYearService';
 
 // Collections
-const transactionsCollectionRef = collection(db, 'transactions');
-const invoicesCollectionRef = collection(db, 'invoices');
-const quotesCollectionRef = collection(db, 'quotes');
+const getTransactionsCollectionRef = () => collection(db, 'transactions');
+const getInvoicesCollectionRef = () => collection(db, 'invoices');
+const getQuotesCollectionRef = () => collection(db, 'quotes');
 
 // Helpers
 const docToTransaction = (doc: QueryDocumentSnapshot<DocumentData>): Transaction => ({ id: doc.id, ...doc.data() } as Transaction);
@@ -24,7 +24,7 @@ const docToQuote = (doc: QueryDocumentSnapshot<DocumentData>): Quote => ({ id: d
 
 // --- TRANSACTIONS ---
 export const getTransactions = async (): Promise<Transaction[]> => {
-    const q = query(transactionsCollectionRef, orderBy('date', 'desc'));
+    const q = query(getTransactionsCollectionRef(), orderBy('date', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToTransaction);
 };
@@ -33,7 +33,7 @@ export const addTransaction = async (t: TransactionInput): Promise<string> => {
     if (t.transactionNumber === undefined) {
         t.transactionNumber = await getNextTransactionNumber(t.date);
     }
-    const docRef = await addDoc(transactionsCollectionRef, t);
+    const docRef = await addDoc(getTransactionsCollectionRef(), t);
     return docRef.id;
 };
 
@@ -47,13 +47,13 @@ export const deleteTransaction = async (id: string): Promise<void> => {
 
 // --- INVOICES ---
 export const getInvoices = async (): Promise<Invoice[]> => {
-    const q = query(invoicesCollectionRef, orderBy('issueDate', 'desc'));
+    const q = query(getInvoicesCollectionRef(), orderBy('issueDate', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToInvoice);
 };
 
 export const addInvoice = async (inv: InvoiceInput): Promise<string> => {
-    const docRef = await addDoc(invoicesCollectionRef, inv);
+    const docRef = await addDoc(getInvoicesCollectionRef(), inv);
     return docRef.id;
 };
 
@@ -67,7 +67,7 @@ export const deleteInvoice = async (id: string): Promise<void> => {
 
 // --- QUOTES ---
 export const getQuotes = async (): Promise<Quote[]> => {
-    const q = query(quotesCollectionRef, orderBy('issueDate', 'desc'));
+    const q = query(getQuotesCollectionRef(), orderBy('issueDate', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToQuote);
 };
@@ -76,11 +76,11 @@ export const addQuote = async (q: QuoteInput): Promise<string> => {
     // Generate Quote Number
     if (!q.quoteNumber) {
         const year = new Date().getFullYear();
-        const countSnap = await getDocs(query(quotesCollectionRef));
+        const countSnap = await getDocs(query(getQuotesCollectionRef()));
         const count = countSnap.size + 1;
         q.quoteNumber = `PR-${year}-${String(count).padStart(3, '0')}`;
     }
-    const docRef = await addDoc(quotesCollectionRef, q);
+    const docRef = await addDoc(getQuotesCollectionRef(), q);
     return docRef.id;
 };
 
@@ -160,7 +160,7 @@ export const generateInvoicesFromQuote = async (quote: Quote, enrollmentId: stri
         const ghostNum = `PRO-${year}-${String(seq).padStart(3, '0')}`;
         seq++;
 
-        const invRef = doc(invoicesCollectionRef);
+        const invRef = doc(getInvoicesCollectionRef());
         const invData: InvoiceInput = {
             invoiceNumber: ghostNum,
             issueDate: issueDate,
@@ -285,7 +285,7 @@ export const createRentTransactionsBatch = async (results: RentAnalysisResult[],
     let nextNum = await getNextTransactionNumber(date);
 
     results.forEach(res => {
-        const ref = doc(transactionsCollectionRef);
+        const ref = doc(getTransactionsCollectionRef());
         const t: TransactionInput = {
             transactionNumber: nextNum++,
             date: date,
@@ -309,7 +309,7 @@ export const createRentTransactionsBatch = async (results: RentAnalysisResult[],
 
 export const deleteAutoRentTransactions = async (locationId: string): Promise<void> => {
     // Delete all auto-generated rent transactions for a location
-    const q = query(transactionsCollectionRef, where('allocationId', '==', locationId), where('category', '==', 'Nolo'));
+    const q = query(getTransactionsCollectionRef(), where('allocationId', '==', locationId), where('category', '==', 'Nolo'));
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     snapshot.docs.forEach(d => {
@@ -363,14 +363,14 @@ export const getNextTransactionNumber = async (dateRef: string): Promise<number>
 
 export const getNextGhostInvoiceNumber = async (): Promise<string> => {
     const year = new Date().getFullYear();
-    const q = query(invoicesCollectionRef, where('isGhost', '==', true), where('issueDate', '>=', `${year}-01-01`), orderBy('issueDate', 'desc'));
+    const q = query(getInvoicesCollectionRef(), where('isGhost', '==', true), where('issueDate', '>=', `${year}-01-01`), orderBy('issueDate', 'desc'));
     const snapshot = await getDocs(q);
     const count = snapshot.size + 1;
     return `PRO-${year}-${String(count).padStart(3, '0')}`;
 };
 
 export const getInvoiceNumberGaps = async (year: number): Promise<InvoiceGap[]> => {
-    const q = query(invoicesCollectionRef, where('issueDate', '>=', `${year}-01-01`), where('issueDate', '<=', `${year}-12-31`));
+    const q = query(getInvoicesCollectionRef(), where('issueDate', '>=', `${year}-01-01`), where('issueDate', '<=', `${year}-12-31`));
     const snapshot = await getDocs(q);
     const validInvoices = snapshot.docs.map(docToInvoice).filter(i => !i.isDeleted && !i.isGhost);
     
@@ -393,7 +393,7 @@ export const getInvoiceNumberGaps = async (year: number): Promise<InvoiceGap[]> 
 export const isInvoiceNumberTaken = async (year: number, number: number): Promise<boolean> => {
     const numStr = String(number).padStart(3, '0');
     // Loose check on endswith
-    const q = query(invoicesCollectionRef, where('issueDate', '>=', `${year}-01-01`), where('issueDate', '<=', `${year}-12-31`));
+    const q = query(getInvoicesCollectionRef(), where('issueDate', '>=', `${year}-01-01`), where('issueDate', '<=', `${year}-12-31`));
     const snapshot = await getDocs(q);
     return snapshot.docs.some(d => !d.data().isDeleted && !d.data().isGhost && d.data().invoiceNumber.endsWith(`-${numStr}`));
 };
@@ -401,8 +401,8 @@ export const isInvoiceNumberTaken = async (year: number, number: number): Promis
 // --- ORPHAN LOGIC ---
 export const getOrphanedFinancialsForClient = async (clientId: string) => {
     const [invSnap, transSnap] = await Promise.all([
-        getDocs(query(invoicesCollectionRef, where('clientId', '==', clientId))),
-        getDocs(query(transactionsCollectionRef))
+        getDocs(query(getInvoicesCollectionRef(), where('clientId', '==', clientId))),
+        getDocs(query(getTransactionsCollectionRef()))
     ]);
 
     const invoices = invSnap.docs.map(docToInvoice).filter(i => !i.isDeleted && !i.relatedEnrollmentId);
@@ -654,8 +654,8 @@ export const fixIntegrityIssue = async (
     if (enrSnap.exists()) {
         const enr = enrSnap.data() as Enrollment;
         // Fetch new state
-        const qInv = query(invoicesCollectionRef, where('relatedEnrollmentId', '==', enrId));
-        const qTrans = query(transactionsCollectionRef, where('relatedEnrollmentId', '==', enrId));
+        const qInv = query(getInvoicesCollectionRef(), where('relatedEnrollmentId', '==', enrId));
+        const qTrans = query(getTransactionsCollectionRef(), where('relatedEnrollmentId', '==', enrId));
         const [invs, trans] = await Promise.all([getDocs(qInv), getDocs(qTrans)]);
         
         const paidInv = invs.docs.map(docToInvoice).filter(i => !i.isDeleted && !i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
@@ -674,8 +674,8 @@ export const fixIntegrityIssue = async (
 export const cleanupEnrollmentFinancials = async (enrollment: Enrollment) => {
     const batch = writeBatch(db);
     
-    const qInv = query(invoicesCollectionRef, where('relatedEnrollmentId', '==', enrollment.id));
-    const qTrans = query(transactionsCollectionRef, where('relatedEnrollmentId', '==', enrollment.id));
+    const qInv = query(getInvoicesCollectionRef(), where('relatedEnrollmentId', '==', enrollment.id));
+    const qTrans = query(getTransactionsCollectionRef(), where('relatedEnrollmentId', '==', enrollment.id));
     
     const [invSnap, transSnap] = await Promise.all([getDocs(qInv), getDocs(qTrans)]);
     
@@ -689,18 +689,18 @@ export const anonymizeClientFinancials = async (clientId: string, clientName: st
     const batch = writeBatch(db);
     
     // Anonymize invoices
-    const qInv = query(invoicesCollectionRef, where('clientId', '==', clientId));
+    const qInv = query(getInvoicesCollectionRef(), where('clientId', '==', clientId));
     const invSnap = await getDocs(qInv);
     invSnap.forEach(d => batch.update(d.ref, { clientName: 'Cliente Cancellato (GDPR)' }));
     
     // Anonymize quotes
-    const qQuote = query(quotesCollectionRef, where('clientId', '==', clientId));
+    const qQuote = query(getQuotesCollectionRef(), where('clientId', '==', clientId));
     const quoteSnap = await getDocs(qQuote);
     quoteSnap.forEach(d => batch.update(d.ref, { clientName: 'Cliente Cancellato (GDPR)' }));
 
     // Anonymize transactions by clientName
     if (clientName) {
-        const qTrans = query(transactionsCollectionRef, where('clientName', '==', clientName));
+        const qTrans = query(getTransactionsCollectionRef(), where('clientName', '==', clientName));
         const transSnap = await getDocs(qTrans);
         transSnap.forEach(d => batch.update(d.ref, { clientName: 'Cliente Cancellato (GDPR)' }));
     }
@@ -718,7 +718,7 @@ export const markInvoicesAsPaid = async (invoiceIds: string[]) => {
 
 export const checkAndSetOverdueInvoices = async () => {
     const today = new Date();
-    const q = query(invoicesCollectionRef, where('status', 'in', [DocumentStatus.Sent, DocumentStatus.Draft]));
+    const q = query(getInvoicesCollectionRef(), where('status', 'in', [DocumentStatus.Sent, DocumentStatus.Draft]));
     const snap = await getDocs(q);
     const batch = writeBatch(db);
     let count = 0;

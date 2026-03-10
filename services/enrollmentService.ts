@@ -5,14 +5,14 @@ import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentD
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput } from '../types';
 import { isItalianHoliday, toLocalISOString } from '../utils/dateUtils';
 
-const enrollmentCollectionRef = collection(db, 'enrollments');
+const getEnrollmentCollectionRef = () => collection(db, 'enrollments');
 
 const docToEnrollment = (doc: QueryDocumentSnapshot<DocumentData>): Enrollment => {
     return { id: doc.id, ...doc.data() } as Enrollment;
 };
 
 export const getEnrollmentsForClient = async (clientId: string): Promise<Enrollment[]> => {
-    const q = query(enrollmentCollectionRef, where("clientId", "==", clientId));
+    const q = query(getEnrollmentCollectionRef(), where("clientId", "==", clientId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToEnrollment);
 };
@@ -37,12 +37,12 @@ export const getActiveLocationForClient = async (clientId: string): Promise<{id:
 };
 
 export const getAllEnrollments = async (): Promise<Enrollment[]> => {
-    const snapshot = await getDocs(enrollmentCollectionRef);
+    const snapshot = await getDocs(getEnrollmentCollectionRef());
     return snapshot.docs.map(docToEnrollment);
 };
 
 export const addEnrollment = async (enrollment: EnrollmentInput): Promise<string> => {
-    const docRef = await addDoc(enrollmentCollectionRef, enrollment);
+    const docRef = await addDoc(getEnrollmentCollectionRef(), enrollment);
     return docRef.id;
 };
 
@@ -636,7 +636,7 @@ export const addRecoveryLessons = async (
 
 // --- MIGRAZIONE STORICA (Carnet & Tipi Slot) ---
 export const migrateHistoricalEnrollments = async (): Promise<{ updated: number, errors: number }> => {
-    const snapshot = await getDocs(enrollmentCollectionRef);
+    const snapshot = await getDocs(getEnrollmentCollectionRef());
     let updatedCount = 0;
     let errorCount = 0;
 
@@ -833,7 +833,7 @@ export const suspendLessonsForClosure = async (closureDate: string): Promise<voi
     // CRITICAL: Usa toLocalISOString o split per evitare shift di fuso orario
     const targetDateStr = closureDate.split('T')[0];
 
-    const enrollmentsSnapshot = await getDocs(enrollmentCollectionRef);
+    const enrollmentsSnapshot = await getDocs(getEnrollmentCollectionRef());
     enrollmentsSnapshot.docs.forEach(docSnap => {
         const enr = docSnap.data() as Enrollment;
         if (enr.appointments && enr.appointments.length > 0) {
@@ -875,7 +875,7 @@ export const restoreSuspendedLessons = async (closureDate: string): Promise<void
     const targetDateStr = closureDate.split('T')[0];
 
     // 1. Process Enrollments (Revert Suspended -> Scheduled)
-    const enrollmentsSnapshot = await getDocs(enrollmentCollectionRef);
+    const enrollmentsSnapshot = await getDocs(getEnrollmentCollectionRef());
     enrollmentsSnapshot.docs.forEach(docSnap => {
         const enr = docSnap.data() as Enrollment;
         if (enr.appointments && enr.appointments.length > 0) {

@@ -3,13 +3,13 @@ import { db, auth } from '../firebase/config';
 import { collection, doc, getDoc, setDoc, getDocs, query, orderBy } from 'firebase/firestore';
 import { FiscalYear } from '../types';
 
-const fiscalCollectionRef = collection(db, 'fiscal_years');
+const getFiscalCollectionRef = () => collection(db, 'fiscal_years');
 
 // Cache locale semplice per evitare letture ripetute durante operazioni massive
 let closedYearsCache: Set<number> | null = null;
 
 export const getFiscalYears = async (): Promise<FiscalYear[]> => {
-    const q = query(fiscalCollectionRef, orderBy('year', 'desc'));
+    const q = query(getFiscalCollectionRef(), orderBy('year', 'desc'));
     const snapshot = await getDocs(q);
     const years = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as FiscalYear));
     

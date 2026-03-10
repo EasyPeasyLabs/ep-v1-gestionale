@@ -4,7 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, Q
 import { Initiative, InitiativeInput, Book, BookInput, BookLoan, BookLoanInput } from '../types';
 
 // --- INITIATIVES (CRUD Standard) ---
-const initiativeCollectionRef = collection(db, 'initiatives');
+const getInitiativeCollectionRef = () => collection(db, 'initiatives');
 
 const docToInitiative = (doc: QueryDocumentSnapshot<DocumentData>): Initiative => {
     const data = doc.data();
@@ -12,12 +12,12 @@ const docToInitiative = (doc: QueryDocumentSnapshot<DocumentData>): Initiative =
 };
 
 export const getInitiatives = async (): Promise<Initiative[]> => {
-    const snapshot = await getDocs(initiativeCollectionRef);
+    const snapshot = await getDocs(getInitiativeCollectionRef());
     return snapshot.docs.map(docToInitiative);
 };
 
 export const addInitiative = async (initiative: InitiativeInput): Promise<string> => {
-    const docRef = await addDoc(initiativeCollectionRef, initiative);
+    const docRef = await addDoc(getInitiativeCollectionRef(), initiative);
     return docRef.id;
 };
 
@@ -32,7 +32,7 @@ export const deleteInitiative = async (id: string): Promise<void> => {
 };
 
 // --- BOOKS (Inventory) ---
-const bookCollectionRef = collection(db, 'books');
+const getBookCollectionRef = () => collection(db, 'books');
 
 const docToBook = (doc: QueryDocumentSnapshot<DocumentData>): Book => {
     const data = doc.data();
@@ -40,13 +40,13 @@ const docToBook = (doc: QueryDocumentSnapshot<DocumentData>): Book => {
 };
 
 export const getBooks = async (): Promise<Book[]> => {
-    const q = query(bookCollectionRef, orderBy('title'));
+    const q = query(getBookCollectionRef(), orderBy('title'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToBook);
 };
 
 export const addBook = async (book: BookInput): Promise<string> => {
-    const docRef = await addDoc(bookCollectionRef, { 
+    const docRef = await addDoc(getBookCollectionRef(), { 
         ...book, 
         isAvailable: true,
         publisher: book.publisher || '',
@@ -70,7 +70,7 @@ export const deleteBook = async (id: string): Promise<void> => {
 };
 
 // --- BOOK LOANS (Prestiti) ---
-const loanCollectionRef = collection(db, 'book_loans');
+const getLoanCollectionRef = () => collection(db, 'book_loans');
 
 const docToLoan = (doc: QueryDocumentSnapshot<DocumentData>): BookLoan => {
     const data = doc.data();
@@ -78,7 +78,7 @@ const docToLoan = (doc: QueryDocumentSnapshot<DocumentData>): BookLoan => {
 };
 
 export const getActiveLoans = async (): Promise<BookLoan[]> => {
-    const q = query(loanCollectionRef, where('status', '==', 'active'));
+    const q = query(getLoanCollectionRef(), where('status', '==', 'active'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToLoan);
 };
@@ -88,7 +88,7 @@ export const checkOutBook = async (loan: BookLoanInput): Promise<void> => {
     const batch = writeBatch(db);
     
     // 1. Crea il record prestito
-    const loanRef = doc(loanCollectionRef);
+    const loanRef = doc(getLoanCollectionRef());
     batch.set(loanRef, { ...loan, status: 'active' });
 
     // 2. Segna il libro come non disponibile

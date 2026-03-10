@@ -3,7 +3,7 @@ import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Supplier, SupplierInput, Location } from '../types';
 
-const supplierCollectionRef = collection(db, 'suppliers');
+const getSupplierCollectionRef = () => collection(db, 'suppliers');
 
 const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
     const data = doc.data();
@@ -39,12 +39,12 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
 };
 
 export const getSuppliers = async (): Promise<Supplier[]> => {
-    const querySnapshot = await getDocs(supplierCollectionRef);
+    const querySnapshot = await getDocs(getSupplierCollectionRef());
     return querySnapshot.docs.map(docToSupplier);
 };
 
 export const addSupplier = async (supplier: SupplierInput): Promise<string> => {
-    const docRef = await addDoc(supplierCollectionRef, { ...supplier, isDeleted: false });
+    const docRef = await addDoc(getSupplierCollectionRef(), { ...supplier, isDeleted: false });
     return docRef.id;
 };
 

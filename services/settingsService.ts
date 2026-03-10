@@ -3,13 +3,13 @@ import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate, NotificationRule, NotificationType } from '../types';
 
-const settingsDocRef = doc(db, 'settings', 'companyInfo');
-const subscriptionCollectionRef = collection(db, 'subscriptionTypes');
-const templateCollectionRef = collection(db, 'communicationTemplates');
-const contractTemplateCollectionRef = collection(db, 'contract_templates');
-const checksCollectionRef = collection(db, 'periodicChecks');
-const recoveryPolicyRef = doc(db, 'settings', 'recoveryPolicies');
-const notificationRulesCollectionRef = collection(db, 'notification_rules');
+const getSettingsDocRef = () => doc(db, 'settings', 'companyInfo');
+const getSubscriptionCollectionRef = () => collection(db, 'subscriptionTypes');
+const getTemplateCollectionRef = () => collection(db, 'communicationTemplates');
+const getContractTemplateCollectionRef = () => collection(db, 'contract_templates');
+const getChecksCollectionRef = () => collection(db, 'periodicChecks');
+const getRecoveryPolicyRef = () => doc(db, 'settings', 'recoveryPolicies');
+const getNotificationRulesCollectionRef = () => collection(db, 'notification_rules');
 
 const DEFAULT_LOGO_BASE64 = ''; // Base64 placeholder or logic
 
@@ -38,7 +38,7 @@ const defaultCompanyInfo: CompanyInfo = {
 
 export const getCompanyInfo = async (): Promise<CompanyInfo> => {
     try {
-        const docSnap = await getDoc(settingsDocRef);
+        const docSnap = await getDoc(getSettingsDocRef());
         if (docSnap.exists()) {
             const data = docSnap.data() as CompanyInfo;
             return { 
@@ -59,7 +59,7 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
             };
         } else {
             // Se non esiste, crealo con default
-            await setDoc(settingsDocRef, defaultCompanyInfo);
+            await setDoc(getSettingsDocRef(), defaultCompanyInfo);
             return defaultCompanyInfo;
         }
     } catch (error: any) {
@@ -74,7 +74,7 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
 };
 
 export const updateCompanyInfo = async (info: CompanyInfo): Promise<void> => {
-    await setDoc(settingsDocRef, info, { merge: true });
+    await setDoc(getSettingsDocRef(), info, { merge: true });
 };
 
 // --- SUBSCRIPTION TYPES ---
@@ -83,12 +83,12 @@ const docToSub = (doc: QueryDocumentSnapshot<DocumentData>): SubscriptionType =>
 };
 
 export const getSubscriptionTypes = async (): Promise<SubscriptionType[]> => {
-    const snapshot = await getDocs(subscriptionCollectionRef);
+    const snapshot = await getDocs(getSubscriptionCollectionRef());
     return snapshot.docs.map(docToSub);
 };
 
 export const addSubscriptionType = async (sub: SubscriptionTypeInput): Promise<string> => {
-    const docRef = await addDoc(subscriptionCollectionRef, sub);
+    const docRef = await addDoc(getSubscriptionCollectionRef(), sub);
     return docRef.id;
 };
 
@@ -112,7 +112,7 @@ const docToTemplate = (doc: QueryDocumentSnapshot<DocumentData>): CommunicationT
 };
 
 export const getCommunicationTemplates = async (): Promise<CommunicationTemplate[]> => {
-    const snapshot = await getDocs(templateCollectionRef);
+    const snapshot = await getDocs(getTemplateCollectionRef());
     let templates = snapshot.docs.map(docToTemplate);
     
     // Default Templates Init
@@ -135,7 +135,7 @@ export const saveCommunicationTemplate = async (template: CommunicationTemplate)
         const docRef = doc(db, 'communicationTemplates', id);
         await setDoc(docRef, dataToSave, { merge: true });
     } else {
-        await addDoc(templateCollectionRef, dataToSave);
+        await addDoc(getTemplateCollectionRef(), dataToSave);
     }
 };
 
@@ -150,7 +150,7 @@ const docToContractTemplate = (doc: QueryDocumentSnapshot<DocumentData>): Contra
 };
 
 export const getContractTemplates = async (): Promise<ContractTemplate[]> => {
-    const snapshot = await getDocs(contractTemplateCollectionRef);
+    const snapshot = await getDocs(getContractTemplateCollectionRef());
     let templates = snapshot.docs.map(docToContractTemplate);
 
     // Initial Seeding
@@ -207,7 +207,7 @@ export const getContractTemplates = async (): Promise<ContractTemplate[]> => {
 <div>L'Utilizzatore:</div>
             `
         };
-        const docRef = await addDoc(contractTemplateCollectionRef, defaultNolo);
+        const docRef = await addDoc(getContractTemplateCollectionRef(), defaultNolo);
         templates = [{ ...defaultNolo, id: docRef.id }];
     }
     
@@ -222,7 +222,7 @@ export const saveContractTemplate = async (template: ContractTemplate): Promise<
         const docRef = doc(db, 'contract_templates', id);
         await setDoc(docRef, dataToSave, { merge: true });
     } else {
-        await addDoc(contractTemplateCollectionRef, dataToSave);
+        await addDoc(getContractTemplateCollectionRef(), dataToSave);
     }
 };
 
@@ -237,12 +237,12 @@ const docToCheck = (doc: QueryDocumentSnapshot<DocumentData>): PeriodicCheck => 
 };
 
 export const getPeriodicChecks = async (): Promise<PeriodicCheck[]> => {
-    const snapshot = await getDocs(checksCollectionRef);
+    const snapshot = await getDocs(getChecksCollectionRef());
     return snapshot.docs.map(docToCheck);
 };
 
 export const addPeriodicCheck = async (check: PeriodicCheckInput): Promise<string> => {
-    const docRef = await addDoc(checksCollectionRef, check);
+    const docRef = await addDoc(getChecksCollectionRef(), check);
     return docRef.id;
 };
 
@@ -258,7 +258,7 @@ export const deletePeriodicCheck = async (id: string): Promise<void> => {
 
 // --- RECOVERY POLICIES ---
 export const getRecoveryPolicies = async (): Promise<Record<string, 'allowed' | 'forbidden'>> => {
-    const docSnap = await getDoc(recoveryPolicyRef);
+    const docSnap = await getDoc(getRecoveryPolicyRef());
     if (docSnap.exists()) {
         return docSnap.data() as Record<string, 'allowed' | 'forbidden'>;
     }
@@ -266,7 +266,7 @@ export const getRecoveryPolicies = async (): Promise<Record<string, 'allowed' | 
 };
 
 export const saveRecoveryPolicies = async (policies: Record<string, 'allowed' | 'forbidden'>): Promise<void> => {
-    await setDoc(recoveryPolicyRef, policies, { merge: true });
+    await setDoc(getRecoveryPolicyRef(), policies, { merge: true });
 };
 
 // --- NEW: NOTIFICATION RULES (ROUTINE MANAGER) ---
@@ -280,7 +280,7 @@ const DEFAULT_RULES: NotificationRule[] = [
 ];
 
 export const getNotificationRules = async (): Promise<NotificationRule[]> => {
-    const snapshot = await getDocs(notificationRulesCollectionRef);
+    const snapshot = await getDocs(getNotificationRulesCollectionRef());
     const storedRules = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as NotificationRule));
     
     // Merge con default se mancano

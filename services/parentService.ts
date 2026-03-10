@@ -3,7 +3,7 @@ import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient } from '../types';
 
-const clientCollectionRef = collection(db, 'clients');
+const getClientCollectionRef = () => collection(db, 'clients');
 
 const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
     const data = doc.data();
@@ -77,12 +77,12 @@ const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
 };
 
 export const getClients = async (): Promise<Client[]> => {
-    const querySnapshot = await getDocs(clientCollectionRef);
+    const querySnapshot = await getDocs(getClientCollectionRef());
     return querySnapshot.docs.map(docToClient);
 };
 
 export const addClient = async (client: ClientInput): Promise<string> => {
-    const docRef = await addDoc(clientCollectionRef, { ...client, isDeleted: false });
+    const docRef = await addDoc(getClientCollectionRef(), { ...client, isDeleted: false });
     return docRef.id;
 };
 

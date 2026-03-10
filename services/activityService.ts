@@ -4,7 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, Q
 import { Activity, ActivityInput, LessonActivity } from '../types';
 
 // --- Activities (Libreria) ---
-const activityCollectionRef = collection(db, 'activities');
+const getActivityCollectionRef = () => collection(db, 'activities');
 
 const docToActivity = (doc: QueryDocumentSnapshot<DocumentData>): Activity => {
     const data = doc.data();
@@ -12,7 +12,7 @@ const docToActivity = (doc: QueryDocumentSnapshot<DocumentData>): Activity => {
 };
 
 export const getActivities = async (): Promise<Activity[]> => {
-    const q = query(activityCollectionRef, orderBy('createdAt', 'desc'));
+    const q = query(getActivityCollectionRef(), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToActivity);
 };
@@ -22,7 +22,7 @@ export const addActivity = async (activity: ActivityInput): Promise<string> => {
         ...activity,
         createdAt: activity.createdAt || new Date().toISOString()
     };
-    const docRef = await addDoc(activityCollectionRef, activityWithTimestamp);
+    const docRef = await addDoc(getActivityCollectionRef(), activityWithTimestamp);
     return docRef.id;
 };
 
@@ -38,7 +38,7 @@ export const deleteActivity = async (id: string): Promise<void> => {
 
 
 // --- Lesson Activities (Storico/Registro) ---
-const lessonActivityCollectionRef = collection(db, 'lesson_activities');
+const getLessonActivityCollectionRef = () => collection(db, 'lesson_activities');
 
 export const getLessonActivities = async (lessonIds: string[]): Promise<LessonActivity[]> => {
     if (lessonIds.length === 0) return [];
@@ -46,7 +46,7 @@ export const getLessonActivities = async (lessonIds: string[]): Promise<LessonAc
     // Per semplicità e volume dati previsto, prendiamo tutto per ora (o filtriamo per data se avessimo campo data indicizzato)
     // Qui facciamo una query semplice e filtriamo in memoria per semplicità implementation.
     
-    const snapshot = await getDocs(lessonActivityCollectionRef);
+    const snapshot = await getDocs(getLessonActivityCollectionRef());
     const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LessonActivity));
     return all.filter(la => lessonIds.includes(la.lessonId));
 };
@@ -55,7 +55,7 @@ export const saveLessonActivities = async (lessonIds: string[], activityIds: str
     const batch = writeBatch(db);
     
     // 1. Troviamo se esistono già entry per queste lezioni (per aggiornarle invece di duplicarle)
-    const existingSnapshot = await getDocs(lessonActivityCollectionRef);
+    const existingSnapshot = await getDocs(getLessonActivityCollectionRef());
     const existingMap = new Map<string, string>(); // lessonId -> docId
     existingSnapshot.docs.forEach(d => {
         const data = d.data() as LessonActivity;
@@ -70,7 +70,7 @@ export const saveLessonActivities = async (lessonIds: string[], activityIds: str
             batch.update(ref, { activityIds: activityIds });
         } else {
             // Create new
-            const ref = doc(lessonActivityCollectionRef);
+            const ref = doc(getLessonActivityCollectionRef());
             batch.set(ref, {
                 lessonId,
                 activityIds,

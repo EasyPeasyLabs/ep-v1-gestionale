@@ -4,7 +4,7 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { Enrollment, EnrollmentStatus, Supplier } from '../types';
 import { db } from '../firebase/config';
-import { doc, getDoc, updateDoc } from '@firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import Spinner from '../components/Spinner';
 import SearchIcon from '../components/icons/SearchIcon';
 import Pagination from '../components/Pagination';
