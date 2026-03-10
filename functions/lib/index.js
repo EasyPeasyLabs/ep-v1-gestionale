@@ -307,14 +307,50 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
                 if (loc.isPubliclyVisible === false || loc.closedAt)
                     return;
                 const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
-                const visibleSlots = (loc.availability || []).filter((slot) => slot.isPubliclyVisible !== false).map((s) => {
+                const visibleBundles = (loc.availability || []).filter((slot) => slot.isPubliclyVisible !== false).map((s) => {
                     const key = `${loc.id}_${s.dayOfWeek}_${s.startTime}`;
                     const occupiedSeats = occupancyMap.get(key) || 0;
                     const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
-                    return { ...s, availableSeats, isFull: availableSeats === 0 };
+                    let minAge = 0;
+                    let maxAge = 99;
+                    if (s.minAge !== undefined)
+                        minAge = Number(s.minAge);
+                    if (s.maxAge !== undefined)
+                        maxAge = Number(s.maxAge);
+                    if (s.minAge === undefined && s.maxAge === undefined && s.ageRange) {
+                        const parts = String(s.ageRange).split('-');
+                        if (parts.length === 2) {
+                            minAge = parseFloat(parts[0]) || 0;
+                            maxAge = parseFloat(parts[1]) || 99;
+                        }
+                    }
+                    return {
+                        bundleId: s.id || key,
+                        name: s.name || s.type || 'Corso',
+                        publicName: s.publicName || s.name || s.type || 'Corso',
+                        description: s.description || '',
+                        price: s.price || 0,
+                        dayOfWeek: s.dayOfWeek || 1,
+                        minAge: minAge,
+                        maxAge: maxAge,
+                        availableSeats: availableSeats,
+                        isFull: availableSeats === 0,
+                        includedSlots: s.includedSlots || [{
+                                type: s.type || 'LAB',
+                                startTime: s.startTime || '00:00',
+                                endTime: s.endTime || '00:00'
+                            }]
+                    };
                 });
-                if (visibleSlots.length > 0) {
-                    results.push({ id: loc.id, name: loc.name, slots: visibleSlots });
+                if (visibleBundles.length > 0) {
+                    results.push({
+                        id: loc.id,
+                        name: loc.name,
+                        address: loc.address || loc.indirizzo || '',
+                        city: loc.city || loc.citta || '',
+                        googleMapsLink: loc.googleMapsLink || '',
+                        bundles: visibleBundles
+                    });
                 }
             });
         });
