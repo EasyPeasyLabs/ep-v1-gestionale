@@ -300,16 +300,16 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
         enrollmentsSnap.forEach(doc => {
             const data = doc.data();
             const locId = data.locationId;
-            const subId = data.subscriptionTypeId;
             const appts = data.appointments || [];
             const lessonsRemaining = data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 1;
-            if (locId && subId && appts.length > 0 && lessonsRemaining > 0) {
-                const mainAppt = appts[0];
-                if (mainAppt && mainAppt.dayOfWeek !== undefined) {
-                    const day = typeof mainAppt.dayOfWeek === 'string' ? parseInt(mainAppt.dayOfWeek) : mainAppt.dayOfWeek;
-                    const key = `${locId}_${day}_${subId}`;
-                    occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
-                }
+            if (locId && appts.length > 0 && lessonsRemaining > 0) {
+                appts.forEach((appt) => {
+                    if (appt && appt.dayOfWeek !== undefined && appt.startTime) {
+                        const day = typeof appt.dayOfWeek === 'string' ? parseInt(appt.dayOfWeek) : appt.dayOfWeek;
+                        const key = `${locId}_${day}_${appt.startTime}`;
+                        occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+                    }
+                });
             }
         });
         const results = [];
@@ -383,9 +383,15 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
                             });
                             if (bundleMinAge > bundleMaxAge)
                                 bundleMaxAge = bundleMinAge;
-                            const occupancyKey = `${loc.id}_${dayOfWeek}_${sub.id}`;
-                            const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
-                            const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+                            let minAvailableSeatsInBundle = locationCapacity;
+                            includedSlots.forEach(s => {
+                                const occupancyKey = `${loc.id}_${dayOfWeek}_${s.startTime}`;
+                                const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
+                                const available = Math.max(0, locationCapacity - occupiedSeats);
+                                if (available < minAvailableSeatsInBundle) {
+                                    minAvailableSeatsInBundle = available;
+                                }
+                            });
                             locationBundles.push({
                                 bundleId: sub.id,
                                 name: sub.name,
@@ -396,9 +402,8 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
                                 minAge: bundleMinAge,
                                 maxAge: bundleMaxAge,
                                 capacity: locationCapacity,
-                                enrolledCount: occupiedSeats,
-                                availableSeats: availableSeats,
-                                isFull: availableSeats === 0,
+                                availableSeats: minAvailableSeatsInBundle,
+                                isFull: minAvailableSeatsInBundle === 0,
                                 includedSlots: includedSlots.map(s => ({
                                     type: s.type,
                                     startTime: s.startTime,

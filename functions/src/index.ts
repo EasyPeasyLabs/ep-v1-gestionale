@@ -313,17 +313,17 @@ export const getPublicSlotsV2 = onRequest({
         enrollmentsSnap.forEach(doc => {
             const data = doc.data();
             const locId = data.locationId;
-            const subId = data.subscriptionTypeId;
             const appts = data.appointments || [];
             const lessonsRemaining = data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 1;
 
-            if (locId && subId && appts.length > 0 && lessonsRemaining > 0) {
-                const mainAppt = appts[0]; 
-                if (mainAppt && mainAppt.dayOfWeek !== undefined) {
-                    const day = typeof mainAppt.dayOfWeek === 'string' ? parseInt(mainAppt.dayOfWeek) : mainAppt.dayOfWeek;
-                    const key = `${locId}_${day}_${subId}`;
-                    occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
-                }
+            if (locId && appts.length > 0 && lessonsRemaining > 0) {
+                appts.forEach((appt: any) => {
+                    if (appt && appt.dayOfWeek !== undefined && appt.startTime) {
+                        const day = typeof appt.dayOfWeek === 'string' ? parseInt(appt.dayOfWeek) : appt.dayOfWeek;
+                        const key = `${locId}_${day}_${appt.startTime}`;
+                        occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+                    }
+                });
             }
         });
 
@@ -413,9 +413,17 @@ export const getPublicSlotsV2 = onRequest({
                             if (bundleMinAge > bundleMaxAge) bundleMaxAge = bundleMinAge; // Fallback di sicurezza
 
                             // Calcolo Disponibilità (Bundle-Level Logic)
-                            const occupancyKey = `${loc.id}_${dayOfWeek}_${sub.id}`;
-                            const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
-                            const availableSeats = Math.max(0, locationCapacity - occupiedSeats);
+                            // Un bundle è disponibile solo se TUTTI i suoi slot fisici hanno posto.
+                            // Prendiamo il minimo dei posti disponibili tra tutti gli slot inclusi.
+                            let minAvailableSeatsInBundle = locationCapacity;
+                            includedSlots.forEach(s => {
+                                const occupancyKey = `${loc.id}_${dayOfWeek}_${s.startTime}`;
+                                const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
+                                const available = Math.max(0, locationCapacity - occupiedSeats);
+                                if (available < minAvailableSeatsInBundle) {
+                                    minAvailableSeatsInBundle = available;
+                                }
+                            });
 
                             locationBundles.push({
                                 bundleId: sub.id,
@@ -427,9 +435,8 @@ export const getPublicSlotsV2 = onRequest({
                                 minAge: bundleMinAge,
                                 maxAge: bundleMaxAge,
                                 capacity: locationCapacity,
-                                enrolledCount: occupiedSeats,
-                                availableSeats: availableSeats,
-                                isFull: availableSeats === 0,
+                                availableSeats: minAvailableSeatsInBundle,
+                                isFull: minAvailableSeatsInBundle === 0,
                                 includedSlots: includedSlots.map(s => ({
                                     type: s.type,
                                     startTime: s.startTime,
