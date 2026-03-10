@@ -322,11 +322,14 @@ exports.receiveLeadV2 = (0, https_1.onRequest)({
     region: "europe-west1",
     cors: true
 }, async (req, res) => {
-    if (req.method !== "POST")
-        return res.status(405).send("Method Not Allowed");
+    if (req.method !== "POST") {
+        res.status(405).send("Method Not Allowed");
+        return;
+    }
     const authHeader = req.headers.authorization;
     if (!authHeader || authHeader !== `Bearer ${API_SHARED_SECRET}`) {
-        return res.status(403).json({ error: "Forbidden: Invalid API Key" });
+        res.status(403).json({ error: "Forbidden: Invalid API Key" });
+        return;
     }
     try {
         const data = req.body;
