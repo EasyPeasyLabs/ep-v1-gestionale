@@ -35,7 +35,7 @@ interface Lead {
   childName: string;
   childAge: string;
   selectedLocation: string;
-  selectedSlot: any;
+  selectedSlot: string;
   notes?: string;
   status: 'pending' | 'contacted' | 'converted' | 'rejected';
   createdAt: string;
@@ -547,11 +547,7 @@ export const LeadsPage: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2 text-gray-700">
                       <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                      <span>
-                        {typeof lead.selectedSlot === 'object' 
-                          ? `${lead.selectedSlot.bundleName || ''} (${lead.selectedSlot.startTime || ''})` 
-                          : (lead.selectedSlot || 'Orario non specificato')}
-                      </span>
+                      <span>{lead.selectedSlot || 'Orario non specificato'}</span>
                     </div>
                     
                     {/* Email Actionable */}
