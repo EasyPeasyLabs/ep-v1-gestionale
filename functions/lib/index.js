@@ -170,7 +170,24 @@ exports.onLeadCreated = (0, firestore_1.onDocumentCreated)({
     const leadData = snapshot.data();
     const nome = leadData.nome || leadData.firstName || 'Nuovo';
     const cognome = leadData.cognome || leadData.lastName || 'Contatto';
-    const sede = leadData.sede || leadData.selectedLocation || 'Sede non specificata';
+    let sede = 'Sede non specificata';
+    const locationId = leadData.selectedLocation || leadData.sede;
+    if (locationId) {
+        try {
+            const suppliersSnap = await admin.firestore().collection('suppliers').get();
+            for (const doc of suppliersSnap.docs) {
+                const supplierData = doc.data();
+                const loc = supplierData.locations?.find((l) => l.id === locationId);
+                if (loc) {
+                    sede = loc.name;
+                    break;
+                }
+            }
+        }
+        catch (e) {
+            logger.error("Error resolving location name:", e);
+        }
+    }
     const title = "👤 Nuovo Contatto Web";
     const body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
     await sendPushToAllTokens(title, body, {
