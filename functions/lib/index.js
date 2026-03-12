@@ -281,7 +281,7 @@ exports.enrollmentGateway = (0, https_1.onRequest)({
     <meta property="og:description" content="${id}" />
     <meta property="og:image" content="${logoUrl}" />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://easypeasylabs.vercel.app/i/${id}" />
+    <meta property="og:url" content="https://ep-portal-chi.vercel.app/i/${id}" />
     <style>
         body { font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f6f8fa; color: #3C3C52; }
         .loader { border: 4px solid #e5e7eb; border-top: 4px solid #3C3C52; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
