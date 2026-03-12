@@ -117,6 +117,7 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Refactoring Architetturale:** Spostamento della logica di calcolo dei posti disponibili dalla Pagina Pubblica (Progetto B) al Gestionale (Progetto A). Il Progetto B diventa un "Dumb Client" che si limita a visualizzare i dati forniti dall'API.
     - **Smart API (getPublicSlotsV2):** La Cloud Function ora agisce come un vero motore di booking. Calcola l'occupazione reale analizzando gli allievi attivi (con `lessonsRemaining > 0` e stato valido) e incrociando i loro appuntamenti futuri o della settimana in corso.
     - **Risoluzione Overbooking/Blocchi:** Eliminati i falsi positivi e negativi causati dal conteggio basato sui "Lead" (raw_registrations). Il sistema ora sottrae dalla capienza della sede solo i posti fisicamente occupati dagli allievi iscritti nel Gestionale, garantendo dati esatti in tempo reale.
+    - **Push Notification Fallback Logic:** Ottimizzazione della Cloud Function `onLeadCreated` per la ricezione dei lead. Implementato un sistema di risoluzione a cascata (ID Sede -> Nome Sede da Payload -> Fallback Generico) per garantire che le notifiche push mostrino sempre informazioni coerenti, eliminando il problema del testo "Sede non specificata".
 
 ---
 
