@@ -603,13 +603,6 @@ export const LeadsPage: React.FC = () => {
                         <CheckCircle className="w-4 h-4 text-blue-500" />
                         Contattato
                       </button>
-                      <button 
-                        onClick={() => handleStatusChange(lead.id, 'rejected')}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-sm font-medium w-full"
-                      >
-                        <XCircle className="w-4 h-4" />
-                        Scarta
-                      </button>
                     </>
                   )}
                   
@@ -621,6 +614,26 @@ export const LeadsPage: React.FC = () => {
                       <UserPlus className="w-4 h-4" />
                       Converti
                     </button>
+                  )}
+
+                  {(lead.status === 'pending' || lead.status === 'contacted') && (
+                    <>
+                      <button 
+                        onClick={() => handleStatusChange(lead.id, 'rejected')}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-sm font-medium w-full"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Scarta
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteLead(lead)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-xs font-medium w-full"
+                        title="Elimina Definitivamente"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Elimina
+                      </button>
+                    </>
                   )}
 
                   {lead.status === 'converted' && (
