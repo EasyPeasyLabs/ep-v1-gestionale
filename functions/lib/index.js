@@ -170,7 +170,7 @@ exports.onLeadCreated = (0, firestore_1.onDocumentCreated)({
     const leadData = snapshot.data();
     const nome = leadData.nome || leadData.firstName || 'Nuovo';
     const cognome = leadData.cognome || leadData.lastName || 'Contatto';
-    let sede = 'Sede non specificata';
+    let sede = '';
     const locationId = leadData.selectedLocation || leadData.sede;
     if (locationId) {
         try {
@@ -188,8 +188,20 @@ exports.onLeadCreated = (0, firestore_1.onDocumentCreated)({
             logger.error("Error resolving location name:", e);
         }
     }
-    const title = "👤 Nuovo Contatto Web";
-    const body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
+    if (!sede) {
+        const payloadSede = leadData.locationName || leadData.nomeSede || leadData.selectedLocation || leadData.sede;
+        if (payloadSede && typeof payloadSede === 'string' && payloadSede.trim() !== '') {
+            sede = payloadSede.trim();
+        }
+    }
+    const title = "👤 Nuova Richiesta Web";
+    let body = "";
+    if (sede) {
+        body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
+    }
+    else {
+        body = `${nome} ${cognome} ha richiesto informazioni. Contattalo subito!`;
+    }
     await sendPushToAllTokens(title, body, {
         leadId: event.params.leadId,
         type: 'lead',

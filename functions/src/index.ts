@@ -163,8 +163,10 @@ export const onLeadCreated = onDocumentCreated({
     const cognome = leadData.cognome || leadData.lastName || 'Contatto';
     
     // Risoluzione nome sede
-    let sede = 'Sede non specificata';
+    let sede = '';
     const locationId = leadData.selectedLocation || leadData.sede;
+    
+    // Fase 1: Tentativo di risoluzione tramite ID
     if (locationId) {
         try {
             const suppliersSnap = await admin.firestore().collection('suppliers').get();
@@ -181,8 +183,23 @@ export const onLeadCreated = onDocumentCreated({
         }
     }
     
-    const title = "👤 Nuovo Contatto Web";
-    const body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
+    // Fase 2: Estrazione diretta dal payload se la ricerca ID fallisce
+    if (!sede) {
+        const payloadSede = leadData.locationName || leadData.nomeSede || leadData.selectedLocation || leadData.sede;
+        if (payloadSede && typeof payloadSede === 'string' && payloadSede.trim() !== '') {
+            sede = payloadSede.trim();
+        }
+    }
+    
+    // Fase 3: Fallback Generico
+    const title = "👤 Nuova Richiesta Web";
+    let body = "";
+    
+    if (sede) {
+        body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
+    } else {
+        body = `${nome} ${cognome} ha richiesto informazioni. Contattalo subito!`;
+    }
 
     await sendPushToAllTokens(title, body, {
         leadId: event.params.leadId,
