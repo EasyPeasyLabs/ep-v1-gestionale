@@ -113,6 +113,10 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
         3. **Payment Reminder:** Promemoria automatico per la registrazione dell'incasso in caso di scelta "Paga in Sede".
         4. **Fiscal Assistant:** Notifica intelligente per l'emissione fattura, con alert specifico per la soglia dei 77€ per prevenire l'omissione del bollo virtuale.
         5. **Public Gateway Isolation (Security Shield):** Implementazione di una Cloud Function `enrollmentGateway` che funge da proxy sicuro. Il link inviato su WhatsApp punta ora al Progetto B (Pagina Pubblica), nascondendo l'URL tecnico del Gestionale e abilitando l'anteprima con Logo e ID unico tramite Meta Tag Open Graph dinamici. In una frazione di secondo, il gateway reindirizza l'utente al modulo di iscrizione reale in modo invisibile.
+- **12/03:** **Centralizzazione Calcolo Disponibilità (Single Source of Truth).**
+    - **Refactoring Architetturale:** Spostamento della logica di calcolo dei posti disponibili dalla Pagina Pubblica (Progetto B) al Gestionale (Progetto A). Il Progetto B diventa un "Dumb Client" che si limita a visualizzare i dati forniti dall'API.
+    - **Smart API (getPublicSlotsV2):** La Cloud Function ora agisce come un vero motore di booking. Calcola l'occupazione reale analizzando gli allievi attivi (con `lessonsRemaining > 0` e stato valido) e incrociando i loro appuntamenti futuri o della settimana in corso.
+    - **Risoluzione Overbooking/Blocchi:** Eliminati i falsi positivi e negativi causati dal conteggio basato sui "Lead" (raw_registrations). Il sistema ora sottrae dalla capienza della sede solo i posti fisicamente occupati dagli allievi iscritti nel Gestionale, garantendo dati esatti in tempo reale.
 
 ---
 

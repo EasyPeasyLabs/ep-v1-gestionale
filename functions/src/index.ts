@@ -328,19 +328,57 @@ export const getPublicSlotsV2 = onRequest({
 
         const occupancyMap = new Map<string, number>();
 
+        // Calcolo date della settimana in corso (Lunedì - Domenica)
+        const now = new Date();
+        const currentDay = now.getDay();
+        const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() + diffToMonday);
+        startOfWeek.setHours(0, 0, 0, 0);
+        
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        endOfWeek.setHours(23, 59, 59, 999);
+
         enrollmentsSnap.forEach(doc => {
             const data = doc.data();
             const locId = data.locationId;
             const appts = data.appointments || [];
             const lessonsRemaining = data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 1;
+            const status = data.status || 'pending';
 
-            if (locId && appts.length > 0 && lessonsRemaining > 0) {
+            const isActive = ['active', 'pending', 'confirmed', 'Active', 'Pending', 'Confirmed'].includes(status);
+
+            if (locId && appts.length > 0 && lessonsRemaining > 0 && isActive) {
+                const occupiedSlotsThisWeek = new Set<string>();
+
                 appts.forEach((appt: any) => {
-                    if (appt && appt.dayOfWeek !== undefined && appt.startTime) {
-                        const day = typeof appt.dayOfWeek === 'string' ? parseInt(appt.dayOfWeek) : appt.dayOfWeek;
-                        const key = `${locId}_${day}_${appt.startTime}`;
-                        occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
+                    if (appt && appt.date && appt.startTime) {
+                        const apptDate = new Date(appt.date);
+                        // Verifica se l'appuntamento cade nella settimana in corso
+                        if (apptDate >= startOfWeek && apptDate <= endOfWeek) {
+                            const dayOfWeek = apptDate.getDay(); // 0 = Domenica, 1 = Lunedì, ecc.
+                            const key = `${locId}_${dayOfWeek}_${appt.startTime}`;
+                            occupiedSlotsThisWeek.add(key);
+                        }
                     }
+                });
+
+                // Se l'allievo è attivo ma non ha appuntamenti questa settimana (es. ha saltato o inizia la prossima),
+                // per sicurezza occupiamo lo slot del suo prossimo appuntamento futuro.
+                if (occupiedSlotsThisWeek.size === 0) {
+                    const futureAppts = appts.filter((a: any) => a.date && new Date(a.date) >= startOfWeek);
+                    if (futureAppts.length > 0) {
+                        const nextAppt = futureAppts[0];
+                        const dayOfWeek = new Date(nextAppt.date).getDay();
+                        const key = `${locId}_${dayOfWeek}_${nextAppt.startTime}`;
+                        occupiedSlotsThisWeek.add(key);
+                    }
+                }
+
+                // Incrementa l'occupazione (massimo 1 volta per slot per ogni allievo)
+                occupiedSlotsThisWeek.forEach(key => {
+                    occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
                 });
             }
         });
