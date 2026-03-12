@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkPeriodicNotifications = exports.receiveLeadV2 = exports.getPublicSlotsV2 = exports.enrollmentGateway = exports.onEnrollmentCreated = exports.onLeadCreated = exports.sendEmail = void 0;
+exports.checkPeriodicNotifications = exports.receiveLeadV2 = exports.getPublicSlotsV2 = exports.enrollmentGateway = exports.onEnrollmentCreated = exports.onLeadCreated = exports.processEnrollment = exports.getEnrollmentData = exports.sendEmail = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
@@ -47,12 +47,12 @@ const API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
 const gmailClientId = (0, params_1.defineSecret)("GMAIL_CLIENT_ID");
 const gmailClientSecret = (0, params_1.defineSecret)("GMAIL_CLIENT_SECRET");
 const gmailRefreshToken = (0, params_1.defineSecret)("GMAIL_REFRESH_TOKEN");
-const SENDER_EMAIL = "labeasypeasy@gmail.com";
+const gmailSenderEmail = (0, params_1.defineSecret)("GMAIL_SENDER_EMAIL");
 const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 exports.sendEmail = (0, https_1.onCall)({
     region: "europe-west1",
     cors: true,
-    secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
+    secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken, gmailSenderEmail]
 }, async (request) => {
     const { google } = await Promise.resolve().then(() => __importStar(require("googleapis")));
     const nodemailer = await Promise.resolve().then(() => __importStar(require("nodemailer")));
@@ -64,6 +64,7 @@ exports.sendEmail = (0, https_1.onCall)({
         const clientId = gmailClientId.value();
         const clientSecret = gmailClientSecret.value();
         const refreshToken = gmailRefreshToken.value();
+        const senderEmail = gmailSenderEmail.value();
         const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
         oAuth2Client.setCredentials({ refresh_token: refreshToken });
         const accessToken = await oAuth2Client.getAccessToken();
@@ -74,7 +75,7 @@ exports.sendEmail = (0, https_1.onCall)({
             service: "gmail",
             auth: {
                 type: "OAuth2",
-                user: SENDER_EMAIL,
+                user: senderEmail,
                 clientId: clientId,
                 clientSecret: clientSecret,
                 refreshToken: refreshToken,
@@ -82,7 +83,7 @@ exports.sendEmail = (0, https_1.onCall)({
             },
         });
         const mailOptions = {
-            from: `Lab Easy Peasy <${SENDER_EMAIL}>`,
+            from: `Lab Easy Peasy <${senderEmail}>`,
             to: Array.isArray(to) ? to.join(",") : to,
             subject: subject,
             html: html,
@@ -96,6 +97,188 @@ exports.sendEmail = (0, https_1.onCall)({
         logger.error("Error sending email:", error?.message || error);
         throw new Error(`Email sending failed: ${error?.message || 'Unknown error'}`);
     }
+});
+function toLocalISOString(date) {
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+function getEasterDate(year) {
+    const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+}
+function isItalianHoliday(date) {
+    const year = date.getFullYear();
+    const dateStr = toLocalISOString(date);
+    const holidays = {
+        [`${year}-01-01`]: 'Capodanno', [`${year}-01-06`]: 'Epifania', [`${year}-04-25`]: 'Liberazione',
+        [`${year}-05-01`]: 'Lavoro', [`${year}-06-02`]: 'Repubblica', [`${year}-08-15`]: 'Ferragosto',
+        [`${year}-11-01`]: 'Ognissanti', [`${year}-12-08`]: 'Immacolata', [`${year}-12-25`]: 'Natale',
+        [`${year}-12-26`]: 'S. Stefano'
+    };
+    const easter = getEasterDate(year);
+    const easterMonday = new Date(easter);
+    easterMonday.setDate(easter.getDate() + 1);
+    holidays[toLocalISOString(easter)] = 'Pasqua';
+    holidays[toLocalISOString(easterMonday)] = 'Pasquetta';
+    return !!holidays[dateStr];
+}
+function calculateEnrollmentDates(selectedSlot, lessonsTotal) {
+    const parts = selectedSlot.split(',');
+    const dayName = parts[0].trim();
+    const timePart = parts.length > 1 ? parts[1].trim() : '16:30 - 18:00';
+    const timeParts = timePart.split('-');
+    const startTime = timeParts[0].trim();
+    const endTime = timeParts.length > 1 ? timeParts[1].trim() : '18:00';
+    const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+    const targetDay = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
+    const now = new Date();
+    const startDate = new Date(now);
+    if (targetDay !== -1) {
+        const currentDay = startDate.getDay();
+        let distance = targetDay - currentDay;
+        if (distance < 0)
+            distance += 7;
+        startDate.setDate(startDate.getDate() + distance);
+    }
+    while (isItalianHoliday(startDate)) {
+        startDate.setDate(startDate.getDate() + 7);
+    }
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(startDate);
+    let validSlots = 1;
+    let loops = 0;
+    while (validSlots < (lessonsTotal || 1) && loops < 100) {
+        endDate.setDate(endDate.getDate() + 7);
+        if (!isItalianHoliday(endDate))
+            validSlots++;
+        loops++;
+    }
+    endDate.setHours(23, 59, 59, 999);
+    return { startDate: startDate.toISOString(), endDate: endDate.toISOString(), firstLessonDate: startDate.toISOString(), startTime, endTime };
+}
+exports.getEnrollmentData = (0, https_1.onCall)({ region: "europe-west1", cors: true }, async (request) => {
+    const { leadId } = request.data;
+    if (!leadId)
+        throw new Error("Missing leadId");
+    const db = admin.firestore();
+    const [leadSnap, companySnap, subsSnap, suppliersSnap] = await Promise.all([
+        db.collection('incoming_leads').doc(leadId).get(),
+        db.collection('settings').doc('company_info').get(),
+        db.collection('subscriptionTypes').get(),
+        db.collection('suppliers').where('isDeleted', '==', false).get()
+    ]);
+    if (!leadSnap.exists)
+        throw new Error("Lead non trovato");
+    const leadData = leadSnap.data();
+    if (leadData?.status === 'converted' && leadData?.relatedEnrollmentId) {
+        const enrSnap = await db.collection('enrollments').doc(leadData.relatedEnrollmentId).get();
+        return { success: true, alreadyConverted: true, enrollment: enrSnap.data() };
+    }
+    const companyInfo = companySnap.exists ? companySnap.data() : null;
+    const subscriptionTypes = [];
+    subsSnap.forEach(doc => {
+        const data = doc.data();
+        if (data.statusConfig?.status === 'active' && data.isPubliclyVisible !== false) {
+            subscriptionTypes.push({ id: doc.id, ...data });
+        }
+    });
+    const locations = [];
+    suppliersSnap.forEach(doc => {
+        const data = doc.data();
+        const locs = data.locations || [];
+        locs.forEach((l) => {
+            if (!l.closedAt && l.isPubliclyVisible !== false) {
+                locations.push({
+                    id: l.id, name: l.name, address: l.address || '', city: l.city || '', color: l.color,
+                    availability: l.availability || []
+                });
+            }
+        });
+    });
+    return { success: true, lead: { id: leadSnap.id, ...leadData }, companyInfo, subscriptionTypes, locations };
+});
+exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: true }, async (request) => {
+    const { leadId, formData } = request.data;
+    if (!leadId || !formData)
+        throw new Error("Dati mancanti");
+    const db = admin.firestore();
+    const leadRef = db.collection('incoming_leads').doc(leadId);
+    return await db.runTransaction(async (transaction) => {
+        const leadSnap = await transaction.get(leadRef);
+        if (!leadSnap.exists)
+            throw new Error("Lead non trovato");
+        const leadData = leadSnap.data();
+        if (leadData?.status === 'converted')
+            throw new Error("Iscrizione già completata");
+        const subRef = db.collection('subscriptionTypes').doc(formData.selectedSubscriptionId);
+        const subSnap = await transaction.get(subRef);
+        if (!subSnap.exists)
+            throw new Error("Abbonamento non trovato");
+        const sub = subSnap.data();
+        const clientRef = db.collection('clients').doc();
+        const childId = Math.random().toString(36).substring(2, 15);
+        const clientData = {
+            firstName: formData.parentFirstName, lastName: formData.parentLastName,
+            email: formData.parentEmail, phone: formData.parentPhone, taxCode: formData.parentFiscalCode,
+            address: `${formData.parentAddress}, ${formData.parentZip} ${formData.parentCity} (${formData.parentProvince})`,
+            city: formData.parentCity,
+            children: [{
+                    id: childId, name: formData.childName, age: formData.childAge, dateOfBirth: formData.childDateOfBirth,
+                    notes: '', notesHistory: [], tags: [], rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+                }],
+            status: 'Active', createdAt: new Date().toISOString(), source: 'portal'
+        };
+        transaction.set(clientRef, clientData);
+        const dates = calculateEnrollmentDates(formData.selectedSlot, sub?.lessons || 0);
+        const enrRef = db.collection('enrollments').doc();
+        const enrollmentData = {
+            clientId: clientRef.id, clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
+            childId: childId, childName: formData.childName,
+            subscriptionTypeId: formData.selectedSubscriptionId, subscriptionName: sub?.name || 'Abbonamento',
+            locationId: formData.selectedLocationId || 'unassigned', locationName: formData.selectedLocationName || 'Sede Preferita',
+            price: sub?.price || 0, lessonsTotal: sub?.lessons || 0, lessonsRemaining: sub?.lessons || 0,
+            labCount: sub?.labCount || 0, sgCount: sub?.sgCount || 0, evtCount: sub?.evtCount || 0,
+            labRemaining: sub?.labCount || 0, sgRemaining: sub?.sgCount || 0, evtRemaining: sub?.evtCount || 0,
+            status: formData.paymentMethod === 'BankTransfer' || formData.paymentMethod === 'PayPal' ? 'active' : 'pending',
+            startDate: dates.startDate, endDate: dates.endDate,
+            appointments: [{
+                    lessonId: Math.random().toString(36).substring(2, 15), date: dates.firstLessonDate,
+                    startTime: dates.startTime, endTime: dates.endTime,
+                    locationId: formData.selectedLocationId || 'unassigned', locationName: formData.selectedLocationName || 'Sede Preferita',
+                    locationColor: '#6366f1', childName: formData.childName, status: 'Scheduled'
+                }],
+            createdAt: new Date().toISOString(), source: 'portal'
+        };
+        transaction.set(enrRef, enrollmentData);
+        if (enrollmentData.status === 'active') {
+            const transRef = db.collection('transactions').doc();
+            transaction.set(transRef, {
+                date: new Date().toISOString(), description: `Incasso Online - ${formData.childName} - ${sub?.name}`,
+                amount: sub?.price || 0, type: 'income', category: 'Vendite',
+                paymentMethod: formData.paymentMethod, status: 'completed',
+                relatedEnrollmentId: enrRef.id, allocationId: formData.selectedLocationId,
+                allocationName: formData.selectedLocationName, createdAt: new Date().toISOString()
+            });
+            if (formData.paymentMethod === 'BankTransfer') {
+                const invRef = db.collection('invoices').doc();
+                transaction.set(invRef, {
+                    clientId: clientRef.id, clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
+                    issueDate: new Date().toISOString(), dueDate: new Date().toISOString(), status: 'pending_sdi',
+                    paymentMethod: formData.paymentMethod, relatedEnrollmentId: enrRef.id,
+                    items: [{ description: `Iscrizione ${formData.childName} - ${sub?.name}`, quantity: 1, price: sub?.price || 0 }],
+                    totalAmount: sub?.price || 0, createdAt: new Date().toISOString()
+                });
+            }
+        }
+        transaction.update(leadRef, {
+            status: 'converted', relatedEnrollmentId: enrRef.id, convertedAt: new Date().toISOString()
+        });
+        return { success: true, enrollmentId: enrRef.id };
+    });
 });
 async function sendPushToAllTokens(title, body, extraData) {
     try {
