@@ -267,15 +267,26 @@ const EnrollmentPortal: React.FC = () => {
           }
         }
 
-        // 3. Match Bundle (Subscription)
+        // 3. Match Bundle (Subscription) - PRIORITÀ ASSOLUTA
+        // Se il lead arriva con una scelta già fatta, dobbiamo onorarla ignorando i filtri restrittivi
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
           preselectedSubId = (leadData.selectedSlot as any).bundleId || '';
         }
         
+        // Cerchiamo l'abbonamento tra TUTTI quelli attivi, senza filtri di età o giorno in questa fase
+        if (preselectedSubId) {
+            const exists = subs.find((s: any) => s.id === preselectedSubId && s.statusConfig?.status === 'active');
+            if (!exists) preselectedSubId = ''; // Reset se l'ID è proprio errato
+        }
+
         if (!preselectedSubId && normalizedSlotString) {
+          // Matching testuale intelligente su tutta la lista degli attivi
           const matchedSub = subs.find((s: any) => 
-            normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 
-            normalizeString(normalizedSlotString).includes(normalizeString(s.name))
+            s.statusConfig?.status === 'active' && (
+              normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 
+              normalizeString(normalizedSlotString).includes(normalizeString(s.name)) ||
+              (s.publicName && normalizeString(s.publicName).includes(normalizeString(normalizedSlotString)))
+            )
           );
           if (matchedSub) preselectedSubId = matchedSub.id;
         }
