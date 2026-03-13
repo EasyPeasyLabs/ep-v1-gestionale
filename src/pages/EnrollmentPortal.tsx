@@ -100,6 +100,23 @@ const calculateAgeString = (dob: string): string => {
   return result;
 };
 
+const getNextOccurrence = (dayName: string): string => {
+  const days = ['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'];
+  const targetDay = days.indexOf(dayName.toLowerCase().trim());
+  if (targetDay === -1) return '';
+
+  const now = new Date();
+  const result = new Date(now);
+  
+  // Calculate days until next occurrence
+  const currentDay = now.getDay();
+  let daysUntil = targetDay - currentDay;
+  if (daysUntil <= 0) daysUntil += 7; // Always at least 1 day in the future (or next week if same day)
+  
+  result.setDate(now.getDate() + daysUntil);
+  return result.toISOString();
+};
+
 const EnrollmentPortal: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -573,21 +590,40 @@ const EnrollmentPortal: React.FC = () => {
 
   if (isSuccess) return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl text-center border border-green-100 animate-fade-in">
-        <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-          <CheckCircle className="w-12 h-12" />
+      <style>{`
+        @keyframes pulse-subtle {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.02); }
+        }
+        .animate-pulse-subtle {
+          animation: pulse-subtle 3s infinite ease-in-out;
+        }
+      `}</style>
+      <div className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl text-center border border-green-100 animate-fade-in">
+        <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+          <CheckCircle className="w-14 h-14" />
         </div>
-        <h2 className="text-3xl font-black text-gray-900 mb-4">
-          {successMode === 'booking' ? 'Prenotazione Inviata!' : 'Iscrizione Completata!'}
+        <h2 className="text-4xl font-black text-gray-900 mb-4 tracking-tight">
+          {successMode === 'booking' ? 'Richiesta Inviata!' : 'Iscrizione Attiva!'}
         </h2>
-        <p className="text-gray-600 mb-8 leading-relaxed">
-          {successMode === 'booking' 
-            ? 'Abbiamo ricevuto la tua richiesta. Ti contatteremo a breve per confermare il posto e darti il benvenuto!' 
-            : 'Grazie! Il pagamento è stato ricevuto e l\'iscrizione è attiva. Ti aspettiamo in sede!'}
-        </p>
-        <div className="space-y-3">
-          <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
-          <p className="text-xs text-gray-400">Riceverai una mail di riepilogo a breve.</p>
+        <div className="space-y-4 mb-10">
+          <p className="text-xl text-gray-600 font-medium leading-relaxed">
+            {successMode === 'booking' 
+              ? 'Abbiamo ricevuto la tua richiesta. Riceverai a breve una mail di conferma.' 
+              : 'Grazie! Il pagamento è stato ricevuto. Riceverai a breve la mail di riepilogo.'}
+          </p>
+          <p className="text-2xl font-black text-indigo-600 uppercase tracking-widest">
+            Ci vediamo in sede!
+          </p>
+        </div>
+        <div className="space-y-4">
+          <button 
+            onClick={() => window.location.href = 'https://sites.google.com/view/easypeasylabs/home'} 
+            className="w-full bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-xl hover:bg-gray-800 transition-all uppercase tracking-[0.2em] text-sm"
+          >
+            Ho capito
+          </button>
+          <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Verrai reindirizzato al sito ufficiale</p>
         </div>
       </div>
     </div>
@@ -937,7 +973,7 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
                     <CreditCard className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl font-black uppercase tracking-tight">Scelta Abbonamento</h2>
+                  <h2 className="text-xl font-black uppercase tracking-tight tracking-widest">Riepilogo Abbonamento</h2>
                 </div>
 
                 {/* Logic to determine what to show */}
@@ -945,47 +981,49 @@ const EnrollmentPortal: React.FC = () => {
                   const preSelectedId = formData.selectedSubscriptionId;
                   const sub = subscriptionTypes.find(s => s.id === preSelectedId);
                   
-                  // FALLBACK: Se abbiamo un ID ma l'abbonamento non è in lista, forziamo la visione della lista completa
+                  // FALLBACK
                   const shouldForceList = !sub && !!preSelectedId;
                   const isListView = showOtherSubscriptions || !preSelectedId || shouldForceList;
 
                   if (!isListView && sub) {
-                    // HERO VIEW (Abbonamento Pre-selezionato trovato)
                     const nameParts = sub.name.split('.');
                     const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
-                    const durationMonths = Math.round(sub.durationInDays / 30);
+                    
+                    // First lesson logic
+                    const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
+                    const firstLessonDate = getNextOccurrence(slotDay);
+                    const formattedFirstLesson = firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM', { locale: it }) : 'da definire';
 
                     return (
-                      <div className="space-y-6">
-                        <div className="bg-blue-50 border-2 border-blue-900 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
-                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-900 opacity-5 -mr-16 -mt-16 rounded-full"></div>
-                          <div className="flex justify-between items-start relative z-10">
-                            <div className="space-y-4">
-                              <span className="bg-blue-900 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">La tua selezione</span>
-                              <h3 className="text-3xl font-black text-blue-900 leading-tight">{shortName}</h3>
+                      <div className="space-y-10">
+                        {/* HERO AMBER BOX */}
+                        <div className="bg-amber-400 border-4 border-amber-500 rounded-[40px] p-10 shadow-2xl relative overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
+                          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 -mr-32 -mt-32 rounded-full"></div>
+                          
+                          <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10 text-center md:text-left">
+                            <div className="space-y-6 flex-1">
+                              <span className="bg-white/30 text-gray-900 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.2em]">Selezione Confermata</span>
+                              <h3 className="text-5xl font-black text-gray-900 leading-none break-words uppercase">{shortName}</h3>
                               <div className="space-y-2">
-                                <p className="text-blue-700 font-medium text-lg leading-relaxed whitespace-pre-line">{sub.description || `${sub.lessons} lezioni totali`}</p>
-                                <div className="flex items-center gap-4 text-sm font-bold text-blue-600 uppercase tracking-tighter">
-                                  <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> Validità {durationMonths} {durationMonths === 1 ? 'mese' : 'mesi'}</span>
-                                  <span className="flex items-center gap-1"><User className="w-4 h-4" /> {sub.target === 'kid' ? 'Bambini' : 'Adulti'}</span>
-                                </div>
+                                <p className="text-gray-900/80 font-bold text-xl uppercase tracking-tight">Prima Lezione Utile:</p>
+                                <p className="text-3xl font-black text-gray-900 capitalize">{formattedFirstLesson}</p>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <div className="bg-amber-400 text-gray-900 px-6 py-4 rounded-2xl shadow-lg transform group-hover:scale-105 transition-all">
-                                <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1">Prezzo</p>
-                                <p className="text-4xl font-black">{sub.price}€</p>
-                              </div>
+                            
+                            <div className="flex flex-col items-center justify-center bg-white p-8 rounded-[32px] shadow-xl min-w-[200px]">
+                              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Prezzo Totale</p>
+                              <p className="text-6xl font-black text-gray-900">{sub.price}€</p>
                             </div>
                           </div>
                         </div>
 
+                        {/* SECONDARY CHANGE BUTTON */}
                         <div className="flex justify-center">
                           <button 
                             onClick={() => setShowOtherSubscriptions(true)}
-                            className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest hover:text-indigo-800 transition-colors bg-white px-6 py-3 rounded-2xl border-2 border-dashed border-indigo-100 hover:border-indigo-300"
+                            className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest hover:text-indigo-800 transition-colors bg-white px-8 py-4 rounded-2xl border-2 border-dashed border-indigo-100 hover:border-indigo-300 shadow-sm"
                           >
-                            <Sparkles className="w-4 h-4" /> Vedi altre opzioni o cambia idea
+                            <Sparkles className="w-5 h-5" /> Vedi altri Abbonamenti o Cambia Idea
                           </button>
                         </div>
                       </div>
@@ -1021,22 +1059,18 @@ const EnrollmentPortal: React.FC = () => {
                           const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
                           const dayIndex = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
 
-                          // 1. Primo tentativo: Filtro completo (Età + Giorno + Visibilità)
+                          // 1. Primo tentativo: Filtro completo
                           let filtered = subscriptionTypes.filter(sub => {
                             if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
-                            
-                            // Età
                             if (sub.target === 'kid' && !isKid && ageNum > 0) return false;
                             if (sub.target === 'adult' && isKid) return false;
-
-                            // Giorno
                             if (dayIndex !== -1 && sub.allowedDays && sub.allowedDays.length > 0) {
                               if (!sub.allowedDays.includes(dayIndex)) return false;
                             }
                             return true;
                           });
 
-                          // 2. Secondo tentativo (Fallback): Rimuoviamo il filtro Giorno se la lista è vuota
+                          // 2. Secondo tentativo: Fallback
                           if (filtered.length === 0) {
                             filtered = subscriptionTypes.filter(sub => {
                               if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
@@ -1046,7 +1080,7 @@ const EnrollmentPortal: React.FC = () => {
                             });
                           }
 
-                          // 3. Terzo tentativo (Emergenza): Mostriamo tutti i bundle attivi della sede
+                          // 3. Terzo tentativo: Emergenza
                           if (filtered.length === 0) {
                             filtered = subscriptionTypes.filter(sub => sub.statusConfig?.status === 'active');
                           }
@@ -1055,7 +1089,7 @@ const EnrollmentPortal: React.FC = () => {
                             return (
                               <div className="col-span-full bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 text-center">
                                 <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                                <p className="text-gray-500 font-medium">Nessun abbonamento disponibile per i parametri selezionati. Contatta la segreteria per assistenza.</p>
+                                <p className="text-gray-500 font-medium">Nessun abbonamento disponibile. Contatta la segreteria.</p>
                               </div>
                             );
                           }
@@ -1111,68 +1145,40 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
                     <CheckCircle className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl font-black uppercase tracking-tight">Riepilogo</h2>
+                  <h2 className="text-xl font-black uppercase tracking-widest">Riepilogo Finale</h2>
                 </div>
 
-                <div className="bg-gray-50 rounded-3xl p-6 space-y-4 border border-gray-100">
-                  <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-                    <span className="text-xs font-black text-gray-400 uppercase">Allievo</span>
-                    <span className="font-bold">{formData.childName}</span>
+                <div className="bg-gray-50 rounded-[32px] p-8 space-y-6 border border-gray-100 shadow-sm">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sede</span>
+                      <p className="font-bold text-lg text-gray-800">{formData.selectedLocationName}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giorno e Orario</span>
+                      <p className="font-bold text-lg text-gray-800">{formData.selectedSlot}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Abbonamento Scelto</span>
+                      <p className="font-bold text-lg text-blue-900 uppercase">
+                        {subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.name.split('.').pop() || 'Abbonamento'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Data Prima Lezione</span>
+                      <p className="font-bold text-lg text-amber-600 capitalize">
+                        {(() => {
+                            const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
+                            const firstLessonDate = getNextOccurrence(slotDay);
+                            return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM', { locale: it }) : 'da definire';
+                        })()}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-                    <span className="text-xs font-black text-gray-400 uppercase">Sede</span>
-                    <span className="font-bold">{formData.selectedLocationName}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-                    <span className="text-xs font-black text-gray-400 uppercase">Orario</span>
-                    <span className="font-bold text-right">
-                      {(() => {
-                        const slotString = formData.selectedSlot;
-                        const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
-                        
-                        if (slotString && slotString.includes('&')) {
-                          try {
-                            const parts = slotString.split('-');
-                            if (parts.length === 2) {
-                              const leftPart = parts[0].trim();
-                              const rightPart = parts[1].trim();
-                              
-                              const dayMatch = leftPart.match(/^[a-zA-Zì]+,?\s/);
-                              const day = dayMatch ? dayMatch[0].trim().replace(',', '') : '';
-                              
-                              const startTimesStr = dayMatch ? leftPart.substring(dayMatch[0].length) : leftPart;
-                              const startTimes = startTimesStr.split('&').map(s => s.trim());
-                              const endTimes = rightPart.split('&').map(s => s.trim());
-                              
-                              if (startTimes.length === 2 && endTimes.length === 2) {
-                                const labCount = sub?.labCount || 0;
-                                const sgCount = sub?.sgCount || 0;
-                                
-                                const lines = [];
-                                if (labCount > 0) {
-                                  lines.push(`${labCount} ingress${labCount === 1 ? 'o' : 'i'} ${day} (LAB) ${startTimes[0]} - ${endTimes[0]}`);
-                                }
-                                if (sgCount > 0) {
-                                  lines.push(`${sgCount} ingress${sgCount === 1 ? 'o' : 'i'} ${day} (SG) ${startTimes[1]} - ${endTimes[1]}`);
-                                }
-                                
-                                if (lines.length > 0) {
-                                  return lines.map((line, i) => <div key={i}>{line}</div>);
-                                }
-                              }
-                            }
-                          } catch (e) {
-                            console.error(e);
-                          }
-                        }
-                        
-                        return <div>{slotString}</div>;
-                      })()}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="text-xs font-black text-gray-400 uppercase">Totale</span>
-                    <span className="text-3xl font-black text-blue-900">
+                  
+                  <div className="pt-6 border-t border-gray-200 flex justify-between items-center">
+                    <span className="text-sm font-black text-gray-400 uppercase tracking-widest">Totale da pagare</span>
+                    <span className="text-4xl font-black text-gray-900">
                       {(() => {
                         const basePrice = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price || 0;
                         const totalPrice = basePrice >= 77 ? basePrice + 2 : basePrice;
@@ -1182,35 +1188,38 @@ const EnrollmentPortal: React.FC = () => {
                   </div>
                 </div>
 
-                {/* High Visibility Alert */}
-                <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-r-xl shadow-sm flex gap-4 items-start">
-                  <AlertCircle className="w-8 h-8 text-red-600 flex-shrink-0 mt-1" />
-                  <div className="space-y-1">
-                    <h3 className="text-red-800 font-black uppercase tracking-tight text-sm">Attenzione: Regolamento Assenze</h3>
-                    <p className="text-sm text-red-700 leading-relaxed font-medium">
-                      Le lezioni perse <strong>NON sono recuperabili</strong> e <strong>NON sono previsti rimborsi</strong> sulle quote pagate. 
+                {/* HIGH VISIBILITY RED ALERT */}
+                <div className="bg-red-50 border-2 border-red-500 rounded-[32px] p-8 shadow-lg flex gap-6 items-start animate-pulse-subtle">
+                  <div className="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-red-600 font-black uppercase tracking-widest text-sm">Regolamento Assenze</h3>
+                    <p className="text-sm text-red-800 leading-relaxed font-bold">
+                      Le lezioni perse <span className="underline">NON sono recuperabili</span> e <span className="underline">NON sono previsti rimborsi</span> sulle quote pagate. 
                       L'iscrizione impegna il posto per l'intera durata dell'abbonamento.
                     </p>
                   </div>
                 </div>
 
                 {!showPaymentDetails ? (
-                  <div className="grid grid-cols-1 gap-4">
+                  <div className="grid grid-cols-1 gap-4 pt-4">
                     <button 
                       onClick={() => setShowBookingModal(true)}
                       disabled={isProcessing}
-                      className="w-full bg-white border-2 border-blue-900 text-blue-900 font-black py-4 rounded-2xl hover:bg-blue-50 transition-all uppercase tracking-widest text-sm shadow-sm"
+                      className="w-full bg-white border-4 border-gray-900 text-gray-900 font-black py-5 rounded-[24px] hover:bg-gray-50 transition-all uppercase tracking-widest text-sm shadow-md"
                     >
                       Prenota Iscrizione (Paga in Sede)
                     </button>
                     <button 
                       onClick={() => setShowPaymentDetails(true)}
-                      className="w-full bg-blue-900 text-white font-black py-4 rounded-2xl shadow-xl hover:bg-blue-800 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-2"
+                      className="w-full bg-indigo-600 text-white font-black py-5 rounded-[24px] shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-3"
                     >
-                      Paga Ora <ChevronRight className="w-5 h-5" />
+                      Paga Ora <ChevronRight className="w-6 h-6" />
                     </button>
                   </div>
                 ) : (
+... (rest of the payment details logic) ...
                   <div className="space-y-6 animate-slide-up">
                     <div className="space-y-3">
                       <label className="text-xs font-black text-gray-400 uppercase">Metodo di Pagamento</label>
