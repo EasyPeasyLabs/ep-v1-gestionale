@@ -234,53 +234,57 @@ const EnrollmentPortal: React.FC = () => {
         // Pre-fill form
         const normalizedSlotString = formatSlotToString(leadData.selectedSlot);
         
-        // Advanced Pre-selection Logic
+        // --- CHIRURGICAL MATCHING LOGIC ---
         let matchedLocationId = '';
         let matchedLocationName = '';
         let matchedSlotTime = '';
         let preselectedSubId = '';
 
-        // 1. Match Location
-        const leadLocNormalized = normalizeString(leadData.selectedLocation);
+        // 1. Match Location (Fuzzy & Deep)
+        const leadLocRaw = String(leadData.selectedLocation || '');
+        const leadLocNormalized = normalizeString(leadLocRaw);
+        
         const matchedLoc = locs.find(l => {
           const locNameNorm = normalizeString(l.name);
           const locIdNorm = normalizeString(l.id);
+          // Check for exact match, ID match, or containment in both directions
           return locNameNorm === leadLocNormalized || 
                  locIdNorm === leadLocNormalized ||
-                 leadLocNormalized.includes(locNameNorm) ||
-                 locNameNorm.includes(leadLocNormalized);
+                 (leadLocNormalized.length > 2 && locNameNorm.includes(leadLocNormalized)) ||
+                 (locNameNorm.length > 2 && leadLocNormalized.includes(locNameNorm));
         });
 
         if (matchedLoc) {
           matchedLocationId = matchedLoc.id;
           matchedLocationName = matchedLoc.name;
 
-          // 2. Match Slot within that Location
-          const slotToMatch = normalizeString(normalizedSlotString);
+          // 2. Match Slot within Location (Time-only matching)
+          const extractTimeDigits = (s: string) => s.replace(/\D/g, '');
+          const leadTimeDigits = extractTimeDigits(normalizedSlotString);
+          
           const matchedSlot = matchedLoc.slots.find(s => {
-            const sTime = normalizeString(s.time);
-            return slotToMatch.includes(sTime) || sTime.includes(slotToMatch);
+            const dbSlotTime = String(s.time || '');
+            const dbTimeDigits = extractTimeDigits(dbSlotTime);
+            return dbTimeDigits !== '' && (dbTimeDigits.includes(leadTimeDigits) || leadTimeDigits.includes(dbTimeDigits));
           });
 
           if (matchedSlot) {
             matchedSlotTime = matchedSlot.time;
+          } else {
+            // Fallback: use the raw string if location matched but slot didn't exactly
+            matchedSlotTime = normalizedSlotString;
           }
         }
 
-        // 3. Match Bundle (Subscription) - PRIORITÀ ASSOLUTA
-        // Se il lead arriva con una scelta già fatta, dobbiamo onorarla ignorando i filtri restrittivi
+        // 3. Match Bundle (Subscription) - ID Prioritized
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
           preselectedSubId = (leadData.selectedSlot as any).bundleId || '';
         }
         
-        // Cerchiamo l'abbonamento tra TUTTI quelli attivi, senza filtri di età o giorno in questa fase
-        if (preselectedSubId) {
-            const exists = subs.find((s: any) => s.id === preselectedSubId && s.statusConfig?.status === 'active');
-            if (!exists) preselectedSubId = ''; // Reset se l'ID è proprio errato
-        }
-
-        if (!preselectedSubId && normalizedSlotString) {
-          // Matching testuale intelligente su tutta la lista degli attivi
+        // Validation & Name Fallback
+        const subExists = preselectedSubId ? subs.find((s: any) => s.id === preselectedSubId && s.statusConfig?.status === 'active') : null;
+        
+        if (!subExists && normalizedSlotString) {
           const matchedSub = subs.find((s: any) => 
             s.statusConfig?.status === 'active' && (
               normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 
@@ -289,6 +293,8 @@ const EnrollmentPortal: React.FC = () => {
             )
           );
           if (matchedSub) preselectedSubId = matchedSub.id;
+        } else if (subExists) {
+          preselectedSubId = subExists.id;
         }
 
         setFormData(prev => ({
@@ -298,9 +304,9 @@ const EnrollmentPortal: React.FC = () => {
           parentEmail: leadData.email || '',
           parentPhone: leadData.telefono || '',
           childName: leadData.childName || '',
-          childAge: leadData.childAge || '',
+          childAge: String(leadData.childAge || ''),
           selectedLocationId: matchedLocationId,
-          selectedLocationName: matchedLocationName,
+          selectedLocationName: matchedLocationName || leadLocRaw,
           selectedSlot: matchedSlotTime || normalizedSlotString,
           selectedSubscriptionId: preselectedSubId
         }));
