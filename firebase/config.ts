@@ -4,6 +4,7 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { getAuth, Auth } from "firebase/auth";
 import { getStorage, FirebaseStorage } from "firebase/storage";
 import { getMessaging, Messaging, isSupported } from "firebase/messaging";
+import { getFunctions, Functions } from "firebase/functions";
 
 // Helper for boot monitor
 const logToScreen = (window as any).logToScreen || console.log;
@@ -26,6 +27,7 @@ let db: Firestore;
 let auth: Auth;
 let storage: FirebaseStorage;
 let messaging: Messaging | null = null;
+let functions: Functions;
 
 try {
     if (!firebaseConfig.apiKey) {
@@ -62,6 +64,7 @@ try {
 
     auth = getAuth(app);
     storage = getStorage(app);
+    functions = getFunctions(app, "europe-west1");
     
     // Messaging is only supported in browsers with service workers
     isSupported().then((supported) => {
@@ -75,4 +78,4 @@ try {
     console.error("Firebase Init Error:", e);
 }
 
-export { app, db, auth, storage, messaging };
+export { app, db, auth, storage, messaging, functions };

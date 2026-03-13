@@ -1,7 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../../firebase/config';
 import { 
   CheckCircle, 
   CreditCard, 
@@ -21,6 +19,12 @@ import {
   SubscriptionType, 
   CompanyInfo, 
   PaymentMethod,
+  DocumentStatus,
+  TransactionType,
+  TransactionCategory,
+  TransactionStatus,
+  ClientType,
+  EnrollmentStatus,
   SlotType
 } from '../../types';
 import Spinner from '../../components/Spinner';
@@ -28,19 +32,37 @@ import Modal from '../../components/Modal';
 import { format, parseISO } from 'date-fns';
 import { it } from 'date-fns/locale';
 
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../../firebase/config';
+
 const normalizeString = (str?: string) => {
   if (!str) return '';
   return str.toLowerCase().replace(/\s+/g, '').trim();
 };
 
+interface Lead {
+  id: string;
+  nome: string;
+  cognome: string;
+  email: string;
+  telefono: string;
+  childName: string;
+  childAge: string;
+  selectedLocation: string;
+  selectedSlot: string;
+  notes?: string;
+  status: string;
+  relatedEnrollmentId?: string;
+}
+
 const EnrollmentPortal: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(1);
-  const [lead, setLead] = useState<any | null>(null);
+  const [lead, setLead] = useState<Lead | null>(null);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [locations, setLocations] = useState<{id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
   const [existingEnrollment, setExistingEnrollment] = useState<any | null>(null);
   
   // Form State
@@ -69,9 +91,11 @@ const EnrollmentPortal: React.FC = () => {
   const [successMode, setSuccessMode] = useState<'booking' | 'paid'>('booking');
   const [showPaymentDetails, setShowPaymentDetails] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
+
   const [showAllOptions, setShowAllOptions] = useState(false);
 
   useEffect(() => {
+    // Extract ID from either search params or hash params (for SPA compatibility)
     const searchParams = new URLSearchParams(window.location.search);
     let leadId = searchParams.get('id');
     
@@ -79,6 +103,10 @@ const EnrollmentPortal: React.FC = () => {
       const hashPart = window.location.hash.split('?')[1];
       const hashParams = new URLSearchParams(hashPart);
       leadId = hashParams.get('id');
+    }
+
+    if (!leadId && window.location.pathname.startsWith('/i/')) {
+      leadId = window.location.pathname.split('/i/')[1];
     }
 
     if (!leadId) {
@@ -90,31 +118,50 @@ const EnrollmentPortal: React.FC = () => {
     const fetchData = async () => {
       try {
         const getEnrollmentData = httpsCallable(functions, 'getEnrollmentData');
-        const result: any = await getEnrollmentData({ leadId });
-        const data = result.data;
+        const result = await getEnrollmentData({ leadId });
+        const data = result.data as any;
 
-        if (data.alreadyConverted) {
-          setExistingEnrollment(data.enrollment);
-          setLoading(false);
-          return;
+        if (data.existingEnrollment) {
+            setExistingEnrollment(data.existingEnrollment);
+            setLoading(false);
+            return;
         }
 
-        const leadData = data.lead;
-        setLead(leadData);
-        setCompanyInfo(data.companyInfo);
-        setSubscriptionTypes(data.subscriptionTypes);
+        const leadData = data.lead as Lead;
+        const company = data.company;
+        const subs = data.subscriptions;
+        const suppliers = data.suppliers;
 
+        setLead(leadData);
+        setCompanyInfo(company);
+        setSubscriptionTypes(subs);
+
+        // Extract locations from suppliers
         const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-        const locs = data.locations.map((l: any) => ({
-          ...l,
-          slots: (l.availability || [])
-            .filter((a: any) => a.isPubliclyVisible !== false)
-            .map((a: any) => ({
-              time: `${daysMap[a.dayOfWeek || 0]}, ${a.startTime} - ${a.endTime}`,
-              type: a.type || 'LAB'
-            }))
-        }));
+        const locs: {id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[] = [];
+        suppliers.forEach((s: any) => {
+          s.locations.forEach((l: any) => {
+            // Filter out closed or hidden locations
+            if (!l.closedAt && l.isPubliclyVisible !== false) {
+              locs.push({
+                id: l.id,
+                name: l.name,
+                address: l.address || '',
+                city: l.city || '',
+                color: l.color,
+                // Filter out hidden slots
+                slots: (l.availability || [])
+                  .filter((a: any) => a.isPubliclyVisible !== false)
+                  .map((a: any) => ({
+                    time: `${daysMap[a.dayOfWeek || 0]}, ${a.startTime} - ${a.endTime}`,
+                    type: a.type || 'LAB'
+                  }))
+              });
+            }
+          });
+        });
         setLocations(locs);
+        document.title = "EasyPeasy Labs";
 
         // Pre-fill form
         setFormData(prev => ({
@@ -129,25 +176,33 @@ const EnrollmentPortal: React.FC = () => {
           selectedSlot: leadData.selectedSlot || ''
         }));
 
-        // Matching logic
+        // Try to match location name to ID
         const leadLocNormalized = normalizeString(leadData.selectedLocation);
-        const matchedLoc = locs.find((l: any) => {
+        const matchedLoc = locs.find(l => {
           const locNameNorm = normalizeString(l.name);
           const locIdNorm = normalizeString(l.id);
-          return locNameNorm === leadLocNormalized || locIdNorm === leadLocNormalized || leadLocNormalized.includes(locNameNorm) || locNameNorm.includes(leadLocNormalized);
+          return locNameNorm === leadLocNormalized || 
+                 locIdNorm === leadLocNormalized ||
+                 leadLocNormalized.includes(locNameNorm) ||
+                 locNameNorm.includes(leadLocNormalized);
         });
         
         if (matchedLoc) {
           setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id, selectedLocationName: matchedLoc.name }));
+          
+          // Try to match slot time
+          // leadData.selectedSlot might be "Lunedì 16:30 - 18:00" or just "16:30 - 18:00"
           const slotToMatch = normalizeString(leadData.selectedSlot);
-          const matchedSlot = matchedLoc.slots.find((s: any) => {
+          const matchedSlot = matchedLoc.slots.find(s => {
             const sTime = normalizeString(s.time);
             return slotToMatch.includes(sTime) || sTime.includes(slotToMatch);
           });
+          
           if (matchedSlot) {
             setFormData(prev => ({ ...prev, selectedSlot: matchedSlot.time }));
           }
         }
+
       } catch (err) {
         console.error(err);
         setError("Errore nel caricamento dei dati.");
@@ -159,233 +214,220 @@ const EnrollmentPortal: React.FC = () => {
     fetchData();
   }, []);
 
-  const handleProcessEnrollment = async (mode: 'booking' | 'paid') => {
+  const handleNext = () => setStep(s => s + 1);
+  const handleBack = () => setStep(s => s - 1);
+
+  const handleBooking = async () => {
     if (!lead) return;
     setIsProcessing(true);
     try {
-      const processEnrollment = httpsCallable(functions, 'processEnrollment');
+      const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
       
-      // Override payment method if it's a simple booking
-      const finalFormData = {
-        ...formData,
-        paymentMethod: mode === 'booking' ? 'Cash' : formData.paymentMethod
+      const clientData = {
+        clientType: ClientType.Parent,
+        firstName: formData.parentFirstName,
+        lastName: formData.parentLastName,
+        email: formData.parentEmail,
+        phone: formData.parentPhone,
+        taxCode: formData.parentFiscalCode,
+        address: `${formData.parentAddress}, ${formData.parentZip} ${formData.parentCity} (${formData.parentProvince})`,
+        city: formData.parentCity,
+        children: [{
+          id: '', // Will be set by server
+          name: formData.childName,
+          age: formData.childAge,
+          dateOfBirth: formData.childDateOfBirth,
+          notes: '',
+          notesHistory: [],
+          tags: [],
+          rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+        }],
+        status: 'Active',
+        notesHistory: [],
+        tags: [],
+        rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
+        createdAt: new Date().toISOString(),
+        source: 'portal'
       };
 
-      const result: any = await processEnrollment({ leadId: lead.id, formData: finalFormData });
-      
-      if (result.data.success) {
-        setSuccessMode(mode);
-        setIsSuccess(true);
-      }
-    } catch (err: any) {
+      const enrollmentData = {
+        clientId: '', // Will be set by server
+        clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
+        childId: '', // Will be set by server
+        childName: formData.childName,
+        subscriptionTypeId: formData.selectedSubscriptionId,
+        subscriptionName: sub?.name || 'Abbonamento',
+        locationId: formData.selectedLocationId || 'unassigned',
+        locationName: formData.selectedLocationName || 'Sede Preferita',
+        price: sub?.price || 0,
+        lessonsTotal: sub?.lessons || 0,
+        lessonsRemaining: sub?.lessons || 0,
+        labCount: sub?.labCount || 0,
+        sgCount: sub?.sgCount || 0,
+        evtCount: sub?.evtCount || 0,
+        labRemaining: sub?.labCount || 0,
+        sgRemaining: sub?.sgCount || 0,
+        evtRemaining: sub?.evtCount || 0,
+        status: EnrollmentStatus.Pending,
+        startDate: '', // Will be set by server
+        endDate: '', // Will be set by server
+        appointments: [{
+          lessonId: '', // Will be set by server
+          date: '', // Will be set by server
+          startTime: '', // Will be set by server
+          endTime: '', // Will be set by server
+          locationId: formData.selectedLocationId || 'unassigned',
+          locationName: formData.selectedLocationName || 'Sede Preferita',
+          locationColor: '#6366f1',
+          childName: formData.childName,
+          status: 'Scheduled'
+        }],
+        createdAt: new Date().toISOString(),
+        source: 'portal'
+      };
+
+      const processEnrollment = httpsCallable(functions, 'processEnrollment');
+      await processEnrollment({
+          leadId: lead.id,
+          formData,
+          clientData,
+          enrollmentData
+      });
+
+      setSuccessMode('booking');
+      setIsSuccess(true);
+    } catch (err) {
       console.error(err);
-      alert(err.message || "Errore durante il processo. Riprova.");
+      alert("Errore durante la prenotazione.");
     } finally {
       setIsProcessing(false);
-      setShowBookingModal(false);
     }
   };
 
-  if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Spinner /></div>;
-  
-  // Resto del componente (Summary View, Success View, Steps) rimane strutturalmente identico 
-  // ma utilizza handleProcessEnrollment invece di handleBooking/handlePayment
-  
-  if (existingEnrollment) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl text-center border border-green-100 animate-fade-in">
-            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-12 h-12" />
-            </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-2">Iscrizione Già Completata!</h2>
-            <p className="text-gray-600 mb-8 leading-relaxed">Hai già completato l'iscrizione per {existingEnrollment.childName}. Ecco il riepilogo dei dettagli:</p>
-            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 text-left space-y-4 mb-8">
-                <div className="flex items-center gap-3"><MapPin className="w-5 h-5 text-indigo-500" /><div><p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p><p className="font-bold text-gray-800">{existingEnrollment.locationName}</p></div></div>
-                <div className="flex items-center gap-3"><Clock className="w-5 h-5 text-indigo-500" /><div><p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p><p className="font-bold text-gray-800">{existingEnrollment.appointments?.[0] ? `${format(parseISO(existingEnrollment.appointments[0].date), 'EEEE', { locale: it })} ${existingEnrollment.appointments[0].startTime} - ${existingEnrollment.appointments[0].endTime}` : 'Orario da definire'}</p></div></div>
-                <div className="flex items-center gap-3"><Calendar className="w-5 h-5 text-indigo-500" /><div><p className="text-[10px] font-bold text-gray-400 uppercase">Inizio Corso</p><p className="font-bold text-gray-800">{existingEnrollment.startDate ? format(parseISO(existingEnrollment.startDate), 'd MMMM yyyy', { locale: it }) : 'Data da definire'}</p></div></div>
-                <div className="flex items-center gap-3"><CreditCard className="w-5 h-5 text-indigo-500" /><div><p className="text-[10px] font-bold text-gray-400 uppercase">Importo</p><p className="font-bold text-gray-800">€ {existingEnrollment.price}</p></div></div>
-            </div>
-            <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
-          </div>
-        </div>
-      );
-  }
+  const handlePayment = async () => {
+    if (!lead) return;
+    setIsProcessing(true);
+    try {
+      const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
+      
+      const clientData = {
+        clientType: ClientType.Parent,
+        firstName: formData.parentFirstName,
+        lastName: formData.parentLastName,
+        email: formData.parentEmail,
+        phone: formData.parentPhone,
+        taxCode: formData.parentFiscalCode,
+        address: `${formData.parentAddress}, ${formData.parentZip} ${formData.parentCity} (${formData.parentProvince})`,
+        city: formData.parentCity,
+        children: [{
+          id: '', // Will be set by server
+          name: formData.childName,
+          age: formData.childAge,
+          dateOfBirth: formData.childDateOfBirth,
+          notes: '',
+          notesHistory: [],
+          tags: [],
+          rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+        }],
+        status: 'Active',
+        notesHistory: [],
+        tags: [],
+        rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
+        createdAt: new Date().toISOString(),
+        source: 'portal'
+      };
 
-  if (error) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl text-center border border-red-100">
-        <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Ops!</h2>
-        <p className="text-gray-600 mb-6">{error}</p>
-      </div>
-    </div>
-  );
+      const enrollmentData = {
+        clientId: '', // Will be set by server
+        clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
+        childId: '', // Will be set by server
+        childName: formData.childName,
+        subscriptionTypeId: formData.selectedSubscriptionId,
+        subscriptionName: sub?.name || 'Abbonamento',
+        locationId: formData.selectedLocationId || 'unassigned',
+        locationName: formData.selectedLocationName || 'Sede Preferita',
+        price: sub?.price || 0,
+        lessonsTotal: sub?.lessons || 0,
+        lessonsRemaining: sub?.lessons || 0,
+        labCount: sub?.labCount || 0,
+        sgCount: sub?.sgCount || 0,
+        evtCount: sub?.evtCount || 0,
+        labRemaining: sub?.labCount || 0,
+        sgRemaining: sub?.sgCount || 0,
+        evtRemaining: sub?.evtCount || 0,
+        status: EnrollmentStatus.Active,
+        startDate: '', // Will be set by server
+        endDate: '', // Will be set by server
+        appointments: [{
+          lessonId: '', // Will be set by server
+          date: '', // Will be set by server
+          startTime: '', // Will be set by server
+          endTime: '', // Will be set by server
+          locationId: formData.selectedLocationId || 'unassigned',
+          locationName: formData.selectedLocationName || 'Sede Preferita',
+          locationColor: '#6366f1',
+          childName: formData.childName,
+          status: 'Scheduled'
+        }],
+        createdAt: new Date().toISOString(),
+        source: 'portal'
+      };
 
-  if (isSuccess) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl text-center border border-green-100 animate-fade-in">
-        <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="w-12 h-12" /></div>
-        <h2 className="text-3xl font-black text-gray-900 mb-4">{successMode === 'booking' ? 'Prenotazione Inviata!' : 'Iscrizione Completata!'}</h2>
-        <p className="text-gray-600 mb-8 leading-relaxed">{successMode === 'booking' ? 'Abbiamo ricevuto la tua richiesta. Ti contatteremo a breve per confermare il posto!' : 'Grazie! Il pagamento è stato ricevuto e l\'iscrizione è attiva.'}</p>
-        <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
-      </div>
-    </div>
-  );
+      const transactionData = {
+        date: new Date().toISOString(),
+        description: `Incasso Online - ${formData.childName} - ${sub?.name}`,
+        amount: sub?.price || 0,
+        type: TransactionType.Income,
+        category: TransactionCategory.Vendite,
+        paymentMethod: formData.paymentMethod,
+        status: TransactionStatus.Completed,
+        relatedEnrollmentId: '', // Will be set by server
+        allocationId: formData.selectedLocationId,
+        allocationName: formData.selectedLocationName,
+        createdAt: new Date().toISOString()
+      };
 
-  return (
-    <div className="min-h-screen bg-gray-50 font-sans text-gray-900 pb-20">
-      <div className="bg-[#012169] text-white pt-12 pb-24 px-6 relative overflow-hidden">
-        <div className="max-w-2xl mx-auto relative z-10">
-          <img src="/lemon_logo_150px.png" alt="Logo" className="h-16 mb-8 mx-auto" />
-          <h1 className="text-4xl font-black text-center mb-2 tracking-tight">Completa Iscrizione</h1>
-          <p className="text-blue-200 text-center font-medium">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
-        </div>
-      </div>
+      let invoiceData = null;
+      if (formData.paymentMethod === PaymentMethod.BankTransfer) {
+        invoiceData = {
+          clientId: '', // Will be set by server
+          clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
+          issueDate: new Date().toISOString(),
+          dueDate: new Date().toISOString(),
+          status: DocumentStatus.PendingSDI,
+          paymentMethod: formData.paymentMethod,
+          relatedEnrollmentId: '', // Will be set by server
+          items: [{
+            description: `Iscrizione ${formData.childName} - ${sub?.name}`,
+            quantity: 1,
+            price: sub?.price || 0
+          }],
+          totalAmount: sub?.price || 0,
+          isGhost: false,
+          isDeleted: false,
+          createdAt: new Date().toISOString()
+        };
+      }
 
-      <div className="max-w-2xl mx-auto -mt-12 px-4">
-        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
-          <div className="flex h-1.5 bg-gray-100">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className={`flex-1 transition-all duration-500 ${step >= i ? 'bg-amber-400' : 'bg-transparent'}`}></div>
-            ))}
-          </div>
+      const processEnrollment = httpsCallable(functions, 'processEnrollment');
+      await processEnrollment({
+          leadId: lead.id,
+          formData,
+          clientData,
+          enrollmentData,
+          transactionData,
+          invoiceData
+      });
 
-          <div className="p-8">
-            {step === 1 && (
-              <div className="space-y-8 animate-fade-in">
-                <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">
-                  <div className="flex items-center gap-3 mb-4"><User className="w-5 h-5 text-gray-500" /><h2 className="text-lg font-bold text-gray-700 uppercase">Dati Verificati</h2></div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-70 pointer-events-none">
-                    {['parentFirstName', 'parentLastName', 'parentEmail', 'parentPhone'].map(field => (
-                      <div key={field} className="space-y-1">
-                        <label className="text-[10px] font-black text-gray-400 uppercase ml-1">{field.replace('parent', '')}</label>
-                        <div className="bg-gray-100 border border-gray-200 rounded-xl px-4 py-3 font-medium text-gray-600">{(formData as any)[field]}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="flex items-center gap-3"><Info className="w-5 h-5 text-blue-900" /><h2 className="text-lg font-bold text-blue-900 uppercase">Dati Mancanti</h2></div>
-                  <div className="space-y-4">
-                    <input type="text" value={formData.parentFiscalCode} onChange={e => setFormData({...formData, parentFiscalCode: e.target.value.toUpperCase()})} placeholder="CODICE FISCALE" className="w-full bg-white border-2 rounded-xl px-4 py-3 outline-none uppercase font-medium border-gray-200" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <input type="text" value={formData.parentAddress} onChange={e => setFormData({...formData, parentAddress: e.target.value})} placeholder="INDIRIZZO" className="md:col-span-2 w-full bg-white border-2 rounded-xl px-4 py-3 border-gray-200" />
-                      <input type="text" value={formData.parentZip} onChange={e => setFormData({...formData, parentZip: e.target.value})} placeholder="CAP" className="w-full bg-white border-2 rounded-xl px-4 py-3 border-gray-200" />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <input type="text" value={formData.parentCity} onChange={e => setFormData({...formData, parentCity: e.target.value})} placeholder="CITTÀ" className="w-full bg-white border-2 rounded-xl px-4 py-3 border-gray-200" />
-                      <input type="text" value={formData.parentProvince} onChange={e => setFormData({...formData, parentProvince: e.target.value.toUpperCase()})} placeholder="PROVINCIA" maxLength={2} className="w-full bg-white border-2 rounded-xl px-4 py-3 border-gray-200" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-6 border-t border-gray-100">
-                  <div className="flex items-center gap-3 mb-6"><Baby className="w-5 h-5 text-indigo-600" /><h2 className="text-lg font-bold text-indigo-900 uppercase">Dati Allievo</h2></div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1"><label className="text-[10px] font-black text-gray-500 uppercase ml-1">Data di Nascita</label><input type="date" value={formData.childDateOfBirth} onChange={e => setFormData({...formData, childDateOfBirth: e.target.value})} className="w-full bg-white border-2 rounded-xl px-4 py-3 border-gray-200" /></div>
-                    <div className="space-y-1 opacity-70"><label className="text-[10px] font-black text-gray-400 uppercase ml-1">Età</label><input type="text" value={formData.childAge} readOnly className="w-full bg-gray-100 border border-gray-200 rounded-xl px-4 py-3" /></div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="space-y-8 animate-fade-in">
-                <div className="flex items-center gap-3"><MapPin className="w-6 h-6 text-amber-600" /><h2 className="text-xl font-black uppercase">Sede e Orario</h2></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {locations.filter(loc => showAllOptions || !lead?.selectedLocation || normalizeString(loc.name).includes(normalizeString(lead.selectedLocation))).map(loc => (
-                    <button key={loc.id} onClick={() => setFormData({...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: ''})} className={`p-4 rounded-2xl border-2 text-left transition-all ${formData.selectedLocationId === loc.id ? 'border-amber-400 bg-amber-50' : 'border-gray-100 bg-white'}`}>
-                      <span className="font-black text-gray-800">{loc.name}</span>
-                    </button>
-                  ))}
-                </div>
-                {formData.selectedLocationId && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {locations.find(l => l.id === formData.selectedLocationId)?.slots.map((slot: any) => (
-                      <button key={slot.time} onClick={() => setFormData({...formData, selectedSlot: slot.time})} className={`p-4 rounded-2xl border-2 text-left transition-all ${formData.selectedSlot === slot.time ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 bg-white'}`}>
-                        <div className="text-[10px] font-black uppercase text-gray-400">{slot.type}</div>
-                        <div className="text-sm font-bold text-gray-800">{slot.time}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="space-y-8 animate-fade-in">
-                <div className="flex items-center gap-3"><CreditCard className="w-6 h-6 text-amber-600" /><h2 className="text-xl font-black uppercase">Scegli Abbonamento</h2></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {subscriptionTypes.map(sub => (
-                    <button key={sub.id} onClick={() => setFormData({...formData, selectedSubscriptionId: sub.id})} className={`p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between min-h-[160px] ${formData.selectedSubscriptionId === sub.id ? 'border-blue-900 bg-blue-50' : 'border-gray-100 bg-white'}`}>
-                      <div className="space-y-2"><h3 className="font-black text-xl">{sub.name.split('.').pop()}</h3><p className="text-sm text-gray-500">{sub.description || `${sub.lessons} lezioni`}</p></div>
-                      <div className="mt-6 flex justify-between items-end"><span className="bg-amber-400 text-gray-900 px-4 py-2 rounded-xl text-xl font-black">{sub.price}€</span></div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {step === 4 && (
-              <div className="space-y-8 animate-fade-in">
-                <div className="flex items-center gap-3"><CheckCircle className="w-6 h-6 text-amber-600" /><h2 className="text-xl font-black uppercase">Riepilogo</h2></div>
-                <div className="bg-gray-50 rounded-3xl p-6 space-y-4 border border-gray-100">
-                  <div className="flex justify-between items-center border-b pb-3"><span className="text-xs font-black text-gray-400 uppercase">Allievo</span><span className="font-bold">{formData.childName}</span></div>
-                  <div className="flex justify-between items-center border-b pb-3"><span className="text-xs font-black text-gray-400 uppercase">Sede</span><span className="font-bold">{formData.selectedLocationName}</span></div>
-                  <div className="flex justify-between items-center border-b pb-3"><span className="text-xs font-black text-gray-400 uppercase">Orario</span><span className="font-bold">{formData.selectedSlot}</span></div>
-                  <div className="flex justify-between items-center pt-2"><span className="text-xs font-black text-gray-400 uppercase">Totale</span><span className="text-3xl font-black text-blue-900">{subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price}€</span></div>
-                </div>
-
-                {!showPaymentDetails ? (
-                  <div className="grid grid-cols-1 gap-4">
-                    <button onClick={() => setShowBookingModal(true)} disabled={isProcessing} className="w-full bg-white border-2 border-blue-900 text-blue-900 font-black py-4 rounded-2xl uppercase tracking-widest text-sm">Prenota (Paga in Sede)</button>
-                    <button onClick={() => setShowPaymentDetails(true)} className="w-full bg-blue-900 text-white font-black py-4 rounded-2xl shadow-xl uppercase tracking-widest text-sm flex items-center justify-center gap-2">Paga Ora <ChevronRight className="w-5 h-5" /></button>
-                  </div>
-                ) : (
-                  <div className="space-y-6 animate-slide-up">
-                    <div className="grid grid-cols-2 gap-3">
-                      <button onClick={() => setFormData({...formData, paymentMethod: PaymentMethod.BankTransfer})} className={`p-4 rounded-2xl border-2 ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'border-blue-900 bg-blue-50' : 'border-gray-100 bg-white'}`}><Info className="w-6 h-6 mb-2" /><span className="text-xs font-bold">Bonifico</span></button>
-                      <button onClick={() => setFormData({...formData, paymentMethod: PaymentMethod.PayPal})} className={`p-4 rounded-2xl border-2 ${formData.paymentMethod === PaymentMethod.PayPal ? 'border-blue-900 bg-blue-50' : 'border-gray-100 bg-white'}`}><ExternalLink className="w-6 h-6 mb-2" /><span className="text-xs font-bold">PayPal</span></button>
-                    </div>
-                    {formData.paymentMethod === PaymentMethod.BankTransfer ? (
-                      <div className="bg-white border-2 border-blue-100 rounded-3xl p-6"><p className="text-[10px] font-black text-gray-400 uppercase">IBAN</p><p className="font-mono text-lg font-bold text-gray-800">{companyInfo?.iban}</p></div>
-                    ) : (
-                      <a href={companyInfo?.paypal} target="_blank" rel="noreferrer" className="flex items-center justify-between bg-[#0070BA] text-white p-4 rounded-xl font-bold">Paga con PayPal <ExternalLink className="w-5 h-5" /></a>
-                    )}
-                    <button onClick={() => handleProcessEnrollment('paid')} disabled={isProcessing} className="w-full bg-blue-900 text-white font-black py-4 rounded-2xl shadow-xl uppercase tracking-widest text-sm">{isProcessing ? <Spinner /> : 'Conferma e Paga'}</button>
-                    <button onClick={() => setShowPaymentDetails(false)} className="w-full text-gray-400 text-xs font-bold uppercase tracking-widest">Indietro</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {step < 4 && (
-              <div className="mt-12 flex justify-between items-center">
-                {step > 1 ? <button onClick={() => setStep(step - 1)} className="flex items-center gap-2 text-gray-400 font-bold"><ChevronLeft className="w-5 h-5" /> Indietro</button> : <div />}
-                <button onClick={() => setStep(step + 1)} className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg">Avanti <ChevronRight className="w-5 h-5" /></button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {showBookingModal && (
-        <Modal onClose={() => setShowBookingModal(false)} size="md">
-          <div className="p-8 text-center space-y-6">
-            <h3 className="text-2xl font-black text-blue-900 uppercase">Conferma Prenotazione</h3>
-            <p className="text-gray-600">Posto bloccato! Salderai direttamente in sede.</p>
-            <button onClick={() => handleProcessEnrollment('booking')} disabled={isProcessing} className="w-full bg-blue-900 text-white font-black py-4 rounded-xl uppercase tracking-widest text-sm">{isProcessing ? <Spinner /> : 'Ho capito, Procedi'}</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-};
-
-export default EnrollmentPortal;
-
+      setSuccessMode('paid');
+      setIsSuccess(true);
+    } catch (err) {
+      console.error(err);
+      alert("Errore durante il pagamento.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Spinner /></div>;
   
