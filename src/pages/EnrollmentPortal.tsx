@@ -13,7 +13,8 @@ import {
   Info,
   ExternalLink,
   Copy,
-  Calendar
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 import { 
   SubscriptionType, 
@@ -947,7 +948,7 @@ const EnrollmentPortal: React.FC = () => {
                           onClick={() => setShowOtherSubscriptions(true)}
                           className="flex items-center gap-2 text-indigo-600 font-black text-sm uppercase tracking-widest hover:text-indigo-800 transition-colors bg-white px-6 py-3 rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400"
                         >
-                          <SparklesIcon className="w-5 h-5" /> Vedi altri Abbonamenti o Cambia Idea
+                          <Sparkles className="w-5 h-5" /> Vedi altri Abbonamenti o Cambia Idea
                         </button>
                       </div>
                     </div>
