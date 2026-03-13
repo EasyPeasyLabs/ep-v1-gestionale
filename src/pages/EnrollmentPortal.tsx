@@ -57,6 +57,22 @@ interface Lead {
   relatedEnrollmentId?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const formatSlotToString = (slot: any): string => {
+  if (!slot) return '';
+  if (typeof slot === 'string') return slot;
+  
+  // Se è l'oggetto descritto nell'errore {bundleName, dayOfWeek, startTime, endTime...}
+  const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+  const day = daysMap[slot.dayOfWeek || 0] || '';
+  const time = (slot.startTime && slot.endTime) ? `${slot.startTime} - ${slot.endTime}` : '';
+  
+  if (day && time) return `${day}, ${time}`;
+  if (slot.bundleName) return slot.bundleName;
+  
+  return JSON.stringify(slot); // Fallback estremo per debug, ma ora gestito come stringa
+};
+
 const EnrollmentPortal: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,6 +187,7 @@ const EnrollmentPortal: React.FC = () => {
         document.title = "EasyPeasy Labs";
 
         // Pre-fill form
+        const normalizedSlotString = formatSlotToString(leadData.selectedSlot);
         setFormData(prev => ({
           ...prev,
           parentFirstName: leadData.nome || '',
@@ -180,7 +197,7 @@ const EnrollmentPortal: React.FC = () => {
           childName: leadData.childName || '',
           childAge: leadData.childAge || '',
           selectedLocationName: leadData.selectedLocation || '',
-          selectedSlot: leadData.selectedSlot || ''
+          selectedSlot: normalizedSlotString
         }));
 
         // Try to match location name to ID
@@ -198,8 +215,7 @@ const EnrollmentPortal: React.FC = () => {
           setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id, selectedLocationName: matchedLoc.name }));
           
           // Try to match slot time
-          // leadData.selectedSlot might be "Lunedì 16:30 - 18:00" or just "16:30 - 18:00"
-          const slotToMatch = normalizeString(leadData.selectedSlot);
+          const slotToMatch = normalizeString(normalizedSlotString);
           const matchedSlot = matchedLoc.slots.find(s => {
             const sTime = normalizeString(s.time);
             return slotToMatch.includes(sTime) || sTime.includes(slotToMatch);
