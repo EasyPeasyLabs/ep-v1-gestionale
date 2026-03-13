@@ -1308,7 +1308,8 @@ const EnrollmentPortal: React.FC = () => {
                   disabled={
                     (step === 1 && (!formData.parentFirstName || !formData.parentLastName || !formData.parentFiscalCode)) ||
                     (step === 2 && (!formData.selectedLocationId || !formData.selectedSlot)) ||
-                    (step === 3 && !formData.selectedSubscriptionId)
+                    (step === 3 && !formData.selectedSubscriptionId) ||
+                    (step === 3 && !subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId))
                   }
                   className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-30 disabled:grayscale"
                 >
