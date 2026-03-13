@@ -208,64 +208,126 @@ export const onLeadCreated = onDocumentCreated({
     });
 });
 
-// --- TRIGGER NOTIFICHE PUSH PER NUOVE ISCRIZIONI ---
+// --- HELPER INTERNO PER INVIO EMAIL ---
+async function sendEmailInternal(to: string, subject: string, html: string, secrets: { clientId: string, clientSecret: string, refreshToken: string }) {
+    const { google } = await import("googleapis");
+    const nodemailer = await import("nodemailer");
+
+    try {
+        const oAuth2Client = new google.auth.OAuth2(secrets.clientId, secrets.clientSecret, REDIRECT_URI);
+        oAuth2Client.setCredentials({ refresh_token: secrets.refreshToken });
+
+        const accessToken = await oAuth2Client.getAccessToken();
+        const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: {
+                type: "OAuth2",
+                user: SENDER_EMAIL,
+                clientId: secrets.clientId,
+                clientSecret: secrets.clientSecret,
+                refreshToken: secrets.refreshToken,
+                accessToken: accessToken.token || "",
+            } as any,
+        });
+
+        await transporter.sendMail({
+            from: `Lab Easy Peasy <${SENDER_EMAIL}>`,
+            to,
+            subject,
+            html,
+        });
+        logger.info(`Email sent successfully to ${to}`);
+    } catch (error) {
+        logger.error("Internal Email failed:", error);
+    }
+}
+
+// --- TRIGGER NOTIFICHE PUSH E EMAIL PER NUOVE ISCRIZIONI ---
 export const onEnrollmentCreated = onDocumentCreated({
     region: "europe-west1",
-    document: "enrollments/{enrollmentId}"
+    document: "enrollments/{enrollmentId}",
+    secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
 }, async (event: any) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
     const enrData = snapshot.data();
+    if (enrData.source !== 'portal') return;
     
-    if (enrData.source !== 'portal') {
-        logger.info(`Enrollment ${event.params.enrollmentId} skipped (source: ${enrData.source || 'manual'})`);
-        return;
-    }
-    
-    const clientName = enrData.clientName || 'Genitore';
+    const clientName = enrData.clientName || 'Cliente';
     const childName = enrData.childName || 'Allievo';
     const subName = enrData.subscriptionName || 'Abbonamento';
+    const locationName = enrData.locationName || 'Sede';
     const price = enrData.price || 0;
     const status = enrData.status || 'pending';
     const isPaid = status === 'active';
-    
-    const title = isPaid ? "🎓 Nuova Iscrizione Portal (PAGATA)" : "🎓 Nuova Iscrizione Portal (DA SALDARE)";
-    const body = `${clientName} ha iscritto ${childName} a ${subName}. Stato: ${isPaid ? 'Pagato' : 'In attesa di saldo'}.`;
 
-    await sendPushToAllTokens(title, body, {
+    // Recupero Dettagli Appuntamento per la Notifica
+    const appt = enrData.appointments?.[0];
+    let dayTimeInfo = "";
+    if (appt && appt.date) {
+        const days = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+        const dayName = days[new Date(appt.date).getDay()];
+        dayTimeInfo = `il ${dayName} alle ${appt.startTime}`;
+    }
+    
+    // 1. NOTIFICA PUSH AMMINISTRATORE (Punto 17)
+    const pushTitle = isPaid ? "🎓 Nuova Iscrizione Portal (PAGATA)" : "🎓 Nuova Iscrizione Portal (DA SALDARE)";
+    const pushBody = `Hai un nuovo cliente: ${clientName} nella sede ${locationName} ${dayTimeInfo}`;
+
+    await sendPushToAllTokens(pushTitle, pushBody, {
         enrollmentId: event.params.enrollmentId,
         type: 'enrollment',
         click_action: 'ENROLLMENTS'
     });
 
+    // 2. EMAIL AUTOMATICA AL CLIENTE (Punto 15)
+    try {
+        const clientSnap = await admin.firestore().collection('clients').doc(enrData.clientId).get();
+        const clientEmail = clientSnap.data()?.email;
+
+        if (clientEmail) {
+            const emailSubject = `Conferma Iscrizione EasyPeasy Lab - ${childName}`;
+            const emailHtml = `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
+                    <div style="background: #012169; color: white; padding: 40px 20px; text-align: center;">
+                        <h1 style="margin: 0; font-size: 24px;">Benvenuti in Lab Easy Peasy!</h1>
+                    </div>
+                    <div style="padding: 30px;">
+                        <p>Ciao <strong>${clientName}</strong>,</p>
+                        <p>Siamo felici di confermare l'iscrizione di <strong>${childName}</strong>.</p>
+                        <div style="background: #fffbeb; border: 2px solid #fde68a; padding: 20px; border-radius: 15px; margin: 20px 0;">
+                            <h3 style="margin-top: 0; color: #92400e;">Riepilogo Iscrizione</h3>
+                            <p style="margin: 5px 0;"><strong>Sede:</strong> ${locationName}</p>
+                            <p style="margin: 5px 0;"><strong>Abbonamento:</strong> ${subName}</p>
+                            <p style="margin: 5px 0;"><strong>Orario:</strong> ${appt?.startTime || '--'} - ${appt?.endTime || '--'}</p>
+                            <p style="margin: 5px 0;"><strong>Inizio Corso:</strong> ${appt?.date ? new Date(appt.date).toLocaleDateString('it-IT') : 'Da definire'}</p>
+                        </div>
+                        <p style="font-size: 18px; color: #4f46e5; text-align: center; font-weight: bold;">Ci vediamo in sede!</p>
+                    </div>
+                    <div style="background: #f9fafb; padding: 20px; text-align: center; font-size: 12px; color: #9ca3af;">
+                        EasyPeasy Labs - Modulo Iscrizione Automatica
+                    </div>
+                </div>
+            `;
+
+            await sendEmailInternal(clientEmail, emailSubject, emailHtml, {
+                clientId: gmailClientId.value(),
+                clientSecret: gmailClientSecret.value(),
+                refreshToken: gmailRefreshToken.value()
+            });
+        }
+    } catch (e) {
+        logger.error("Failed to send confirmation email:", e);
+    }
+
+    // 3. NOTIFICHE EXTRA (Promemoria Pagamento / Fattura)
     if (!isPaid) {
-        const reminderTitle = "💰 Promemoria Incasso in Sede";
-        const reminderBody = `Attenzione: ${childName} ha prenotato il posto. Ricordati di registrare l'incasso di ${price}€ al suo arrivo.`;
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await sendPushToAllTokens(reminderTitle, reminderBody, {
-            enrollmentId: event.params.enrollmentId,
-            type: 'payment_reminder'
-        });
+        await sendPushToAllTokens("💰 Promemoria Incasso", `Ricordati di incassare ${price}€ per ${childName} alla prima lezione.`, { enrollmentId: event.params.enrollmentId, type: 'payment_reminder' });
     }
 
     const needsStampDuty = price >= 77;
-    const invoiceReminderTitle = needsStampDuty ? "⚠️ AVVISO BOLLO - Fatturazione" : "📄 Nuova Fattura da Emettere";
-    
-    let invoiceReminderBody = "";
-    if (needsStampDuty) {
-        const totalPrice = price + 2;
-        invoiceReminderBody = `Emetti fattura per ${childName}. Importo ≥ 77€: verifica l'aggiunta dei 2€ di bollo (Totale dovuto: ${totalPrice}€).`;
-    } else {
-        invoiceReminderBody = `Emetti fattura per ${childName} - Importo: ${price}€.`;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    await sendPushToAllTokens(invoiceReminderTitle, invoiceReminderBody, {
-        enrollmentId: event.params.enrollmentId,
-        type: 'invoice_reminder',
-        needsStampDuty: String(needsStampDuty)
-    });
+    await sendPushToAllTokens(needsStampDuty ? "⚠️ AVVISO BOLLO" : "📄 Nuova Fattura", `Emetti fattura per ${childName}. ${needsStampDuty ? 'Aggiungi 2€ di bollo.' : ''}`, { enrollmentId: event.params.enrollmentId, type: 'invoice_reminder' });
 });
 
 // --- GATEWAY PER ISCRIZIONI (ISOLAMENTO DOMINIO & WHATSAPP PREVIEW) ---
@@ -799,14 +861,47 @@ export const receiveLeadV2 = onRequest({
 
     try {
         const data = req.body;
+        const db = admin.firestore();
+
+        // --- NORMALIZZAZIONE INTELLIGENTE ---
+        let resolvedLocationId = data.locationId || "";
+        let resolvedLocationName = data.locationName || data.selectedLocation || "";
+
+        // Se abbiamo solo il nome della sede, cerchiamo l'ID
+        if (!resolvedLocationId && resolvedLocationName) {
+            const suppliersSnap = await db.collection('suppliers').get();
+            const searchName = String(resolvedLocationName).toLowerCase();
+            
+            for (const doc of suppliersSnap.docs) {
+                const supplierData = doc.data();
+                const loc = supplierData.locations?.find((l: any) => 
+                    l.name.toLowerCase().includes(searchName) || 
+                    searchName.includes(l.name.toLowerCase())
+                );
+                if (loc) {
+                    resolvedLocationId = loc.id;
+                    resolvedLocationName = loc.name;
+                    break;
+                }
+            }
+        }
+
         const leadDoc = {
             ...data,
+            nome: data.nome || data.parentFirstName || "",
+            cognome: data.cognome || data.parentLastName || "",
+            email: data.email || data.parentEmail || "",
+            telefono: data.telefono || data.parentPhone || "",
+            childName: data.childName || "",
+            childAge: data.childAge || "",
+            selectedLocation: resolvedLocationName, // Nome testuale per compatibilità UI
+            locationId: resolvedLocationId,         // ID per compatibilità logica
             source: "projectB_api_v2",
             status: "pending",
             createdAt: new Date().toISOString()
         };
 
-        const docRef = await admin.firestore().collection("incoming_leads").add(leadDoc);
+        const docRef = await db.collection("incoming_leads").add(leadDoc);
         res.status(200).json({ success: true, referenceId: docRef.id });
     } catch (error: any) {
         logger.error("Error saving lead v2:", error?.message || error);
