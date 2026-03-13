@@ -1219,7 +1219,6 @@ const EnrollmentPortal: React.FC = () => {
                     </button>
                   </div>
                 ) : (
-... (rest of the payment details logic) ...
                   <div className="space-y-6 animate-slide-up">
                     <div className="space-y-3">
                       <label className="text-xs font-black text-gray-400 uppercase">Metodo di Pagamento</label>
