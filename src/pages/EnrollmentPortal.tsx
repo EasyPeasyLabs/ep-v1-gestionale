@@ -234,13 +234,44 @@ const EnrollmentPortal: React.FC = () => {
         // Pre-fill form
         const normalizedSlotString = formatSlotToString(leadData.selectedSlot);
         
-        // Try to find bundleId from selectedSlot if it was an object
+        // Advanced Pre-selection Logic
+        let matchedLocationId = '';
+        let matchedLocationName = '';
+        let matchedSlotTime = '';
         let preselectedSubId = '';
+
+        // 1. Match Location
+        const leadLocNormalized = normalizeString(leadData.selectedLocation);
+        const matchedLoc = locs.find(l => {
+          const locNameNorm = normalizeString(l.name);
+          const locIdNorm = normalizeString(l.id);
+          return locNameNorm === leadLocNormalized || 
+                 locIdNorm === leadLocNormalized ||
+                 leadLocNormalized.includes(locNameNorm) ||
+                 locNameNorm.includes(leadLocNormalized);
+        });
+
+        if (matchedLoc) {
+          matchedLocationId = matchedLoc.id;
+          matchedLocationName = matchedLoc.name;
+
+          // 2. Match Slot within that Location
+          const slotToMatch = normalizeString(normalizedSlotString);
+          const matchedSlot = matchedLoc.slots.find(s => {
+            const sTime = normalizeString(s.time);
+            return slotToMatch.includes(sTime) || sTime.includes(slotToMatch);
+          });
+
+          if (matchedSlot) {
+            matchedSlotTime = matchedSlot.time;
+          }
+        }
+
+        // 3. Match Bundle (Subscription)
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
           preselectedSubId = (leadData.selectedSlot as any).bundleId || '';
         }
         
-        // If not found, try to match by name
         if (!preselectedSubId && normalizedSlotString) {
           const matchedSub = subs.find((s: any) => 
             normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 
@@ -257,36 +288,13 @@ const EnrollmentPortal: React.FC = () => {
           parentPhone: leadData.telefono || '',
           childName: leadData.childName || '',
           childAge: leadData.childAge || '',
-          selectedLocationName: leadData.selectedLocation || '',
-          selectedSlot: normalizedSlotString,
+          selectedLocationId: matchedLocationId,
+          selectedLocationName: matchedLocationName,
+          selectedSlot: matchedSlotTime || normalizedSlotString,
           selectedSubscriptionId: preselectedSubId
         }));
 
-        // Try to match location name to ID
-        const leadLocNormalized = normalizeString(leadData.selectedLocation);
-        const matchedLoc = locs.find(l => {
-          const locNameNorm = normalizeString(l.name);
-          const locIdNorm = normalizeString(l.id);
-          return locNameNorm === leadLocNormalized || 
-                 locIdNorm === leadLocNormalized ||
-                 leadLocNormalized.includes(locNameNorm) ||
-                 locNameNorm.includes(leadLocNormalized);
-        });
-        
-        if (matchedLoc) {
-          setFormData(prev => ({ ...prev, selectedLocationId: matchedLoc.id, selectedLocationName: matchedLoc.name }));
-          
-          // Try to match slot time
-          const slotToMatch = normalizeString(normalizedSlotString);
-          const matchedSlot = matchedLoc.slots.find(s => {
-            const sTime = normalizeString(s.time);
-            return slotToMatch.includes(sTime) || sTime.includes(slotToMatch);
-          });
-          
-          if (matchedSlot) {
-            setFormData(prev => ({ ...prev, selectedSlot: matchedSlot.time }));
-          }
-        }
+      } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
 
       } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         console.error(err);
@@ -813,30 +821,43 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
                     <MapPin className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl font-black uppercase tracking-tight">Sede e Orario</h2>
+                  <h2 className="text-xl font-black uppercase tracking-tight tracking-widest">Sede e Orario</h2>
                 </div>
 
-                {lead?.selectedLocation && lead?.selectedSlot && formData.selectedLocationId && formData.selectedSlot ? (
-                  <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6">
-                    <h3 className="text-sm font-black text-amber-800 uppercase mb-4">Scelte confermate</h3>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-amber-100">
-                        <MapPin className="w-5 h-5 text-amber-500" />
+                {formData.selectedLocationId && formData.selectedSlot ? (
+                  <div className="bg-amber-50 border-2 border-amber-200 rounded-[32px] p-8">
+                    <h3 className="text-sm font-black text-amber-800 uppercase mb-6 tracking-widest">Scelte confermate</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-amber-100 shadow-sm">
+                        <MapPin className="w-6 h-6 text-amber-500" />
                         <div>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p>
-                          <p className="font-bold text-gray-800">{formData.selectedLocationName}</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sede</p>
+                          <p className="font-bold text-gray-800 text-lg">{formData.selectedLocationName}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-amber-100">
-                        <Clock className="w-5 h-5 text-amber-500" />
+                      <div className="flex items-center gap-4 bg-white p-4 rounded-2xl border border-amber-100 shadow-sm">
+                        <Clock className="w-6 h-6 text-amber-500" />
                         <div>
-                          <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
-                          <p className="font-bold text-gray-800">{formData.selectedSlot}</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Orario</p>
+                          <p className="font-bold text-gray-800 text-lg">{formData.selectedSlot}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 bg-amber-100 p-4 rounded-2xl border border-amber-200 shadow-sm md:col-span-2">
+                        <Calendar className="w-6 h-6 text-amber-600" />
+                        <div>
+                          <p className="text-[10px] font-black text-amber-700 uppercase tracking-widest">Prima Lezione Utile</p>
+                          <p className="font-black text-amber-900 text-xl capitalize">
+                            {(() => {
+                              const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
+                              const firstLessonDate = getNextOccurrence(slotDay);
+                              return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM', { locale: it }) : 'da definire';
+                            })()}
+                          </p>
                         </div>
                       </div>
                     </div>
-                    <p className="text-xs text-amber-600 mt-4 font-medium">
-                      Queste opzioni sono state selezionate durante la tua richiesta iniziale e non possono essere modificate.
+                    <p className="text-xs text-amber-600 mt-6 font-bold uppercase tracking-widest">
+                      Opzioni già confermate durante la prenotazione.
                     </p>
                   </div>
                 ) : (
