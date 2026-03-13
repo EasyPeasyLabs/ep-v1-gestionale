@@ -917,35 +917,37 @@ const EnrollmentPortal: React.FC = () => {
                   const durationMonths = Math.round(sub.durationInDays / 30);
 
                   return (
-                    <div className="bg-blue-50 border-2 border-blue-900 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-900 opacity-5 -mr-16 -mt-16 rounded-full"></div>
-                      
-                      <div className="flex justify-between items-start relative z-10">
-                        <div className="space-y-4">
-                          <span className="bg-blue-900 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Opzione Selezionata</span>
-                          <h3 className="text-3xl font-black text-blue-900 leading-tight">{shortName}</h3>
-                          <div className="space-y-2">
-                            <p className="text-blue-700 font-medium text-lg leading-relaxed whitespace-pre-line">{sub.description || `${sub.lessons} lezioni totali • ${sub.labCount} Lab + ${sub.sgCount} SG + ${sub.evtCount} Evt`}</p>
-                            <div className="flex items-center gap-4 text-sm font-bold text-blue-600 uppercase tracking-tighter">
-                              <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> Validità {durationMonths} {durationMonths === 1 ? 'mese' : 'mesi'}</span>
-                              <span className="flex items-center gap-1"><User className="w-4 h-4" /> {sub.target === 'kid' ? 'Bambini' : 'Adulti'}</span>
+                    <div className="space-y-6">
+                      <div className="bg-blue-50 border-2 border-blue-900 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-900 opacity-5 -mr-16 -mt-16 rounded-full"></div>
+                        
+                        <div className="flex justify-between items-start relative z-10">
+                          <div className="space-y-4">
+                            <span className="bg-blue-900 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Opzione Selezionata</span>
+                            <h3 className="text-3xl font-black text-blue-900 leading-tight">{shortName}</h3>
+                            <div className="space-y-2">
+                              <p className="text-blue-700 font-medium text-lg leading-relaxed whitespace-pre-line">{sub.description || `${sub.lessons} lezioni totali • ${sub.labCount} Lab + ${sub.sgCount} SG + ${sub.evtCount} Evt`}</p>
+                              <div className="flex items-center gap-4 text-sm font-bold text-blue-600 uppercase tracking-tighter">
+                                <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> Validità {durationMonths} {durationMonths === 1 ? 'mese' : 'mesi'}</span>
+                                <span className="flex items-center gap-1"><User className="w-4 h-4" /> {sub.target === 'kid' ? 'Bambini' : 'Adulti'}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="bg-amber-400 text-gray-900 px-6 py-4 rounded-2xl shadow-lg transform group-hover:scale-105 transition-all">
-                            <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1">Prezzo</p>
-                            <p className="text-4xl font-black">{sub.price}€</p>
+                          <div className="text-right">
+                            <div className="bg-amber-400 text-gray-900 px-6 py-4 rounded-2xl shadow-lg transform group-hover:scale-105 transition-all">
+                              <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1">Prezzo</p>
+                              <p className="text-4xl font-black">{sub.price}€</p>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      <div className="mt-8 pt-6 border-t border-blue-100 flex flex-col sm:flex-row gap-4">
+                      <div className="flex justify-center">
                         <button 
                           onClick={() => setShowOtherSubscriptions(true)}
-                          className="flex items-center justify-center gap-2 text-blue-900 font-black text-xs uppercase tracking-widest hover:underline px-4 py-2"
+                          className="flex items-center gap-2 text-indigo-600 font-black text-sm uppercase tracking-widest hover:text-indigo-800 transition-colors bg-white px-6 py-3 rounded-2xl border-2 border-dashed border-indigo-200 hover:border-indigo-400"
                         >
-                          Vedi altri Abbonamenti <ChevronRight className="w-4 h-4" />
+                          <SparklesIcon className="w-5 h-5" /> Vedi altri Abbonamenti o Cambia Idea
                         </button>
                       </div>
                     </div>
