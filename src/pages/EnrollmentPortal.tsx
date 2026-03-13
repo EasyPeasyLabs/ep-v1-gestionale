@@ -740,9 +740,9 @@ const EnrollmentPortal: React.FC = () => {
                         <input 
                           type="text" 
                           value={formData.parentAddress} 
-                          onChange={e => setFormData({...formData, parentAddress: e.target.value})} 
-                          placeholder="Via Roma 1"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.parentAddress ? 'border-blue-300' : 'border-gray-200'}`} 
+                          onChange={e => setFormData({...formData, parentAddress: e.target.value.toUpperCase()})} 
+                          placeholder="VIA ROMA 1"
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentAddress ? 'border-blue-300' : 'border-gray-200'}`} 
                         />
                       </div>
                       <div className="space-y-1">
@@ -763,8 +763,9 @@ const EnrollmentPortal: React.FC = () => {
                         <input 
                           type="text" 
                           value={formData.parentCity} 
-                          onChange={e => setFormData({...formData, parentCity: e.target.value})} 
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.parentCity ? 'border-blue-300' : 'border-gray-200'}`} 
+                          onChange={e => setFormData({...formData, parentCity: e.target.value.toUpperCase()})} 
+                          placeholder="ROMA"
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentCity ? 'border-blue-300' : 'border-gray-200'}`} 
                         />
                       </div>
                       <div className="space-y-1">
@@ -772,10 +773,10 @@ const EnrollmentPortal: React.FC = () => {
                         <input 
                           type="text" 
                           value={formData.parentProvince} 
-                          onChange={e => setFormData({...formData, parentProvince: e.target.value.toUpperCase()})} 
+                          onChange={e => setFormData({...formData, parentProvince: e.target.value.toUpperCase().substring(0, 2)})} 
                           placeholder="RM"
                           maxLength={2}
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase ${!formData.parentProvince ? 'border-blue-300' : 'border-gray-200'}`} 
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentProvince ? 'border-blue-300' : 'border-gray-200'}`} 
                         />
                       </div>
                     </div>
