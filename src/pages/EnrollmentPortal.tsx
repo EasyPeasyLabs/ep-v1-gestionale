@@ -115,7 +115,24 @@ const EnrollmentPortal: React.FC = () => {
   const [showOtherSubscriptions, setShowOtherSubscriptions] = useState(false);
 
   useEffect(() => {
-    // ... (rest of search params logic stays same)
+    // Extract ID from either search params or hash params (for SPA compatibility)
+    const searchParams = new URLSearchParams(window.location.search);
+    let leadId = searchParams.get('id');
+    
+    if (!leadId && window.location.hash.includes('?')) {
+      const hashPart = window.location.hash.split('?')[1];
+      const hashParams = new URLSearchParams(hashPart);
+      leadId = hashParams.get('id');
+    }
+
+    if (!leadId && window.location.pathname.startsWith('/i/')) {
+      leadId = window.location.pathname.split('/i/')[1];
+    }
+
+    if (!leadId && (window as any).__ENROLLMENT_ID__) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      leadId = (window as any).__ENROLLMENT_ID__; // eslint-disable-line @typescript-eslint/no-explicit-any
+    }
+
     if (!leadId) {
       setError("Link non valido. Contatta la segreteria.");
       setLoading(false);
