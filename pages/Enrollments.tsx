@@ -550,7 +550,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 const enrEnd = new Date(e.endDate);
                 
                 let monthMatches = false;
-                let curr = new Date(enrStart.getFullYear(), enrStart.getMonth(), 1);
+                const curr = new Date(enrStart.getFullYear(), enrStart.getMonth(), 1);
                 while (curr <= enrEnd) {
                     if (curr.getMonth() === month) {
                         monthMatches = true;

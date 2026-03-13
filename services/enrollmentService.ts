@@ -134,7 +134,7 @@ const generateTheoreticalAppointments = (
     // FIX DATE SLIPPAGE: Force noon to avoid timezone shift on iterative adding
     startObj.setHours(12, 0, 0, 0);
     
-    let current = new Date(startObj);
+    const current = new Date(startObj);
     
     // Safety break to prevent infinite loops if something goes wrong
     let loops = 0; 
@@ -467,7 +467,7 @@ export const registerAbsence = async (
             };
         } else {
             // RECUPERO AUTOMATICO
-            let nextDate = new Date(originalApp.date);
+            const nextDate = new Date(originalApp.date);
             const originalDayOfWeek = nextDate.getDay();
             let foundDate = false;
             let safetyCounter = 0;
@@ -556,7 +556,7 @@ export const deleteAppointment = async (enrollmentId: string, appointmentLessonI
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
     const enrollment = enrollmentSnap.data() as Enrollment;
-    let appointments = [...(enrollment.appointments || [])];
+    const appointments = [...(enrollment.appointments || [])];
     const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
     if (appIndex === -1) throw new Error("Lezione non trovata");
     const previousStatus = appointments[appIndex].status;
@@ -607,7 +607,7 @@ export const addRecoveryLessons = async (
     const enrollment = enrollmentSnap.data() as Enrollment;
     const appointments = [...(enrollment.appointments || [])];
     const childName = enrollment.childName;
-    let currentDate = new Date(startDate);
+    const currentDate = new Date(startDate);
     let generatedCount = 0;
     while (generatedCount < numberOfLessons) {
         if (!isItalianHoliday(currentDate)) {
@@ -937,7 +937,7 @@ export const rescheduleSuspendedLesson = async (
         const lastApp = sortedApps[sortedApps.length - 1];
         const lastDate = new Date(lastApp.date);
         
-        let candidateDate = new Date(lastDate);
+        const candidateDate = new Date(lastDate);
         candidateDate.setDate(candidateDate.getDate() + 7);
         while (isItalianHoliday(candidateDate)) {
             candidateDate.setDate(candidateDate.getDate() + 7);

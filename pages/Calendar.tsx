@@ -315,7 +315,7 @@ const Calendar: React.FC = () => {
     endDate.setDate(endDiff);
 
     const calendarDays = [];
-    let d = new Date(startDate);
+    const d = new Date(startDate);
     while (d <= endDate) {
         calendarDays.push(new Date(d));
         d.setDate(d.getDate() + 1);

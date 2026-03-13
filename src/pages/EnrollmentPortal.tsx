@@ -109,8 +109,8 @@ const EnrollmentPortal: React.FC = () => {
       leadId = window.location.pathname.split('/i/')[1];
     }
 
-    if (!leadId && (window as any).__ENROLLMENT_ID__) {
-      leadId = (window as any).__ENROLLMENT_ID__;
+    if (!leadId && (window as any).__ENROLLMENT_ID__) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      leadId = (window as any).__ENROLLMENT_ID__; // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     if (!leadId) {
@@ -123,7 +123,7 @@ const EnrollmentPortal: React.FC = () => {
       try {
         const getEnrollmentData = httpsCallable(functions, 'getEnrollmentData');
         const result = await getEnrollmentData({ leadId });
-        const data = result.data as any;
+        const data = result.data as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
         if (data.existingEnrollment) {
             setExistingEnrollment(data.existingEnrollment);
@@ -143,8 +143,8 @@ const EnrollmentPortal: React.FC = () => {
         // Extract locations from suppliers
         const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
         const locs: {id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[] = [];
-        suppliers.forEach((s: any) => {
-          s.locations.forEach((l: any) => {
+        suppliers.forEach((s: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+          s.locations.forEach((l: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
             // Filter out closed or hidden locations
             if (!l.closedAt && l.isPubliclyVisible !== false) {
               locs.push({
@@ -155,8 +155,8 @@ const EnrollmentPortal: React.FC = () => {
                 color: l.color,
                 // Filter out hidden slots
                 slots: (l.availability || [])
-                  .filter((a: any) => a.isPubliclyVisible !== false)
-                  .map((a: any) => ({
+                  .filter((a: any) => a.isPubliclyVisible !== false) // eslint-disable-line @typescript-eslint/no-explicit-any
+                  .map((a: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
                     time: `${daysMap[a.dayOfWeek || 0]}, ${a.startTime} - ${a.endTime}`,
                     type: a.type || 'LAB'
                   }))
@@ -207,9 +207,9 @@ const EnrollmentPortal: React.FC = () => {
           }
         }
 
-      } catch (err) {
+      } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         console.error(err);
-        setError("Errore nel caricamento dei dati.");
+        setError(`Errore: ${err.message || "Sconosciuto"} (${err.code || "Nessun codice"})`);
       } finally {
         setLoading(false);
       }
@@ -300,9 +300,9 @@ const EnrollmentPortal: React.FC = () => {
 
       setSuccessMode('booking');
       setIsSuccess(true);
-    } catch (err) {
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error(err);
-      alert("Errore durante la prenotazione.");
+      alert(`Errore durante la prenotazione: ${err.message || "Sconosciuto"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -425,9 +425,9 @@ const EnrollmentPortal: React.FC = () => {
 
       setSuccessMode('paid');
       setIsSuccess(true);
-    } catch (err) {
+    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
       console.error(err);
-      alert("Errore durante il pagamento.");
+      alert(`Errore durante il pagamento: ${err.message || "Sconosciuto"}`);
     } finally {
       setIsProcessing(false);
     }

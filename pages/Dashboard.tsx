@@ -652,10 +652,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   }, []);
 
   const ratings = useMemo(() => {
-      let pCount = 0; let pSums = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
-      let cCount = 0; let cSums = { learning: 0, behavior: 0, attendance: 0, hygiene: 0 };
-      let sCount = 0; let sSums = { responsiveness: 0, partnership: 0, negotiation: 0 };
-      let lCount = 0; let lSums = { cost: 0, distance: 0, parking: 0, availability: 0, safety: 0, environment: 0, distractions: 0, modifiability: 0, prestige: 0 };
+      let pCount = 0; const pSums = { availability: 0, complaints: 0, churnRate: 0, distance: 0 };
+      let cCount = 0; const cSums = { learning: 0, behavior: 0, attendance: 0, hygiene: 0 };
+      let sCount = 0; const sSums = { responsiveness: 0, partnership: 0, negotiation: 0 };
+      let lCount = 0; const lSums = { cost: 0, distance: 0, parking: 0, availability: 0, safety: 0, environment: 0, distractions: 0, modifiability: 0, prestige: 0 };
 
       clientsData.forEach(client => {
           if (client.clientType === ClientType.Parent) {

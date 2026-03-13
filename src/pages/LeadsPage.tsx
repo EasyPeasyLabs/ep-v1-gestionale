@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, serverTimestamp, where, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { format, isSameDay, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -35,7 +35,7 @@ interface Lead {
   childName: string;
   childAge: string;
   selectedLocation: string;
-  selectedSlot: any;
+  selectedSlot: any; // eslint-disable-line @typescript-eslint/no-explicit-any
   notes?: string;
   status: 'pending' | 'contacted' | 'converted' | 'rejected';
   createdAt: string;
@@ -49,7 +49,7 @@ export const LeadsPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Date Filters
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear()); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [dateFilterType, setDateFilterType] = useState<'all' | 'today' | 'week' | 'month' | 'year'>('all');
 

@@ -611,7 +611,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         
         // Regole Acconto Imposta Sostitutiva (su anno N+1 basato su anno N)
         // L'acconto è pari al 100% dell'imposta dell'anno precedente.
-        let accontoImposta = saldoImposta;
+        const accontoImposta = saldoImposta;
         let accontoImposta1 = 0; // Giugno
         let accontoImposta2 = 0; // Novembre
         

@@ -101,7 +101,7 @@ async function sendPushToAllTokens(title, body, extraData) {
     try {
         const tokensSnapshot = await admin.firestore().collection("fcm_tokens").get();
         const tokens = [];
-        tokensSnapshot.forEach(doc => {
+        tokensSnapshot.forEach((doc) => {
             const data = doc.data();
             if (data.token) {
                 tokens.push(data.token);
@@ -263,8 +263,12 @@ exports.enrollmentGateway = (0, https_1.onRequest)({
     region: "europe-west1",
     cors: true
 }, async (req, res) => {
-    const id = req.query.id || req.path.split('/').pop();
-    if (!id || id === 'i') {
+    let id = req.query.id;
+    if (!id) {
+        const pathParts = req.path.split('/').filter(Boolean);
+        id = pathParts.pop() || '';
+    }
+    if (!id || id === 'i' || id === 'enrollmentGateway') {
         res.status(400).send("ID Iscrizione mancante.");
         return;
     }
@@ -303,13 +307,13 @@ exports.getEnrollmentData = (0, https_1.onCall)({
 }, async (request) => {
     const { leadId } = request.data;
     if (!leadId) {
-        throw new Error("ID Lead mancante.");
+        throw new https_1.HttpsError("invalid-argument", "ID Lead mancante.");
     }
     const db = admin.firestore();
     try {
         const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
         if (!leadSnap.exists) {
-            throw new Error("Richiesta non trovata.");
+            throw new https_1.HttpsError("not-found", "Richiesta non trovata.");
         }
         const leadData = { id: leadSnap.id, ...leadSnap.data() };
         if (leadData.status === 'converted' && leadData.relatedEnrollmentId) {
@@ -318,17 +322,20 @@ exports.getEnrollmentData = (0, https_1.onCall)({
                 return { existingEnrollment: enrSnap.data() };
             }
         }
-        const companySnap = await db.collection("settings").doc("company").get();
+        const companySnap = await db.collection("settings").doc("companyInfo").get();
         const companyData = companySnap.exists ? companySnap.data() : null;
-        const subsSnap = await db.collection("subscription_types").where("isDeleted", "==", false).get();
-        const subs = subsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const subsSnap = await db.collection("subscriptionTypes").where("isDeleted", "==", false).get();
+        const subs = subsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         const suppliersSnap = await db.collection("suppliers").get();
-        const suppliers = suppliersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const suppliers = suppliersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
         return { lead: leadData, company: companyData, subscriptions: subs, suppliers: suppliers };
     }
     catch (error) {
         logger.error("Error in getEnrollmentData:", error);
-        throw new Error("Errore nel caricamento dei dati: " + error.message);
+        if (error instanceof https_1.HttpsError) {
+            throw error;
+        }
+        throw new https_1.HttpsError("internal", "Errore nel caricamento dei dati: " + error.message);
     }
 });
 const toLocalISOString = (date) => {
@@ -385,7 +392,7 @@ exports.processEnrollment = (0, https_1.onCall)({
 }, async (request) => {
     const { leadId, formData, clientData, enrollmentData, transactionData, invoiceData } = request.data;
     if (!leadId || !formData) {
-        throw new Error("Dati mancanti.");
+        throw new https_1.HttpsError("invalid-argument", "Dati mancanti.");
     }
     const db = admin.firestore();
     const batch = db.batch();
@@ -476,7 +483,10 @@ exports.processEnrollment = (0, https_1.onCall)({
     }
     catch (error) {
         logger.error("Error in processEnrollment:", error);
-        throw new Error("Errore durante l'iscrizione: " + error.message);
+        if (error instanceof https_1.HttpsError) {
+            throw error;
+        }
+        throw new https_1.HttpsError("internal", "Errore durante l'iscrizione: " + error.message);
     }
 });
 exports.getPublicSlotsV2 = (0, https_1.onRequest)({
@@ -497,7 +507,7 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
             admin.firestore().collection('subscriptionTypes').get()
         ]);
         const activeSubs = [];
-        subscriptionsSnap.forEach(doc => {
+        subscriptionsSnap.forEach((doc) => {
             const sub = doc.data();
             if (sub.isPubliclyVisible !== false) {
                 activeSubs.push({ id: doc.id, ...sub });
@@ -513,7 +523,7 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
         const endOfWeek = new Date(startOfWeek);
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59, 999);
-        enrollmentsSnap.forEach(doc => {
+        enrollmentsSnap.forEach((doc) => {
             const data = doc.data();
             const locId = data.locationId;
             const appts = data.appointments || [];
@@ -547,7 +557,7 @@ exports.getPublicSlotsV2 = (0, https_1.onRequest)({
             }
         });
         const results = [];
-        suppliersSnap.forEach(doc => {
+        suppliersSnap.forEach((doc) => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
             locations.forEach((loc) => {
@@ -718,7 +728,7 @@ exports.checkPeriodicNotifications = (0, scheduler_1.onSchedule)({
         const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
         const tokensSnapshot = await db.collection("fcm_tokens").get();
         const allTokens = [];
-        tokensSnapshot.forEach(doc => { if (doc.data().token)
+        tokensSnapshot.forEach((doc) => { if (doc.data().token)
             allTokens.push(doc.data().token); });
         if (allTokens.length === 0)
             return;

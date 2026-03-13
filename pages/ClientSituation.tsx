@@ -292,7 +292,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const clientFinancials = useMemo(() => {
         if (!selectedClient) return null;
         
-        let clientEnrollments = enrollments
+        const clientEnrollments = enrollments
             .filter(e => e.clientId === selectedClient.id)
             .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
         

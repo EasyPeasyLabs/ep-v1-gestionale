@@ -1,4 +1,4 @@
-import { onCall, onRequest } from "firebase-functions/v2/https";
+import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
@@ -25,7 +25,7 @@ export const sendEmail = onCall({
     region: "europe-west1",
     cors: true, 
     secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken] 
-}, async (request) => {
+}, async (request: any) => {
     // Caricamento librerie pesanti solo all'esecuzione
     const { google } = await import("googleapis");
     const nodemailer = await import("nodemailer");
@@ -85,7 +85,7 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
         const tokensSnapshot = await admin.firestore().collection("fcm_tokens").get();
         const tokens: string[] = [];
         
-        tokensSnapshot.forEach(doc => {
+        tokensSnapshot.forEach((doc: any) => {
             const data = doc.data();
             if (data.token) {
                 tokens.push(data.token);
@@ -126,7 +126,7 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
 
         if (response.failureCount > 0) {
             const failedTokens: string[] = [];
-            response.responses.forEach((resp, idx) => {
+            response.responses.forEach((resp: any, idx: any) => {
                 if (!resp.success) {
                     const errorCode = resp.error?.code;
                     if (errorCode === 'messaging/invalid-registration-token' || 
@@ -154,7 +154,7 @@ async function sendPushToAllTokens(title: string, body: string, extraData: Recor
 export const onLeadCreated = onDocumentCreated({
     region: "europe-west1",
     document: "incoming_leads/{leadId}"
-}, async (event) => {
+}, async (event: any) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
@@ -212,7 +212,7 @@ export const onLeadCreated = onDocumentCreated({
 export const onEnrollmentCreated = onDocumentCreated({
     region: "europe-west1",
     document: "enrollments/{enrollmentId}"
-}, async (event) => {
+}, async (event: any) => {
     const snapshot = event.data;
     if (!snapshot) return;
 
@@ -272,10 +272,17 @@ export const onEnrollmentCreated = onDocumentCreated({
 export const enrollmentGateway = onRequest({ 
     region: "europe-west1",
     cors: true 
-}, async (req, res) => {
-    const id = req.query.id as string || req.path.split('/').pop();
+}, async (req: any, res: any) => {
+    let id = req.query.id as string;
     
-    if (!id || id === 'i') {
+    // Fallback to path extraction if query param is missing
+    if (!id) {
+        const pathParts = req.path.split('/').filter(Boolean);
+        // If path is /i/123, pop() gets 123. If path is just /, pop() gets undefined
+        id = pathParts.pop() || '';
+    }
+    
+    if (!id || id === 'i' || id === 'enrollmentGateway') {
         res.status(400).send("ID Iscrizione mancante.");
         return;
     }
@@ -324,10 +331,10 @@ export const enrollmentGateway = onRequest({
 export const getEnrollmentData = onCall({
     region: "europe-west1",
     cors: true
-}, async (request) => {
+}, async (request: any) => {
     const { leadId } = request.data;
     if (!leadId) {
-        throw new Error("ID Lead mancante.");
+        throw new HttpsError("invalid-argument", "ID Lead mancante.");
     }
 
     const db = admin.firestore();
@@ -335,7 +342,7 @@ export const getEnrollmentData = onCall({
     try {
         const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
         if (!leadSnap.exists) {
-            throw new Error("Richiesta non trovata.");
+            throw new HttpsError("not-found", "Richiesta non trovata.");
         }
         const leadData = { id: leadSnap.id, ...(leadSnap.data() as any) };
 
@@ -347,19 +354,22 @@ export const getEnrollmentData = onCall({
             }
         }
 
-        const companySnap = await db.collection("settings").doc("company").get();
+        const companySnap = await db.collection("settings").doc("companyInfo").get();
         const companyData = companySnap.exists ? companySnap.data() : null;
 
-        const subsSnap = await db.collection("subscription_types").where("isDeleted", "==", false).get();
-        const subs = subsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const subsSnap = await db.collection("subscriptionTypes").where("isDeleted", "==", false).get();
+        const subs = subsSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 
         const suppliersSnap = await db.collection("suppliers").get();
-        const suppliers = suppliersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const suppliers = suppliersSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 
         return { lead: leadData, company: companyData, subscriptions: subs, suppliers: suppliers };
     } catch (error: any) {
         logger.error("Error in getEnrollmentData:", error);
-        throw new Error("Errore nel caricamento dei dati: " + error.message);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "Errore nel caricamento dei dati: " + error.message);
     }
 });
 
@@ -419,11 +429,11 @@ const isItalianHoliday = (date: Date): boolean => {
 export const processEnrollment = onCall({
     region: "europe-west1",
     cors: true
-}, async (request) => {
+}, async (request: any) => {
     const { leadId, formData, clientData, enrollmentData, transactionData, invoiceData } = request.data;
     
     if (!leadId || !formData) {
-        throw new Error("Dati mancanti.");
+        throw new HttpsError("invalid-argument", "Dati mancanti.");
     }
 
     const db = admin.firestore();
@@ -538,7 +548,10 @@ export const processEnrollment = onCall({
         return { success: true, enrollmentId: enrRef.id };
     } catch (error: any) {
         logger.error("Error in processEnrollment:", error);
-        throw new Error("Errore durante l'iscrizione: " + error.message);
+        if (error instanceof HttpsError) {
+            throw error;
+        }
+        throw new HttpsError("internal", "Errore durante l'iscrizione: " + error.message);
     }
 });
 
@@ -546,7 +559,7 @@ export const processEnrollment = onCall({
 export const getPublicSlotsV2 = onRequest({ 
     region: "europe-west1",
     cors: true 
-}, async (req, res) => {
+}, async (req: any, res: any) => {
     const authHeader = req.headers['x-bridge-key'];
     if (!authHeader || authHeader !== API_SHARED_SECRET) {
         res.status(403).json({ error: "Forbidden: Invalid API Key" });
@@ -563,7 +576,7 @@ export const getPublicSlotsV2 = onRequest({
         ]);
 
         const activeSubs: any[] = [];
-        subscriptionsSnap.forEach(doc => {
+        subscriptionsSnap.forEach((doc: any) => {
             const sub = doc.data();
             if (sub.isPubliclyVisible !== false) {
                 activeSubs.push({ id: doc.id, ...sub });
@@ -584,7 +597,7 @@ export const getPublicSlotsV2 = onRequest({
         endOfWeek.setDate(startOfWeek.getDate() + 6);
         endOfWeek.setHours(23, 59, 59, 999);
 
-        enrollmentsSnap.forEach(doc => {
+        enrollmentsSnap.forEach((doc: any) => {
             const data = doc.data();
             const locId = data.locationId;
             const appts = data.appointments || [];
@@ -628,7 +641,7 @@ export const getPublicSlotsV2 = onRequest({
         });
 
         const results: any[] = [];
-        suppliersSnap.forEach(doc => {
+        suppliersSnap.forEach((doc: any) => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
             locations.forEach((loc: any) => {
@@ -772,7 +785,7 @@ export const getPublicSlotsV2 = onRequest({
 export const receiveLeadV2 = onRequest({ 
     region: "europe-west1",
     cors: true 
-}, async (req, res) => {
+}, async (req: any, res: any) => {
     if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");
         return;
@@ -806,7 +819,7 @@ export const checkPeriodicNotifications = onSchedule({
     schedule: "* * * * *",
     timeZone: "Europe/Rome",
     region: "europe-west1",
-}, async (event) => {
+}, async (event: any) => {
     try {
         const db = admin.firestore();
         const now = new Date();
@@ -825,7 +838,7 @@ export const checkPeriodicNotifications = onSchedule({
 
         const tokensSnapshot = await db.collection("fcm_tokens").get();
         const allTokens: string[] = [];
-        tokensSnapshot.forEach(doc => { if (doc.data().token) allTokens.push(doc.data().token); });
+        tokensSnapshot.forEach((doc: any) => { if (doc.data().token) allTokens.push(doc.data().token); });
         if (allTokens.length === 0) return;
 
         const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();

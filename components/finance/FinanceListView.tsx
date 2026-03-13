@@ -151,7 +151,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
         
         // SAFE SEARCH: Handle missing clientName for suppliers/rents
-        let result = list.filter(item => {
+        const result = list.filter(item => {
             const searchFields = [
                 item.clientName,
                 item.description,

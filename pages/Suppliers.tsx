@@ -646,7 +646,7 @@ const SupplierForm: React.FC<{
     const [isEditingLoc, setIsEditingLoc] = useState(false);
 
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let val = e.target.value;
+        const val = e.target.value;
         
         // Remove all non-numeric characters except the leading +
         let cleaned = val.replace(/(?!^\+)[^\d]/g, '');
@@ -801,7 +801,7 @@ const Suppliers: React.FC = () => {
     };
 
     const filteredSuppliers = useMemo(() => {
-        let result = suppliers.filter(s => showTrash ? s.isDeleted : !s.isDeleted);
+        const result = suppliers.filter(s => showTrash ? s.isDeleted : !s.isDeleted);
         result.sort((a, b) => {
             if (sortOrder === 'day_asc') return getEarliestDay(a) - getEarliestDay(b);
             const nameA = (a.companyName || '').toLowerCase();

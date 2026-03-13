@@ -113,7 +113,7 @@ const docToTemplate = (doc: QueryDocumentSnapshot<DocumentData>): CommunicationT
 
 export const getCommunicationTemplates = async (): Promise<CommunicationTemplate[]> => {
     const snapshot = await getDocs(getTemplateCollectionRef());
-    let templates = snapshot.docs.map(docToTemplate);
+    const templates = snapshot.docs.map(docToTemplate);
     
     // Default Templates Init
     if (templates.length === 0) {

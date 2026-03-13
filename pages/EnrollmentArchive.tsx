@@ -605,7 +605,7 @@ const EnrollmentArchive: React.FC = () => {
 
     const handleExportExcel = () => {
         // 1. Determine Target Data
-        let targets = selectedEnrollmentIds.length > 0 
+        const targets = selectedEnrollmentIds.length > 0 
             ? enrollments.filter(e => selectedEnrollmentIds.includes(e.id))
             : filteredEnrollments;
 

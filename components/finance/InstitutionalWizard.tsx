@@ -98,7 +98,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
         const previews: LessonInput[] = [];
         // FIX DATE SLIPPAGE: Initialize date at NOON (12:00:00)
         // This prevents dates shifting to previous day due to timezone offsets/DST when converting to UTC
-        let currentDate = new Date(genStartDate);
+        const currentDate = new Date(genStartDate);
         currentDate.setHours(12, 0, 0, 0); 
         
         // Find first occurrence of day

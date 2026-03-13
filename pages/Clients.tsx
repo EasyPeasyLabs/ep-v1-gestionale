@@ -139,7 +139,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
     const [province, setProvince] = useState(client?.province || '');
 
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let val = e.target.value;
+        const val = e.target.value;
         
         // Remove all non-numeric characters except the leading +
         let cleaned = val.replace(/(?!^\+)[^\d]/g, '');
