@@ -74,6 +74,32 @@ const formatSlotToString = (slot: any): string => {
   return JSON.stringify(slot); // Fallback estremo per debug, ma ora gestito come stringa
 };
 
+const calculateAgeString = (dob: string): string => {
+  if (!dob) return '';
+  const birth = new Date(dob);
+  const now = new Date();
+  let years = now.getFullYear() - birth.getFullYear();
+  let months = now.getMonth() - birth.getMonth();
+
+  if (months < 0 || (months === 0 && now.getDate() < birth.getDate())) {
+      years--;
+      months += 12;
+  }
+
+  if (now.getDate() < birth.getDate()) {
+      months--;
+      if (months < 0) {
+          months += 12;
+      }
+  }
+
+  if (years < 0) return '0 mesi';
+
+  let result = `${years} anni`;
+  if (months > 0) result += ` + ${months} mesi`;
+  return result;
+};
+
 const EnrollmentPortal: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -723,7 +749,15 @@ const EnrollmentPortal: React.FC = () => {
                       <input 
                         type="date" 
                         value={formData.childDateOfBirth} 
-                        onChange={e => setFormData({...formData, childDateOfBirth: e.target.value})} 
+                        onChange={e => {
+                          const dob = e.target.value;
+                          const calculatedAge = calculateAgeString(dob);
+                          setFormData({
+                            ...formData, 
+                            childDateOfBirth: dob,
+                            childAge: calculatedAge || formData.childAge
+                          });
+                        }} 
                         className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.childDateOfBirth ? 'border-blue-300' : 'border-gray-200'}`} 
                       />
                     </div>
@@ -977,7 +1011,10 @@ const EnrollmentPortal: React.FC = () => {
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(() => {
-                          const ageNum = parseInt(formData.childAge.match(/\d+/)?.[0] || '0');
+                          const ageStr = String(formData.childAge || '');
+                          const ageMatch = ageStr.match(/\d+/);
+                          const ageNum = ageMatch ? parseInt(ageMatch[0]) : 0;
+                          
                           const isKid = ageNum > 0 && ageNum < 18;
                           const slotStr = String(formData.selectedSlot || '');
                           const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
