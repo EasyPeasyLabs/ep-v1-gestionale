@@ -321,11 +321,12 @@ const EnrollmentPortal: React.FC = () => {
   const handleNext = () => setStep(s => s + 1);
   const handleBack = () => setStep(s => s - 1);
 
-  const handleBooking = async () => {
+  const handleProcessEnrollment = async (method: PaymentMethod | 'Cash') => {
     if (!lead) return;
     setIsProcessing(true);
     try {
       const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
+      const isCash = method === 'Cash';
       
       const clientData = {
         clientType: ClientType.Parent,
@@ -372,94 +373,7 @@ const EnrollmentPortal: React.FC = () => {
         labRemaining: sub?.labCount || 0,
         sgRemaining: sub?.sgCount || 0,
         evtRemaining: sub?.evtCount || 0,
-        status: EnrollmentStatus.Pending,
-        startDate: '', // Will be set by server
-        endDate: '', // Will be set by server
-        appointments: [{
-          lessonId: '', // Will be set by server
-          date: '', // Will be set by server
-          startTime: '', // Will be set by server
-          endTime: '', // Will be set by server
-          locationId: formData.selectedLocationId || 'unassigned',
-          locationName: formData.selectedLocationName || 'Sede Preferita',
-          locationColor: '#6366f1',
-          childName: formData.childName,
-          status: 'Scheduled'
-        }],
-        createdAt: new Date().toISOString(),
-        source: 'portal'
-      };
-
-      const processEnrollment = httpsCallable(functions, 'processEnrollment');
-      await processEnrollment({
-          leadId: lead.id,
-          formData,
-          clientData,
-          enrollmentData
-      });
-
-      setSuccessMode('booking');
-      setIsSuccess(true);
-    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      console.error(err);
-      alert(`Errore durante la prenotazione: ${err.message || "Sconosciuto"}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handlePayment = async () => {
-    if (!lead) return;
-    setIsProcessing(true);
-    try {
-      const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
-      
-      const clientData = {
-        clientType: ClientType.Parent,
-        firstName: formData.parentFirstName,
-        lastName: formData.parentLastName,
-        email: formData.parentEmail,
-        phone: formData.parentPhone,
-        taxCode: formData.parentFiscalCode,
-        address: `${formData.parentAddress}, ${formData.parentZip} ${formData.parentCity} (${formData.parentProvince})`,
-        city: formData.parentCity,
-        children: [{
-          id: '', // Will be set by server
-          name: formData.childName,
-          age: formData.childAge,
-          dateOfBirth: formData.childDateOfBirth,
-          notes: '',
-          notesHistory: [],
-          tags: [],
-          rating: { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
-        }],
-        status: 'Active',
-        notesHistory: [],
-        tags: [],
-        rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
-        createdAt: new Date().toISOString(),
-        source: 'portal'
-      };
-
-      const enrollmentData = {
-        clientId: '', // Will be set by server
-        clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
-        childId: '', // Will be set by server
-        childName: formData.childName,
-        subscriptionTypeId: formData.selectedSubscriptionId,
-        subscriptionName: sub?.name || 'Abbonamento',
-        locationId: formData.selectedLocationId || 'unassigned',
-        locationName: formData.selectedLocationName || 'Sede Preferita',
-        price: sub?.price || 0,
-        lessonsTotal: sub?.lessons || 0,
-        lessonsRemaining: sub?.lessons || 0,
-        labCount: sub?.labCount || 0,
-        sgCount: sub?.sgCount || 0,
-        evtCount: sub?.evtCount || 0,
-        labRemaining: sub?.labCount || 0,
-        sgRemaining: sub?.sgCount || 0,
-        evtRemaining: sub?.evtCount || 0,
-        status: EnrollmentStatus.Active,
+        status: isCash ? EnrollmentStatus.Pending : EnrollmentStatus.Active,
         startDate: '', // Will be set by server
         endDate: '', // Will be set by server
         appointments: [{
@@ -479,12 +393,12 @@ const EnrollmentPortal: React.FC = () => {
 
       const transactionData = {
         date: new Date().toISOString(),
-        description: `Incasso Online - ${formData.childName} - ${sub?.name}`,
+        description: `${isCash ? 'Prenotazione Sede' : 'Incasso Online'} - ${formData.childName} - ${sub?.name}`,
         amount: sub?.price || 0,
         type: TransactionType.Income,
         category: TransactionCategory.Vendite,
-        paymentMethod: formData.paymentMethod,
-        status: TransactionStatus.Completed,
+        paymentMethod: isCash ? PaymentMethod.Cash : method as PaymentMethod,
+        status: isCash ? TransactionStatus.Pending : TransactionStatus.Completed,
         relatedEnrollmentId: '', // Will be set by server
         allocationId: formData.selectedLocationId,
         allocationName: formData.selectedLocationName,
@@ -492,14 +406,14 @@ const EnrollmentPortal: React.FC = () => {
       };
 
       let invoiceData = null;
-      if (formData.paymentMethod === PaymentMethod.BankTransfer) {
+      if (method === PaymentMethod.BankTransfer) {
         invoiceData = {
           clientId: '', // Will be set by server
           clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
           issueDate: new Date().toISOString(),
           dueDate: new Date().toISOString(),
-          status: DocumentStatus.PendingSDI,
-          paymentMethod: formData.paymentMethod,
+          status: DocumentStatus.Paid,
+          paymentMethod: PaymentMethod.BankTransfer,
           relatedEnrollmentId: '', // Will be set by server
           items: [{
             description: `Iscrizione ${formData.childName} - ${sub?.name}`,
@@ -523,11 +437,17 @@ const EnrollmentPortal: React.FC = () => {
           invoiceData
       });
 
-      setSuccessMode('paid');
+      if (method === PaymentMethod.PayPal && companyInfo?.paypal) {
+          const paypalLink = companyInfo.paypal.startsWith('http') ? companyInfo.paypal : `https://${companyInfo.paypal}`;
+          window.open(paypalLink, '_blank');
+      }
+
+      setSuccessMode(isCash ? 'booking' : 'paid');
       setIsSuccess(true);
-    } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+      setShowBookingModal(false);
+    } catch (err: any) {
       console.error(err);
-      alert(`Errore durante il pagamento: ${err.message || "Sconosciuto"}`);
+      alert(`Errore durante l'iscrizione: ${err.message || "Sconosciuto"}`);
     } finally {
       setIsProcessing(false);
     }
@@ -1235,112 +1155,25 @@ const EnrollmentPortal: React.FC = () => {
                   </div>
                 </div>
 
-                {!showPaymentDetails ? (
-                  <div className="grid grid-cols-1 gap-4 pt-4">
-                    <button 
-                      onClick={() => setShowBookingModal(true)}
-                      disabled={isProcessing}
-                      className="w-full bg-white border-4 border-gray-900 text-gray-900 font-black py-5 rounded-[24px] hover:bg-gray-50 transition-all uppercase tracking-widest text-sm shadow-md"
-                    >
-                      Prenota Iscrizione (Paga in Sede)
-                    </button>
-                    <button 
-                      onClick={() => setShowPaymentDetails(true)}
-                      className="w-full bg-indigo-600 text-white font-black py-5 rounded-[24px] shadow-xl hover:bg-indigo-700 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-3"
-                    >
-                      Paga Ora <ChevronRight className="w-6 h-6" />
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-6 animate-slide-up">
-                    <div className="space-y-3">
-                      <label className="text-xs font-black text-gray-400 uppercase">Metodo di Pagamento</label>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button 
-                          onClick={() => setFormData({...formData, paymentMethod: PaymentMethod.BankTransfer})}
-                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'border-blue-900 bg-blue-50' : 'border-gray-100 bg-white'}`}
-                        >
-                          <Info className={`w-6 h-6 ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'text-blue-900' : 'text-gray-400'}`} />
-                          <span className={`text-xs font-bold ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'text-blue-900' : 'text-gray-500'}`}>Bonifico</span>
-                        </button>
-                        <button 
-                          onClick={() => setFormData({...formData, paymentMethod: PaymentMethod.PayPal})}
-                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${formData.paymentMethod === PaymentMethod.PayPal ? 'border-blue-900 bg-blue-50' : 'border-gray-100 bg-white'}`}
-                        >
-                          <ExternalLink className={`w-6 h-6 ${formData.paymentMethod === PaymentMethod.PayPal ? 'text-blue-900' : 'text-gray-400'}`} />
-                          <span className={`text-xs font-bold ${formData.paymentMethod === PaymentMethod.PayPal ? 'text-blue-900' : 'text-gray-500'}`}>PayPal</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Payment Info Box */}
-                    <div className="bg-white border-2 border-blue-100 rounded-3xl p-6 shadow-sm">
-                      {formData.paymentMethod === PaymentMethod.BankTransfer ? (
-                        <div className="space-y-6">
-                          <h4 className="font-black text-blue-900 uppercase text-sm border-b border-gray-100 pb-2">Dati per il Bonifico</h4>
-                          
-                          <div className="space-y-2">
-                            <p className="text-[10px] font-black text-gray-400 uppercase">IBAN</p>
-                            <div className="bg-gray-50 p-4 rounded-xl relative group border border-gray-200 flex justify-between items-center">
-                              <p className="font-mono text-lg font-bold text-gray-800 tracking-wider overflow-x-auto whitespace-nowrap scrollbar-hide">
-                                {companyInfo?.iban || 'IBAN NON DISPONIBILE'}
-                              </p>
-                              <button 
-                                onClick={() => { navigator.clipboard.writeText(companyInfo?.iban || ''); alert("IBAN copiato!"); }}
-                                className="text-blue-600 hover:bg-blue-100 p-2 rounded-lg transition-colors"
-                              >
-                                <Copy className="w-5 h-5" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="text-[10px] font-black text-gray-400 uppercase">Causale (Obbligatoria)</p>
-                            <div className="bg-amber-50 border-2 border-amber-200 border-dashed p-4 rounded-xl text-center">
-                              <p className="font-bold text-amber-900 text-sm leading-relaxed">
-                                Iscrizione {formData.childName.toUpperCase()} - Sede {formData.selectedLocationName.toUpperCase()} - {subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.name.split('.').pop()?.toUpperCase()}
-                              </p>
-                            </div>
-                            <p className="text-[10px] text-gray-500 italic text-center">
-                              Copia esattamente questa causale per garantire la registrazione immediata.
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <h4 className="font-black text-blue-900 uppercase text-sm">Link PayPal</h4>
-                          <a 
-                            href={companyInfo?.paypal ? (companyInfo.paypal.startsWith('http') ? companyInfo.paypal : `https://${companyInfo.paypal}`) : '#'} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="flex items-center justify-between bg-[#0070BA] text-white p-4 rounded-xl font-bold hover:bg-[#003087] transition-colors shadow-md"
-                          >
-                            <span>Paga con PayPal</span>
-                            <ExternalLink className="w-5 h-5" />
-                          </a>
-                        </div>
-                      )}
-                    </div>
-
-                    <button 
-                      onClick={handlePayment}
-                      disabled={isProcessing}
-                      className="w-full bg-blue-900 text-white font-black py-4 rounded-2xl shadow-xl hover:bg-blue-800 transition-all uppercase tracking-widest text-sm flex items-center justify-center gap-2"
-                    >
-                      {isProcessing ? <Spinner /> : <><CreditCard className="w-5 h-5" /> Conferma e Paga</>}
-                    </button>
-                    <button onClick={() => setShowPaymentDetails(false)} className="w-full text-gray-400 text-xs font-bold uppercase tracking-widest hover:text-gray-600">Indietro</button>
-                  </div>
-                )}
+                {/* STEP 4 ACTION */}
+                <div className="pt-4">
+                  <button 
+                    onClick={() => setShowBookingModal(true)}
+                    disabled={isProcessing}
+                    className="w-full bg-indigo-600 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-indigo-700 transition-all uppercase tracking-[0.2em] text-sm flex items-center justify-center gap-3 animate-pulse-subtle"
+                  >
+                    Ok, procedo all'iscrizione <ChevronRight className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
             )}
 
             {/* Navigation Buttons */}
-            {!showPaymentDetails && step < 4 && (
+            {step < 4 && (
               <div className="mt-12 flex justify-between items-center">
                 {step > 1 ? (
-                  <button onClick={handleBack} className="flex items-center gap-2 text-gray-400 font-bold hover:text-gray-600 transition-colors">
-                    <ChevronLeft className="w-5 h-5" /> Indietro
+                  <button onClick={handleBack} className="flex items-center gap-2 text-gray-400 font-bold hover:text-gray-600 transition-colors uppercase text-[10px] tracking-widest">
+                    <ChevronLeft className="w-4 h-4" /> Indietro
                   </button>
                 ) : <div></div>}
                 
@@ -1349,73 +1182,120 @@ const EnrollmentPortal: React.FC = () => {
                   disabled={
                     (step === 1 && (!formData.parentFirstName || !formData.parentLastName || !formData.parentFiscalCode)) ||
                     (step === 2 && (!formData.selectedLocationId || !formData.selectedSlot)) ||
-                    (step === 3 && !formData.selectedSubscriptionId) ||
-                    (step === 3 && !subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId))
+                    (step === 3 && !formData.selectedSubscriptionId)
                   }
-                  className="bg-indigo-600 text-white px-8 py-3 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-30 disabled:grayscale"
+                  className="bg-gray-900 text-white px-10 py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-gray-800 transition-all disabled:opacity-20 uppercase text-xs tracking-widest"
                 >
-                  Avanti <ChevronRight className="w-5 h-5" />
+                  Avanti <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             )}
 
           </div>
         </div>
-
-        {/* Footer Info */}
-        <div className="mt-8 text-center space-y-4">
-          <p className="text-xs text-gray-400 font-medium">
-            Hai bisogno di aiuto? Contattaci al <span className="text-blue-900 font-bold">{companyInfo?.phone}</span>
-          </p>
-          <div className="flex justify-center gap-4">
-            <div className="w-8 h-8 bg-white rounded-full shadow-sm flex items-center justify-center border border-gray-100">
-              <Info className="w-4 h-4 text-gray-400" />
-            </div>
-            <div className="w-8 h-8 bg-white rounded-full shadow-sm flex items-center justify-center border border-gray-100">
-              <CreditCard className="w-4 h-4 text-gray-400" />
-            </div>
-          </div>
-        </div>
       </div>
 
-      {/* Booking Confirmation Modal */}
+      {/* UNIFIED PAYMENT MODAL (Step 13) */}
       {showBookingModal && (
-        <Modal onClose={() => setShowBookingModal(false)} size="md">
-          <div className="p-8 text-center space-y-6">
-            <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto">
-              <CheckCircle className="w-10 h-10" />
-            </div>
-            
-            <div className="space-y-2">
-              <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">Conferma Prenotazione</h3>
-              <p className="text-gray-600 leading-relaxed">
-                Posto bloccato con successo! Ti aspettiamo in sede il <strong>{formData.selectedSlot.split(' ')[0] || 'giorno stabilito'}</strong>. 
-                <br/><br/>
-                Potrai saldare la quota di <strong className="text-blue-900 text-lg">
-                  {(() => {
-                    const basePrice = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price || 0;
-                    const totalPrice = basePrice >= 77 ? basePrice + 2 : basePrice;
-                    return `${totalPrice}€`;
-                  })()}
-                </strong> direttamente in contanti prima dell'inizio della lezione.
-              </p>
+        <Modal onClose={() => !isProcessing && setShowBookingModal(false)} size="lg">
+          <div className="p-8 md:p-12 space-y-10">
+            <div className="text-center space-y-2">
+              <h3 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Metodo di Pagamento</h3>
+              <p className="text-gray-500 font-medium">Seleziona come desideri saldare l'iscrizione</p>
             </div>
 
-            <div className="flex flex-col gap-3 pt-4">
+            <div className="grid grid-cols-1 gap-4">
+              {/* Option 1: Cash */}
               <button 
-                onClick={handleBooking}
+                onClick={() => handleProcessEnrollment('Cash')}
                 disabled={isProcessing}
-                className="w-full bg-blue-900 text-white font-black py-4 rounded-xl shadow-lg hover:bg-blue-800 transition-all uppercase tracking-widest text-sm"
+                className="group flex items-center justify-between p-6 bg-white border-2 border-gray-100 rounded-[32px] hover:border-amber-400 hover:bg-amber-50 transition-all text-left shadow-sm hover:shadow-md"
               >
-                {isProcessing ? <Spinner /> : 'Ho capito, Procedi'}
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center group-hover:bg-amber-400 group-hover:text-white transition-colors">
+                    <BanknotesIcon className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-gray-900 uppercase text-sm tracking-widest">Pago in contanti</h4>
+                    <p className="text-xs text-gray-500 font-medium mt-1">Saldatura direttamente in sede alla prima lezione</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-amber-500 transition-colors" />
               </button>
+
+              {/* Option 2: Bank Transfer */}
               <button 
-                onClick={() => setShowBookingModal(false)}
-                className="w-full text-gray-400 font-bold py-2 hover:text-gray-600 transition-colors uppercase text-xs tracking-widest"
+                onClick={() => setFormData({...formData, paymentMethod: PaymentMethod.BankTransfer})}
+                disabled={isProcessing}
+                className={`group flex flex-col p-6 bg-white border-2 rounded-[32px] transition-all text-left shadow-sm hover:shadow-md ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200'}`}
               >
-                Annulla
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-6">
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'}`}>
+                      <Info className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-gray-900 uppercase text-sm tracking-widest">Pago con bonifico</h4>
+                      <p className="text-xs text-gray-500 font-medium mt-1">Esegui il bonifico ora tramite la tua app bancaria</p>
+                    </div>
+                  </div>
+                  {formData.paymentMethod === PaymentMethod.BankTransfer && <CheckCircle className="w-6 h-6 text-indigo-600" />}
+                </div>
+
+                {formData.paymentMethod === PaymentMethod.BankTransfer && (
+                  <div className="mt-8 space-y-6 animate-fade-in border-t border-indigo-200 pt-6">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">IBAN per il bonifico</p>
+                      <div className="bg-white p-4 rounded-2xl flex justify-between items-center border border-indigo-100">
+                        <p className="font-mono text-lg font-bold text-gray-800 tracking-wider">
+                          {companyInfo?.iban || 'IBAN NON DISPONIBILE'}
+                        </p>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(companyInfo?.iban || ''); alert("IBAN copiato!"); }}
+                          className="p-2 hover:bg-indigo-50 rounded-lg text-indigo-600"
+                        >
+                          <Copy className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-center bg-amber-400/10 p-4 rounded-2xl border border-amber-400/20">
+                      <p className="text-[10px] font-black text-amber-600 uppercase tracking-[0.2em]">Causale Obbligatoria</p>
+                      <p className="font-black text-gray-900 text-xs">
+                        ISCRIZIONE {formData.childName.toUpperCase()} - {formData.selectedLocationName.toUpperCase()}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleProcessEnrollment(PaymentMethod.BankTransfer); }}
+                      className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs"
+                    >
+                      Ho effettuato il bonifico
+                    </button>
+                  </div>
+                )}
+              </button>
+
+              {/* Option 3: PayPal */}
+              <button 
+                onClick={() => handleProcessEnrollment(PaymentMethod.PayPal)}
+                disabled={isProcessing}
+                className="group flex items-center justify-between p-6 bg-white border-2 border-gray-100 rounded-[32px] hover:border-blue-500 hover:bg-blue-50 transition-all text-left shadow-sm hover:shadow-md"
+              >
+                <div className="flex items-center gap-6">
+                  <div className="w-16 h-16 bg-[#0070BA]/10 text-[#0070BA] rounded-2xl flex items-center justify-center group-hover:bg-[#0070BA] group-hover:text-white transition-colors">
+                    <ExternalLink className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-gray-900 uppercase text-sm tracking-widest">Paga con PayPal</h4>
+                    <p className="text-xs text-gray-500 font-medium mt-1">Reindirizzamento immediato al pagamento online</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-blue-500 transition-colors" />
               </button>
             </div>
+
+            <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+              Tutte le transazioni sono sicure e crittografate
+            </p>
           </div>
         </Modal>
       )}
