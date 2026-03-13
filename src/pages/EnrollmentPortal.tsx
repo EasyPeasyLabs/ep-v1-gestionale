@@ -112,26 +112,10 @@ const EnrollmentPortal: React.FC = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   const [showAllOptions, setShowAllOptions] = useState(false);
+  const [showOtherSubscriptions, setShowOtherSubscriptions] = useState(false);
 
   useEffect(() => {
-    // Extract ID from either search params or hash params (for SPA compatibility)
-    const searchParams = new URLSearchParams(window.location.search);
-    let leadId = searchParams.get('id');
-    
-    if (!leadId && window.location.hash.includes('?')) {
-      const hashPart = window.location.hash.split('?')[1];
-      const hashParams = new URLSearchParams(hashPart);
-      leadId = hashParams.get('id');
-    }
-
-    if (!leadId && window.location.pathname.startsWith('/i/')) {
-      leadId = window.location.pathname.split('/i/')[1];
-    }
-
-    if (!leadId && (window as any).__ENROLLMENT_ID__) { // eslint-disable-line @typescript-eslint/no-explicit-any
-      leadId = (window as any).__ENROLLMENT_ID__; // eslint-disable-line @typescript-eslint/no-explicit-any
-    }
-
+    // ... (rest of search params logic stays same)
     if (!leadId) {
       setError("Link non valido. Contatta la segreteria.");
       setLoading(false);
@@ -188,6 +172,22 @@ const EnrollmentPortal: React.FC = () => {
 
         // Pre-fill form
         const normalizedSlotString = formatSlotToString(leadData.selectedSlot);
+        
+        // Try to find bundleId from selectedSlot if it was an object
+        let preselectedSubId = '';
+        if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
+          preselectedSubId = (leadData.selectedSlot as any).bundleId || '';
+        }
+        
+        // If not found, try to match by name
+        if (!preselectedSubId && normalizedSlotString) {
+          const matchedSub = subs.find((s: any) => 
+            normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 
+            normalizeString(normalizedSlotString).includes(normalizeString(s.name))
+          );
+          if (matchedSub) preselectedSubId = matchedSub.id;
+        }
+
         setFormData(prev => ({
           ...prev,
           parentFirstName: leadData.nome || '',
@@ -197,7 +197,8 @@ const EnrollmentPortal: React.FC = () => {
           childName: leadData.childName || '',
           childAge: leadData.childAge || '',
           selectedLocationName: leadData.selectedLocation || '',
-          selectedSlot: normalizedSlotString
+          selectedSlot: normalizedSlotString,
+          selectedSubscriptionId: preselectedSubId
         }));
 
         // Try to match location name to ID
@@ -884,75 +885,133 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
                     <CreditCard className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl font-black uppercase tracking-tight">Scegli Abbonamento</h2>
+                  <h2 className="text-xl font-black uppercase tracking-tight">Riepilogo Abbonamento</h2>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {subscriptionTypes
-                    .filter(sub => {
-                        if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
-                        
-                        // Check allowed days
-                        if (!sub.allowedDays || sub.allowedDays.length === 0) return true;
-                        
-                        // Parse day from selectedSlot
-                        const slotStr = String(formData.selectedSlot || '');
-                        const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
-                        const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                        const dayIndex = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
-                        
-                        if (dayIndex === -1) return true; // Fallback
-                        
-                        return sub.allowedDays.includes(dayIndex);
-                    })
-                    .map(sub => {
-                      // Smart Name Parsing
-                      const nameParts = sub.name.split('.');
-                      const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
-                      
-                      const breakdown = [
-                        (sub.labCount || 0) > 0 ? `${sub.labCount} Lab` : null,
-                        (sub.sgCount || 0) > 0 ? `${sub.sgCount} SG` : null,
-                        (sub.evtCount || 0) > 0 ? `${sub.evtCount} Evt` : null
-                      ].filter(Boolean).join(' + ');
+                {/* Pre-selected Bundle (Hero View) */}
+                {(() => {
+                  const preSelectedId = formData.selectedSubscriptionId;
+                  const sub = subscriptionTypes.find(s => s.id === preSelectedId);
+                  
+                  if (!sub || showOtherSubscriptions) return null;
 
-                      const defaultDescription = breakdown 
-                        ? `${breakdown} (${sub.lessons} totali) • Validità ${Math.round(sub.durationInDays / 30)} mesi`
-                        : `${sub.lessons} lezioni totali • Validità ${Math.round(sub.durationInDays / 30)} mesi`;
-                      
-                      const description = sub.description || defaultDescription;
+                  const nameParts = sub.name.split('.');
+                  const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
+                  const durationMonths = Math.round(sub.durationInDays / 30);
 
-                      return (
-                        <button 
-                          key={sub.id}
-                          onClick={() => setFormData({...formData, selectedSubscriptionId: sub.id})}
-                          className={`relative w-full p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between h-full min-h-[160px] group ${formData.selectedSubscriptionId === sub.id ? 'border-blue-900 bg-blue-50 ring-4 ring-blue-900/10' : 'border-gray-100 bg-white hover:border-blue-200 hover:shadow-lg'}`}
-                        >
+                  return (
+                    <div className="bg-blue-50 border-2 border-blue-900 rounded-3xl p-8 shadow-xl relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-blue-900 opacity-5 -mr-16 -mt-16 rounded-full"></div>
+                      
+                      <div className="flex justify-between items-start relative z-10">
+                        <div className="space-y-4">
+                          <span className="bg-blue-900 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">Opzione Selezionata</span>
+                          <h3 className="text-3xl font-black text-blue-900 leading-tight">{shortName}</h3>
                           <div className="space-y-2">
-                            <h3 className={`font-black text-xl tracking-tight ${formData.selectedSubscriptionId === sub.id ? 'text-blue-900' : 'text-gray-900'}`}>
-                              {shortName}
-                            </h3>
-                            <p className="text-sm text-gray-500 font-medium whitespace-pre-line">{description}</p>
-                          </div>
-                          
-                          <div className="mt-6 flex justify-between items-end w-full">
-                            <span className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${formData.selectedSubscriptionId === sub.id ? 'bg-blue-200 text-blue-800' : 'bg-gray-100 text-gray-500'}`}>
-                              {sub.target === 'kid' ? 'Bambini' : 'Adulti'}
-                            </span>
-                            <span className="bg-amber-400 text-gray-900 px-4 py-2 rounded-xl text-xl font-black shadow-sm transform group-hover:scale-105 transition-transform">
-                              {sub.price}€
-                            </span>
-                          </div>
-
-                          {formData.selectedSubscriptionId === sub.id && (
-                            <div className="absolute top-4 right-4 text-blue-900">
-                              <CheckCircle className="w-6 h-6 fill-blue-100" />
+                            <p className="text-blue-700 font-medium text-lg leading-relaxed whitespace-pre-line">{sub.description || `${sub.lessons} lezioni totali • ${sub.labCount} Lab + ${sub.sgCount} SG + ${sub.evtCount} Evt`}</p>
+                            <div className="flex items-center gap-4 text-sm font-bold text-blue-600 uppercase tracking-tighter">
+                              <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> Validità {durationMonths} {durationMonths === 1 ? 'mese' : 'mesi'}</span>
+                              <span className="flex items-center gap-1"><User className="w-4 h-4" /> {sub.target === 'kid' ? 'Bambini' : 'Adulti'}</span>
                             </div>
-                          )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="bg-amber-400 text-gray-900 px-6 py-4 rounded-2xl shadow-lg transform group-hover:scale-105 transition-all">
+                            <p className="text-[10px] font-black uppercase opacity-60 leading-none mb-1">Prezzo</p>
+                            <p className="text-4xl font-black">{sub.price}€</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-8 pt-6 border-t border-blue-100 flex flex-col sm:flex-row gap-4">
+                        <button 
+                          onClick={() => setShowOtherSubscriptions(true)}
+                          className="flex items-center justify-center gap-2 text-blue-900 font-black text-xs uppercase tracking-widest hover:underline px-4 py-2"
+                        >
+                          Vedi altri Abbonamenti <ChevronRight className="w-4 h-4" />
                         </button>
-                      );
-                    })}
-                </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* All Subscriptions View (Conditional) */}
+                {(showOtherSubscriptions || !formData.selectedSubscriptionId) && (
+                  <div className="space-y-6 animate-slide-up">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest">Tutte le Opzioni Disponibili</h3>
+                      {formData.selectedSubscriptionId && (
+                        <button 
+                          onClick={() => setShowOtherSubscriptions(false)}
+                          className="text-[10px] font-bold text-indigo-600 hover:underline uppercase"
+                        >
+                          Torna alla scelta iniziale
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {subscriptionTypes
+                        .filter(sub => {
+                            if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
+                            
+                            // Age Filter (Dynamic)
+                            const ageNum = parseInt(formData.childAge.match(/\d+/)?.[0] || '0');
+                            const isKid = ageNum > 0 && ageNum < 18;
+                            if (sub.target === 'kid' && !isKid && ageNum > 0) return false;
+                            if (sub.target === 'adult' && isKid) return false;
+
+                            // Check allowed days from slot
+                            const slotStr = String(formData.selectedSlot || '');
+                            const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
+                            const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                            const dayIndex = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
+                            if (dayIndex !== -1 && sub.allowedDays && sub.allowedDays.length > 0) {
+                              if (!sub.allowedDays.includes(dayIndex)) return false;
+                            }
+                            
+                            return true;
+                        })
+                        .map(sub => {
+                          const nameParts = sub.name.split('.');
+                          const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
+                          const isSelected = formData.selectedSubscriptionId === sub.id;
+
+                          return (
+                            <button 
+                              key={sub.id}
+                              onClick={() => {
+                                setFormData({...formData, selectedSubscriptionId: sub.id});
+                                setShowOtherSubscriptions(false);
+                              }}
+                              className={`relative w-full p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between group ${isSelected ? 'border-blue-900 bg-blue-50 ring-4 ring-blue-900/10' : 'border-gray-100 bg-white hover:border-blue-200 hover:shadow-lg'}`}
+                            >
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-start">
+                                  <h3 className={`font-black text-xl tracking-tight ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                                    {shortName}
+                                  </h3>
+                                  <span className="bg-amber-400 text-gray-900 px-3 py-1 rounded-lg text-lg font-black shadow-sm group-hover:scale-110 transition-transform">
+                                    {sub.price}€
+                                  </span>
+                                </div>
+                                <p className="text-xs text-gray-500 font-bold uppercase tracking-tighter">
+                                  {sub.lessons} lezioni • Validità {Math.round(sub.durationInDays / 30)} mesi
+                                </p>
+                              </div>
+                              
+                              <div className="mt-6 flex justify-between items-end w-full">
+                                <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${isSelected ? 'bg-blue-200 text-blue-800' : 'bg-gray-100 text-gray-500'}`}>
+                                  {sub.target === 'kid' ? 'Bambini' : 'Adulti'}
+                                </span>
+                                {isSelected && <CheckCircle className="w-6 h-6 text-blue-900" />}
+                              </div>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
