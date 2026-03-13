@@ -302,6 +302,10 @@ export const enrollmentGateway = onRequest({
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://ep-portal-chi.vercel.app/i/${id}" />
     <base href="${appUrl}/" />
+    <script>
+        window.__IS_ENROLLMENT_PORTAL__ = true;
+        window.__ENROLLMENT_ID__ = "${id}";
+    </script>
         `;
 
         // Replace the <head> section to include our meta tags

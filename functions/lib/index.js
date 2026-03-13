@@ -284,6 +284,10 @@ exports.enrollmentGateway = (0, https_1.onRequest)({
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://ep-portal-chi.vercel.app/i/${id}" />
     <base href="${appUrl}/" />
+    <script>
+        window.__IS_ENROLLMENT_PORTAL__ = true;
+        window.__ENROLLMENT_ID__ = "${id}";
+    </script>
         `;
         html = html.replace(/<head>/i, `<head>\n${metaTags}`);
         res.status(200).send(html);
