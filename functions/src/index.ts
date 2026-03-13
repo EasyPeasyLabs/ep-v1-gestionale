@@ -458,14 +458,14 @@ export const processEnrollment = onCall({
         // Calcola date lato server per sicurezza
         const calculateEnrollmentDates = (selectedSlot: string, lessonsTotal: number) => {
             const parts = selectedSlot.split(',');
-            const dayName = parts[0].trim();
+            const dayName = (parts[0] || '').trim();
             const timePart = parts.length > 1 ? parts[1].trim() : '16:30 - 18:00';
             const timeParts = timePart.split('-');
             const startTime = timeParts[0].trim();
             const endTime = timeParts.length > 1 ? timeParts[1].trim() : '18:00';
 
             const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-            const targetDay = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
+            const targetDay = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
             
             const now = new Date();
             const startDate = new Date(now);

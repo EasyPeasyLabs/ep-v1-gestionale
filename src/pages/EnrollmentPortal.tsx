@@ -35,8 +35,10 @@ import { it } from 'date-fns/locale';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../../firebase/config';
 
-const normalizeString = (str?: string) => {
-  if (!str) return '';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const normalizeString = (val: any) => {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
   return str.toLowerCase().replace(/\s+/g, '').trim();
 };
 
@@ -63,6 +65,7 @@ const EnrollmentPortal: React.FC = () => {
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
   const [locations, setLocations] = useState<{id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [existingEnrollment, setExistingEnrollment] = useState<any | null>(null);
   
   // Form State
@@ -877,9 +880,10 @@ const EnrollmentPortal: React.FC = () => {
                         if (!sub.allowedDays || sub.allowedDays.length === 0) return true;
                         
                         // Parse day from selectedSlot
-                        const dayName = formData.selectedSlot.split(',')[0].trim().split(' ')[0].trim();
+                        const slotStr = String(formData.selectedSlot || '');
+                        const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
                         const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                        const dayIndex = daysMap.findIndex(d => d.toLowerCase() === dayName.toLowerCase());
+                        const dayIndex = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
                         
                         if (dayIndex === -1) return true; // Fallback
                         

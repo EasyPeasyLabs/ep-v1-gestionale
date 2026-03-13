@@ -1,0 +1,9 @@
+node_modules/
+.git/
+firebase-debug.log
+firebase-debug.*.log
+src/
+tsconfig.json
+lib/
+# Assicurati che dist NON sia ignorato qui
+!dist/

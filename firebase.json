@@ -7,11 +7,16 @@
         "node_modules",
         ".git",
         "firebase-debug.log",
-        "firebase-debug.*.log"
+        "firebase-debug.*.log",
+        "/src",
+        "/tsconfig.json",
+        "/lib",
+        "/index.js",
+        "/index.js.legacy"
       ],
       "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" install",
-        "npm --prefix \"$RESOURCE_DIR\" run build"
+        "npm --prefix \"$RESOURCE_DIR\" install --no-audit --no-fund",
+        "npm --prefix \"$RESOURCE_DIR\" run compile"
       ]
     }
   ],
