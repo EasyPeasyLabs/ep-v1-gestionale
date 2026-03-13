@@ -976,29 +976,54 @@ const EnrollmentPortal: React.FC = () => {
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {subscriptionTypes
-                          .filter(sub => {
-                              // Mostriamo solo quelli attivi e visibili pubblicamente
+                        {(() => {
+                          const ageNum = parseInt(formData.childAge.match(/\d+/)?.[0] || '0');
+                          const isKid = ageNum > 0 && ageNum < 18;
+                          const slotStr = String(formData.selectedSlot || '');
+                          const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
+                          const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
+                          const dayIndex = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
+
+                          // 1. Primo tentativo: Filtro completo (Età + Giorno + Visibilità)
+                          let filtered = subscriptionTypes.filter(sub => {
+                            if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
+                            
+                            // Età
+                            if (sub.target === 'kid' && !isKid && ageNum > 0) return false;
+                            if (sub.target === 'adult' && isKid) return false;
+
+                            // Giorno
+                            if (dayIndex !== -1 && sub.allowedDays && sub.allowedDays.length > 0) {
+                              if (!sub.allowedDays.includes(dayIndex)) return false;
+                            }
+                            return true;
+                          });
+
+                          // 2. Secondo tentativo (Fallback): Rimuoviamo il filtro Giorno se la lista è vuota
+                          if (filtered.length === 0) {
+                            filtered = subscriptionTypes.filter(sub => {
                               if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
-                              
-                              // Filtro Età
-                              const ageNum = parseInt(formData.childAge.match(/\d+/)?.[0] || '0');
-                              const isKid = ageNum > 0 && ageNum < 18;
                               if (sub.target === 'kid' && !isKid && ageNum > 0) return false;
                               if (sub.target === 'adult' && isKid) return false;
-
-                              // Filtro Giorni
-                              const slotStr = String(formData.selectedSlot || '');
-                              const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
-                              const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-                              const dayIndex = daysMap.findIndex(d => d.toLowerCase() === (dayName || '').toLowerCase());
-                              if (dayIndex !== -1 && sub.allowedDays && sub.allowedDays.length > 0) {
-                                if (!sub.allowedDays.includes(dayIndex)) return false;
-                              }
-                              
                               return true;
-                          })
-                          .map(sub => {
+                            });
+                          }
+
+                          // 3. Terzo tentativo (Emergenza): Mostriamo tutti i bundle attivi della sede
+                          if (filtered.length === 0) {
+                            filtered = subscriptionTypes.filter(sub => sub.statusConfig?.status === 'active');
+                          }
+
+                          if (filtered.length === 0) {
+                            return (
+                              <div className="col-span-full bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 text-center">
+                                <Info className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                                <p className="text-gray-500 font-medium">Nessun abbonamento disponibile per i parametri selezionati. Contatta la segreteria per assistenza.</p>
+                              </div>
+                            );
+                          }
+
+                          return filtered.map(sub => {
                             const nameParts = sub.name.split('.');
                             const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
                             const isSelected = formData.selectedSubscriptionId === sub.id;
@@ -1033,7 +1058,8 @@ const EnrollmentPortal: React.FC = () => {
                                 </div>
                               </button>
                             );
-                          })}
+                          });
+                        })()}
                       </div>
                     </div>
                   );
