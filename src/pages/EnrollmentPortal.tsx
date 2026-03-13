@@ -109,6 +109,10 @@ const EnrollmentPortal: React.FC = () => {
       leadId = window.location.pathname.split('/i/')[1];
     }
 
+    if (!leadId && (window as any).__ENROLLMENT_ID__) {
+      leadId = (window as any).__ENROLLMENT_ID__;
+    }
+
     if (!leadId) {
       setError("Link non valido. Contatta la segreteria.");
       setLoading(false);

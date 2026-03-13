@@ -144,7 +144,13 @@ const App: React.FC = () => {
   }
 
   // PUBLIC ROUTES (No Auth Required)
-  if (window.location.pathname === '/iscrizione' || window.location.hash.startsWith('#/iscrizione') || window.location.pathname.startsWith('/i/')) {
+  const isEnrollmentRoute = 
+    window.location.pathname === '/iscrizione' || 
+    window.location.hash.startsWith('#/iscrizione') || 
+    window.location.pathname.startsWith('/i/') || 
+    (window as any).__IS_ENROLLMENT_PORTAL__;
+
+  if (isEnrollmentRoute) {
     return <EnrollmentPortal />;
   }
 
