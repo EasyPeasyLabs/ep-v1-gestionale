@@ -343,8 +343,12 @@ export const enrollmentGateway = onRequest({
         // If path is /i/123, pop() gets 123. If path is just /, pop() gets undefined
         id = pathParts.pop() || '';
     }
-    
+
+    // Sanificazione ID per prevenire XSS e injection
+    id = String(id).replace(/[^a-zA-Z0-9\-_]/g, '');
+
     if (!id || id === 'i' || id === 'enrollmentGateway') {
+
         res.status(400).send("ID Iscrizione mancante.");
         return;
     }
@@ -502,6 +506,35 @@ export const processEnrollment = onCall({
     const batch = db.batch();
 
     try {
+        // --- VALIDAZIONE PREZZO LATO SERVER (Punto 7: Sicurezza) ---
+        const subId = enrollmentData.subscriptionTypeId;
+        const subSnap = await db.collection("subscriptionTypes").doc(subId).get();
+        if (!subSnap.exists) {
+            throw new HttpsError("not-found", "Abbonamento non trovato.");
+        }
+        
+        const subData = subSnap.data() as any;
+        const basePrice = Number(subData.price || 0);
+        // Applichiamo la stessa logica del bollo virtuale del frontend (>= 77€)
+        const finalPrice = basePrice >= 77 ? basePrice + 2 : basePrice;
+
+        // Sovrascriviamo i dati in arrivo dal client con i dati certificati dal server
+        enrollmentData.price = finalPrice;
+        enrollmentData.lessonsTotal = Number(subData.lessons || 0);
+        enrollmentData.lessonsRemaining = Number(subData.lessons || 0);
+        
+        if (transactionData) {
+            transactionData.amount = finalPrice;
+        }
+        
+        if (invoiceData) {
+            invoiceData.totalAmount = finalPrice;
+            if (invoiceData.items && invoiceData.items[0]) {
+                invoiceData.items[0].price = basePrice;
+                invoiceData.items[0].description = `Iscrizione ${formData.childName} - ${subData.name}`;
+            }
+        }
+
         // 1. Create Client
         const clientRef = db.collection("clients").doc();
         clientData.id = clientRef.id;
@@ -617,17 +650,24 @@ export const processEnrollment = onCall({
     }
 });
 
+// --- HELPER SICUREZZA API ---
+function isValidRequest(req: any): boolean {
+    const bridgeKey = req.headers['x-bridge-key'];
+    const authHeader = req.headers['authorization'];
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.split('Bearer ')[1] : null;
+
+    return bridgeKey === API_SHARED_SECRET || bearerToken === API_SHARED_SECRET;
+}
+
 // --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V2 ---
-export const getPublicSlotsV2 = onRequest({ 
+export const getPublicSlotsV2 = onRequest({
     region: "europe-west1",
-    cors: true 
+    cors: true
 }, async (req: any, res: any) => {
-    const authHeader = req.headers['x-bridge-key'];
-    if (!authHeader || authHeader !== API_SHARED_SECRET) {
+    if (!isValidRequest(req)) {
         res.status(403).json({ error: "Forbidden: Invalid API Key" });
         return;
     }
-
     try {
         const [suppliersSnap, enrollmentsSnap, subscriptionsSnap] = await Promise.all([
             admin.firestore().collection('suppliers').where('isDeleted', '==', false).get(),
@@ -844,21 +884,26 @@ export const getPublicSlotsV2 = onRequest({
 });
 
 // --- API RICEZIONE LEAD V2 (PROGETTO B) ---
-export const receiveLeadV2 = onRequest({ 
+export const receiveLeadV2 = onRequest({
     region: "europe-west1",
-    cors: true 
+    cors: true
 }, async (req: any, res: any) => {
+    if (req.method === "OPTIONS") {
+        res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+        res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-bridge-key');
+        res.status(204).send('');
+        return;
+    }
+
     if (req.method !== "POST") {
         res.status(405).send("Method Not Allowed");
         return;
     }
 
-    const authHeader = req.headers['x-bridge-key'];
-    if (!authHeader || authHeader !== API_SHARED_SECRET) {
+    if (!isValidRequest(req)) {
         res.status(403).json({ error: "Forbidden: Invalid API Key" });
         return;
     }
-
     try {
         const data = req.body;
         const db = admin.firestore();

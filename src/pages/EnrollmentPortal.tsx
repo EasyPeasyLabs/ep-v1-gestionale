@@ -16,6 +16,7 @@ import {
   Calendar,
   Sparkles
 } from 'lucide-react';
+import BanknotesIcon from '../../components/icons/BanknotesIcon';
 import { 
   SubscriptionType, 
   CompanyInfo, 
@@ -310,8 +311,6 @@ const EnrollmentPortal: React.FC = () => {
           selectedSlot: matchedSlotTime || normalizedSlotString,
           selectedSubscriptionId: preselectedSubId
         }));
-
-      } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
 
       } catch (err: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
         console.error(err);
