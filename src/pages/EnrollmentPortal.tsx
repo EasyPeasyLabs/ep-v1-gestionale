@@ -277,15 +277,17 @@ const EnrollmentPortal: React.FC = () => {
           }
         }
 
-        // 3. Match Bundle (Subscription) - ID Prioritized
+        // 3. Match Bundle (Subscription) - ID Prioritized (Infallible ID from Project B)
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
-          preselectedSubId = (leadData.selectedSlot as any).bundleId || '';
+          preselectedSubId = (leadData.selectedSlot as any).bundleId || (leadData.selectedSlot as any).subscriptionId || '';
         }
         
         // Validation & Name Fallback
-        const subExists = preselectedSubId ? subs.find((s: any) => s.id === preselectedSubId && s.statusConfig?.status === 'active') : null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const subExists = preselectedSubId ? subs.find((s: any) => s.id === preselectedSubId) : null;
         
         if (!subExists && normalizedSlotString) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const matchedSub = subs.find((s: any) => 
             s.statusConfig?.status === 'active' && (
               normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 

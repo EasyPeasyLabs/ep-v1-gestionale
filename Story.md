@@ -124,6 +124,10 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Server-Side Price Validation:** Introduzione di un controllo di integrità nel backend (`processEnrollment`). Il sistema non si fida più del prezzo inviato dal frontend, ma ricalcola l'importo (inclusi i 2€ di bollo virtuale) interrogando direttamente la collezione `subscriptionTypes` su Firestore, eliminando vulnerabilità di manomissione dei prezzi lato client.
     - **Standardizzazione API Bridge:** Allineamento delle funzioni `receiveLeadV2` e `getPublicSlotsV2` agli standard di sicurezza enterprise. Aggiunto supporto per l'header `Authorization: Bearer` (oltre alla `x-bridge-key`) e gestione manuale dei preflight `OPTIONS` per garantire la compatibilità CORS con Project B indipendentemente dal browser.
     - **Data Integrity (Enrollment Portal):** Rafforzamento della logica di matching delle sedi e degli slot nel Portale Iscrizioni per gestire payload destrutturati (Oggetti) in arrivo dalla nuova Pagina Pubblica, garantendo la retrocompatibilità con i lead storici.
+- **14/03 (Notte):** **Evoluzione Bridge ID & "Infallible Matching".**
+    - **Preservazione "ID Infallibile":** Refactoring radicale della funzione `receiveLeadV2`. Il sistema non trasforma più le scelte del Progetto B in testo semplice, ma clona l'intero oggetto `selectedSlot` (contenente il `bundleId` originale) nel database del Gestionale. Questo garantisce che il Progetto C legga una copia identica all'originale di Firebase Progetto B.
+    - **Atomic Matching Engine:** Il Portale Iscrizioni (Progetto C) ora dà priorità assoluta al `bundleId` tecnico per identificare l'abbonamento. Se l'ID è presente, il sistema aggancia istantaneamente prezzo e descrizione certificata, eliminando i "vuoti" causati dai fallimenti delle ricerche testuali.
+    - **Fallback UI Intelligente:** In caso di abbonamenti non più attivi o ID corrotti, il Portale non "collassa" più (mostrando pagine vuote), ma forza la visualizzazione della lista abbonamenti filtrata per età e sede, permettendo al lead di completare comunque l'iscrizione con una scelta alternativa valida.
 
 ---
 

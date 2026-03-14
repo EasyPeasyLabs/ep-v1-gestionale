@@ -931,6 +931,16 @@ export const receiveLeadV2 = onRequest({
             }
         }
 
+        // Mappatura giorni per fallback testuale (UI compatibility)
+        const daysMap = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+        let formattedSlot = "Orario non specificato";
+        if (data.selectedSlot && typeof data.selectedSlot === 'object') {
+            const dayName = daysMap[data.selectedSlot.dayOfWeek] || "";
+            formattedSlot = `${dayName} ${data.selectedSlot.startTime || ''} - ${data.selectedSlot.endTime || ''}`.trim();
+        } else if (typeof data.selectedSlot === 'string') {
+            formattedSlot = data.selectedSlot;
+        }
+
         const leadDoc = {
             ...data,
             nome: data.nome || data.parentFirstName || "",
@@ -941,6 +951,8 @@ export const receiveLeadV2 = onRequest({
             childAge: data.childAge || "",
             selectedLocation: resolvedLocationName, // Nome testuale per compatibilità UI
             locationId: resolvedLocationId,         // ID per compatibilità logica
+            selectedSlot: data.selectedSlot || formattedSlot, // Manteniamo l'OGGETTO se presente (ID Infallibili)
+            formattedSlot: formattedSlot,           // Versione testuale di backup
             source: "projectB_api_v2",
             status: "pending",
             createdAt: new Date().toISOString()
