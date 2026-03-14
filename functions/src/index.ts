@@ -331,12 +331,11 @@ export const onEnrollmentCreated = onDocumentCreated({
 });
 
 // --- GATEWAY PER ISCRIZIONI (ISOLAMENTO DOMINIO & WHATSAPP PREVIEW) ---
-export const enrollmentGateway = onRequest({ 
+export const enrollmentGateway = onRequest({
     region: "europe-west1",
     cors: true 
 }, async (req: any, res: any) => {
     let id = req.query.id as string;
-    
     // Fallback to path extraction if query param is missing
     if (!id) {
         const pathParts = req.path.split('/').filter(Boolean);
