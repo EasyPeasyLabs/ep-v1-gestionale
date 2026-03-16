@@ -669,10 +669,16 @@ export interface AuditLog {
 }
 
 export interface IntegrityIssueSuggestion {
+    type?: 'smart_link' | 'manual';
+    label?: string;
+    payload?: {
+        transactionId?: string;
+        invoiceId?: string;
+    };
     transactionDetails?: Transaction;
-    invoices: Invoice[];
-    isPerfect: boolean;
-    gap: number;
+    invoices?: Invoice[];
+    isPerfect?: boolean;
+    gap?: number;
 }
 
 export interface IntegrityIssue {

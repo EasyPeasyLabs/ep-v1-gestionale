@@ -1,30 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, where, getDocs, deleteDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../firebase/config';
 import { format, isSameDay, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { 
-  Users, 
-  Calendar, 
-  CheckCircle, 
-  XCircle, 
-  Clock, 
-  Search,
-  Filter,
-  Phone,
-  Mail,
-  MapPin,
-  UserPlus,
-  MessageCircle,
-  Link,
-  Send,
-  Trash2
-} from 'lucide-react';
-import Modal from '../../components/Modal';
-import ConfirmModal from '../../components/ConfirmModal';
-import { deleteEnrollment } from '../../services/enrollmentService';
-import { cleanupEnrollmentFinancials } from '../../services/financeService';
-import { Enrollment } from '../../types';
+import ClientsIcon from '../components/icons/ClientsIcon';
+import CalendarIcon from '../components/icons/CalendarIcon';
+import CheckIcon from '../components/icons/CheckIcon';
+import StopIcon from '../components/icons/StopIcon';
+import ClockIcon from '../components/icons/ClockIcon';
+import SearchIcon from '../components/icons/SearchIcon';
+import CRMIcon from '../components/icons/CRMIcon';
+import UserPlusIcon from '../components/icons/UserPlusIcon';
+import TrashIcon from '../components/icons/TrashIcon';
+import SparklesIcon from '../components/icons/SparklesIcon';
+
+// Mock Lucide components for compatibility with minimal code change
+const Users = ClientsIcon;
+const Calendar = CalendarIcon;
+const CheckCircle = CheckIcon;
+const XCircle = StopIcon;
+const Clock = ClockIcon;
+const Search = SearchIcon;
+const Filter = CRMIcon;
+const Phone = () => <span>📞</span>;
+const Mail = () => <span>📧</span>;
+const MapPin = () => <span>📍</span>;
+const UserPlus = UserPlusIcon;
+const MessageCircle = () => <span>💬</span>;
+const Link = () => <span>🔗</span>;
+const Send = () => <span>✈️</span>;
+const Trash2 = TrashIcon;
+import Modal from '../components/Modal';
+import ConfirmModal from '../components/ConfirmModal';
+import { deleteEnrollment } from '../services/enrollmentService';
+import { cleanupEnrollmentFinancials } from '../services/financeService';
+import { Enrollment } from '../types';
 
 interface Lead {
   id: string;

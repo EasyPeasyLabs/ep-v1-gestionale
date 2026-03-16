@@ -4,7 +4,7 @@ import { collection, getDocs, addDoc, updateDoc, doc, DocumentData, QueryDocumen
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     DocumentStatus, PaymentMethod, TransactionType, TransactionCategory, 
-    Enrollment, InvoiceGap, IntegrityIssue, RentAnalysisResult, EnrollmentStatus, 
+    Enrollment, InvoiceGap, IntegrityIssue, IntegrityIssueSuggestion, RentAnalysisResult, EnrollmentStatus, 
     TransactionStatus, Lesson, Client, ClientType, ParentClient, InstitutionalClient 
 } from '../types';
 import { getLessons } from './calendarService';
@@ -532,7 +532,7 @@ export const runFinancialHealthCheck = async (
                     Math.abs((new Date(t.date).getTime() - new Date(enr.startDate).getTime()) / (1000 * 3600 * 24)) < 45
                 );
 
-                const suggestions = candidates.map(t => ({
+                const suggestions: IntegrityIssueSuggestion[] = candidates.map(t => ({
                     type: 'smart_link',
                     label: `Collega Transazione trovata: ${t.description} (${t.amount}€ del ${t.date})`,
                     payload: { transactionId: t.id }
