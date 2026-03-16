@@ -12,6 +12,9 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import Pagination from '../components/Pagination';
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '../firebase/config';
+import SparklesIcon from '../components/icons/SparklesIcon';
 
 // --- SUB-COMPONENTS ---
 
@@ -91,6 +94,15 @@ const BookForm: React.FC<{
     onSave: (data: BookInput | Book) => void;
     onCancel: () => void;
 }> = ({ book, locations, allBooks, onSave, onCancel }) => {
+    // 1. AUTO-NUMBERING LOGIC (3 digits)
+    const getNextBookNumber = () => {
+        if (allBooks.length === 0) return '001';
+        const numbers = allBooks.map(b => parseInt(b.bookNumber || '0')).filter(n => !isNaN(n));
+        const max = (numbers.length > 0) ? Math.max(...numbers) : 0;
+        return String(max + 1).padStart(3, '0');
+    };
+
+    const [bookNumber, setBookNumber] = useState(book?.bookNumber || getNextBookNumber());
     const [title, setTitle] = useState(book?.title || '');
     const [authors, setAuthors] = useState(book?.authors || '');
     const [publisher, setPublisher] = useState(book?.publisher || '');
@@ -98,6 +110,46 @@ const BookForm: React.FC<{
     const [targetTags, setTargetTags] = useState<string[]>(book?.targetTags || []);
     const [categoryTags, setCategoryTags] = useState<string[]>(book?.categoryTags || []);
     const [themeTags, setThemeTags] = useState<string[]>(book?.themeTags || []);
+
+    const [isAILoading, setIsAILoading] = useState(false);
+
+    // AI LOGIC ENGINE
+    const handleAISuggest = async () => {
+        if (!title) return alert("Inserisci almeno il titolo per ricevere suggerimenti.");
+        setIsAILoading(true);
+        try {
+            const suggestTags = httpsCallable(functions, 'suggestBookTags');
+            const result = await suggestTags({ title, authors, publisher });
+            const data = result.data as any;
+            
+            if (data.target) setTargetTags(Array.from(new Set([...targetTags, ...data.target])));
+            if (data.category) setCategoryTags(Array.from(new Set([...categoryTags, ...data.category])));
+            if (data.theme) setThemeTags(Array.from(new Set([...themeTags, ...data.theme])));
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante il suggerimento AI.");
+        } finally {
+            setIsAILoading(false);
+        }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const data: BookInput = {
+            bookNumber,
+            title,
+            authors,
+            publisher,
+            homeLocationId,
+            targetTags,
+            categoryTags,
+            themeTags,
+            isAvailable: book ? book.isAvailable : true,
+            createdAt: book?.createdAt || new Date().toISOString()
+        };
+        if (book?.id) onSave({ ...data, id: book.id } as Book);
+        else onSave(data);
+    };
 
     // Extract unique tags from allBooks to use as suggestions
     const defaultTargetTags = ['piccolissimi', 'piccoli', 'grandi'];
@@ -108,31 +160,42 @@ const BookForm: React.FC<{
     const existingCategoryTags = Array.from(new Set([...defaultCategoryTags, ...allBooks.flatMap(b => b.categoryTags || [])]));
     const existingThemeTags = Array.from(new Set([...defaultThemeTags, ...allBooks.flatMap(b => b.themeTags || [])]));
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const data: BookInput = {
-            title,
-            authors,
-            publisher,
-            homeLocationId,
-            targetTags,
-            categoryTags,
-            themeTags,
-            isAvailable: book ? book.isAvailable : true
-        };
-        if (book?.id) onSave({ ...data, id: book.id });
-        else onSave(data);
-    };
-
     return (
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 bg-gray-50/50">
-            <div className="p-4 md:p-6 border-b bg-white"><h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3></div>
+            <div className="p-4 md:p-6 border-b bg-white flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3>
+                <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-lg font-black text-sm border border-amber-200">
+                    ID #{bookNumber}
+                </div>
+            </div>
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                     {/* Colonna Sinistra: Dati Principali */}
                     <div className="space-y-4 md:space-y-6">
-                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Dati Principali</h4>
-                        <div className="md-input-group"><input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " /><label className="md-input-label">Titolo</label></div>
+                        <div className="flex justify-between items-center border-b pb-2">
+                            <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Dati Principali</h4>
+                            <button 
+                                type="button" 
+                                onClick={handleAISuggest} 
+                                disabled={isAILoading || !title}
+                                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 disabled:opacity-30 transition-all"
+                            >
+                                <SparklesIcon className={`w-4 h-4 ${isAILoading ? 'animate-spin' : ''}`} />
+                                {isAILoading ? 'Analisi AI...' : 'AI Magic Suggest'}
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-3">
+                            <div className="md-input-group col-span-1">
+                                <input type="text" value={bookNumber} onChange={e => setBookNumber(e.target.value)} required className="md-input bg-white text-center font-black" placeholder=" " />
+                                <label className="md-input-label">N°</label>
+                            </div>
+                            <div className="md-input-group col-span-3">
+                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " />
+                                <label className="md-input-label">Titolo</label>
+                            </div>
+                        </div>
+
                         <div className="md-input-group"><input type="text" value={authors} onChange={e => setAuthors(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Autori</label></div>
                         <div className="md-input-group"><input type="text" value={publisher} onChange={e => setPublisher(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Casa Editrice</label></div>
                         
@@ -196,7 +259,7 @@ const InitiativeForm: React.FC<{
             targetLocationIds: selectedLocIds,
             targetLocationNames: locNames
         };
-        if(initiative?.id) onSave({...data, id: initiative.id}); else onSave(data);
+        if(initiative?.id) onSave({...data, id: initiative.id} as Initiative); else onSave(data);
     };
 
     return (
@@ -287,7 +350,8 @@ const BookManager: React.FC = () => {
                 const matchTitle = b.title.toLowerCase().includes(term);
                 const matchAuthors = b.authors?.toLowerCase().includes(term);
                 const matchPublisher = b.publisher?.toLowerCase().includes(term);
-                if (!matchTitle && !matchAuthors && !matchPublisher) return false;
+                const matchNumber = b.bookNumber?.toLowerCase().includes(term);
+                if (!matchTitle && !matchAuthors && !matchPublisher && !matchNumber) return false;
             }
             
             // Tags
@@ -455,7 +519,7 @@ const BookManager: React.FC = () => {
                             </div>
                             
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                                <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, autore..." className="md-input text-sm" />
+                                <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, numero, autore..." className="md-input text-sm" />
                                 <select value={filterTarget} onChange={e => setFilterTarget(e.target.value)} className="md-input text-sm">
                                     <option value="">Tutti i Destinatari</option>
                                     {allTargetTags.map(t => <option key={t} value={t}>{t}</option>)}
@@ -491,6 +555,7 @@ const BookManager: React.FC = () => {
                                             <div className="flex-1">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
+                                                    <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black text-xs">#{b.bookNumber || '---'}</span>
                                                     <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
                                                 </div>
                                                 <div className="text-sm text-gray-500 mt-2 flex flex-wrap gap-x-4 gap-y-1">
@@ -538,7 +603,6 @@ const BookManager: React.FC = () => {
     );
 };
 
-
 const Initiatives: React.FC = () => {
     const [initiatives, setInitiatives] = useState<Initiative[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -553,11 +617,7 @@ const Initiatives: React.FC = () => {
         setLoading(true);
         try {
             const [inits, sups] = await Promise.all([getInitiatives(), getSuppliers()]);
-            // Ensure Peek-a-Boo exists locally for display if not in DB (though it should be treated as special)
-            // Strategy: We will render Peek-a-Boo separately at top, and others below.
-            // If Peek-a-Boo is stored in DB for config, we merge. 
-            // For now, Peek-a-Boo is hardcoded as a UI block, while custom initiatives are DB driven.
-            setInitiatives(inits.filter(i => i.type !== 'peek-a-book')); // Filter out if existing to avoid dupes in list
+            setInitiatives(inits.filter(i => i.type !== 'peek-a-book'));
             setSuppliers(sups);
         } catch(e) { console.error(e); } finally { setLoading(false); }
     }, []);

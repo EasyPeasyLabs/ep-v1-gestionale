@@ -550,9 +550,9 @@ export interface Initiative {
 }
 
 export type InitiativeInput = Omit<Initiative, 'id'>;
-
 export interface Book {
     id: string;
+    bookNumber: string; // e.g. "001"
     title: string;
     isAvailable: boolean;
     publisher?: string;
@@ -561,9 +561,21 @@ export interface Book {
     categoryTags?: string[];
     themeTags?: string[];
     homeLocationId?: string;
+    createdAt?: string;
 }
 
-export type BookInput = Omit<Book, 'id'>;
+export interface BookInput {
+    bookNumber: string;
+    title: string;
+    isAvailable: boolean;
+    publisher?: string;
+    authors?: string;
+    targetTags?: string[];
+    categoryTags?: string[];
+    themeTags?: string[];
+    homeLocationId?: string;
+    createdAt?: string;
+}
 
 export interface BookLoan {
     id: string;

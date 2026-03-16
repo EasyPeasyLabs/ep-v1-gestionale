@@ -1072,3 +1072,53 @@ export const checkPeriodicNotifications = onSchedule({
         logger.error("Error in periodic notifications:", error?.message || error);
     }
 });
+
+// --- AI BOOK TAG SUGGESTOR (Peek-a-Book) ---
+export const suggestBookTags = onCall({
+    region: "europe-west1",
+    cors: true
+}, async (request: any) => {
+    const { title, authors, publisher } = request.data;
+    
+    if (!title) return { target: [], category: [], theme: [] };
+
+    const t = title.toLowerCase();
+    const a = (authors || '').toLowerCase();
+    const p = (publisher || '').toLowerCase();
+
+    const suggestions = {
+        target: [] as string[],
+        category: [] as string[],
+        theme: [] as string[]
+    };
+
+    // Logic engine based on keywords (Semantic analysis simulation)
+    if (t.includes('piccoli') || t.includes('bebe') || t.includes('0-3') || t.includes('touch')) {
+        suggestions.target.push('piccolissimi');
+        suggestions.category.push('tattile');
+    }
+    if (t.includes('storia') || t.includes('avventura') || t.includes('grande')) {
+        suggestions.target.push('grandi');
+        suggestions.category.push('testo & immagini');
+    }
+    if (t.includes('colori') || t.includes('animali') || t.includes('zoo')) {
+        suggestions.theme.push('animali');
+    }
+    if (t.includes('natale') || t.includes('neve') || t.includes('christmas')) {
+        suggestions.theme.push('stagioni');
+    }
+    if (p.includes('disney') || p.includes('usborne')) {
+        suggestions.category.push('solo immagini');
+    }
+    if (a.includes('julia donaldson') || a.includes('eric carle')) {
+        suggestions.target.push('piccoli');
+        suggestions.category.push('testo & immagini');
+    }
+
+    // Default Fallback
+    if (suggestions.target.length === 0) suggestions.target.push('piccoli');
+    if (suggestions.category.length === 0) suggestions.category.push('testo & immagini');
+    if (suggestions.theme.length === 0) suggestions.theme.push('società');
+
+    return suggestions;
+});
