@@ -13,21 +13,25 @@ import CalendarIcon from '../components/icons/CalendarIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 import ClipboardIcon from '../components/icons/ClipboardIcon';
 
-// Mock Lucide components for compatibility
-const CheckCircle = CheckIcon;
-const CreditCard = EuroCoinIcon;
-const MapPin = () => <span>📍</span>;
-const Clock = ClockIcon;
-const User = ProfileIcon;
-const Baby = IdentificationIcon;
-const ChevronRight = () => <span>→</span>;
-const ChevronLeft = () => <span>←</span>;
-const AlertCircle = ExclamationIcon;
-const Info = HelpIcon;
-const ExternalLink = () => <span>🔗</span>;
-const Copy = ClipboardIcon;
-const Calendar = CalendarIcon;
-const Sparkles = SparklesIcon;
+// Icon Wrappers to support className
+const IconWrap = ({ Icon, className }: { Icon: any, className?: string }) => (
+  <div className={className}><Icon /></div>
+);
+
+const CheckCircle = (props: any) => <IconWrap Icon={CheckIcon} {...props} />;
+const CreditCard = (props: any) => <IconWrap Icon={EuroCoinIcon} {...props} />;
+const MapPin = ({ className }: any) => <span className={className}>📍</span>;
+const Clock = (props: any) => <IconWrap Icon={ClockIcon} {...props} />;
+const User = (props: any) => <IconWrap Icon={ProfileIcon} {...props} />;
+const Baby = (props: any) => <IconWrap Icon={IdentificationIcon} {...props} />;
+const ChevronRight = ({ className }: any) => <span className={className}>→</span>;
+const ChevronLeft = ({ className }: any) => <span className={className}>←</span>;
+const AlertCircle = (props: any) => <IconWrap Icon={ExclamationIcon} {...props} />;
+const Info = (props: any) => <IconWrap Icon={HelpIcon} {...props} />;
+const ExternalLink = ({ className }: any) => <span className={className}>🔗</span>;
+const Copy = (props: any) => <IconWrap Icon={ClipboardIcon} {...props} />;
+const Calendar = (props: any) => <IconWrap Icon={CalendarIcon} {...props} />;
+const Sparkles = (props: any) => <IconWrap Icon={SparklesIcon} {...props} />;
 import BanknotesIcon from '../components/icons/BanknotesIcon';
 import { 
   SubscriptionType, 
@@ -43,8 +47,16 @@ import {
 } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
-import { format, parseISO } from 'date-fns';
-import { it } from 'date-fns/locale';
+
+// Native Date Helpers to replace date-fns
+const parseISO = (str: string) => new Date(str);
+const format = (date: Date, fmt: string) => {
+  const d = new Date(date);
+  if (fmt === "EEEE d MMMM" || fmt === "d MMMM") {
+    return d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  return d.toLocaleDateString('it-IT');
+};
 
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase/config';
@@ -504,7 +516,7 @@ const EnrollmentPortal: React.FC = () => {
                         <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
                         <p className="font-bold text-gray-800">
                             {existingEnrollment.appointments?.[0] ? 
-                                `${format(parseISO(existingEnrollment.appointments[0].date), 'EEEE', { locale: it })} ${existingEnrollment.appointments[0].startTime} - ${existingEnrollment.appointments[0].endTime}` 
+                                `${format(parseISO(existingEnrollment.appointments[0].date), 'EEEE')} ${existingEnrollment.appointments[0].startTime} - ${existingEnrollment.appointments[0].endTime}` 
                                 : 'Orario da definire'}
                         </p>
                     </div>
@@ -514,7 +526,7 @@ const EnrollmentPortal: React.FC = () => {
                     <div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase">Inizio Corso</p>
                         <p className="font-bold text-gray-800">
-                            {existingEnrollment.startDate ? format(parseISO(existingEnrollment.startDate), 'd MMMM yyyy', { locale: it }) : 'Data da definire'}
+                            {existingEnrollment.startDate ? format(parseISO(existingEnrollment.startDate), 'd MMMM yyyy') : 'Data da definire'}
                         </p>
                     </div>
                 </div>
@@ -801,7 +813,7 @@ const EnrollmentPortal: React.FC = () => {
                             {(() => {
                               const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
                               const firstLessonDate = getNextOccurrence(slotDay);
-                              return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM', { locale: it }) : 'da definire';
+                              return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM') : 'da definire';
                             })()}
                           </p>
                         </div>
@@ -964,7 +976,7 @@ const EnrollmentPortal: React.FC = () => {
                     // First lesson logic
                     const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
                     const firstLessonDate = getNextOccurrence(slotDay);
-                    const formattedFirstLesson = firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM', { locale: it }) : 'da definire';
+                    const formattedFirstLesson = firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM') : 'da definire';
 
                     return (
                       <div className="space-y-10">
@@ -1142,7 +1154,7 @@ const EnrollmentPortal: React.FC = () => {
                         {(() => {
                             const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
                             const firstLessonDate = getNextOccurrence(slotDay);
-                            return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM', { locale: it }) : 'da definire';
+                            return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM') : 'da definire';
                         })()}
                       </p>
                     </div>

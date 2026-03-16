@@ -1,8 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { format, isSameDay, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, isWithinInterval } from 'date-fns';
-import { it } from 'date-fns/locale';
+
+// Native Date Helpers to replace date-fns
+const parseISO = (str: string) => new Date(str);
+const format = (date: Date, fmt: string) => {
+  const d = new Date(date);
+  if (fmt === 'd MMMM yyyy') {
+    return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  if (fmt === 'dd/MM/yyyy') return d.toLocaleDateString('it-IT');
+  return d.toLocaleDateString('it-IT');
+};
+const isSameDay = (d1: Date, d2: Date) => d1.toDateString() === d2.toDateString();
+const isSameMonth = (d1: Date, d2: Date) => d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
+const isSameYear = (d1: Date, d2: Date) => d1.getFullYear() === d2.getFullYear();
+const startOfWeek = (date: Date) => {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(d.setDate(diff));
+};
+const endOfWeek = (date: Date) => {
+  const d = startOfWeek(date);
+  d.setDate(d.getDate() + 6);
+  return d;
+};
+const isWithinInterval = (date: Date, { start, end }: { start: Date, end: Date }) => {
+  return date >= start && date <= end;
+};
 import ClientsIcon from '../components/icons/ClientsIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import CheckIcon from '../components/icons/CheckIcon';
@@ -14,22 +40,26 @@ import UserPlusIcon from '../components/icons/UserPlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 
-// Mock Lucide components for compatibility with minimal code change
-const Users = ClientsIcon;
-const Calendar = CalendarIcon;
-const CheckCircle = CheckIcon;
-const XCircle = StopIcon;
-const Clock = ClockIcon;
-const Search = SearchIcon;
-const Filter = CRMIcon;
-const Phone = () => <span>📞</span>;
-const Mail = () => <span>📧</span>;
-const MapPin = () => <span>📍</span>;
-const UserPlus = UserPlusIcon;
-const MessageCircle = () => <span>💬</span>;
-const Link = () => <span>🔗</span>;
-const Send = () => <span>✈️</span>;
-const Trash2 = TrashIcon;
+// Icon Wrappers to support className
+const IconWrap = ({ Icon, className }: { Icon: any, className?: string }) => (
+  <div className={className}><Icon /></div>
+);
+
+const Users = (props: any) => <IconWrap Icon={ClientsIcon} {...props} />;
+const Calendar = (props: any) => <IconWrap Icon={CalendarIcon} {...props} />;
+const CheckCircle = (props: any) => <IconWrap Icon={CheckIcon} {...props} />;
+const XCircle = (props: any) => <IconWrap Icon={StopIcon} {...props} />;
+const Clock = (props: any) => <IconWrap Icon={ClockIcon} {...props} />;
+const Search = (props: any) => <IconWrap Icon={SearchIcon} {...props} />;
+const Filter = (props: any) => <IconWrap Icon={CRMIcon} {...props} />;
+const Phone = ({ className }: any) => <span className={className}>📞</span>;
+const Mail = ({ className }: any) => <span className={className}>📧</span>;
+const MapPin = ({ className }: any) => <span className={className}>📍</span>;
+const UserPlus = (props: any) => <IconWrap Icon={UserPlusIcon} {...props} />;
+const MessageCircle = ({ className }: any) => <span className={className}>💬</span>;
+const Link = ({ className }: any) => <span className={className}>🔗</span>;
+const Send = ({ className }: any) => <span className={className}>✈️</span>;
+const Trash2 = (props: any) => <IconWrap Icon={TrashIcon} {...props} />;
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import { deleteEnrollment } from '../services/enrollmentService';
@@ -364,8 +394,8 @@ export const LeadsPage: React.FC = () => {
           break;
         case 'week':
           matchesDate = isWithinInterval(leadDate, {
-            start: startOfWeek(now, { weekStartsOn: 1 }),
-            end: endOfWeek(now, { weekStartsOn: 1 })
+            start: startOfWeek(now),
+            end: endOfWeek(now)
           });
           break;
         case 'month':
@@ -483,7 +513,7 @@ export const LeadsPage: React.FC = () => {
               className="text-sm border-gray-300 rounded-lg focus:ring-cyan-600 focus:border-cyan-600"
             >
               {Array.from({ length: 12 }, (_, i) => (
-                <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM', { locale: it })}</option>
+                <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM')}</option>
               ))}
             </select>
           )}
@@ -533,7 +563,7 @@ export const LeadsPage: React.FC = () => {
                         </span>
                         <span className="text-xs text-gray-400 flex items-center gap-1">
                           <Clock className="w-3 h-3" />
-                          {lead.createdAt ? format(new Date(lead.createdAt), 'd MMM yyyy, HH:mm', { locale: it }) : 'Data N/D'}
+                          {lead.createdAt ? format(new Date(lead.createdAt), 'd MMM yyyy, HH:mm') : 'Data N/D'}
                         </span>
                       </div>
                       

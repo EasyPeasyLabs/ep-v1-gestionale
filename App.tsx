@@ -29,8 +29,8 @@ import ClientSituation from './pages/ClientSituation';
 import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission, setupForegroundMessaging } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
-// import { LeadsPage } from './pages/LeadsPage';
-// import EnrollmentPortal from './pages/EnrollmentPortal';
+import { LeadsPage } from './pages/LeadsPage';
+import EnrollmentPortal from './pages/EnrollmentPortal';
 import { Page } from './types';
 
 const App: React.FC = () => {
@@ -130,7 +130,7 @@ const App: React.FC = () => {
                       case 'NotificationPlanning': return <NotificationPlanning />;
                       case 'Profile': return <Profile user={user} />;
                       case 'Manual': return <Manual />;
-                      // case 'Leads': return <LeadsPage />;
+                      case 'Leads': return <LeadsPage />;
                       default: return <Dashboard setCurrentPage={handleNavigation} />;
                     }
                 })()}
@@ -144,7 +144,6 @@ const App: React.FC = () => {
   }
 
   // PUBLIC ROUTES (No Auth Required)
-  /*
   const isEnrollmentRoute = 
     window.location.pathname === '/iscrizione' || 
     window.location.hash.startsWith('#/iscrizione') || 
@@ -154,7 +153,6 @@ const App: React.FC = () => {
   if (isEnrollmentRoute) {
     return <EnrollmentPortal />;
   }
-  */
 
   // Visualizzazione Errore Critico di Configurazione
   if (authError) {
