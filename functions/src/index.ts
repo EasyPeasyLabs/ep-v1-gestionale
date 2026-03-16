@@ -425,8 +425,22 @@ export const getEnrollmentData = onCall({
         const subsSnap = await db.collection("subscriptionTypes").where("isDeleted", "==", false).get();
         const subs = subsSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 
-        const suppliersSnap = await db.collection("suppliers").get();
-        const suppliers = suppliersSnap.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+        const suppliersSnap = await db.collection("suppliers").where("isDeleted", "==", false).get();
+        const suppliers = suppliersSnap.docs.map((doc: any) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                name: data.name,
+                locations: (data.locations || []).map((loc: any) => ({
+                    id: loc.id,
+                    name: loc.name,
+                    address: loc.address || loc.indirizzo || "",
+                    city: loc.city || loc.citta || data.city || "",
+                    availability: loc.availability || [],
+                    capacity: loc.capacity || 15
+                }))
+            };
+        });
 
         return { lead: leadData, company: companyData, subscriptions: subs, suppliers: suppliers };
     } catch (error: any) {
@@ -605,20 +619,61 @@ export const processEnrollment = onCall({
         const dates = calculateEnrollmentDates(formData.selectedSlot, enrollmentData.lessonsTotal || 0);
         enrollmentData.startDate = dates.startDate;
         enrollmentData.endDate = dates.endDate;
-        if (enrollmentData.appointments && enrollmentData.appointments.length > 0) {
-            enrollmentData.appointments[0].date = dates.firstLessonDate;
-            enrollmentData.appointments[0].startTime = dates.startTime;
-            enrollmentData.appointments[0].endTime = dates.endTime;
-            enrollmentData.appointments[0].lessonId = db.collection("enrollments").doc().id;
+
+        // Generate physical lessons for the calendar
+        const generatePhysicalLessons = () => {
+            const lessons: any[] = [];
+            let currentLessonDate = new Date(dates.startDate);
+            let createdCount = 0;
+            const maxLessons = enrollmentData.lessonsTotal || 1;
+
+            while (createdCount < maxLessons) {
+                if (!isItalianHoliday(currentLessonDate)) {
+                    const lessonId = db.collection("lessons").doc().id;
+                    lessons.push({
+                        id: lessonId,
+                        enrollmentId: enrRef.id,
+                        clientId: clientRef.id,
+                        childId: childId,
+                        date: currentLessonDate.toISOString().split('T')[0],
+                        startTime: dates.startTime,
+                        endTime: dates.endTime,
+                        status: 'scheduled',
+                        locationId: enrollmentData.locationId,
+                        attendance: 'pending',
+                        isTrial: false,
+                        type: 'LAB', // Default type
+                        createdAt: new Date().toISOString()
+                    });
+                    createdCount++;
+                }
+                currentLessonDate.setDate(currentLessonDate.getDate() + 7);
+            }
+            return lessons;
+        };
+
+        const physicalLessons = generatePhysicalLessons();
+
+        // Map the first lesson to the enrollment appointments for backward compatibility
+        if (enrollmentData.appointments && enrollmentData.appointments.length > 0 && physicalLessons.length > 0) {
+            enrollmentData.appointments[0].date = physicalLessons[0].date;
+            enrollmentData.appointments[0].startTime = physicalLessons[0].startTime;
+            enrollmentData.appointments[0].endTime = physicalLessons[0].endTime;
+            enrollmentData.appointments[0].lessonId = physicalLessons[0].id;
         }
 
         if (transactionData) transactionData.relatedEnrollmentId = enrRef.id;
         if (invoiceData) invoiceData.relatedEnrollmentId = enrRef.id;
-        
+
         batch.set(enrRef, enrollmentData);
 
-        // 3. Create Transaction
-        if (transactionData) {
+        // Add physical lessons to batch
+        physicalLessons.forEach(lesson => {
+            const lessonRef = db.collection("lessons").doc(lesson.id);
+            batch.set(lessonRef, lesson);
+        });
+
+        // 3. Create Transaction        if (transactionData) {
             const transRef = db.collection("transactions").doc();
             batch.set(transRef, transactionData);
         }

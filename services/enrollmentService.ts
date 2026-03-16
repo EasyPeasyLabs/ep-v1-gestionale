@@ -241,8 +241,28 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
 };
 
 export const deleteEnrollment = async (id: string): Promise<void> => {
-    const enrollmentDoc = doc(db, 'enrollments', id);
-    await deleteDoc(enrollmentDoc);
+    const batch = writeBatch(db);
+    
+    // 1. Delete Enrollment document
+    const enrollmentRef = doc(db, 'enrollments', id);
+    batch.delete(enrollmentRef);
+    
+    // 2. Search and delete related Physical Lessons
+    try {
+        const lessonsQuery = query(collection(db, 'lessons'), where('enrollmentId', '==', id));
+        const lessonsSnap = await getDocs(lessonsQuery);
+        
+        lessonsSnap.forEach((lessonDoc) => {
+            batch.delete(lessonDoc.ref);
+        });
+        
+        console.log(`Deep Delete: Cleaning up ${lessonsSnap.size} lessons for enrollment ${id}`);
+    } catch (error) {
+        console.error("Error during deep delete of lessons:", error);
+    }
+    
+    // 3. Commit all deletions atomically
+    await batch.commit();
 };
 
 // --- SYNC ENGINE: Manual Lesson Update -> Enrollment Appointment Update ---

@@ -129,14 +129,28 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Atomic Matching Engine:** Il Portale Iscrizioni (Progetto C) ora dà priorità assoluta al `bundleId` tecnico per identificare l'abbonamento. Se l'ID è presente, il sistema aggancia istantaneamente prezzo e descrizione certificata, eliminando i "vuoti" causati dai fallimenti delle ricerche testuali.
     - **Fallback UI Intelligente:** In caso di abbonamenti non più attivi o ID corrotti, il Portale non "collassa" più (mostrando pagine vuote), ma forza la visualizzazione della lista abbonamenti filtrata per età e sede, permettendo al lead di completare comunque l'iscrizione con una scelta alternativa valida.
 
+### Milestone 16 Marzo 2026
+- **16/03 (Mattina):** **Full-Stack Ecosystem Hardening & Calendar Sync.**
+    - **Security Shield (Data Privacy):** Implementazione di un filtro rigoroso nella funzione `getEnrollmentData`. Il sistema ora espone al Portale Iscrizioni solo i campi pubblici dei fornitori (`name`, `address`, `availability`), oscurando dati sensibili come margini, note private o contatti non destinati all'utente finale.
+    - **Calendar Integration (Missing Lesson Fix):** Risoluzione di una criticità architettonica nel flusso di iscrizione. Precedentemente, il Portale creava l'iscrizione ma non generava le lezioni nel calendario, rendendo l'allievo "invisibile" nel registro presenze.
+    - **Physical Lesson Engine:** La Cloud Function `processEnrollment` è stata potenziata con un motore di generazione massiva. Al momento dell'iscrizione, il sistema ora crea fisicamente tutti i documenti nella collezione `lessons` per l'intera durata dell'abbonamento, ricalcolando le date settimanali e saltando automaticamente i giorni festivi italiani.
+    - **Server-Side Price Integrity:** Rafforzamento della validazione dei prezzi. Il backend ora ignora i dati finanziari inviati dal client e ricalcola autonomamente l'importo totale (incluso il bollo virtuale ≥ 77€) interrogando i tipi di abbonamento certificati nel database, prevenendo manomissioni fraudolente del prezzo durante l'iscrizione.
+    - **Timezone Awareness:** Allineamento del calcolo delle date del calendario al fuso orario italiano (CET/CEST) nelle Cloud Functions, eliminando il rischio di slittamento dei giorni dovuto all'esecuzione dei server in formato UTC.
+
+- **16/03 (Pomeriggio):** **AI Financial Intelligence & Deep Integrity.**
+    - **Fiscal Doctor Evolution (AI Agent):** Trasformazione dello strumento di controllo finanziario da passivo a proattivo. Il sistema ora agisce come un'intelligenza artificiale che, rilevando un'incongruenza, scansiona automaticamente le transazioni "orfane" e suggerisce istantaneamente un **"Smart Link"** se trova corrispondenze di importo e data, riducendo l'intervento manuale della segreteria.
+    - **Deep Delete Strategy:** Implementazione della cancellazione atomica delle iscrizioni. La funzione `deleteEnrollment` è stata potenziata per eseguire una pulizia profonda: eliminando un'iscrizione, il sistema ora rimuove istantaneamente tutte le lezioni fisiche associate nella collezione `lessons`, prevenendo la proliferazione di "lezioni fantasma" e garantendo che i posti nelle sedi vengano liberati in tempo reale nel calendario.
+    - **End-to-End Simulation (Fantozzi Test):** Verifica completa dell'ecosistema tramite simulazione con dati mock. Testata con successo la resilienza del sistema ai tentativi di manomissione dei prezzi e la corretta propagazione dei dati tra i tre progetti (Public -> Gateway -> Portal -> Gestionale).
+
 ---
 
 ## 5. Roadmap Evolutiva
 - [ ] **Paginazione Server-Side:** Ottimizzazione performance per gestire >10.000 record (caricamento incrementale "Load More" / Pagine).
 - [ ] **Modulo Sondaggi WhatsApp:** Template automatici per invio survey di soddisfazione a gruppi filtrati per Sede.
 - [x] **Integrazione Bridge:** Connessione protetta tra Project A e Project B per importazione lead.
-- [ ] **Implementazione API Bundles:** Modifica di `getPublicSlots` per generare pacchetti virtuali basati sugli Abbonamenti.
+- [x] **Generazione Automatica Lezioni:** Sincronizzazione automatica tra Portale e Calendario Gestionale.
+- [x] **Fiscal AI Agent:** Motore di suggerimento automatico per la riconciliazione finanziaria (Smart Match).
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 07 Marzo 2026.*
+*Documentazione aggiornata al 16 Marzo 2026.*

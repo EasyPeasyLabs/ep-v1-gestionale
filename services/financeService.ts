@@ -523,6 +523,22 @@ export const runFinancialHealthCheck = async (
             // --------------------------------
 
             if (missingAmount > 5) { // 5 eur tolerance
+                // --- AI SMART MATCHING: Cerca transazioni orfane compatibili ---
+                const candidates = transactions.filter(t => 
+                    !t.relatedEnrollmentId && 
+                    !t.isDeleted &&
+                    Math.abs(t.amount - missingAmount) < 5 && // Importo compatibile
+                    // Controllo temporale (entro 45 giorni)
+                    Math.abs((new Date(t.date).getTime() - new Date(enr.startDate).getTime()) / (1000 * 3600 * 24)) < 45
+                );
+
+                const suggestions = candidates.map(t => ({
+                    type: 'smart_link',
+                    label: `Collega Transazione trovata: ${t.description} (${t.amount}€ del ${t.date})`,
+                    payload: { transactionId: t.id }
+                }));
+                // -------------------------------------------------------------
+
                 issues.push({
                     id: `health-${enr.id}`,
                     type: 'missing_invoice',
@@ -533,7 +549,7 @@ export const runFinancialHealthCheck = async (
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal, // Added missing mapping for UI
                     amount: missingAmount,
-                    suggestions: [] 
+                    suggestions: suggestions // AI Suggestions
                 });
             }
 
@@ -561,7 +577,7 @@ export const runFinancialHealthCheck = async (
 
 export const fixIntegrityIssue = async (
     issue: IntegrityIssue, 
-    strategy: 'invoice' | 'cash' | 'link', 
+    strategy: 'invoice' | 'cash' | 'link' | 'smart_link', // Added smart_link
     manualNum?: string, 
     targetInvoiceIds?: string[], 
     adjustment?: { amount: number, notes: string }, 
@@ -580,7 +596,18 @@ export const fixIntegrityIssue = async (
     // 2. STRATEGY EXECUTION
     const finalDate = forceDate || issue.date; // Use override if present, else original
 
-    if (strategy === 'link') {
+    if (strategy === 'smart_link') {
+        const enrId = issue.id.replace('health-', '');
+        // Extract transaction ID from the first suggestion payload
+        const smartTransactionId = issue.suggestions?.[0]?.payload?.transactionId;
+        
+        if (!smartTransactionId) {
+            throw new Error("Nessuna transazione suggerita trovata per il collegamento automatico.");
+        }
+        
+        await linkFinancialsToEnrollment(enrId, [], [smartTransactionId], adjustment);
+    }
+    else if (strategy === 'link') {
         const enrId = issue.id.replace('health-', '');
         await linkFinancialsToEnrollment(enrId, targetInvoiceIds || [], targetTransactionId ? [targetTransactionId] : [], adjustment);
     } 
