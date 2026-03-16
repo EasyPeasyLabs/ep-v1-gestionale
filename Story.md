@@ -142,10 +142,12 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Deep Delete Strategy:** Implementazione della cancellazione atomica delle iscrizioni. La funzione `deleteEnrollment` è stata potenziata per eseguire una pulizia profonda: eliminando un'iscrizione, il sistema ora rimuove istantaneamente tutte le lezioni fisiche associate nella collezione `lessons`, prevenendo la proliferazione di "lezioni fantasma" e garantendo che i posti nelle sedi vengano liberati in tempo reale nel calendario.
     - **End-to-End Simulation (Fantozzi Test):** Verifica completa dell'ecosistema tramite simulazione con dati mock. Testata con successo la resilienza del sistema ai tentativi di manomissione dei prezzi e la corretta propagazione dei dati tra i tre progetti (Public -> Gateway -> Portal -> Gestionale).
 
-- **16/03 (Sera):** **Smart Library (Peek-a-Book) & AI Cataloging.**
-    - **AI Tag Suggestion (AI Magic):** Potenziamento dell'inventario libri con un motore di suggerimento intelligente. Grazie alla nuova Cloud Function `suggestBookTags`, il sistema ora analizza Titolo, Autori e Casa Editrice per proporre automaticamente la classificazione per Destinatari, Categoria e Tema, velocizzando drasticamente il caricamento della biblioteca.
-    - **Auto-Numbering Inventory:** Implementazione della numerazione progressiva a 3 cifre (es. `#001`, `#002`). Il sistema calcola automaticamente l'ID successivo, permettendo all'Amministratore di etichettare fisicamente i volumi e rintracciarli con facilità in inventario e durante i prestiti.
-    - **Semantic Engine:** Sviluppo di un motore di matching semantico lato server per identificare generi e target di lettura basandosi su pattern di pubblicazione e autori celebri (es. Julia Donaldson, Eric Carle).
+- **16/03 (Notte):** **Deployment Stability & Ecosystem Reintegration.**
+    - **Vercel Build Recovery:** Risoluzione critica di un blocco totale della pipeline di build causato da errori di tipizzazione TypeScript e dipendenze mancanti in moduli orfani.
+    - **Module Relocation & Refactoring:** Reintegro completo dei moduli `LeadsPage` e `EnrollmentPortal` nel percorso di build principale. I file sono stati spostati nella cartella `pages/` standard e linkati correttamente in `App.tsx`, garantendo la coerenza strutturale del progetto.
+    - **Zero-Dependency Date Engine:** Eliminazione della dipendenza esterna instabile `date-fns`. Il sistema ora utilizza helper nativi JavaScript ultra-leggeri per la gestione delle date e della formattazione locale (italiano), rimuovendo il rischio di errori "module not found" in fase di compilazione server-side.
+    - **Icon Wrapper Strategy:** Implementazione di componenti wrapper per le icone locali. Questa soluzione ha permesso di utilizzare gli asset grafici esistenti come sostituti diretti delle icone Lucide, mantenendo intatto il design system Tailwind e risolvendo gli errori di prop-types (`className`).
+    - **Final Build Success:** Validazione finale tramite compilazione `tsc` pulita, che garantisce il deploy automatico e stabile su Vercel per tutti i rami dell'ecosistema.
 
 ---
 
@@ -156,7 +158,8 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - [x] **Generazione Automatica Lezioni:** Sincronizzazione automatica tra Portale e Calendario Gestionale.
 - [x] **Fiscal AI Agent:** Motore di suggerimento automatico per la riconciliazione finanziaria (Smart Match).
 - [x] **AI Book Cataloging:** Sistema intelligente di numerazione e classificazione automatica biblioteca.
+- [x] **Build Stability:** Risoluzione conflitti TypeScript e consolidamento architettura per deploy Vercel.
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 16 Marzo 2026.*
+*Documentazione aggiornata al 16 Marzo 2026 (Notte).*
