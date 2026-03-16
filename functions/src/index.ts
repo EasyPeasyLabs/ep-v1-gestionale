@@ -673,7 +673,8 @@ export const processEnrollment = onCall({
             batch.set(lessonRef, lesson);
         });
 
-        // 3. Create Transaction        if (transactionData) {
+        // 3. Create Transaction
+        if (transactionData) {
             const transRef = db.collection("transactions").doc();
             batch.set(transRef, transactionData);
         }
