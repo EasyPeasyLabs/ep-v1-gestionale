@@ -673,24 +673,40 @@ export const fixIntegrityIssue = async (
         
         await linkFinancialsToEnrollment(enrId, invoiceIdsToLink, transactionIdToLink ? [transactionIdToLink] : [], adjustment);
         
-        // Cleanup: Find and delete ghost invoices for this enrollment
-        // (These were auto-created pro-forma that are now replaced by real invoices)
+        // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
         if (invoiceIdsToLink.length > 0) {
-            const ghostQuery = query(
-                collection(db, 'invoices'),
-                where('relatedEnrollmentId', '==', enrId),
-                where('isGhost', '==', true)
-            );
-            const ghostSnap = await getDocs(ghostQuery);
-            if (!ghostSnap.empty) {
-                const batch = writeBatch(db);
-                ghostSnap.docs.forEach(gDoc => {
-                    batch.update(doc(db, 'invoices', gDoc.id), { 
-                        isDeleted: true,
-                        notes: (gDoc.data().notes || '') + ' [Sostituita da fattura reale]'
+            const realInvoice = await getDoc(doc(db, 'invoices', invoiceIdsToLink[0]));
+            if (realInvoice.exists()) {
+                const realData = realInvoice.data();
+                const realAmount = realData.totalAmount || 0;
+                
+                // Find ghost invoices with same amount (likely the pro-forma for this balance)
+                const ghostQuery = query(
+                    collection(db, 'invoices'),
+                    where('relatedEnrollmentId', '==', enrId),
+                    where('isGhost', '==', true)
+                );
+                const ghostSnap = await getDocs(ghostQuery);
+                
+                if (!ghostSnap.empty) {
+                    const batch = writeBatch(db);
+                    ghostSnap.docs.forEach(gDoc => {
+                        const ghostData = gDoc.data();
+                        // Only promote if amounts match (the pro-forma for this balance)
+                        if (Math.abs((ghostData.totalAmount || 0) - realAmount) < 1) {
+                            // Promote ghost to real invoice: copy number and date from real invoice
+                            batch.update(doc(db, 'invoices', gDoc.id), { 
+                                invoiceNumber: realData.invoiceNumber,
+                                issueDate: realData.issueDate,
+                                dueDate: realData.dueDate,
+                                status: realData.status || DocumentStatus.Sent,
+                                isGhost: false,
+                                notes: (ghostData.notes || '') + ' [Promossa a fattura reale: ' + realData.invoiceNumber + ']'
+                            });
+                        }
                     });
-                });
-                await batch.commit();
+                    await batch.commit();
+                }
             }
         }
     }
@@ -698,23 +714,37 @@ export const fixIntegrityIssue = async (
         const enrId = issue.id.replace('health-', '');
         await linkFinancialsToEnrollment(enrId, targetInvoiceIds || [], targetTransactionId ? [targetTransactionId] : [], adjustment);
         
-        // Cleanup: Find and delete ghost invoices for this enrollment
+        // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
         if (targetInvoiceIds && targetInvoiceIds.length > 0) {
-            const ghostQuery = query(
-                collection(db, 'invoices'),
-                where('relatedEnrollmentId', '==', enrId),
-                where('isGhost', '==', true)
-            );
-            const ghostSnap = await getDocs(ghostQuery);
-            if (!ghostSnap.empty) {
-                const batch = writeBatch(db);
-                ghostSnap.docs.forEach(gDoc => {
-                    batch.update(doc(db, 'invoices', gDoc.id), { 
-                        isDeleted: true,
-                        notes: (gDoc.data().notes || '') + ' [Sostituita da fattura reale]'
+            const realInvoice = await getDoc(doc(db, 'invoices', targetInvoiceIds[0]));
+            if (realInvoice.exists()) {
+                const realData = realInvoice.data();
+                const realAmount = realData.totalAmount || 0;
+                
+                const ghostQuery = query(
+                    collection(db, 'invoices'),
+                    where('relatedEnrollmentId', '==', enrId),
+                    where('isGhost', '==', true)
+                );
+                const ghostSnap = await getDocs(ghostQuery);
+                
+                if (!ghostSnap.empty) {
+                    const batch = writeBatch(db);
+                    ghostSnap.docs.forEach(gDoc => {
+                        const ghostData = gDoc.data();
+                        if (Math.abs((ghostData.totalAmount || 0) - realAmount) < 1) {
+                            batch.update(doc(db, 'invoices', gDoc.id), { 
+                                invoiceNumber: realData.invoiceNumber,
+                                issueDate: realData.issueDate,
+                                dueDate: realData.dueDate,
+                                status: realData.status || DocumentStatus.Sent,
+                                isGhost: false,
+                                notes: (ghostData.notes || '') + ' [Promossa a fattura reale: ' + realData.invoiceNumber + ']'
+                            });
+                        }
                     });
-                });
-                await batch.commit();
+                    await batch.commit();
+                }
             }
         }
     } 
