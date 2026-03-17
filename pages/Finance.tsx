@@ -226,22 +226,30 @@ const FixWizard: React.FC<{
     
     const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
 
-    console.log(`[FixWizard] Rendered with ${issues.length} issues`, issues.map(i => ({ id: i.id, suggestions: i.suggestions?.length || 0 })));
+
 
     useEffect(() => {
         if (activeIssue) {
             setStrategy(null);
             setDate(new Date().toISOString().split('T')[0]);
-            console.log(`[FixWizard] Active issue: ${activeIssue.id}`, activeIssue.suggestions);
+
         }
     }, [activeIssue]);
 
-    const handleResolve = async (strat: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion') => {
+    const handleResolve = async (strat: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', payload?: any) => {
         if (!activeIssue) return;
-        console.log(`[FixWizard] Resolving issue ${activeIssue.id} with strategy: ${strat}`);
         setLoading(true);
         try {
-            await onFix(activeIssue, strat, undefined, undefined, undefined, undefined, date);
+            // PARAMETERS ORDER: issue, strategy, manualNum, targetInvoices, adjustment, targetTransactionId, forceDate
+            await onFix(
+                activeIssue, 
+                strat, 
+                undefined, 
+                undefined, 
+                undefined, 
+                payload?.transactionId, 
+                date 
+            );
             setSelectedIndex(null);
         } catch (e) {
             alert("Errore durante la risoluzione: " + e);
@@ -252,31 +260,37 @@ const FixWizard: React.FC<{
 
     if (issues.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6">
-                    <CheckIcon className="w-10 h-10 text-green-600" />
+            <div className="flex flex-col items-center justify-center h-full p-10 text-center animate-fade-in">
+                <div className="w-24 h-24 bg-emerald-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                    <CheckIcon className="w-12 h-12 text-emerald-600" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">Tutto in ordine!</h2>
-                <p className="text-gray-500 mb-8">Il Fiscal Doctor non ha rilevato anomalie nei dati.</p>
-                <button onClick={onClose} className="md-btn md-btn-primary md-btn-raised px-8 py-3">Chiudi</button>
+                <h2 className="text-3xl font-black text-slate-800 mb-2">Check-up Completato!</h2>
+                <p className="text-slate-500 mb-8 max-w-sm">Il Fiscal Doctor non ha rilevato anomalie. La tua contabilità è in perfetta salute.</p>
+                <button onClick={onClose} className="md-btn md-btn-primary md-btn-raised px-12 py-4 rounded-2xl uppercase tracking-widest text-xs font-black shadow-lg shadow-indigo-200">Ottimo</button>
             </div>
         );
     }
 
     return (
         <div className="flex flex-col h-[80vh] md:h-[70vh]">
-            {/* Header */}
-            <div className="p-6 border-b bg-slate-800 text-white flex-shrink-0 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <div className="p-3 bg-white/10 rounded-xl">
-                        <SparklesIcon className="w-6 h-6 text-yellow-400" />
+            {/* Header: Proactive Doctor Feel */}
+            <div className="p-6 border-b bg-slate-900 text-white flex-shrink-0 flex justify-between items-center shadow-xl z-20">
+                <div className="flex items-center gap-5">
+                    <div className="relative">
+                        <div className="p-3 bg-indigo-500 rounded-2xl shadow-lg shadow-indigo-500/20">
+                            <SparklesIcon className="w-7 h-7 text-white" />
+                        </div>
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 border-2 border-slate-900 rounded-full animate-pulse"></div>
                     </div>
                     <div>
-                        <h3 className="text-xl font-bold">Fiscal Doctor</h3>
-                        <p className="text-slate-300 text-sm">{issues.length} anomalie rilevate da sanare.</p>
+                        <h3 className="text-2xl font-black tracking-tight uppercase italic">Fiscal Doctor <span className="text-indigo-400">AI</span></h3>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] font-black bg-red-500 text-white px-2 py-0.5 rounded-full">{issues.length} ANOMALIE</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Diagnosi in tempo reale</span>
+                        </div>
                     </div>
                 </div>
-                <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+                <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
                     <span className="text-2xl">&times;</span>
                 </button>
             </div>
@@ -286,30 +300,38 @@ const FixWizard: React.FC<{
                 <div className={`w-full md:w-1/3 border-r bg-gray-50 overflow-y-auto ${activeIssue ? 'hidden md:block' : 'block'}`}>
                     {issues.map((issue, idx) => {
                         const hasOblivion = issue.suggestions?.some(s => s.type === 'oblivion');
+                        const hasSmartMatch = issue.suggestions?.some(s => s.type === 'smart_link');
+                        
                         return (
                             <div 
                                 key={issue.id} 
                                 onClick={() => setSelectedIndex(idx)}
-                                className={`p-4 border-b cursor-pointer transition-all ${selectedIndex === idx ? 'bg-white border-l-4 border-l-indigo-500 shadow-md z-10 relative' : 'border-l-4 border-l-transparent hover:bg-gray-100'} ${hasOblivion ? 'bg-rose-50' : ''}`}
+                                className={`p-5 border-b cursor-pointer transition-all relative group ${selectedIndex === idx ? 'bg-white shadow-inner z-10' : 'hover:bg-white/80 border-l-4 border-l-transparent'}`}
                             >
+                                {selectedIndex === idx && <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-indigo-600"></div>}
+                                
                                 <div className="flex justify-between items-start mb-2">
-                                    <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded tracking-wider ${
-                                        issue.type === 'missing_invoice' ? 'bg-orange-100 text-orange-700' : 
-                                        issue.type === 'missing_transaction' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border tracking-wider ${
+                                        issue.type === 'missing_invoice' ? 'bg-orange-50 text-orange-700 border-orange-100' : 
+                                        issue.type === 'missing_transaction' ? 'bg-rose-50 text-rose-700 border-rose-100' : 
+                                        'bg-blue-50 text-blue-700 border-blue-100'
                                     }`}>
                                         {issue.type === 'missing_invoice' ? 'Manca Fattura' : issue.type === 'missing_transaction' ? 'Manca Incasso' : 'Discrepanza'}
-                                        {hasOblivion && <span className="ml-2 text-[10px] font-semibold text-rose-700">(Oblio)</span>}
                                     </span>
-                                    <span className="text-xs text-gray-400 font-mono">{new Date(issue.date).toLocaleDateString()}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono font-bold">{new Date(issue.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' })}</span>
                                 </div>
-                                <h4 className="font-bold text-gray-800 text-sm mb-1 flex items-center justify-between gap-2">
-                                    <span>{issue.entityName}</span>
-                                    {hasOblivion && (
-                                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-rose-100 text-rose-700">Oblio</span>
-                                    )}
+                                
+                                <h4 className="font-bold text-slate-800 text-sm mb-1 leading-tight group-hover:text-indigo-600 transition-colors">
+                                    {issue.entityName}
                                 </h4>
-                                <p className="text-xs text-gray-500 line-clamp-2 mb-2">{issue.description}</p>
-                                {issue.amount && <div className="text-right"><span className="font-mono text-sm font-black text-slate-700">{issue.amount.toFixed(2)}€</span></div>}
+                                
+                                <div className="flex items-center gap-2 mt-3">
+                                    {issue.amount && <span className="font-mono text-xs font-black text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{issue.amount.toFixed(2)}€</span>}
+                                    <div className="flex gap-1 ml-auto">
+                                        {hasSmartMatch && <span title="AI Smart Match disponibile" className="text-indigo-500 animate-pulse text-xs">⭐</span>}
+                                        {hasOblivion && <span title="Esercizio Chiuso (Oblio)" className="text-rose-500 opacity-60 text-xs">🚫</span>}
+                                    </div>
+                                </div>
                             </div>
                         );
                     })}
@@ -330,164 +352,140 @@ const FixWizard: React.FC<{
                             
                             <h2 className="text-2xl font-bold text-gray-900 mb-6">Risoluzione Anomalia</h2>
 
+                            {/* Status Alerts: Proactive AI Voice */}
                             {activeIssue.suggestions?.some(s => s.type === 'oblivion') && (
-                                <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
-                                    <div className="flex items-start gap-3">
-                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-200 text-red-800 font-bold">!</span>
-                                        <div>
-                                            <div className="text-sm font-bold text-red-800">Esercizio fiscale chiuso</div>
-                                            <div className="text-xs text-red-700">Questa anomalia risale a un periodo già chiuso. Puoi scegliere di applicare l'oblio per non richiederne più la correzione.</div>
-                                        </div>
+                                <div className="mb-10 rounded-[32px] border-2 border-rose-100 bg-rose-50/50 p-8 flex gap-6 items-start shadow-sm shadow-rose-100">
+                                    <div className="w-14 h-14 bg-rose-500 text-white rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-rose-200">
+                                        <StopIcon className="w-8 h-8" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-rose-600 font-black uppercase tracking-widest text-xs mb-1">Esercizio Fiscale Chiuso</h3>
+                                        <p className="text-sm text-rose-800 font-bold leading-relaxed">
+                                            Questa anomalia risale a un periodo già consolidato e chiuso. <br/>
+                                            L'AI suggerisce di applicare l'<strong>OBLIO</strong>: l'errore verrà rimosso dal sistema senza alterare i bilanci passati.
+                                        </p>
                                     </div>
                                 </div>
                             )}
 
-                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-8 shadow-sm">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Dettagli Problema</h4>
-                                <p className="font-medium text-slate-800 text-lg mb-4">{activeIssue.description}</p>
-                                <div className="grid grid-cols-2 gap-4 text-sm border-t border-slate-200 pt-4">
+                            <div className="bg-slate-50 p-6 md:p-8 rounded-[32px] border border-slate-200 mb-10 shadow-sm relative overflow-hidden">
+                                <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-bl-full pointer-events-none"></div>
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Anamnesi dell'Anomalia</h4>
+                                <p className="font-black text-slate-800 text-2xl mb-6 leading-tight">{activeIssue.description}</p>
+                                <div className="grid grid-cols-2 gap-8 text-sm border-t border-slate-200 pt-6">
                                     <div>
-                                        <span className="block text-xs text-slate-500 mb-1">Entità Coinvolta</span>
-                                        <span className="font-bold text-slate-900">{activeIssue.entityName}</span>
+                                        <span className="block text-[10px] font-black text-slate-400 uppercase mb-1">Allievo / Ente</span>
+                                        <span className="font-bold text-slate-900 text-lg">{activeIssue.entityName}</span>
                                     </div>
                                     {activeIssue.amount && (
                                         <div className="text-right">
-                                            <span className="block text-xs text-slate-500 mb-1">Valore Stimato</span>
-                                            <span className="font-mono font-black text-indigo-600 text-lg">{activeIssue.amount.toFixed(2)}€</span>
+                                            <span className="block text-[10px] font-black text-slate-400 uppercase mb-1">Gap Finanziario</span>
+                                            <span className="font-mono font-black text-indigo-600 text-2xl">{activeIssue.amount.toFixed(2)}€</span>
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">1</span>
-                                    Scegli Azione Correttiva
-                                </h3>
+                            <div className="space-y-10">
+                                <section>
+                                    <h3 className="font-black text-gray-900 flex items-center gap-3 mb-6 uppercase tracking-widest text-xs">
+                                        <span className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs shadow-lg shadow-indigo-200">1</span>
+                                        Risoluzione suggerita dall'AI
+                                    </h3>
 
-                                {activeIssue.suggestions && activeIssue.suggestions.length > 0 && (
-                                    <div className="space-y-3 bg-white border border-slate-200 rounded-xl p-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-sm font-bold text-slate-900">Suggerimenti Smart Match</div>
-                                            <span className="text-xs text-slate-500">Basato su AI (importo, data, cognome)</span>
-                                        </div>
-
-                                        <div className="space-y-2 mt-3">
+                                    {activeIssue.suggestions && activeIssue.suggestions.length > 0 ? (
+                                        <div className="grid grid-cols-1 gap-4">
                                             {activeIssue.suggestions.map((suggestion, idx) => (
-                                                <div key={idx} className="p-3 rounded-lg border bg-slate-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                                                    <div>
-                                                        <div className="text-sm font-semibold text-slate-800">{suggestion.label || (suggestion.type === 'oblivion' ? 'Oblio' : 'Suggerimento')}</div>
-                                                        {suggestion.reason && <div className="text-xs text-slate-500 mt-1">{suggestion.reason}</div>}
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        {suggestion.type === 'oblivion' && (
-                                                            <button
-                                                                onClick={() => handleResolve('oblivion')}
-                                                                className="md-btn md-btn-flat md-btn-danger"
-                                                                disabled={loading}
-                                                            >
-                                                                {loading ? '...' : 'Applica Oblio'}
-                                                            </button>
-                                                        )}
-                                                        {suggestion.type === 'smart_link' && (
-                                                            <button
-                                                                onClick={() => handleResolve('smart_link')}
-                                                                className="md-btn md-btn-primary"
-                                                                disabled={loading}
-                                                            >
-                                                                {loading ? '...' : 'Collega automaticamente'}
-                                                            </button>
-                                                        )}
+                                                <div key={idx} className={`p-6 rounded-[32px] border-2 transition-all group ${suggestion.type === 'oblivion' ? 'bg-rose-50 border-rose-100 hover:border-rose-300' : 'bg-indigo-50 border-indigo-100 hover:border-indigo-300 shadow-sm hover:shadow-md'}`}>
+                                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                {suggestion.type === 'smart_link' && <span className="text-indigo-500">⭐</span>}
+                                                                <div className="text-lg font-black text-slate-800 leading-tight">{suggestion.label}</div>
+                                                            </div>
+                                                            {suggestion.reason && <div className="text-xs text-slate-500 leading-relaxed font-medium mt-1">{suggestion.reason}</div>}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => handleResolve(suggestion.type as any, suggestion.payload)}
+                                                            disabled={loading}
+                                                            className={`md-btn md-btn-raised rounded-2xl px-8 py-4 font-black uppercase text-[10px] tracking-widest transition-transform active:scale-95 flex items-center gap-2 whitespace-nowrap ${suggestion.type === 'oblivion' ? 'bg-rose-600 text-white shadow-rose-200' : 'bg-indigo-600 text-white shadow-indigo-200'}`}
+                                                        >
+                                                            {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (suggestion.type === 'oblivion' ? 'Applica Oblio' : 'Conferma Match')}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
-                                    </div>
-                                )}
-
-                                {activeIssue.type === 'missing_invoice' && (
-                                    <div className="space-y-3">
-                                        <div 
-                                            className={`p-4 border rounded-xl transition-all cursor-pointer group ${strategy === 'invoice' ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'hover:border-indigo-300 hover:bg-gray-50'}`}
-                                            onClick={() => setStrategy('invoice')}
-                                        >
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${strategy === 'invoice' ? 'border-indigo-600 bg-indigo-600' : 'border-gray-300'}`}>
-                                                    {strategy === 'invoice' && <div className="w-2 h-2 bg-white rounded-full" />}
-                                                </div>
-                                                <span className={`font-bold ${strategy === 'invoice' ? 'text-indigo-900' : 'text-gray-700'}`}>Genera Fattura Mancante</span>
-                                            </div>
-                                            <p className="text-sm text-gray-500 ml-8">Il sistema genererà automaticamente una fattura bozza precompilata.</p>
-                                            
-                                            {strategy === 'invoice' && (
-                                                <div className="ml-8 mt-4 pt-4 border-t border-indigo-100 animate-fade-in">
-                                                    <label className="block text-xs font-bold text-indigo-800 mb-1">Data Emissione</label>
-                                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input w-full mb-3" />
-                                                    <button onClick={() => handleResolve('invoice')} disabled={loading} className="md-btn md-btn-primary w-full shadow-lg">
-                                                        {loading ? <Spinner /> : 'Conferma e Genera Fattura'}
-                                                    </button>
-                                                </div>
-                                            )}
+                                    ) : (
+                                        <div className="p-8 border-2 border-dashed border-slate-200 rounded-[32px] text-center bg-slate-50/30">
+                                            <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Nessun match automatico rilevato.</p>
+                                            <p className="text-xs text-slate-400 mt-1">Usa le opzioni manuali qui sotto.</p>
                                         </div>
+                                    )}
+                                </section>
 
+                                <section className="pt-10 border-t border-slate-100">
+                                    <h3 className="font-black text-gray-400 flex items-center gap-3 mb-6 uppercase tracking-widest text-xs">
+                                        <span className="w-8 h-8 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs">2</span>
+                                        Azioni Correttive Manuali
+                                    </h3>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {/* Strategy: Invoice */}
+                                        {activeIssue.type === 'missing_invoice' && (
+                                            <div 
+                                                className={`p-6 rounded-[32px] border-2 transition-all cursor-pointer group flex flex-col ${strategy === 'invoice' ? 'border-slate-900 bg-white shadow-xl scale-[1.02]' : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'}`}
+                                                onClick={() => setStrategy('invoice')}
+                                            >
+                                                <div className="flex justify-between items-center mb-3">
+                                                    <h4 className="font-black text-slate-800 uppercase tracking-tighter text-sm">Emetti Fattura</h4>
+                                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${strategy === 'invoice' ? 'border-slate-900 bg-slate-900' : 'border-slate-200'}`}>
+                                                        {strategy === 'invoice' && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                    </div>
+                                                </div>
+                                                <p className="text-[11px] text-slate-500 font-medium leading-tight mb-4">Crea una fattura bozza precompilata per sanare la posizione contabile.</p>
+                                                
+                                                {strategy === 'invoice' && (
+                                                    <div className="mt-auto pt-6 border-t border-slate-100 animate-fade-in space-y-4">
+                                                        <div>
+                                                            <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Data Documento</label>
+                                                            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input !bg-gray-50 font-bold text-xs" />
+                                                        </div>
+                                                        <button onClick={() => handleResolve('invoice')} disabled={loading} className="w-full md-btn md-btn-raised md-btn-primary py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px]">
+                                                            {loading ? <Spinner /> : 'Genera Ora'}
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Strategy: Cash */}
                                         <div 
-                                            className={`p-4 border rounded-xl transition-all cursor-pointer group ${strategy === 'cash' ? 'border-green-600 bg-green-50 ring-1 ring-green-600' : 'hover:border-green-300 hover:bg-gray-50'}`}
+                                            className={`p-6 rounded-[32px] border-2 transition-all cursor-pointer group flex flex-col ${strategy === 'cash' ? 'border-emerald-600 bg-white shadow-xl scale-[1.02]' : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'}`}
                                             onClick={() => setStrategy('cash')}
                                         >
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${strategy === 'cash' ? 'border-green-600 bg-green-600' : 'border-gray-300'}`}>
-                                                    {strategy === 'cash' && <div className="w-2 h-2 bg-white rounded-full" />}
+                                            <div className="flex justify-between items-center mb-3">
+                                                <h4 className="font-black text-slate-800 uppercase tracking-tighter text-sm">Registra Sanatoria</h4>
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${strategy === 'cash' ? 'border-emerald-600 bg-emerald-600' : 'border-slate-200'}`}>
+                                                    {strategy === 'cash' && <div className="w-2 h-2 bg-white rounded-full"></div>}
                                                 </div>
-                                                <span className={`font-bold ${strategy === 'cash' ? 'text-green-900' : 'text-gray-700'}`}>Registra Incasso in Contanti</span>
                                             </div>
-                                            <p className="text-sm text-gray-500 ml-8">Sana l'anomalia registrando un pagamento in contanti senza emettere fattura (es. accordi specifici con enti).</p>
+                                            <p className="text-[11px] text-slate-500 font-medium leading-tight mb-4">Registra un incasso manuale a pareggio senza emettere documenti fiscali.</p>
                                             
                                             {strategy === 'cash' && (
-                                                <div className="ml-8 mt-4 pt-4 border-t border-green-100 animate-fade-in">
-                                                    <label className="block text-xs font-bold text-green-800 mb-1">Data Incasso</label>
-                                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input w-full mb-3" />
-                                                    <button onClick={() => handleResolve('cash')} disabled={loading} className="md-btn md-btn-green w-full shadow-lg">
-                                                        {loading ? <Spinner /> : 'Conferma Incasso Contanti'}
+                                                <div className="mt-auto pt-6 border-t border-emerald-50 animate-fade-in space-y-4">
+                                                    <div>
+                                                        <label className="block text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-2">Data Incasso</label>
+                                                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input !bg-emerald-50/30 font-bold text-xs border-emerald-100 focus:border-emerald-500" />
+                                                    </div>
+                                                    <button onClick={() => handleResolve('cash')} disabled={loading} className="w-full md-btn md-btn-raised md-btn-green py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px]">
+                                                        {loading ? <Spinner /> : 'Esegui Sanatoria'}
                                                     </button>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
-                                )}
-
-                                {activeIssue.type === 'missing_transaction' && (
-                                    <div className="space-y-3">
-                                        <div 
-                                            className={`p-4 border rounded-xl transition-all cursor-pointer group ${strategy === 'cash' ? 'border-green-600 bg-green-50 ring-1 ring-green-600' : 'hover:border-green-300 hover:bg-gray-50'}`}
-                                            onClick={() => setStrategy('cash')}
-                                        >
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${strategy === 'cash' ? 'border-green-600 bg-green-600' : 'border-gray-300'}`}>
-                                                    {strategy === 'cash' && <div className="w-2 h-2 bg-white rounded-full" />}
-                                                </div>
-                                                <span className={`font-bold ${strategy === 'cash' ? 'text-green-900' : 'text-gray-700'}`}>Registra Incasso</span>
-                                            </div>
-                                            <p className="text-sm text-gray-500 ml-8">Registra il movimento di cassa/banca mancante per saldare il documento.</p>
-                                            
-                                            {strategy === 'cash' && (
-                                                <div className="ml-8 mt-4 pt-4 border-t border-green-100 animate-fade-in">
-                                                    <label className="block text-xs font-bold text-green-800 mb-1">Data Incasso</label>
-                                                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input w-full mb-3" />
-                                                    <button onClick={() => handleResolve('cash')} disabled={loading} className="md-btn md-btn-green w-full shadow-lg">
-                                                        {loading ? <Spinner /> : 'Conferma Incasso'}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeIssue.type === 'amount_mismatch' && (
-                                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-yellow-800 text-sm">
-                                        <p className="font-bold flex items-center gap-2"><ExclamationIcon className="w-4 h-4" /> Attenzione</p>
-                                        <p className="mt-1">Per le discrepanze di importo, si consiglia di verificare manualmente la fattura o la transazione e correggerla dall'elenco principale.</p>
-                                    </div>
-                                )}
+                                </section>
                             </div>
                         </div>
                     )}

@@ -473,7 +473,7 @@ export const createGhostInvoiceForEnrollment = async (enrollment: Enrollment, cl
 };
 
 export const reconcileTransactions = async () => {
-    console.log("Reconciliation running...");
+    // Reconciliation running...
 };
 
 // NOTE: Now accepts enrollments/invoices/transactions/clients as arguments to avoid circular dependency
@@ -578,22 +578,6 @@ export const runFinancialHealthCheck = async (
                     });
                 }
 
-                // DEBUG: Force add test suggestions if no real ones found
-                if (suggestions.length === 0) {
-                    console.log(`[FiscalDoctor] No real suggestions for ${enr.childName}, adding test ones`);
-                    suggestions.push({
-                        type: 'smart_link',
-                        label: `💰 Test Match: Pagamento di ${missingAmount.toFixed(2)}€`,
-                        payload: { transactionId: 'test-transaction-id' }
-                    });
-                    suggestions.push({
-                        type: 'oblivion',
-                        label: `🚫 Test Oblio (Esercizio ${enrYear} Chiuso)`,
-                        reason: `Test: L'anomalia risale al ${enrYear}.`,
-                        payload: { fiscalYearId: 'test-fiscal-year-id' }
-                    });
-                }
-
                 issues.push({
                     id: `health-${enr.id}`,
                     type: 'missing_invoice',
@@ -606,9 +590,6 @@ export const runFinancialHealthCheck = async (
                     amount: missingAmount,
                     suggestions: suggestions // AI Suggestions
                 });
-
-                // DEBUG: Log anomalia generata
-                console.log(`[FiscalDoctor] Generated issue for ${enr.childName}: missingAmount=${missingAmount}, suggestions=${suggestions.length}`, suggestions);
             }
 
             // Check for overdue ghost invoices (Pro-forma scadute)
@@ -646,8 +627,8 @@ export const fixIntegrityIssue = async (
     // Determine target date for the check
     const targetDateToCheck = forceDate || issue.date;
     
-    // If the year is closed AND no override date is provided, throw error
-    if (!forceDate && await isYearClosed(targetDateToCheck)) {
+    // Always check if the target year is closed
+    if (await isYearClosed(targetDateToCheck)) {
         throw new Error("FISCAL_YEAR_CLOSED");
     }
 
@@ -655,8 +636,9 @@ export const fixIntegrityIssue = async (
     const finalDate = forceDate || issue.date; // Use override if present, else original
 
     if (strategy === 'oblivion') {
-        const fyId = issue.suggestions?.[0]?.payload?.fiscalYearId;
-        const reason = issue.suggestions?.[0]?.reason || "Oblio applicato manualmente.";
+        // Find fiscalYearId from suggestions if not explicitly passed (legacy)
+        const fyId = issue.suggestions?.find(s => s.type === 'oblivion')?.payload?.fiscalYearId;
+        const reason = issue.suggestions?.find(s => s.type === 'oblivion')?.reason || "Oblio applicato manualmente.";
         
         if (!fyId) throw new Error("ID Esercizio Fiscale non trovato per l'oblio.");
 
@@ -678,14 +660,14 @@ export const fixIntegrityIssue = async (
     }
     else if (strategy === 'smart_link') {
         const enrId = issue.id.replace('health-', '');
-        // Extract transaction ID from the first suggestion payload
-        const smartTransactionId = issue.suggestions?.[0]?.payload?.transactionId;
+        // Use the passed targetTransactionId, or fallback to the first suggestion if not provided (legacy)
+        const transactionIdToLink = targetTransactionId || issue.suggestions?.[0]?.payload?.transactionId;
         
-        if (!smartTransactionId) {
-            throw new Error("Nessuna transazione suggerita trovata per il collegamento automatico.");
+        if (!transactionIdToLink) {
+            throw new Error("Nessuna transazione specificata per il collegamento automatico.");
         }
         
-        await linkFinancialsToEnrollment(enrId, [], [smartTransactionId], adjustment);
+        await linkFinancialsToEnrollment(enrId, [], [transactionIdToLink], adjustment);
     }
     else if (strategy === 'link') {
         const enrId = issue.id.replace('health-', '');
