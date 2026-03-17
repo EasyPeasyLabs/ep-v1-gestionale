@@ -307,6 +307,12 @@ const FixWizard: React.FC<{
                 payload?.transactionId, 
                 date 
             );
+            
+            // Show success message
+            if (strat === 'oblivion') {
+                alert("✅ Oblio applicato con successo! L'anomalia è stata ignorata per l'esercizio fiscale chiuso.");
+            }
+            
             setSelectedIndex(null);
         } catch (e) {
             alert("Errore durante la risoluzione: " + e);
