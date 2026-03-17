@@ -492,7 +492,6 @@ export const runFinancialHealthCheck = async (
     ]);
     const quotes = quotesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quote));
     const fiscalYears = fiscalSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FiscalYear));
-    console.log('[DEBUG] Total fiscalYears fetched:', fiscalYears.length, fiscalYears);
 
     for (const enr of enrollments) {
         if (enr.status === EnrollmentStatus.Active && enr.price > 0) {
@@ -512,17 +511,12 @@ export const runFinancialHealthCheck = async (
             const totalPaid = paidInv + paidTrans + (enr.adjustmentAmount || 0);
             
             const missingAmount = enr.price - totalPaid - ghostInv;
-            console.log('[DEBUG] missingAmount:', missingAmount, 'price:', enr.price, 'paidInv:', paidInv, 'paidTrans:', paidTrans, 'ghostInv:', ghostInv);
 
             // --- RESOLVE FISCAL STATUS ---
             const enrDate = new Date(enr.startDate);
             const enrYear = enrDate.getFullYear();
-            console.log('[DEBUG] Processing enrollment:', enr.id, 'year:', enrYear, 'startDate:', enr.startDate);
-            console.log('[DEBUG] fiscalYears available:', fiscalYears.map(fy => ({ year: fy.year, status: fy.status })));
             const fiscalYear = fiscalYears.find(fy => Number(fy.year) === enrYear);
-            console.log('[DEBUG] Found fiscalYear:', fiscalYear);
             const isClosed = fiscalYear?.status === 'CLOSED' || String(fiscalYear?.status).toUpperCase() === 'CLOSED';
-            console.log('[DEBUG] isClosed:', isClosed);
 
             // --- CHECK IF ALREADY IGNORED (OBLIVION) ---
             if (fiscalYear?.ignoredIssues?.includes(`health-${enr.id}`)) {
@@ -602,6 +596,18 @@ export const runFinancialHealthCheck = async (
             const today = new Date().toISOString().split('T')[0];
             const overdueGhosts = linkedInvoices.filter(i => i.isGhost && i.dueDate && i.dueDate < today);
             for (const ghost of overdueGhosts) {
+                const ghostSuggestions: IntegrityIssueSuggestion[] = [];
+                
+                // Add Oblio option if year is closed
+                if (isClosed) {
+                    ghostSuggestions.push({
+                        type: 'oblivion',
+                        label: `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)`,
+                        reason: `La proforma risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.`,
+                        payload: { fiscalYearId: fiscalYear?.id }
+                    });
+                }
+                
                 issues.push({
                     id: `health-ghost-${ghost.id}`,
                     type: 'missing_invoice',
@@ -612,7 +618,7 @@ export const runFinancialHealthCheck = async (
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal,
                     amount: ghost.totalAmount,
-                    suggestions: []
+                    suggestions: ghostSuggestions
                 });
             }
         }
