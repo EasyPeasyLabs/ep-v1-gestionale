@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus, InvoiceGap, RentAnalysisResult, SubscriptionType } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, promoteAllGhostInvoices } from '../services/financeService';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, findGhostPromotionCandidates, promoteGhostInvoices, GhostPromotionCandidate } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo, getSubscriptionTypes, updateCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -229,16 +229,59 @@ const FixWizard: React.FC<{
     
     const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
 
-    const handlePromoteGhosts = async () => {
+    // Ghost promotion state
+    const [ghostFilter, setGhostFilter] = useState<{ parentName: string; amount: string; dateFrom: string; dateTo: string; enrollmentId: string }>({ parentName: '', amount: '', dateFrom: '', dateTo: '', enrollmentId: '' });
+    const [ghostCandidates, setGhostCandidates] = useState<GhostPromotionCandidate[]>([]);
+    const [selectedCandidates, setSelectedCandidates] = useState<string[]>([]);
+    const [ghostSearching, setGhostSearching] = useState(false);
+
+    const handleSearchGhosts = async () => {
+        setGhostSearching(true);
+        try {
+            const filter: any = {};
+            if (ghostFilter.parentName) filter.parentName = ghostFilter.parentName;
+            if (ghostFilter.amount) filter.amount = parseFloat(ghostFilter.amount);
+            if (ghostFilter.dateFrom) filter.dateFrom = ghostFilter.dateFrom;
+            if (ghostFilter.dateTo) filter.dateTo = ghostFilter.dateTo;
+            if (ghostFilter.enrollmentId) filter.enrollmentId = ghostFilter.enrollmentId;
+            
+            const candidates = await findGhostPromotionCandidates(filter);
+            setGhostCandidates(candidates);
+            setSelectedCandidates(candidates.filter(c => c.realInvoice).map(c => c.ghost.id));
+        } catch (e) {
+            alert("Errore nella ricerca: " + e);
+        } finally {
+            setGhostSearching(false);
+        }
+    };
+
+    const handlePromoteSelected = async () => {
+        if (selectedCandidates.length === 0) {
+            alert("Seleziona almeno una fattura da promuovere.");
+            return;
+        }
         setGhostPromoting(true);
         try {
-            const result = await promoteAllGhostInvoices();
+            const result = await promoteGhostInvoices(selectedCandidates);
             setGhostResult(result);
+            setGhostCandidates([]);
+            setSelectedCandidates([]);
         } catch (e) {
             alert("Errore durante la promozione: " + e);
         } finally {
             setGhostPromoting(false);
         }
+    };
+
+    const toggleCandidate = (id: string) => {
+        setSelectedCandidates(prev => 
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
+
+    const selectAllCandidates = () => {
+        const selectable = ghostCandidates.filter(c => c.realInvoice).map(c => c.ghost.id);
+        setSelectedCandidates(selectable);
     };
 
 
@@ -501,7 +544,7 @@ const FixWizard: React.FC<{
                                     </div>
                                 </section>
 
-                                {/* BULK GHOST PROMOTION */}
+                                {/* GHOST PROMOTION WITH FILTERS */}
                                 <section className="pt-10 border-t border-slate-100">
                                     <h3 className="font-black text-amber-600 flex items-center gap-3 mb-6 uppercase tracking-widest text-xs">
                                         <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs">⚡</span>
@@ -524,22 +567,141 @@ const FixWizard: React.FC<{
                                                 Esegui un'altra sanatoria
                                             </button>
                                         </div>
+                                    ) : ghostCandidates.length > 0 ? (
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center">
+                                                <p className="text-xs text-amber-800 font-medium">
+                                                    Trovate {ghostCandidates.length} corrispondenze
+                                                </p>
+                                                <button onClick={selectAllCandidates} className="text-xs text-amber-600 underline">
+                                                    Seleziona tutte con match
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="max-h-64 overflow-y-auto bg-white border border-amber-200 rounded-xl">
+                                                {ghostCandidates.map((cand, idx) => (
+                                                    <div key={idx} className={`p-3 border-b last:border-0 flex items-center gap-3 ${cand.realInvoice ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedCandidates.includes(cand.ghost.id)}
+                                                            onChange={() => toggleCandidate(cand.ghost.id)}
+                                                            disabled={!cand.realInvoice}
+                                                            className="w-4 h-4 accent-amber-600"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="font-mono text-xs font-bold">{cand.ghost.invoiceNumber}</span>
+                                                                <span className="font-black text-xs">{cand.ghost.totalAmount?.toFixed(2)}€</span>
+                                                            </div>
+                                                            <div className="text-[10px] text-slate-500">
+                                                                {cand.ghost.clientName} - {cand.ghost.issueDate ? new Date(cand.ghost.issueDate).toLocaleDateString() : 'senza data'}
+                                                            </div>
+                                                            {cand.realInvoice ? (
+                                                                <div className="text-[10px] text-emerald-600 mt-1">
+                                                                    → Match: {cand.realInvoice.invoiceNumber} ({cand.matchReason})
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-[10px] text-red-500 mt-1">
+                                                                    ✗ Nessuna fattura reale corrispondente
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            
+                                            <div className="flex gap-3">
+                                                <button 
+                                                    onClick={handlePromoteSelected}
+                                                    disabled={ghostPromoting || selectedCandidates.length === 0}
+                                                    className="flex-1 md-btn md-btn-raised bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 disabled:opacity-50"
+                                                >
+                                                    {ghostPromoting ? (
+                                                        <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Elaborazione...</>
+                                                    ) : (
+                                                        <>⚡ Promuovi {selectedCandidates.length} selezionate</>
+                                                    )}
+                                                </button>
+                                                <button 
+                                                    onClick={() => { setGhostCandidates([]); setSelectedCandidates([]); }}
+                                                    className="px-4 py-3 rounded-2xl border border-slate-200 text-slate-500 font-bold text-xs"
+                                                >
+                                                    Annulla
+                                                </button>
+                                            </div>
+                                        </div>
                                     ) : (
-                                        <div className="p-6 bg-amber-50/50 border-2 border-dashed border-amber-200 rounded-2xl">
-                                            <p className="text-xs text-amber-800 font-medium mb-4">
-                                                Trova e promuove automaticamente tutte le fatture pro-forma (ghost) che hanno una corrispondenza con fatture reali dello stesso importo.
+                                        <div className="p-6 bg-amber-50/50 border-2 border-dashed border-amber-200 rounded-2xl space-y-4">
+                                            <p className="text-xs text-amber-800 font-medium">
+                                                Filtra le fatture ghost da cercare:
                                             </p>
+                                            
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-amber-600 uppercase mb-1">Genitore (cognome/nome)</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={ghostFilter.parentName}
+                                                        onChange={e => setGhostFilter(f => ({ ...f, parentName: e.target.value }))}
+                                                        placeholder="es. Rossi Mario"
+                                                        className="md-input text-xs"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-amber-600 uppercase mb-1">Importo (±1€)</label>
+                                                    <input 
+                                                        type="number" 
+                                                        value={ghostFilter.amount}
+                                                        onChange={e => setGhostFilter(f => ({ ...f, amount: e.target.value }))}
+                                                        placeholder="es. 65.00"
+                                                        className="md-input text-xs"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-amber-600 uppercase mb-1">Data fattura da</label>
+                                                    <input 
+                                                        type="date" 
+                                                        value={ghostFilter.dateFrom}
+                                                        onChange={e => setGhostFilter(f => ({ ...f, dateFrom: e.target.value }))}
+                                                        className="md-input text-xs"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[9px] font-black text-amber-600 uppercase mb-1">Data fattura a</label>
+                                                    <input 
+                                                        type="date" 
+                                                        value={ghostFilter.dateTo}
+                                                        onChange={e => setGhostFilter(f => ({ ...f, dateTo: e.target.value }))}
+                                                        className="md-input text-xs"
+                                                    />
+                                                </div>
+                                                <div className="col-span-2">
+                                                    <label className="block text-[9px] font-black text-amber-600 uppercase mb-1">ID Iscrizione</label>
+                                                    <input 
+                                                        type="text" 
+                                                        value={ghostFilter.enrollmentId}
+                                                        onChange={e => setGhostFilter(f => ({ ...f, enrollmentId: e.target.value }))}
+                                                        placeholder="es. abc123..."
+                                                        className="md-input text-xs"
+                                                    />
+                                                </div>
+                                            </div>
+                                            
                                             <button 
-                                                onClick={handlePromoteGhosts} 
-                                                disabled={ghostPromoting}
-                                                className="md-btn md-btn-raised bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2"
+                                                onClick={handleSearchGhosts}
+                                                disabled={ghostSearching}
+                                                className="w-full md-btn md-btn-raised bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2"
                                             >
-                                                {ghostPromoting ? (
-                                                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Elaborazione...</>
+                                                {ghostSearching ? (
+                                                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Cercando...</>
                                                 ) : (
-                                                    <>⚡ Promuovi Ghost Pro-Forma</>
+                                                    <>🔍 Cerca Ghost Pro-Forma</>
                                                 )}
                                             </button>
+                                            
+                                            <p className="text-[10px] text-amber-600 italic">
+                                                Lascia tutti i campi vuoti per cercare tutte le ghost. Usa un filtro per rpezzare meglio.
+                                            </p>
                                         </div>
                                     )}
                                 </section>

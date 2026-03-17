@@ -896,30 +896,116 @@ export const checkAndSetOverdueInvoices = async () => {
     if (count > 0) await batch.commit();
 };
 
-// BULK GHOST PROMOTION: Promuove tutte le ghost proforma che hanno una corrispondenza con fatture reali
-export const promoteAllGhostInvoices = async (): Promise<{ promoted: number; details: string[] }> => {
-    const details: string[] = [];
-    
-    // 1. Find all ghost invoices that are already linked to enrollments
-    const ghostQuery = query(
-        collection(db, 'invoices'),
-        where('isGhost', '==', true),
-        where('relatedEnrollmentId', '!=', null)
-    );
+// BULK GHOST PROMOTION: Promuove le ghost proforma che hanno una corrispondenza con fatture reali
+// Filtri opzionali (tutti alternativi)
+export interface GhostPromotionFilter {
+    parentName?: string;  // Cognome e nome del genitore (cerca nel clientName)
+    amount?: number;      // Importo fattura (±1€ tolleranza)
+    dateFrom?: string;   // Data fattura da (YYYY-MM-DD)
+    dateTo?: string;     // Data fattura a (YYYY-MM-DD)
+    enrollmentId?: string; // ID iscrizione specifico
+}
+
+export interface GhostPromotionCandidate {
+    ghost: Invoice;
+    realInvoice: Invoice | null;
+    matchReason: string;
+}
+
+export const findGhostPromotionCandidates = async (filter?: GhostPromotionFilter): Promise<GhostPromotionCandidate[]> => {
+    // 1. Find ghost invoices
+    let ghostQuery;
+    if (filter?.enrollmentId) {
+        ghostQuery = query(
+            collection(db, 'invoices'),
+            where('isGhost', '==', true),
+            where('relatedEnrollmentId', '==', filter.enrollmentId)
+        );
+    } else {
+        ghostQuery = query(
+            collection(db, 'invoices'),
+            where('isGhost', '==', true),
+            where('relatedEnrollmentId', '!=', null)
+        );
+    }
     const ghostSnap = await getDocs(ghostQuery);
     
     if (ghostSnap.empty) {
-        return { promoted: 0, details: ['Nessuna fattura ghost da promuovere.'] };
+        return [];
     }
     
     const ghosts = ghostSnap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice));
-    let promoted = 0;
-    const batch = writeBatch(db);
+    const candidates: GhostPromotionCandidate[] = [];
     
     for (const ghost of ghosts) {
         if (!ghost.relatedEnrollmentId || !ghost.totalAmount) continue;
         
-        // 2. Find real invoices for same enrollment with same amount
+        // Apply filters
+        if (filter?.parentName && ghost.clientName) {
+            const searchName = filter.parentName.toLowerCase();
+            if (!ghost.clientName.toLowerCase().includes(searchName)) continue;
+        }
+        
+        if (filter?.amount) {
+            if (Math.abs((ghost.totalAmount || 0) - filter.amount) > 1) continue;
+        }
+        
+        if (filter?.dateFrom && ghost.issueDate) {
+            if (ghost.issueDate < filter.dateFrom) continue;
+        }
+        
+        if (filter?.dateTo && ghost.issueDate) {
+            if (ghost.issueDate > filter.dateTo) continue;
+        }
+        
+        // Find real invoices for same enrollment with same amount
+        const realQuery = query(
+            collection(db, 'invoices'),
+            where('relatedEnrollmentId', '==', ghost.relatedEnrollmentId),
+            where('isGhost', '==', false)
+        );
+        const realSnap = await getDocs(realQuery);
+        
+        let matchedReal: Invoice | null = null;
+        let matchReason = '';
+        
+        for (const realDoc of realSnap.docs) {
+            const real = realDoc.data() as Invoice;
+            
+            if (Math.abs((real.totalAmount || 0) - (ghost.totalAmount || 0)) < 1) {
+                matchedReal = real;
+                matchReason = `Match importo: ${ghost.totalAmount}€`;
+                break;
+            }
+        }
+        
+        candidates.push({
+            ghost,
+            realInvoice: matchedReal,
+            matchReason
+        });
+    }
+    
+    return candidates;
+};
+
+export const promoteGhostInvoices = async (invoiceIds: string[]): Promise<{ promoted: number; details: string[] }> => {
+    const details: string[] = [];
+    if (invoiceIds.length === 0) {
+        return { promoted: 0, details: ['Nessuna fattura selezionata.'] };
+    }
+    
+    const batch = writeBatch(db);
+    let promoted = 0;
+    
+    for (const ghostId of invoiceIds) {
+        const ghostDoc = await getDoc(doc(db, 'invoices', ghostId));
+        if (!ghostDoc.exists()) continue;
+        
+        const ghost = ghostDoc.data() as Invoice;
+        if (!ghost.relatedEnrollmentId || !ghost.totalAmount) continue;
+        
+        // Find real invoice with same amount
         const realQuery = query(
             collection(db, 'invoices'),
             where('relatedEnrollmentId', '==', ghost.relatedEnrollmentId),
@@ -930,20 +1016,18 @@ export const promoteAllGhostInvoices = async (): Promise<{ promoted: number; det
         for (const realDoc of realSnap.docs) {
             const real = realDoc.data() as Invoice;
             
-            // Check if amounts match (within 1 euro tolerance)
             if (Math.abs((real.totalAmount || 0) - (ghost.totalAmount || 0)) < 1) {
-                // 3. Promote ghost to real invoice
-                batch.update(doc(db, 'invoices', ghost.id), {
+                batch.update(doc(db, 'invoices', ghostId), {
                     invoiceNumber: real.invoiceNumber,
                     issueDate: real.issueDate,
                     dueDate: real.dueDate,
                     status: real.status || DocumentStatus.Sent,
                     isGhost: false,
-                    notes: (ghost.notes || '') + ` [Promossa bulk a fattura reale: ${real.invoiceNumber}]`
+                    notes: (ghost.notes || '') + ` [Promossa a fattura reale: ${real.invoiceNumber}]`
                 });
                 promoted++;
                 details.push(`Promossa ${ghost.invoiceNumber} → ${real.invoiceNumber} (${real.totalAmount}€)`);
-                break; // Only promote once per ghost
+                break;
             }
         }
     }
