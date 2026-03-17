@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Initiative, InitiativeInput, Book, BookInput, BookLoan, Supplier, Enrollment, EnrollmentStatus } from '../types';
-import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook } from '../services/initiativeService';
+import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook, updateBooksLocation } from '../services/initiativeService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
@@ -309,6 +309,8 @@ const BookManager: React.FC = () => {
     const [filterLocation, setFilterLocation] = useState('');
     const [sortBy, setSortBy] = useState<'bookNumber' | 'title' | 'authors' | 'publisher'>('title');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+    const [selectedBooks, setSelectedBooks] = useState<string[]>([]);
+    const [bulkMoveLocation, setBulkMoveLocation] = useState('');
 
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -464,6 +466,48 @@ const BookManager: React.FC = () => {
         }
     };
 
+    const toggleBookSelection = (bookId: string) => {
+        setSelectedBooks(prev => 
+            prev.includes(bookId) ? prev.filter(id => id !== bookId) : [...prev, bookId]
+        );
+    };
+
+    const selectAllFilteredBooks = () => {
+        const availableIds = filteredBooks.map(b => b.id);
+        setSelectedBooks(availableIds);
+    };
+
+    const clearSelection = () => {
+        setSelectedBooks([]);
+        setBulkMoveLocation('');
+    };
+
+    const handleBulkMove = async () => {
+        if (selectedBooks.length === 0 || !bulkMoveLocation) {
+            alert("Seleziona almeno un libro e una sede di destinazione.");
+            return;
+        }
+        if (!confirm(`Spostare ${selectedBooks.length} libri nella sede selezionata?`)) return;
+        
+        setLoading(true);
+        try {
+            const count = await updateBooksLocation(selectedBooks, bulkMoveLocation);
+            alert(`${count} libri spostati con successo!`);
+            setSelectedBooks([]);
+            setBulkMoveLocation('');
+            await fetchData();
+        } catch (error) {
+            console.error("Errore durante lo spostamento:", error);
+            alert("Si è verificato un errore durante lo spostamento.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const hasInTransitBooks = (bookIds: string[]) => {
+        return bookIds.some(id => loans.some(l => l.bookId === id));
+    };
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
             {/* Header / Tabs */}
@@ -596,6 +640,37 @@ const BookManager: React.FC = () => {
                             <div className="px-4 py-3 border-b bg-gray-50/50 flex justify-between items-center">
                                 <h4 className="font-bold text-gray-700 text-sm">Risultati ({filteredBooks.length})</h4>
                             </div>
+                            
+                            {/* Bulk Actions Bar */}
+                            {filteredBooks.length > 0 && (
+                                <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex flex-wrap items-center gap-3">
+                                    <span className="text-xs font-bold text-indigo-700">{selectedBooks.length} selezionati</span>
+                                    <button onClick={selectAllFilteredBooks} className="text-xs text-indigo-600 hover:underline">Seleziona tutti</button>
+                                    {selectedBooks.length > 0 && (
+                                        <>
+                                            <span className="text-indigo-300">|</span>
+                                            <select 
+                                                value={bulkMoveLocation} 
+                                                onChange={e => setBulkMoveLocation(e.target.value)}
+                                                className="md-input text-xs py-1"
+                                            >
+                                                <option value="">Sposta in...</option>
+                                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                            </select>
+                                            <button 
+                                                onClick={handleBulkMove}
+                                                disabled={!bulkMoveLocation || hasInTransitBooks(selectedBooks)}
+                                                className="md-btn md-btn-xs md-btn-raised bg-indigo-600 text-white disabled:opacity-50"
+                                            >
+                                                🚀 Sposta
+                                            </button>
+                                            <button onClick={clearSelection} className="text-xs text-indigo-600 hover:underline">Annulla</button>
+                                            {hasInTransitBooks(selectedBooks) && <span className="text-xs text-amber-600">⚠️ Alcuni libri sono in prestito</span>}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                            
                             <div className="divide-y divide-gray-100">
                                 {filteredBooks.map(b => {
                                     const activeLoan = loans.find(l => l.bookId === b.id);
@@ -604,15 +679,23 @@ const BookManager: React.FC = () => {
                                     return (
                                     <div key={b.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
                                         <div className="flex justify-between items-start gap-4">
-                                            <div className="flex-1">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
-                                                    <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black text-xs">#{b.bookNumber || '---'}</span>
-                                                    <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
-                                                </div>
+                                            <div className="flex items-start gap-3">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={selectedBooks.includes(b.id)}
+                                                    onChange={() => toggleBookSelection(b.id)}
+                                                    className="w-4 h-4 mt-2 accent-indigo-600"
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
+                                                        <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black text-xs">#{b.bookNumber || '---'}</span>
+                                                        <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
+                                                    </div>
                                                 <div className="text-sm text-gray-500 mt-2 flex flex-wrap gap-x-4 gap-y-1">
                                                     {b.authors && <span><span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider mr-1">Autori:</span> {b.authors}</span>}
                                                     {b.publisher && <span><span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider mr-1">Ed:</span> {b.publisher}</span>}
+                                                </div>
                                                 </div>
                                             </div>
                                             <div className="flex gap-1 shrink-0">
