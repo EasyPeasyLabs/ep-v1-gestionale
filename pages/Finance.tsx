@@ -15,6 +15,7 @@ import RefreshIcon from '../components/icons/RestoreIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 import CheckIcon from '../components/icons/CheckIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
+import StopIcon from '../components/icons/StopIcon';
 import TransactionForm from '../components/finance/TransactionForm';
 import InvoiceEditForm from '../components/finance/InvoiceEditForm';
 import QuoteForm from '../components/finance/QuoteForm';
