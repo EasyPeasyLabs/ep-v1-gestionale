@@ -660,14 +660,18 @@ export const fixIntegrityIssue = async (
     }
     else if (strategy === 'smart_link') {
         const enrId = issue.id.replace('health-', '');
-        // Use the passed targetTransactionId, or fallback to the first suggestion if not provided (legacy)
-        const transactionIdToLink = targetTransactionId || issue.suggestions?.[0]?.payload?.transactionId;
         
-        if (!transactionIdToLink) {
-            throw new Error("Nessuna transazione specificata per il collegamento automatico.");
+        // Check for transaction first
+        const transactionIdToLink = targetTransactionId || issue.suggestions?.[0]?.payload?.transactionId;
+        // Check for invoice
+        const suggestedInvoiceId = issue.suggestions?.[0]?.payload?.invoiceId;
+        const invoiceIdsToLink = targetInvoiceIds || (suggestedInvoiceId ? [suggestedInvoiceId] : []);
+        
+        if (!transactionIdToLink && invoiceIdsToLink.length === 0) {
+            throw new Error("Nessuna transazione o fattura specificata per il collegamento automatico.");
         }
         
-        await linkFinancialsToEnrollment(enrId, [], [transactionIdToLink], adjustment);
+        await linkFinancialsToEnrollment(enrId, invoiceIdsToLink, transactionIdToLink ? [transactionIdToLink] : [], adjustment);
     }
     else if (strategy === 'link') {
         const enrId = issue.id.replace('health-', '');
