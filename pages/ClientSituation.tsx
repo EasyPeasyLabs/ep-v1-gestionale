@@ -384,7 +384,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
 
                 // Potential Transactions (Matching amount or name)
                 const potTrans = transactions.filter(t => 
-                    (t.clientId === selectedClient.id || t.clientName === getClientName(selectedClient)) &&
+                    (t.clientName === getClientName(selectedClient)) &&
                     !t.relatedEnrollmentId && 
                     !t.isDeleted &&
                     (Math.abs(t.amount - balance) < 5 || (childLastName && t.description.toLowerCase().includes(childLastName)))
@@ -1302,7 +1302,6 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                             </div>
                         </div>
                     )}
-                    </div>
                 </div>
             )}
         </div>
