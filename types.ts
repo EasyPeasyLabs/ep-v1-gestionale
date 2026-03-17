@@ -650,6 +650,8 @@ export interface FiscalYear {
     status: 'OPEN' | 'CLOSED';
     closedAt?: string;
     closedBy?: string;
+    ignoredIssues?: string[];
+    oblivionNotes?: string;
     snapshot?: {
         totalRevenue: number;
         totalExpenses: number;
@@ -669,11 +671,13 @@ export interface AuditLog {
 }
 
 export interface IntegrityIssueSuggestion {
-    type?: 'smart_link' | 'manual';
+    type?: 'smart_link' | 'manual' | 'oblivion';
     label?: string;
+    reason?: string;
     payload?: {
         transactionId?: string;
         invoiceId?: string;
+        fiscalYearId?: string;
     };
     transactionDetails?: Transaction;
     invoices?: Invoice[];
