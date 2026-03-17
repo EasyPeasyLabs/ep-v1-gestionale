@@ -895,3 +895,62 @@ export const checkAndSetOverdueInvoices = async () => {
     });
     if (count > 0) await batch.commit();
 };
+
+// BULK GHOST PROMOTION: Promuove tutte le ghost proforma che hanno una corrispondenza con fatture reali
+export const promoteAllGhostInvoices = async (): Promise<{ promoted: number; details: string[] }> => {
+    const details: string[] = [];
+    
+    // 1. Find all ghost invoices that are already linked to enrollments
+    const ghostQuery = query(
+        collection(db, 'invoices'),
+        where('isGhost', '==', true),
+        where('relatedEnrollmentId', '!=', null)
+    );
+    const ghostSnap = await getDocs(ghostQuery);
+    
+    if (ghostSnap.empty) {
+        return { promoted: 0, details: ['Nessuna fattura ghost da promuovere.'] };
+    }
+    
+    const ghosts = ghostSnap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice));
+    let promoted = 0;
+    const batch = writeBatch(db);
+    
+    for (const ghost of ghosts) {
+        if (!ghost.relatedEnrollmentId || !ghost.totalAmount) continue;
+        
+        // 2. Find real invoices for same enrollment with same amount
+        const realQuery = query(
+            collection(db, 'invoices'),
+            where('relatedEnrollmentId', '==', ghost.relatedEnrollmentId),
+            where('isGhost', '==', false)
+        );
+        const realSnap = await getDocs(realQuery);
+        
+        for (const realDoc of realSnap.docs) {
+            const real = realDoc.data() as Invoice;
+            
+            // Check if amounts match (within 1 euro tolerance)
+            if (Math.abs((real.totalAmount || 0) - (ghost.totalAmount || 0)) < 1) {
+                // 3. Promote ghost to real invoice
+                batch.update(doc(db, 'invoices', ghost.id), {
+                    invoiceNumber: real.invoiceNumber,
+                    issueDate: real.issueDate,
+                    dueDate: real.dueDate,
+                    status: real.status || DocumentStatus.Sent,
+                    isGhost: false,
+                    notes: (ghost.notes || '') + ` [Promossa bulk a fattura reale: ${real.invoiceNumber}]`
+                });
+                promoted++;
+                details.push(`Promossa ${ghost.invoiceNumber} → ${real.invoiceNumber} (${real.totalAmount}€)`);
+                break; // Only promote once per ghost
+            }
+        }
+    }
+    
+    if (promoted > 0) {
+        await batch.commit();
+    }
+    
+    return { promoted, details };
+};

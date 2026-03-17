@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus, InvoiceGap, RentAnalysisResult, SubscriptionType } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken } from '../services/financeService';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, promoteAllGhostInvoices } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo, getSubscriptionTypes, updateCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -224,9 +224,22 @@ const FixWizard: React.FC<{
     const [loading, setLoading] = useState(false);
     const [strategy, setStrategy] = useState<'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion' | null>(null);
     const [date, setDate] = useState('');
+    const [ghostPromoting, setGhostPromoting] = useState(false);
+    const [ghostResult, setGhostResult] = useState<{ promoted: number; details: string[] } | null>(null);
     
     const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
 
+    const handlePromoteGhosts = async () => {
+        setGhostPromoting(true);
+        try {
+            const result = await promoteAllGhostInvoices();
+            setGhostResult(result);
+        } catch (e) {
+            alert("Errore durante la promozione: " + e);
+        } finally {
+            setGhostPromoting(false);
+        }
+    };
 
 
     useEffect(() => {
@@ -486,6 +499,49 @@ const FixWizard: React.FC<{
                                             )}
                                         </div>
                                     </div>
+                                </section>
+
+                                {/* BULK GHOST PROMOTION */}
+                                <section className="pt-10 border-t border-slate-100">
+                                    <h3 className="font-black text-amber-600 flex items-center gap-3 mb-6 uppercase tracking-widest text-xs">
+                                        <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xs">⚡</span>
+                                        Sanatoria Ghost Pro-Forma
+                                    </h3>
+                                    
+                                    {ghostResult ? (
+                                        <div className="p-6 bg-emerald-50 border-2 border-emerald-200 rounded-2xl animate-fade-in">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <span className="text-2xl">✅</span>
+                                                <div>
+                                                    <p className="font-black text-emerald-800">Promosse {ghostResult.promoted} fatture ghost</p>
+                                                    <p className="text-xs text-emerald-600">{ghostResult.details.length} operazioni eseguite</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-[10px] text-emerald-700 max-h-20 overflow-y-auto bg-white/50 p-2 rounded">
+                                                {ghostResult.details.map((d, i) => <div key={i}>{d}</div>)}
+                                            </div>
+                                            <button onClick={() => setGhostResult(null)} className="mt-3 text-xs font-bold text-emerald-700 underline">
+                                                Esegui un'altra sanatoria
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="p-6 bg-amber-50/50 border-2 border-dashed border-amber-200 rounded-2xl">
+                                            <p className="text-xs text-amber-800 font-medium mb-4">
+                                                Trova e promuove automaticamente tutte le fatture pro-forma (ghost) che hanno una corrispondenza con fatture reali dello stesso importo.
+                                            </p>
+                                            <button 
+                                                onClick={handlePromoteGhosts} 
+                                                disabled={ghostPromoting}
+                                                className="md-btn md-btn-raised bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200 px-6 py-3 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2"
+                                            >
+                                                {ghostPromoting ? (
+                                                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Elaborazione...</>
+                                                ) : (
+                                                    <>⚡ Promuovi Ghost Pro-Forma</>
+                                                )}
+                                            </button>
+                                        </div>
+                                    )}
                                 </section>
                             </div>
                         </div>
