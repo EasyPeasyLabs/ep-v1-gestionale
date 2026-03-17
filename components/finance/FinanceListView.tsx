@@ -126,9 +126,10 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
             const baseList = invoices.filter(i => !i.isDeleted);
             
             list = baseList.filter(i => {
-                // Filtro Anagrafico/Tab
+                // Filtro Anagrafico/Tab - Allow ghost when filter is active
+                const isGhostFilter = statusFilter === 'ghost';
                 const matchesTab = activeTab === 'invoices' 
-                    ? !i.isGhost 
+                    ? (isGhostFilter ? true : !i.isGhost) 
                     : (i.status === DocumentStatus.PendingSDI || i.status === DocumentStatus.SealedSDI || (i.sdiId && String(i.sdiId).trim().length > 0));
                 
                 if (!matchesTab) return false;
@@ -145,7 +146,11 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
             });
 
             if (statusFilter && activeTab === 'invoices') {
-                list = list.filter(i => i.status === statusFilter);
+                if (statusFilter === 'ghost') {
+                    list = list.filter(i => i.isGhost === true);
+                } else {
+                    list = list.filter(i => i.status === statusFilter);
+                }
             }
         }
         else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
@@ -348,6 +353,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                         {activeTab === 'invoices' && (
                             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
                                 <option value="">Tutti gli stati</option>
+                                <option value="ghost">Pro-Forma (Ghost)</option>
                                 <option value={DocumentStatus.Draft}>Bozza</option>
                                 <option value={DocumentStatus.Sent}>Inviata</option>
                                 <option value={DocumentStatus.Paid}>Pagata</option>
