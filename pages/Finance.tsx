@@ -216,12 +216,12 @@ const RentSyncModal: React.FC<{
 // ... [FixWizard Component - No changes here, kept for brevity] ...
 const FixWizard: React.FC<{
     issues: IntegrityIssue[];
-    onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string) => Promise<void>;
+    onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string) => Promise<void>;
     onClose: () => void;
 }> = ({ issues, onFix, onClose }) => {
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
-    const [strategy, setStrategy] = useState<'invoice' | 'cash' | 'link' | null>(null);
+    const [strategy, setStrategy] = useState<'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion' | null>(null);
     const [date, setDate] = useState('');
     
     const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
@@ -233,7 +233,7 @@ const FixWizard: React.FC<{
         }
     }, [activeIssue]);
 
-    const handleResolve = async (strat: 'invoice' | 'cash' | 'link') => {
+    const handleResolve = async (strat: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion') => {
         if (!activeIssue) return;
         setLoading(true);
         try {
@@ -280,26 +280,35 @@ const FixWizard: React.FC<{
             <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
                 {/* LISTA LATERALE */}
                 <div className={`w-full md:w-1/3 border-r bg-gray-50 overflow-y-auto ${activeIssue ? 'hidden md:block' : 'block'}`}>
-                    {issues.map((issue, idx) => (
-                        <div 
-                            key={issue.id} 
-                            onClick={() => setSelectedIndex(idx)}
-                            className={`p-4 border-b cursor-pointer transition-all ${selectedIndex === idx ? 'bg-white border-l-4 border-l-indigo-500 shadow-md z-10 relative' : 'border-l-4 border-l-transparent hover:bg-gray-100'}`}
-                        >
-                            <div className="flex justify-between items-start mb-2">
-                                <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded tracking-wider ${
-                                    issue.type === 'missing_invoice' ? 'bg-orange-100 text-orange-700' : 
-                                    issue.type === 'missing_transaction' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                                }`}>
-                                    {issue.type === 'missing_invoice' ? 'Manca Fattura' : issue.type === 'missing_transaction' ? 'Manca Incasso' : 'Discrepanza'}
-                                </span>
-                                <span className="text-xs text-gray-400 font-mono">{new Date(issue.date).toLocaleDateString()}</span>
+                    {issues.map((issue, idx) => {
+                        const hasOblivion = issue.suggestions?.some(s => s.type === 'oblivion');
+                        return (
+                            <div 
+                                key={issue.id} 
+                                onClick={() => setSelectedIndex(idx)}
+                                className={`p-4 border-b cursor-pointer transition-all ${selectedIndex === idx ? 'bg-white border-l-4 border-l-indigo-500 shadow-md z-10 relative' : 'border-l-4 border-l-transparent hover:bg-gray-100'} ${hasOblivion ? 'bg-rose-50' : ''}`}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded tracking-wider ${
+                                        issue.type === 'missing_invoice' ? 'bg-orange-100 text-orange-700' : 
+                                        issue.type === 'missing_transaction' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                                    }`}>
+                                        {issue.type === 'missing_invoice' ? 'Manca Fattura' : issue.type === 'missing_transaction' ? 'Manca Incasso' : 'Discrepanza'}
+                                        {hasOblivion && <span className="ml-2 text-[10px] font-semibold text-rose-700">(Oblio)</span>}
+                                    </span>
+                                    <span className="text-xs text-gray-400 font-mono">{new Date(issue.date).toLocaleDateString()}</span>
+                                </div>
+                                <h4 className="font-bold text-gray-800 text-sm mb-1 flex items-center justify-between gap-2">
+                                    <span>{issue.entityName}</span>
+                                    {hasOblivion && (
+                                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-rose-100 text-rose-700">Oblio</span>
+                                    )}
+                                </h4>
+                                <p className="text-xs text-gray-500 line-clamp-2 mb-2">{issue.description}</p>
+                                {issue.amount && <div className="text-right"><span className="font-mono text-sm font-black text-slate-700">{issue.amount.toFixed(2)}€</span></div>}
                             </div>
-                            <h4 className="font-bold text-gray-800 text-sm mb-1">{issue.entityName}</h4>
-                            <p className="text-xs text-gray-500 line-clamp-2 mb-2">{issue.description}</p>
-                            {issue.amount && <div className="text-right"><span className="font-mono text-sm font-black text-slate-700">{issue.amount.toFixed(2)}€</span></div>}
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* DETTAGLIO */}
@@ -316,7 +325,19 @@ const FixWizard: React.FC<{
                             </button>
                             
                             <h2 className="text-2xl font-bold text-gray-900 mb-6">Risoluzione Anomalia</h2>
-                            
+
+                            {activeIssue.suggestions?.some(s => s.type === 'oblivion') && (
+                                <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4">
+                                    <div className="flex items-start gap-3">
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-200 text-red-800 font-bold">!</span>
+                                        <div>
+                                            <div className="text-sm font-bold text-red-800">Esercizio fiscale chiuso</div>
+                                            <div className="text-xs text-red-700">Questa anomalia risale a un periodo già chiuso. Puoi scegliere di applicare l'oblio per non richiederne più la correzione.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 mb-8 shadow-sm">
                                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Dettagli Problema</h4>
                                 <p className="font-medium text-slate-800 text-lg mb-4">{activeIssue.description}</p>
@@ -339,7 +360,47 @@ const FixWizard: React.FC<{
                                     <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs">1</span>
                                     Scegli Azione Correttiva
                                 </h3>
-                                
+
+                                {activeIssue.suggestions && activeIssue.suggestions.length > 0 && (
+                                    <div className="space-y-3 bg-white border border-slate-200 rounded-xl p-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="text-sm font-bold text-slate-900">Suggerimenti Smart Match</div>
+                                            <span className="text-xs text-slate-500">Basato su AI (importo, data, cognome)</span>
+                                        </div>
+
+                                        <div className="space-y-2 mt-3">
+                                            {activeIssue.suggestions.map((suggestion, idx) => (
+                                                <div key={idx} className="p-3 rounded-lg border bg-slate-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-sm font-semibold text-slate-800">{suggestion.label || (suggestion.type === 'oblivion' ? 'Oblio' : 'Suggerimento')}</div>
+                                                        {suggestion.reason && <div className="text-xs text-slate-500 mt-1">{suggestion.reason}</div>}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        {suggestion.type === 'oblivion' && (
+                                                            <button
+                                                                onClick={() => handleResolve('oblivion')}
+                                                                className="md-btn md-btn-flat md-btn-danger"
+                                                                disabled={loading}
+                                                            >
+                                                                {loading ? '...' : 'Applica Oblio'}
+                                                            </button>
+                                                        )}
+                                                        {suggestion.type === 'smart_link' && (
+                                                            <button
+                                                                onClick={() => handleResolve('smart_link')}
+                                                                className="md-btn md-btn-primary"
+                                                                disabled={loading}
+                                                            >
+                                                                {loading ? '...' : 'Collega automaticamente'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {activeIssue.type === 'missing_invoice' && (
                                     <div className="space-y-3">
                                         <div 

@@ -5,7 +5,7 @@ import {
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     DocumentStatus, PaymentMethod, TransactionType, TransactionCategory, 
     Enrollment, InvoiceGap, IntegrityIssue, IntegrityIssueSuggestion, RentAnalysisResult, EnrollmentStatus, 
-    TransactionStatus, Lesson, Client, ClientType, ParentClient, InstitutionalClient 
+    TransactionStatus, Lesson, Client, ClientType, ParentClient, InstitutionalClient, FiscalYear 
 } from '../types';
 import { getLessons } from './calendarService';
 import { getSuppliers } from './supplierService';
@@ -485,9 +485,13 @@ export const runFinancialHealthCheck = async (
 ): Promise<IntegrityIssue[]> => {
     const issues: IntegrityIssue[] = [];
 
-    // Fetch quotes to resolve relatedQuoteNumber
-    const quotesSnap = await getDocs(collection(db, 'quotes'));
+    // 1. FETCH CONTEXT DATA
+    const [quotesSnap, fiscalSnap] = await Promise.all([
+        getDocs(collection(db, 'quotes')),
+        getDocs(collection(db, 'fiscal_years'))
+    ]);
     const quotes = quotesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quote));
+    const fiscalYears = fiscalSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FiscalYear));
 
     for (const enr of enrollments) {
         if (enr.status === EnrollmentStatus.Active && enr.price > 0) {
@@ -506,7 +510,18 @@ export const runFinancialHealthCheck = async (
             const paidTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted).reduce((s, t) => s + t.amount, 0);
             const totalPaid = paidInv + paidTrans + (enr.adjustmentAmount || 0);
             
-            const missingAmount = enr.price - totalPaid - ghostInv;
+            const missingAmount = enr.price - totalPaid - ghostInv - paidTrans;
+
+            // --- RESOLVE FISCAL STATUS ---
+            const enrDate = new Date(enr.startDate);
+            const enrYear = enrDate.getFullYear();
+            const fiscalYear = fiscalYears.find(fy => fy.year === enrYear);
+            const isClosed = fiscalYear?.status === 'CLOSED';
+
+            // --- CHECK IF ALREADY IGNORED (OBLIVION) ---
+            if (fiscalYear?.ignoredIssues?.includes(`health-${enr.id}`)) {
+                continue; // Skip if in oblivion
+            }
 
             // --- FIX: Resolve Parent Name ---
             const client = clients.find(c => c.id === enr.clientId);
@@ -523,21 +538,45 @@ export const runFinancialHealthCheck = async (
             // --------------------------------
 
             if (missingAmount > 5) { // 5 eur tolerance
-                // --- AI SMART MATCHING: Cerca transazioni orfane compatibili ---
+                const suggestions: IntegrityIssueSuggestion[] = [];
+
+                // --- AI SMART MATCHING: Multicriteria search ---
+                const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
+
                 const candidates = transactions.filter(t => 
                     !t.relatedEnrollmentId && 
                     !t.isDeleted &&
-                    Math.abs(t.amount - missingAmount) < 5 && // Importo compatibile
-                    // Controllo temporale (entro 45 giorni)
-                    Math.abs((new Date(t.date).getTime() - new Date(enr.startDate).getTime()) / (1000 * 3600 * 24)) < 45
+                    // Temporal Check (+/- 60 days)
+                    Math.abs((new Date(t.date).getTime() - enrDate.getTime()) / (1000 * 3600 * 24)) < 60 &&
+                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match)
+                    (Math.abs(t.amount - missingAmount) < 15 || (childLastName && t.description.toLowerCase().includes(childLastName)))
                 );
 
-                const suggestions: IntegrityIssueSuggestion[] = candidates.map(t => ({
-                    type: 'smart_link',
-                    label: `Collega Transazione trovata: ${t.description} (${t.amount}€ del ${t.date})`,
-                    payload: { transactionId: t.id }
-                }));
-                // -------------------------------------------------------------
+                candidates.forEach(t => {
+                    const isPerfectAmount = Math.abs(t.amount - missingAmount) < 5;
+                    const hasCausalMatch = childLastName && t.description.toLowerCase().includes(childLastName);
+                    
+                    let label = `Collega Transazione: ${t.description} (${t.amount}€ del ${t.date})`;
+                    if (isPerfectAmount && hasCausalMatch) label = `⭐ MATCH ECCELLENTE: ${t.description} (${t.amount}€)`;
+                    else if (hasCausalMatch) label = `👤 Corrispondenza Cognome: ${t.description} (${t.amount}€)`;
+                    else if (isPerfectAmount) label = `💰 Corrispondenza Importo: ${t.description} (${t.date})`;
+
+                    suggestions.push({
+                        type: 'smart_link',
+                        label: label,
+                        payload: { transactionId: t.id }
+                    });
+                });
+
+                // --- OBLIVION OPTION (Only for Closed Years) ---
+                if (isClosed) {
+                    suggestions.push({
+                        type: 'oblivion',
+                        label: `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)`,
+                        reason: `L'anomalia risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.`,
+                        payload: { fiscalYearId: fiscalYear?.id }
+                    });
+                }
 
                 issues.push({
                     id: `health-${enr.id}`,
@@ -577,7 +616,7 @@ export const runFinancialHealthCheck = async (
 
 export const fixIntegrityIssue = async (
     issue: IntegrityIssue, 
-    strategy: 'invoice' | 'cash' | 'link' | 'smart_link', // Added smart_link
+    strategy: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', // Added smart_link + oblivion
     manualNum?: string, 
     targetInvoiceIds?: string[], 
     adjustment?: { amount: number, notes: string }, 
@@ -596,7 +635,29 @@ export const fixIntegrityIssue = async (
     // 2. STRATEGY EXECUTION
     const finalDate = forceDate || issue.date; // Use override if present, else original
 
-    if (strategy === 'smart_link') {
+    if (strategy === 'oblivion') {
+        const fyId = issue.suggestions?.[0]?.payload?.fiscalYearId;
+        const reason = issue.suggestions?.[0]?.reason || "Oblio applicato manualmente.";
+        
+        if (!fyId) throw new Error("ID Esercizio Fiscale non trovato per l'oblio.");
+
+        const fyRef = doc(db, 'fiscal_years', fyId);
+        const fySnap = await getDoc(fyRef);
+        
+        if (fySnap.exists()) {
+            const data = fySnap.data() as FiscalYear;
+            const updatedIgnored = [...(data.ignoredIssues || []), issue.id];
+            const timestamp = new Date().toLocaleString('it-IT');
+            const newNote = `\n[${timestamp}] Oblio per "${issue.description}": ${reason}`;
+            const updatedNotes = (data.oblivionNotes || "") + newNote;
+
+            await updateDoc(fyRef, {
+                ignoredIssues: updatedIgnored,
+                oblivionNotes: updatedNotes
+            });
+        }
+    }
+    else if (strategy === 'smart_link') {
         const enrId = issue.id.replace('health-', '');
         // Extract transaction ID from the first suggestion payload
         const smartTransactionId = issue.suggestions?.[0]?.payload?.transactionId;

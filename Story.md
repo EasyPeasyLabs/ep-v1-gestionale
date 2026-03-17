@@ -148,6 +148,7 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Zero-Dependency Date Engine:** Eliminazione della dipendenza esterna instabile `date-fns`. Il sistema ora utilizza helper nativi JavaScript ultra-leggeri per la gestione delle date e della formattazione locale (italiano), rimuovendo il rischio di errori "module not found" in fase di compilazione server-side.
     - **Icon Wrapper Strategy:** Implementazione di componenti wrapper per le icone locali. Questa soluzione ha permesso di utilizzare gli asset grafici esistenti come sostituti diretti delle icone Lucide, mantenendo intatto il design system Tailwind e risolvendo gli errori di prop-types (`className`).
     - **Final Build Success:** Validazione finale tramite compilazione `tsc` pulita, che garantisce il deploy automatico e stabile su Vercel per tutti i rami dell'ecosistema.
+    - **Fiscal Doctor UI (Oblio & Smart Match):** Il Fiscal Doctor ora mostra suggerimenti AI direttamente nell'interfaccia (⭐ MATCH ECCELLENTE, 👤 Corrispondenza Cognome) e permette di applicare l'Oblio per esercizi chiusi con un click.
 
 ---
 
@@ -163,3 +164,59 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
 *Documentazione aggiornata al 16 Marzo 2026 (Notte).*
+
+---
+
+# Prosegui da qui: Evoluzione Fiscal Doctor (Oblio & AI Matching)
+
+## 1. Ultima Richiesta Utente
+> **Obiettivo:** Rendere il Fiscal Doctor meno rigido e più "umano".
+> **A. Matching Multicriterio (AI):** Identificare transazioni potenziali basandosi su:
+>   - *Temporale:* Date prossime (+/- 60gg).
+>   - *Economico:* Importi simili (+/- 15€).
+>   - *Causale:* Corrispondenza cognome allievo/genitore.
+> **B. Diritto all'Oblio:** Per anomalie risalenti a esercizi fiscali **CHIUSI**:
+>   - Proporre l'azione "Ignora/Oblio".
+>   - Non richiedere riconciliazione forzata.
+>   - Salvare una nota permanente nell'Esercizio Fiscale chiuso e smettere di segnalare l'anomalia.
+
+## 2. Stato Avanzamento Lavori (Backend & Tipi)
+**✅ Completato:**
+1.  **`types.ts`**: Aggiornate interfacce `FiscalYear` (campi `ignoredIssues`, `oblivionNotes`) e `IntegrityIssueSuggestion` (tipo `oblivion`, `reason`, payload `fiscalYearId`).
+2.  **`services/financeService.ts` - `runFinancialHealthCheck`**:
+    *   Implementato recupero `fiscal_years`.
+    *   Aggiunto filtro iniziale: se l'issue è in `ignoredIssues`, viene saltata.
+    *   Implementato **AI Smart Matching** (Controllo importo fuzzy, controllo data, controllo cognome nella descrizione).
+    *   Implementata logica **Oblio**: se l'anno è `CLOSED`, aggiunge un suggerimento speciale di tipo `oblivion`.
+3.  **`services/financeService.ts` - `fixIntegrityIssue`**:
+    *   Implementata la strategia `oblivion`: aggiorna il documento `fiscal_years` aggiungendo l'ID anomalia e la nota di audit.
+
+## 3. Da Fare (Domani)
+Ci siamo fermati durante l'analisi del componente UI `FixWizard` in `pages/Finance.tsx`.
+
+**Prossimi Passi:**
+1.  **Aggiornamento UI (`pages/Finance.tsx`):**
+    *   Modificare `FixWizard` per gestire il rendering dei suggerimenti di tipo `oblivion`.
+    *   Mostrare un blocco distinto (es. "Esercizio Chiuso: Azione Consigliata") se è presente un suggerimento di oblio.
+    *   Collegare il click sul suggerimento alla funzione `onFix(..., 'oblivion')`.
+    *   Gestire visualmente i nuovi suggerimenti "Smart Match" (che ora hanno label più descrittive come "⭐ MATCH ECCELLENTE" o "👤 Corrispondenza Cognome").
+2.  **Verifica Compilazione:**
+    *   Eseguire `npx tsc --noEmit` per assicurarsi che le modifiche ai tipi in `Finance.tsx` siano corrette.
+3.  **Chiusura:**
+    *   Aggiornare `Story.md`.
+    *   Eseguire Git Push.
+
+## 4. Note Tecniche
+*   Il file `pages/Finance.tsx` è stato letto fino alla riga 350 circa. La definizione di `FixWizard` inizia alla riga 217. Bisogna riprendere la modifica da lì.
+
+---
+
+## 5. Interventi Eseguiti (Claude Haiku 4.5 - 17.03.2026 10:15)
+- Esteso `FixWizard` per gestire suggerimenti di tipo `oblivion` e `smart_link`.
+- Aggiunta UI per mostrare il badge “Esercizio fiscale chiuso” e la possibilità di applicare l’oblio direttamente dalla vista anomalia.
+- Aggiornata la lista laterale per evidenziare (badge + sfondo) le anomalie che hanno suggerimenti `oblivion`, rendendole immediatamente riconoscibili.
+- Aggiunto un badge testuale `(Oblio)` accanto al tipo di anomalia (es. “Manca Fattura (Oblio)”).
+- Verificata compilazione TypeScript con `npx tsc --noEmit` (esito: OK).
+
+---
+
