@@ -510,7 +510,7 @@ export const runFinancialHealthCheck = async (
             const paidTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted).reduce((s, t) => s + t.amount, 0);
             const totalPaid = paidInv + paidTrans + (enr.adjustmentAmount || 0);
             
-            const missingAmount = enr.price - totalPaid - ghostInv - paidTrans;
+            const missingAmount = enr.price - totalPaid - ghostInv;
 
             // --- RESOLVE FISCAL STATUS ---
             const enrDate = new Date(enr.startDate);
