@@ -226,15 +226,19 @@ const FixWizard: React.FC<{
     
     const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
 
+    console.log(`[FixWizard] Rendered with ${issues.length} issues`, issues.map(i => ({ id: i.id, suggestions: i.suggestions?.length || 0 })));
+
     useEffect(() => {
         if (activeIssue) {
             setStrategy(null);
             setDate(new Date().toISOString().split('T')[0]);
+            console.log(`[FixWizard] Active issue: ${activeIssue.id}`, activeIssue.suggestions);
         }
     }, [activeIssue]);
 
     const handleResolve = async (strat: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion') => {
         if (!activeIssue) return;
+        console.log(`[FixWizard] Resolving issue ${activeIssue.id} with strategy: ${strat}`);
         setLoading(true);
         try {
             await onFix(activeIssue, strat, undefined, undefined, undefined, undefined, date);

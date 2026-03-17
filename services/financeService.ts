@@ -578,6 +578,22 @@ export const runFinancialHealthCheck = async (
                     });
                 }
 
+                // DEBUG: Force add test suggestions if no real ones found
+                if (suggestions.length === 0) {
+                    console.log(`[FiscalDoctor] No real suggestions for ${enr.childName}, adding test ones`);
+                    suggestions.push({
+                        type: 'smart_link',
+                        label: `💰 Test Match: Pagamento di ${missingAmount.toFixed(2)}€`,
+                        payload: { transactionId: 'test-transaction-id' }
+                    });
+                    suggestions.push({
+                        type: 'oblivion',
+                        label: `🚫 Test Oblio (Esercizio ${enrYear} Chiuso)`,
+                        reason: `Test: L'anomalia risale al ${enrYear}.`,
+                        payload: { fiscalYearId: 'test-fiscal-year-id' }
+                    });
+                }
+
                 issues.push({
                     id: `health-${enr.id}`,
                     type: 'missing_invoice',
@@ -590,6 +606,9 @@ export const runFinancialHealthCheck = async (
                     amount: missingAmount,
                     suggestions: suggestions // AI Suggestions
                 });
+
+                // DEBUG: Log anomalia generata
+                console.log(`[FiscalDoctor] Generated issue for ${enr.childName}: missingAmount=${missingAmount}, suggestions=${suggestions.length}`, suggestions);
             }
 
             // Check for overdue ghost invoices (Pro-forma scadute)
