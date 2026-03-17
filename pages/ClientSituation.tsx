@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo } from '../types';
+import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo, IntegrityIssue, IntegrityIssueSuggestion } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
-import { getTransactions, getInvoices } from '../services/financeService';
+import { getTransactions, getInvoices, fixIntegrityIssue } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo } from '../services/settingsService';
 import Spinner from '../components/Spinner';
@@ -55,6 +55,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     
     // Selected Context
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+    const [fixingId, setFixingId] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -81,6 +82,38 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    const handleQuickFix = async (enrollmentId: string, suggestion: IntegrityIssueSuggestion) => {
+        setFixingId(`${enrollmentId}-${suggestion.type}`);
+        try {
+            const issue: IntegrityIssue = {
+                id: `health-${enrollmentId}`,
+                type: 'missing_invoice',
+                date: new Date().toISOString(),
+                description: 'Riconciliazione Rapida',
+                entityName: '',
+                subscriptionName: '',
+                amount: 0,
+                suggestions: [suggestion]
+            };
+
+            await fixIntegrityIssue(
+                issue, 
+                suggestion.type as any, 
+                undefined, 
+                suggestion.payload?.invoiceId ? [suggestion.payload.invoiceId] : undefined, 
+                undefined, 
+                suggestion.payload?.transactionId
+            );
+            
+            // Refresh data
+            await fetchData();
+        } catch (e) {
+            alert("Errore nella riconciliazione: " + e);
+        } finally {
+            setFixingId(null);
+        }
+    };
 
     // Handle deep linking via initialParams
     useEffect(() => {
@@ -300,14 +333,16 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         const rows = clientEnrollments.map(enr => {
             const linkedInvoices = invoices.filter(i => 
                 i.relatedEnrollmentId === enr.id && 
-                !i.isDeleted &&
-                isDateInPeriod(i.issueDate, filterYear, filterMonth)
+                !i.isDeleted
             );
             const linkedTrans = transactions.filter(t => 
                 t.relatedEnrollmentId === enr.id && 
-                !t.isDeleted &&
-                isDateInPeriod(t.date, filterYear, filterMonth)
+                !t.isDeleted
             );
+
+            const totalDue = Number(enr.price) || 0;
+            const totalPaid = linkedTrans.reduce((s, t) => s + Number(t.amount), 0) + (Number(enr.adjustmentAmount) || 0);
+            const balance = totalDue - totalPaid;
 
             // Calculate Attendance Stats for this enrollment
             let presences = 0;
@@ -324,12 +359,53 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                     }
                 });
             }
+
+            // --- AI SUGGESTIONS FOR RECONCILIATION ---
+            const suggestions: IntegrityIssueSuggestion[] = [];
+            if (balance > 5) {
+                // Search in orphans for this client
+                const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
+                
+                // Potential Invoices (Matching amount)
+                const potInvoices = invoices.filter(i => 
+                    i.clientId === selectedClient.id && 
+                    !i.relatedEnrollmentId && 
+                    !i.isDeleted &&
+                    Math.abs(i.totalAmount - balance) < 5
+                );
+
+                potInvoices.forEach(inv => {
+                    suggestions.push({
+                        type: 'smart_link',
+                        label: `Collega Fattura ${inv.invoiceNumber} (${inv.totalAmount}€)`,
+                        payload: { invoiceId: inv.id }
+                    });
+                });
+
+                // Potential Transactions (Matching amount or name)
+                const potTrans = transactions.filter(t => 
+                    (t.clientId === selectedClient.id || t.clientName === getClientName(selectedClient)) &&
+                    !t.relatedEnrollmentId && 
+                    !t.isDeleted &&
+                    (Math.abs(t.amount - balance) < 5 || (childLastName && t.description.toLowerCase().includes(childLastName)))
+                );
+
+                potTrans.forEach(trs => {
+                    suggestions.push({
+                        type: 'smart_link',
+                        label: `Collega Pagamento: ${trs.description} (${trs.amount}€)`,
+                        payload: { transactionId: trs.id }
+                    });
+                });
+            }
             
             return {
                 enrollment: enr,
                 invoices: linkedInvoices,
                 transactions: linkedTrans,
-                stats: { presences, absences, recoveries }
+                stats: { presences, absences, recoveries },
+                balance,
+                suggestions
             };
         });
 
@@ -1077,17 +1153,21 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                             <div key={idx} className="border-b last:border-0 border-gray-100">
                                 <div className="bg-gray-50 p-3 flex justify-between items-center">
                                     <span className="font-bold text-gray-700">{row.enrollment.subscriptionName}</span>
-                                    <span className="text-xs font-mono">{Number(row.enrollment.price).toFixed(2)}€</span>
+                                    <span className="text-xs font-mono font-black">{Number(row.enrollment.price).toFixed(2)}€</span>
                                 </div>
                                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {/* FIRST COLUMN: TRANSACTIONS */}
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Transazioni (Cassa)</p>
-                                        {row.transactions.map(t => (
-                                            <div key={t.id} className="text-xs flex justify-between mb-1">
-                                                <span>{new Date(t.date).toLocaleDateString()}</span>
-                                                <span className="font-bold">{t.amount.toFixed(2)}€</span>
-                                            </div>
-                                        ))}
+                                        <div className="space-y-1.5">
+                                            {row.transactions.map(t => (
+                                                <div key={t.id} className="text-[11px] flex justify-between p-2 bg-slate-50 rounded border border-slate-100">
+                                                    <span className="text-slate-500">{new Date(t.date).toLocaleDateString()}</span>
+                                                    <span className="font-bold text-slate-700">{t.amount.toFixed(2)}€</span>
+                                                </div>
+                                            ))}
+                                            {row.transactions.length === 0 && <p className="text-[10px] text-slate-300 italic">Nessun pagamento collegato.</p>}
+                                        </div>
                                     </div>
                                     
                                     {/* MIDDLE COLUMN: INVOICES + MONITORING */}
@@ -1096,15 +1176,15 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                         <div className="space-y-3">
                                             {/* Invoices List */}
                                             {row.invoices.map(i => (
-                                                <div key={i.id} className="text-xs flex justify-between mb-1">
+                                                <div key={i.id} className="text-[11px] flex justify-between p-2 bg-indigo-50/30 rounded border border-indigo-100">
                                                     <div>
-                                                        <span className="font-mono font-bold mr-2">{i.invoiceNumber}</span>
-                                                        <span className="text-gray-400 text-[10px]">{new Date(i.issueDate).toLocaleDateString()}</span>
+                                                        <span className="font-mono font-bold mr-2 text-indigo-700">{i.invoiceNumber}</span>
+                                                        <span className="text-slate-400 text-[10px]">{new Date(i.issueDate).toLocaleDateString()}</span>
                                                     </div>
-                                                    <span className="font-bold">{i.totalAmount.toFixed(2)}€</span>
+                                                    <span className="font-black text-indigo-900">{i.totalAmount.toFixed(2)}€</span>
                                                 </div>
                                             ))}
-                                            
+
                                             {/* Monitoring Badge */}
                                             <div className="flex gap-2 border-t border-dashed border-gray-200 pt-2">
                                                 <div className="flex-1 bg-green-50 text-green-700 text-center rounded border border-green-100 p-1">
@@ -1123,11 +1203,105 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                         </div>
                                     </div>
 
-                                    {/* OPTIONAL THIRD COLUMN: NOTES/DETAILS IF NEEDED or SPACING */}
+                                    {/* THIRD COLUMN: BALANCE & AI FISCAL DOCTOR */}
+                                    <div className="bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200 flex flex-col justify-center">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Stato Pagamento</p>
+                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.balance <= 0.01 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                {row.balance <= 0.01 ? 'SALDATA' : 'SCOPERTA'}
+                                            </span>
+                                        </div>
+
+                                        <div className="text-center mb-4">
+                                            <p className={`text-2xl font-black ${row.balance > 0.01 ? 'text-red-600' : 'text-green-600'}`}>
+                                                {row.balance > 0.01 ? `-${row.balance.toFixed(2)}€` : `${Math.abs(row.balance).toFixed(2)}€`}
+                                            </p>
+                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Saldo Residuo</p>
+                                        </div>
+
+                                        {/* AI SUGGESTIONS SECTION */}
+                                        {row.suggestions && row.suggestions.length > 0 && (
+                                            <div className="space-y-2 animate-fade-in">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></div>
+                                                    <p className="text-[9px] font-black text-indigo-600 uppercase tracking-tighter">Fiscal Doctor AI Suggestion</p>
+                                                </div>
+                                                {row.suggestions.map((sug, sIdx) => (
+                                                    <button
+                                                        key={sIdx}
+                                                        onClick={() => handleQuickFix(row.enrollment.id, sug)}
+                                                        disabled={fixingId === `${row.enrollment.id}-${sug.type}`}
+                                                        className="w-full text-left p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-bold shadow-lg shadow-indigo-100 transition-all flex justify-between items-center group"
+                                                    >
+                                                        <span className="line-clamp-1 mr-2 italic text-[9px]">⭐ {sug.label}</span>
+                                                        {fixingId === `${row.enrollment.id}-${sug.type}` ? (
+                                                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                                        ) : (
+                                                            <span className="bg-white/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-widest">FIX</span>
+                                                        )}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {row.balance > 5 && row.suggestions.length === 0 && (
+                                            <div className="p-3 bg-red-50/50 rounded-xl border border-red-100 text-center">
+                                                <p className="text-[9px] text-red-600 font-bold leading-tight">Nessuna transazione orfana trovata per questo importo.</p>
+                                                <p className="text-[8px] text-slate-400 mt-1 uppercase">Verifica sezione Finanze</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
-                        {clientFinancials?.rows.length === 0 && <p className="p-6 text-center text-gray-400 italic">Nessuna iscrizione o movimento nel periodo selezionato.</p>}
+                        {clientFinancials && clientFinancials.rows.length === 0 && (
+                            <div className="p-20 text-center text-gray-400 italic bg-gray-50/50">
+                                Nessun dato finanziario trovato per questo periodo.
+                            </div>
+                        )}
+                    </div>
+
+                    {/* ORPHANS LISTING: Visual confirmation of what's unlinked */}
+                    {clientFinancials && (clientFinancials.orphanInvoices.length > 0 || clientFinancials.orphanTrans.length > 0) && (
+                        <div className="bg-amber-50/50 p-6 rounded-2xl border-2 border-dashed border-amber-200 shadow-sm animate-fade-in">
+                            <h4 className="text-[11px] font-black text-amber-800 uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                                <span className="w-6 h-6 bg-amber-500 text-white rounded-lg flex items-center justify-center text-xs shadow-md shadow-amber-200">!</span>
+                                Documenti Orfani (Non assegnati ad iscrizioni)
+                            </h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <p className="text-[10px] font-bold text-amber-600 uppercase mb-3 ml-1">Fatture Orfane</p>
+                                    <div className="space-y-2">
+                                        {clientFinancials.orphanInvoices.map(i => (
+                                            <div key={i.id} className="bg-white p-3 rounded-xl border border-amber-100 text-xs flex justify-between items-center shadow-sm">
+                                                <div>
+                                                    <p className="font-bold text-amber-900">{i.invoiceNumber}</p>
+                                                    <p className="text-gray-400 text-[10px]">{new Date(i.issueDate).toLocaleDateString()}</p>
+                                                </div>
+                                                <span className="font-black text-amber-700">{i.totalAmount.toFixed(2)}€</span>
+                                            </div>
+                                        ))}
+                                        {clientFinancials.orphanInvoices.length === 0 && <p className="text-[10px] text-amber-400 italic ml-1">Nessuna fattura orfana.</p>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-bold text-amber-600 uppercase mb-3 ml-1">Pagamenti Orfani</p>
+                                    <div className="space-y-2">
+                                        {clientFinancials.orphanTrans.map(t => (
+                                            <div key={t.id} className="bg-white p-3 rounded-xl border border-amber-100 text-xs flex justify-between items-center shadow-sm">
+                                                <div>
+                                                    <p className="font-bold text-amber-900 line-clamp-1">{t.description}</p>
+                                                    <p className="text-gray-400 text-[10px]">{new Date(t.date).toLocaleDateString()}</p>
+                                                </div>
+                                                <span className="font-black text-amber-700">{t.amount.toFixed(2)}€</span>
+                                            </div>
+                                        ))}
+                                        {clientFinancials.orphanTrans.length === 0 && <p className="text-[10px] text-amber-400 italic ml-1">Nessun pagamento orfano.</p>}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     </div>
                 </div>
             )}
