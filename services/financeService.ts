@@ -672,10 +672,51 @@ export const fixIntegrityIssue = async (
         }
         
         await linkFinancialsToEnrollment(enrId, invoiceIdsToLink, transactionIdToLink ? [transactionIdToLink] : [], adjustment);
+        
+        // Cleanup: Find and delete ghost invoices for this enrollment
+        // (These were auto-created pro-forma that are now replaced by real invoices)
+        if (invoiceIdsToLink.length > 0) {
+            const ghostQuery = query(
+                collection(db, 'invoices'),
+                where('relatedEnrollmentId', '==', enrId),
+                where('isGhost', '==', true)
+            );
+            const ghostSnap = await getDocs(ghostQuery);
+            if (!ghostSnap.empty) {
+                const batch = writeBatch(db);
+                ghostSnap.docs.forEach(gDoc => {
+                    batch.update(doc(db, 'invoices', gDoc.id), { 
+                        isDeleted: true,
+                        notes: (gDoc.data().notes || '') + ' [Sostituita da fattura reale]'
+                    });
+                });
+                await batch.commit();
+            }
+        }
     }
     else if (strategy === 'link') {
         const enrId = issue.id.replace('health-', '');
         await linkFinancialsToEnrollment(enrId, targetInvoiceIds || [], targetTransactionId ? [targetTransactionId] : [], adjustment);
+        
+        // Cleanup: Find and delete ghost invoices for this enrollment
+        if (targetInvoiceIds && targetInvoiceIds.length > 0) {
+            const ghostQuery = query(
+                collection(db, 'invoices'),
+                where('relatedEnrollmentId', '==', enrId),
+                where('isGhost', '==', true)
+            );
+            const ghostSnap = await getDocs(ghostQuery);
+            if (!ghostSnap.empty) {
+                const batch = writeBatch(db);
+                ghostSnap.docs.forEach(gDoc => {
+                    batch.update(doc(db, 'invoices', gDoc.id), { 
+                        isDeleted: true,
+                        notes: (gDoc.data().notes || '') + ' [Sostituita da fattura reale]'
+                    });
+                });
+                await batch.commit();
+            }
+        }
     } 
     else if (strategy === 'cash') {
         // Create Transaction
