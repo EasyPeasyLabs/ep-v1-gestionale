@@ -307,6 +307,8 @@ const BookManager: React.FC = () => {
     const [filterCategory, setFilterCategory] = useState('');
     const [filterTheme, setFilterTheme] = useState('');
     const [filterLocation, setFilterLocation] = useState('');
+    const [sortBy, setSortBy] = useState<'bookNumber' | 'title' | 'authors' | 'publisher'>('title');
+    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -343,7 +345,7 @@ const BookManager: React.FC = () => {
     const allThemeTags = useMemo(() => Array.from(new Set(books.flatMap(b => b.themeTags || []))).sort(), [books]);
 
     const filteredBooks = useMemo(() => {
-        return books.filter(b => {
+        const filtered = books.filter(b => {
             // Text search
             if (invSearch) {
                 const term = invSearch.toLowerCase();
@@ -369,7 +371,38 @@ const BookManager: React.FC = () => {
             
             return true;
         });
-    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation]);
+        
+        // Sort
+        const sorted = [...filtered].sort((a, b) => {
+            let aVal: any, bVal: any;
+            switch (sortBy) {
+                case 'bookNumber':
+                    aVal = (a.bookNumber || '').toLowerCase();
+                    bVal = (b.bookNumber || '').toLowerCase();
+                    break;
+                case 'title':
+                    aVal = a.title.toLowerCase();
+                    bVal = b.title.toLowerCase();
+                    break;
+                case 'authors':
+                    aVal = (a.authors || '').toLowerCase();
+                    bVal = (b.authors || '').toLowerCase();
+                    break;
+                case 'publisher':
+                    aVal = (a.publisher || '').toLowerCase();
+                    bVal = (b.publisher || '').toLowerCase();
+                    break;
+                default:
+                    aVal = a.title.toLowerCase();
+                    bVal = b.title.toLowerCase();
+            }
+            if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+            if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+            return 0;
+        });
+        
+        return sorted;
+    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation, sortBy, sortDir]);
 
     // Actions
     const handleCheckout = async () => {
@@ -536,6 +569,25 @@ const BookManager: React.FC = () => {
                                     <option value="">Tutte le Ubicazioni</option>
                                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                 </select>
+                            </div>
+                            
+                            {/* Ordinamento */}
+                            <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
+                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ordina per:</span>
+                                <div className="flex gap-2">
+                                    <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} className="md-input text-xs py-1.5">
+                                        <option value="bookNumber">Numero</option>
+                                        <option value="title">Titolo</option>
+                                        <option value="authors">Autore</option>
+                                        <option value="publisher">Editore</option>
+                                    </select>
+                                    <button 
+                                        onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
+                                        className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 transition-colors ${sortDir === 'asc' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-orange-50 border-orange-200 text-orange-700'}`}
+                                    >
+                                        {sortDir === 'asc' ? 'A-Z ↑' : 'Z-A ↓'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                         
