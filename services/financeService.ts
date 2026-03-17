@@ -515,8 +515,8 @@ export const runFinancialHealthCheck = async (
             // --- RESOLVE FISCAL STATUS ---
             const enrDate = new Date(enr.startDate);
             const enrYear = enrDate.getFullYear();
-            const fiscalYear = fiscalYears.find(fy => fy.year === enrYear);
-            const isClosed = fiscalYear?.status === 'CLOSED';
+            const fiscalYear = fiscalYears.find(fy => Number(fy.year) === enrYear);
+            const isClosed = fiscalYear?.status === 'CLOSED' || String(fiscalYear?.status).toUpperCase() === 'CLOSED';
 
             // --- CHECK IF ALREADY IGNORED (OBLIVION) ---
             if (fiscalYear?.ignoredIssues?.includes(`health-${enr.id}`)) {

@@ -1147,6 +1147,14 @@ const EnrollmentPortal: React.FC = () => {
                       <p className="font-bold text-lg text-blue-900 uppercase">
                         {subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.name.split('.').pop() || 'Abbonamento'}
                       </p>
+                      <p className="text-sm font-bold text-gray-600">
+                        {(() => {
+                          const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
+                          const basePrice = sub?.price || 0;
+                          const hasStamp = basePrice >= 77;
+                          return (<>Base: {basePrice}€ {hasStamp && <span className="text-amber-600"> (+2€ bollo)</span>}</>);
+                        })()}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Data Prima Lezione</span>
