@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for EP v.1",
   "scripts": {
-    "compile": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js",
+    "compile": "esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:firebase-admin --external:firebase-functions --external:googleapis --external:nodemailer",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
