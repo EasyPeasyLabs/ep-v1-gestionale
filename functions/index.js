@@ -174,6 +174,33 @@ exports.receiveLead = onRequest(
 
       console.log(`[API] Lead ricevuto e salvato con ID: ${docRef.id}`);
 
+      // --- NUOVO: NOTIFICA PUSH IMMEDIATA ---
+      try {
+        const tokensSnapshot = await db.collection("fcm_tokens").get();
+        const tokens = [];
+        tokensSnapshot.forEach(doc => { if (data.token || doc.data().token) tokens.push(doc.data().token || data.token); });
+
+        if (tokens.length > 0) {
+          const messageBody = `Nuovo lead da ${leadDoc.nome} ${leadDoc.cognome} per ${leadDoc.selectedLocation}`;
+          const messages = tokens.map(token => ({
+            token: token,
+            notification: {
+              title: "Nuovo Lead Ricevuto!",
+              body: messageBody,
+            },
+            data: { link: "/leads", leadId: docRef.id },
+            webpush: {
+              fcmOptions: { link: "https://ep-v1-gestionale.vercel.app/leads" }
+            }
+          }));
+          await messaging.sendEach(messages);
+          console.log(`[API] Notifiche push inviate a ${tokens.length} dispositivi.`);
+        }
+      } catch (pushErr) {
+        console.error("[API] Errore invio notifica push immediata:", pushErr);
+      }
+      // --------------------------------------
+
       // 7. Risposta al mittente
       return res.status(200).json({
         success: true,
