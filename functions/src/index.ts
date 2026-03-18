@@ -963,6 +963,50 @@ export const receiveLeadV2 = onRequest({
         const data = req.body;
         const db = admin.firestore();
 
+        // --- VALIDAZIONE INPUT ---
+        const email = data.email || data.parentEmail || "";
+        const childName = data.childName || "";
+        
+        if (!email || !childName) {
+            res.status(400).json({ error: "Email genitore e nome figlio sono obbligatori" });
+            return;
+        }
+
+        // --- IDEMPOTENCY CHECK ---
+        // Verifica se esiste giÃ  un lead recente con stesso email + childName
+        // per evitare duplicati da doppio trigger delle Cloud Functions in Project B
+        // Check also originalId from Project B if present
+        const originalId = data.originalId;
+        
+        if (originalId) {
+            const existingByOriginalId = await db.collection("incoming_leads")
+                .where("originalId", "==", originalId)
+                .limit(1)
+                .get();
+            
+            if (!existingByOriginalId.empty) {
+                const existingId = existingByOriginalId.docs[0].id;
+                logger.info(`Duplicate lead detected by originalId: ${originalId}, returning existing: ${existingId}`);
+                res.status(200).json({ success: true, referenceId: existingId, duplicate: true });
+                return;
+            }
+        }
+
+        const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000);
+        const existingLead = await db.collection("incoming_leads")
+            .where("email", "==", email.toLowerCase())
+            .where("childName", "==", childName)
+            .where("createdAt", ">", sixHoursAgo.toISOString())
+            .limit(1)
+            .get();
+
+        if (!existingLead.empty) {
+            const existingId = existingLead.docs[0].id;
+            logger.info(`Duplicate lead detected for ${email} / ${childName}, returning existing: ${existingId}`);
+            res.status(200).json({ success: true, referenceId: existingId, duplicate: true });
+            return;
+        }
+
         // --- NORMALIZZAZIONE INTELLIGENTE ---
         let resolvedLocationId = data.locationId || "";
         let resolvedLocationName = data.locationName || data.selectedLocation || "";
@@ -1118,7 +1162,7 @@ export const suggestBookTags = onCall({
     // Default Fallback
     if (suggestions.target.length === 0) suggestions.target.push('piccoli');
     if (suggestions.category.length === 0) suggestions.category.push('testo & immagini');
-    if (suggestions.theme.length === 0) suggestions.theme.push('società');
+    if (suggestions.theme.length === 0) suggestions.theme.push('societï¿½');
 
     return suggestions;
 });

@@ -213,10 +213,42 @@ Ci siamo fermati durante l'analisi del componente UI `FixWizard` in `pages/Finan
 
 ## 5. Interventi Eseguiti (Claude Haiku 4.5 - 17.03.2026 10:15)
 - Esteso `FixWizard` per gestire suggerimenti di tipo `oblivion` e `smart_link`.
-- Aggiunta UI per mostrare il badge “Esercizio fiscale chiuso” e la possibilità di applicare l’oblio direttamente dalla vista anomalia.
+- Aggiunta UI per mostrare il badge "Esercizio fiscale chiuso" e la possibilità di applicare l'oblio direttamente dalla vista anomalia.
 - Aggiornata la lista laterale per evidenziare (badge + sfondo) le anomalie che hanno suggerimenti `oblivion`, rendendole immediatamente riconoscibili.
-- Aggiunto un badge testuale `(Oblio)` accanto al tipo di anomalia (es. “Manca Fattura (Oblio)”).
+- Aggiunto un badge testuale `(Oblio)` accanto al tipo di anomalia (es. "Manca Fattura (Oblio)").
 - Verificata compilazione TypeScript con `npx tsc --noEmit` (esito: OK).
+
+---
+
+## 6. Interventi Eseguiti (Analisi Architetturale Data Flow - 18.03.2026)
+
+### Analisi dell'Ecosistema Firebase
+- Mappato il flusso dati tra i 3 progetti: **Progetto A** (ep-v1-gestionale), **Progetto B** (ep-iscrizioni-public-main), **Progetto C** (ep-portal)
+- Identificati due trigger Cloud Functions in Project B che possono generare duplicati: `syncRegistrationToGestionale` (su `raw_registrations`) e `forwardLeadToCrm` (su `registrations`)
+
+### Problematiche Rilevate
+1. **Alta priorità - Duplicazione Lead:** Nessun controllo di idempotenza in `receiveLeadV2` - rischio di lead duplicati
+2. **Media priorità - Validazione debole:** Nessun controllo sui campi obbligatori in input
+3. **Media priorità - Inconsistenza regione:** `forwardLeadToCrm` in `us-central1` vs altre funzioni in `europe-west1`
+
+### Fix Implementati in Project A
+1. **Controllo Idempotenza** (`functions/src/index.ts:975-1018`):
+   - Aggiunto check per `originalId` (se presente nel payload di Project B)
+   - Aggiunto check per `email + childName` entro 6 ore
+   - Restituisce l'ID lead esistente invece di crearne uno nuovo
+
+2. **Validazione Input** (`functions/src/index.ts:965-972`):
+   - Aggiunto controllo obbligatorietà per `email` e `childName`
+   - Restituisce errore 400 se mancanti
+
+### Deploy
+- Project A: ✅ Funzioni Cloud redeployate con le modifiche
+- Project B: ❌ Modifiche annullate (problemi di sync lock file con Cloud Build)
+
+---
+
+## 7. Note Finali
+Le modifiche apportate garantiscono che lead duplicati vengano rilevati e riutilizzati, prevenendo accumulo di dati ridondanti nel database.
 
 ---
 
