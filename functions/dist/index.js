@@ -291,19 +291,7 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
         logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
         slots.forEach((slot) => {
           if (slot.isPubliclyVisible === false) return;
-          const compatibleSubs = activeSubs.filter((sub) => {
-            const labCount = Number(sub.labCount || 0);
-            const sgCount = Number(sub.sgCount || 0);
-            const evtCount = Number(sub.evtCount || 0);
-            if (slot.type === "LAB" && labCount > 0) return true;
-            if (slot.type === "SG" && sgCount > 0) return true;
-            if (slot.type === "EVT" && evtCount > 0) return true;
-            if (!slot.type) return true;
-            return false;
-          });
-          if (compatibleSubs.length === 0) {
-            logger.info(`No compatible subs for slot type ${slot.type} in ${loc.name}`);
-          }
+          const compatibleSubs = activeSubs;
           compatibleSubs.forEach((sub) => {
             const occupied = activeEnrollments.filter(
               (enr) => enr.locationId === loc.id && enr.subscriptionTypeId === sub.id && enr.appointments?.some(
@@ -312,6 +300,8 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             ).length;
             const capacity = loc.capacity || 10;
             const available = Math.max(0, capacity - occupied);
+            const minAge = typeof sub.minAge === "number" ? sub.minAge : isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge);
+            const maxAge = typeof sub.maxAge === "number" ? sub.maxAge : isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge);
             locationBundles.push({
               bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(":", "")}`,
               name: sub.name,
@@ -321,8 +311,8 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
               dayOfWeek: slot.dayOfWeek,
               startTime: slot.startTime,
               endTime: slot.endTime,
-              minAge: slot.minAge || sub.minAge || 0,
-              maxAge: slot.maxAge || sub.maxAge || 99,
+              minAge: slot.minAge || minAge || 0,
+              maxAge: slot.maxAge || maxAge || 99,
               availableSeats: available,
               isFull: available <= 0,
               includedSlots: [{ type: slot.type, startTime: slot.startTime, endTime: slot.endTime }]
