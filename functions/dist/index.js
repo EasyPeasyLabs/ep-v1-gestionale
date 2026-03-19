@@ -303,9 +303,7 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
           });
           compatibleSubs.forEach((sub) => {
             const occupied = activeEnrollments.filter((enr) => {
-              const isSameSede = enr.locationId === loc.id;
-              const isSameSub = enr.subscriptionTypeId === sub.id;
-              if (!isSameSede || !isSameSub) return false;
+              if (enr.locationId !== loc.id || enr.status !== "active") return false;
               return enr.appointments?.some((app) => {
                 if (!app.date || !app.startTime) return false;
                 const appDay = new Date(app.date).getDay();
@@ -314,8 +312,11 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             }).length;
             const capacity = loc.capacity || 10;
             const available = Math.max(0, capacity - occupied);
-            const minAge = typeof sub.minAge === "number" ? sub.minAge : isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge);
-            const maxAge = typeof sub.maxAge === "number" ? sub.maxAge : isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge);
+            const subMinAge = typeof sub.minAge === "number" ? sub.minAge : isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge);
+            const subMaxAge = typeof sub.maxAge === "number" ? sub.maxAge : isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge);
+            const finalMinAge = Math.max(subMinAge, slot.minAge || 0);
+            const finalMaxAge = Math.min(subMaxAge, slot.maxAge || 99);
+            if (finalMinAge > finalMaxAge) return;
             locationBundles.push({
               bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(":", "")}`,
               name: sub.name,
@@ -325,12 +326,12 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
               dayOfWeek: slot.dayOfWeek,
               startTime: slot.startTime,
               endTime: slot.endTime,
-              minAge: slot.minAge || minAge || 0,
-              maxAge: slot.maxAge || maxAge || 99,
+              minAge: finalMinAge,
+              maxAge: finalMaxAge,
               availableSeats: available,
               originalCapacity: capacity,
               isFull: available <= 0,
-              includedSlots: [{ type: slot.type || "LAB", startTime: slot.startTime, endTime: slot.endTime }]
+              includedSlots: [{ type: slot.type || "LAB", startTime: slot.startTime, endTime: slot.endTime, minAge: slot.minAge, maxAge: slot.maxAge }]
             });
           });
         });

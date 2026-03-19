@@ -315,25 +315,31 @@ export const getPublicSlotsV2 = onRequest({
                     });
 
                     compatibleSubs.forEach(sub => {
-                        // Calcola occupazione reale: conta gli enrollment attivi in questa sede/slot
+                         // Calcola occupazione FISICA: chiunque occupi questo slot in questa sede
                         const occupied = activeEnrollments.filter(enr => {
-                            const isSameSede = enr.locationId === loc.id;
-                            const isSameSub = enr.subscriptionTypeId === sub.id;
-                            if (!isSameSede || !isSameSub) return false;
+                            if (enr.locationId !== loc.id || enr.status !== 'active') return false;
 
-                            // Verifica se l'iscrizione occupa questo specifico slot temporale
                             return enr.appointments?.some((app: any) => {
                                 if (!app.date || !app.startTime) return false;
-                                // Confronto giorno della settimana e orario
                                 const appDay = new Date(app.date).getDay();
+                                
+                                // Verifica sovrapposizione temporale o coincidenza orario
+                                // Per semplicità usiamo coincidenza ora inizio e giorno
                                 return appDay === slot.dayOfWeek && app.startTime === slot.startTime;
                             });
                         }).length;
 
                         const capacity = loc.capacity || 10;
                         const available = Math.max(0, capacity - occupied);
-                        const minAge = typeof sub.minAge === 'number' ? sub.minAge : (isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge));
-                        const maxAge = typeof sub.maxAge === 'number' ? sub.maxAge : (isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge));
+                        const subMinAge = typeof sub.minAge === 'number' ? sub.minAge : (isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge));
+                        const subMaxAge = typeof sub.maxAge === 'number' ? sub.maxAge : (isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge));
+
+                        // Età determinata dal vincolo più restrittivo tra Sede e Abbonamento
+                        const finalMinAge = Math.max(subMinAge, slot.minAge || 0);
+                        const finalMaxAge = Math.min(subMaxAge, slot.maxAge || 99);
+
+                        // Se l'intersezione è vuota, questo bundle non ha senso per questo slot
+                        if (finalMinAge > finalMaxAge) return;
 
                         locationBundles.push({
                             bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(':', '')}`,
@@ -344,12 +350,12 @@ export const getPublicSlotsV2 = onRequest({
                             dayOfWeek: slot.dayOfWeek,
                             startTime: slot.startTime,
                             endTime: slot.endTime,
-                            minAge: slot.minAge || minAge || 0,
-                            maxAge: slot.maxAge || maxAge || 99,
+                            minAge: finalMinAge,
+                            maxAge: finalMaxAge,
                             availableSeats: available,
                             originalCapacity: capacity,
                             isFull: available <= 0,
-                            includedSlots: [{ type: slot.type || 'LAB', startTime: slot.startTime, endTime: slot.endTime }]
+                            includedSlots: [{ type: slot.type || 'LAB', startTime: slot.startTime, endTime: slot.endTime, minAge: slot.minAge, maxAge: slot.maxAge }]
                         });
                     });
                 });
