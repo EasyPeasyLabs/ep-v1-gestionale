@@ -269,8 +269,17 @@ export const getPublicSlotsV2 = onRequest({
         const activeSubs: any[] = [];
         subscriptionsSnap.forEach((doc: any) => {
             const sub = doc.data();
-            if (sub.isPubliclyVisible !== false) activeSubs.push({ id: doc.id, ...sub });
+            // Controllo più permissivo sulla visibilità pubblica
+            if (sub.isPubliclyVisible === true || sub.isPubliclyVisible === undefined || sub.isPubliclyVisible === "true") {
+                activeSubs.push({ id: doc.id, ...sub });
+            }
         });
+
+        if (activeSubs.length === 0) {
+            logger.warn("CRITICAL: No active public subscriptions found in database!");
+        } else {
+            logger.info(`Found ${activeSubs.length} active public subscriptions: ${activeSubs.map(s => s.name).join(", ")}`);
+        }
 
         const activeEnrollments = enrollmentsSnap.docs.map(doc => doc.data());
         
@@ -284,18 +293,30 @@ export const getPublicSlotsV2 = onRequest({
                 if (loc.isPubliclyVisible === false || loc.closedAt) return;
 
                 const locationBundles: any[] = [];
-                const slots = loc.availability || [];
+                const slots = loc.availability || loc.slots || []; // Supporto entrambi i nomi campi
+                
+                logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
 
                 slots.forEach((slot: any) => {
                     if (slot.isPubliclyVisible === false) return;
 
                     // Trova i tipi di abbonamento compatibili con questo tipo di slot (LAB, SG, EVT)
                     const compatibleSubs = activeSubs.filter(sub => {
-                        if (slot.type === 'LAB' && sub.labCount > 0) return true;
-                        if (slot.type === 'SG' && sub.sgCount > 0) return true;
-                        if (slot.type === 'EVT' && sub.evtCount > 0) return true;
+                        const labCount = Number(sub.labCount || 0);
+                        const sgCount = Number(sub.sgCount || 0);
+                        const evtCount = Number(sub.evtCount || 0);
+
+                        if (slot.type === 'LAB' && labCount > 0) return true;
+                        if (slot.type === 'SG' && sgCount > 0) return true;
+                        if (slot.type === 'EVT' && evtCount > 0) return true;
+                        // Fallback se il tipo non è specificato
+                        if (!slot.type) return true;
                         return false;
                     });
+                    
+                    if (compatibleSubs.length === 0) {
+                        logger.info(`No compatible subs for slot type ${slot.type} in ${loc.name}`);
+                    }
 
                     compatibleSubs.forEach(sub => {
                         // Calcola occupazione reale per questo slot in questa sede
