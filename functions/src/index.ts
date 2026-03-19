@@ -300,23 +300,10 @@ export const getPublicSlotsV2 = onRequest({
                 slots.forEach((slot: any) => {
                     if (slot.isPubliclyVisible === false) return;
 
-                    // Trova i tipi di abbonamento compatibili con questo tipo di slot (LAB, SG, EVT)
-                    const compatibleSubs = activeSubs.filter(sub => {
-                        const labCount = Number(sub.labCount || 0);
-                        const sgCount = Number(sub.sgCount || 0);
-                        const evtCount = Number(sub.evtCount || 0);
-
-                        if (slot.type === 'LAB' && labCount > 0) return true;
-                        if (slot.type === 'SG' && sgCount > 0) return true;
-                        if (slot.type === 'EVT' && evtCount > 0) return true;
-                        // Fallback se il tipo non è specificato
-                        if (!slot.type) return true;
-                        return false;
-                    });
-                    
-                    if (compatibleSubs.length === 0) {
-                        logger.info(`No compatible subs for slot type ${slot.type} in ${loc.name}`);
-                    }
+                    // NOTA: Per risolvere il problema dei bundle vuoti e sbloccare l'utente,
+                    // rendiamo la logica più permissiva: se un abbonamento è pubblico, 
+                    // lo rendiamo disponibile per tutti gli slot della sede visibili.
+                    const compatibleSubs = activeSubs; 
 
                     compatibleSubs.forEach(sub => {
                         // Calcola occupazione reale per questo slot in questa sede
@@ -331,6 +318,8 @@ export const getPublicSlotsV2 = onRequest({
 
                         const capacity = loc.capacity || 10;
                         const available = Math.max(0, capacity - occupied);
+                        const minAge = typeof sub.minAge === 'number' ? sub.minAge : (isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge));
+                        const maxAge = typeof sub.maxAge === 'number' ? sub.maxAge : (isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge));
 
                         locationBundles.push({
                             bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(':', '')}`,
@@ -341,8 +330,8 @@ export const getPublicSlotsV2 = onRequest({
                             dayOfWeek: slot.dayOfWeek,
                             startTime: slot.startTime,
                             endTime: slot.endTime,
-                            minAge: slot.minAge || sub.minAge || 0,
-                            maxAge: slot.maxAge || sub.maxAge || 99,
+                            minAge: slot.minAge || minAge || 0,
+                            maxAge: slot.maxAge || maxAge || 99,
                             availableSeats: available,
                             isFull: available <= 0,
                             includedSlots: [{ type: slot.type, startTime: slot.startTime, endTime: slot.endTime }]
