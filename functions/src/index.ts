@@ -300,21 +300,35 @@ export const getPublicSlotsV2 = onRequest({
                 slots.forEach((slot: any) => {
                     if (slot.isPubliclyVisible === false) return;
 
-                    // NOTA: Per risolvere il problema dei bundle vuoti e sbloccare l'utente,
-                    // rendiamo la logica più permissiva: se un abbonamento è pubblico, 
-                    // lo rendiamo disponibile per tutti gli slot della sede visibili.
-                    const compatibleSubs = activeSubs; 
+                    // Filtro compatibilità migliorato (LAB, SG, EVT)
+                    const compatibleSubs = activeSubs.filter(sub => {
+                        const labCount = Number(sub.labCount || 0);
+                        const sgCount = Number(sub.sgCount || 0);
+                        const evtCount = Number(sub.evtCount || 0);
+
+                        if (slot.type === 'LAB' && labCount > 0) return true;
+                        if (slot.type === 'SG' && sgCount > 0) return true;
+                        if (slot.type === 'EVT' && evtCount > 0) return true;
+                        // Fallback se il tipo non è specificato nella sede: includi tutto per sicurezza
+                        if (!slot.type) return true;
+                        return false;
+                    });
 
                     compatibleSubs.forEach(sub => {
-                        // Calcola occupazione reale per questo slot in questa sede
-                        const occupied = activeEnrollments.filter(enr => 
-                            enr.locationId === loc.id && 
-                            enr.subscriptionTypeId === sub.id &&
-                            enr.appointments?.some((app: any) => 
-                                app.startTime === slot.startTime && 
-                                new Date(app.date).getDay() === slot.dayOfWeek
-                            )
-                        ).length;
+                        // Calcola occupazione reale: conta gli enrollment attivi in questa sede/slot
+                        const occupied = activeEnrollments.filter(enr => {
+                            const isSameSede = enr.locationId === loc.id;
+                            const isSameSub = enr.subscriptionTypeId === sub.id;
+                            if (!isSameSede || !isSameSub) return false;
+
+                            // Verifica se l'iscrizione occupa questo specifico slot temporale
+                            return enr.appointments?.some((app: any) => {
+                                if (!app.date || !app.startTime) return false;
+                                // Confronto giorno della settimana e orario
+                                const appDay = new Date(app.date).getDay();
+                                return appDay === slot.dayOfWeek && app.startTime === slot.startTime;
+                            });
+                        }).length;
 
                         const capacity = loc.capacity || 10;
                         const available = Math.max(0, capacity - occupied);
@@ -334,7 +348,7 @@ export const getPublicSlotsV2 = onRequest({
                             maxAge: slot.maxAge || maxAge || 99,
                             availableSeats: available,
                             isFull: available <= 0,
-                            includedSlots: [{ type: slot.type, startTime: slot.startTime, endTime: slot.endTime }]
+                            includedSlots: [{ type: slot.type || 'LAB', startTime: slot.startTime, endTime: slot.endTime }]
                         });
                     });
                 });
