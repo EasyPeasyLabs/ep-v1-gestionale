@@ -347,6 +347,7 @@ export const getPublicSlotsV2 = onRequest({
                             minAge: slot.minAge || minAge || 0,
                             maxAge: slot.maxAge || maxAge || 99,
                             availableSeats: available,
+                            originalCapacity: capacity,
                             isFull: available <= 0,
                             includedSlots: [{ type: slot.type || 'LAB', startTime: slot.startTime, endTime: slot.endTime }]
                         });
