@@ -272,17 +272,76 @@ export const getPublicSlotsV2 = onRequest({
             if (sub.isPubliclyVisible !== false) activeSubs.push({ id: doc.id, ...sub });
         });
 
-        const occupancyMap = new Map<string, number>();
+        const activeEnrollments = enrollmentsSnap.docs.map(doc => doc.data());
+        
         const results: any[] = [];
-        // [Logica di calcolo occupazione semplificata per brevitÃ  nel write_file, ma inclusiva di tutte le sedi]
+        
         suppliersSnap.forEach((doc: any) => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
+            
             locations.forEach((loc: any) => {
                 if (loc.isPubliclyVisible === false || loc.closedAt) return;
-                results.push({ id: loc.id, name: loc.name, address: loc.address || '', bundles: [] });
+
+                const locationBundles: any[] = [];
+                const slots = loc.availability || [];
+
+                slots.forEach((slot: any) => {
+                    if (slot.isPubliclyVisible === false) return;
+
+                    // Trova i tipi di abbonamento compatibili con questo tipo di slot (LAB, SG, EVT)
+                    const compatibleSubs = activeSubs.filter(sub => {
+                        if (slot.type === 'LAB' && sub.labCount > 0) return true;
+                        if (slot.type === 'SG' && sub.sgCount > 0) return true;
+                        if (slot.type === 'EVT' && sub.evtCount > 0) return true;
+                        return false;
+                    });
+
+                    compatibleSubs.forEach(sub => {
+                        // Calcola occupazione reale per questo slot in questa sede
+                        const occupied = activeEnrollments.filter(enr => 
+                            enr.locationId === loc.id && 
+                            enr.subscriptionTypeId === sub.id &&
+                            enr.appointments?.some((app: any) => 
+                                app.startTime === slot.startTime && 
+                                new Date(app.date).getDay() === slot.dayOfWeek
+                            )
+                        ).length;
+
+                        const capacity = loc.capacity || 10;
+                        const available = Math.max(0, capacity - occupied);
+
+                        locationBundles.push({
+                            bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(':', '')}`,
+                            name: sub.name,
+                            publicName: sub.publicName || sub.name,
+                            description: sub.description || '',
+                            price: sub.price,
+                            dayOfWeek: slot.dayOfWeek,
+                            startTime: slot.startTime,
+                            endTime: slot.endTime,
+                            minAge: slot.minAge || sub.minAge || 0,
+                            maxAge: slot.maxAge || sub.maxAge || 99,
+                            availableSeats: available,
+                            isFull: available <= 0,
+                            includedSlots: [{ type: slot.type, startTime: slot.startTime, endTime: slot.endTime }]
+                        });
+                    });
+                });
+
+                if (locationBundles.length > 0) {
+                    results.push({
+                        id: loc.id,
+                        name: loc.name,
+                        address: loc.address || '',
+                        city: loc.city || '',
+                        googleMapsLink: loc.googleMapsLink || '',
+                        bundles: locationBundles
+                    });
+                }
             });
         });
+        
         res.status(200).json({ success: true, data: results });
     } catch (error: any) {
         logger.error("Error fetching public slots v2:", error?.message || error);
