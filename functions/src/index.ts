@@ -315,18 +315,26 @@ export const getPublicSlotsV2 = onRequest({
             const locations = supplierData.locations || [];
 
             locations.forEach((loc: any) => {
-                if (loc.isPubliclyVisible === false || loc.closedAt) return;
+                const locId = loc.id || loc.sedeId || "unknown";
+                const isLocVisible = loc.isPubliclyVisible !== false && !loc.closedAt;
+                if (!isLocVisible) {
+                    logger.info(`Location ${loc.name} (id: ${locId}) skipped: isPubliclyVisible=${loc.isPubliclyVisible}, closedAt=${loc.closedAt}`);
+                    return;
+                }
 
                 const aggregatedBundles = new Map<string, any>();
-                const slots = loc.availability || loc.slots || []; // Supporto entrambi i nomi campi
+                const slots = loc.availability || loc.slots || []; 
 
-                logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
+                logger.info(`Location ${loc.name} (${locId}) has ${slots.length} raw slots. Processing...`);
 
                 slots.forEach((slot: any) => {
-                    if (slot.isPubliclyVisible === false) return;
+                    const isSlotVisible = slot.isPubliclyVisible !== false;
+                    if (!isSlotVisible) {
+                        logger.info(`  Slot ${slot.type} (${slot.dayOfWeek} ${slot.startTime}) skipped: isPubliclyVisible=false`);
+                        return;
+                    }
 
                     // Filtro compatibilità migliorato (LAB, SG, EVT)
-                    // Prima passa strict (rispetta allowedDays), se nessuna sub corrisponde usa lenient (ignora allowedDays)
                     const labCount_slot = slot.type === 'LAB' ? 1 : 0;
                     const sgCount_slot = slot.type === 'SG' ? 1 : 0;
                     const evtCount_slot = slot.type === 'EVT' ? 1 : 0;
@@ -355,9 +363,14 @@ export const getPublicSlotsV2 = onRequest({
                     if (compatibleSubs.length === 0) {
                         compatibleSubs = activeSubs.filter(sub => typeMatchFn(sub));
                         if (compatibleSubs.length > 0) {
-                            logger.info(`Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: nessuna sub con allowedDays match, usando ${compatibleSubs.length} sub senza restrizione giorno.`);
+                            logger.info(`  Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
+                        } else {
+                            // Nessuna subscription di questo tipo è marcata come pubblica
+                            logger.info(`  Slot ${slot.type} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${slot.type} trovata.`);
                         }
                     }
+
+                    if (compatibleSubs.length === 0) return;
 
                     compatibleSubs.forEach(sub => {
                         // Calcola occupazione per ABBONAMENTO: conta tutti gli iscritti attivi con
@@ -387,10 +400,13 @@ export const getPublicSlotsV2 = onRequest({
                         const finalMaxAge = Math.min(subMaxAge, slot.maxAge || 99);
 
                         // Se l'intersezione è vuota, questo bundle non ha senso per questo slot
-                        if (finalMinAge > finalMaxAge) return;
+                        if (finalMinAge > finalMaxAge) {
+                            logger.info(`    Sub ${sub.name} vs Slot ${slot.type}: age mismatch! Sub(${subMinAge}-${subMaxAge}) vs Slot(${slot.minAge || 0}-${slot.maxAge || 99}) -> No intersection.`);
+                            return;
+                        }
 
                         // CHIAVE DI AGGREGAZIONE: Sede + Abbonamento + Giorno della Settimana
-                        const groupKey = `${loc.id}_${sub.id}_${slot.dayOfWeek}`;
+                        const groupKey = `${locId}_${sub.id}_${slot.dayOfWeek}`;
 
                         if (!aggregatedBundles.has(groupKey)) {
                             aggregatedBundles.set(groupKey, {
@@ -426,9 +442,11 @@ export const getPublicSlotsV2 = onRequest({
                             type: slot.type || 'LAB',
                             startTime: slot.startTime,
                             endTime: slot.endTime,
+                            dayOfWeek: slot.dayOfWeek,
                             minAge: slot.minAge,
                             maxAge: slot.maxAge
                         });
+                        logger.info(`    Added slot ${slot.type} (${slot.startTime}) to bundle ${sub.name} for ${loc.name}`);
                     });
                 });
 

@@ -296,12 +296,21 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
       const supplierData = doc.data();
       const locations = supplierData.locations || [];
       locations.forEach((loc) => {
-        if (loc.isPubliclyVisible === false || loc.closedAt) return;
+        const locId = loc.id || loc.sedeId || "unknown";
+        const isLocVisible = loc.isPubliclyVisible !== false && !loc.closedAt;
+        if (!isLocVisible) {
+          logger.info(`Location ${loc.name} (id: ${locId}) skipped: isPubliclyVisible=${loc.isPubliclyVisible}, closedAt=${loc.closedAt}`);
+          return;
+        }
         const aggregatedBundles = /* @__PURE__ */ new Map();
         const slots = loc.availability || loc.slots || [];
-        logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
+        logger.info(`Location ${loc.name} (${locId}) has ${slots.length} raw slots. Processing...`);
         slots.forEach((slot) => {
-          if (slot.isPubliclyVisible === false) return;
+          const isSlotVisible = slot.isPubliclyVisible !== false;
+          if (!isSlotVisible) {
+            logger.info(`  Slot ${slot.type} (${slot.dayOfWeek} ${slot.startTime}) skipped: isPubliclyVisible=false`);
+            return;
+          }
           const labCount_slot = slot.type === "LAB" ? 1 : 0;
           const sgCount_slot = slot.type === "SG" ? 1 : 0;
           const evtCount_slot = slot.type === "EVT" ? 1 : 0;
@@ -324,9 +333,12 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
           if (compatibleSubs.length === 0) {
             compatibleSubs = activeSubs.filter((sub) => typeMatchFn(sub));
             if (compatibleSubs.length > 0) {
-              logger.info(`Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: nessuna sub con allowedDays match, usando ${compatibleSubs.length} sub senza restrizione giorno.`);
+              logger.info(`  Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
+            } else {
+              logger.info(`  Slot ${slot.type} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${slot.type} trovata.`);
             }
           }
+          if (compatibleSubs.length === 0) return;
           compatibleSubs.forEach((sub) => {
             const occupied = activeEnrollments.filter((enr) => {
               if (enr.locationId !== loc.id && enr.selectedLocationId !== loc.id) return false;
@@ -343,8 +355,11 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             const subMaxAge = typeof sub.maxAge === "number" ? sub.maxAge : isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge);
             const finalMinAge = Math.max(subMinAge, slot.minAge || 0);
             const finalMaxAge = Math.min(subMaxAge, slot.maxAge || 99);
-            if (finalMinAge > finalMaxAge) return;
-            const groupKey = `${loc.id}_${sub.id}_${slot.dayOfWeek}`;
+            if (finalMinAge > finalMaxAge) {
+              logger.info(`    Sub ${sub.name} vs Slot ${slot.type}: age mismatch! Sub(${subMinAge}-${subMaxAge}) vs Slot(${slot.minAge || 0}-${slot.maxAge || 99}) -> No intersection.`);
+              return;
+            }
+            const groupKey = `${locId}_${sub.id}_${slot.dayOfWeek}`;
             if (!aggregatedBundles.has(groupKey)) {
               aggregatedBundles.set(groupKey, {
                 bundleId: groupKey,
@@ -374,9 +389,11 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
               type: slot.type || "LAB",
               startTime: slot.startTime,
               endTime: slot.endTime,
+              dayOfWeek: slot.dayOfWeek,
               minAge: slot.minAge,
               maxAge: slot.maxAge
             });
+            logger.info(`    Added slot ${slot.type} (${slot.startTime}) to bundle ${sub.name} for ${loc.name}`);
           });
         });
         const locationBundles = Array.from(aggregatedBundles.values()).filter((b) => b.minAge <= b.maxAge);
