@@ -225,9 +225,9 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             allowedDays,
             allowedAges,
             tokens: [
-                { type: 'LAB', count: Number(labCount) },
-                { type: 'SG', count: Number(sgCount) },
-                { type: 'EVT', count: Number(evtCount) }
+                { type: 'LAB' as SlotType, count: Number(labCount) },
+                { type: 'SG' as SlotType, count: Number(sgCount) },
+                { type: 'EVT' as SlotType, count: Number(evtCount) }
             ].filter(t => t.count > 0)
         };
         try {

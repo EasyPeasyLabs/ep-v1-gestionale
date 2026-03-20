@@ -214,7 +214,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                         c.locationId === locIdToUse && 
                         age >= (c.minAge || 0) && 
                         age <= (c.maxAge || 99) &&
-                        c.status === 'active'
+                        c.status === 'open'
                     );
                     
                     if (suitableCourse) {
@@ -274,7 +274,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             c.locationId === targetLocationId && 
                             age >= (c.minAge || 0) && 
                             age <= (c.maxAge || 99) &&
-                            c.status === 'active'
+                            c.status === 'open'
                         );
                         
                         if (suitableCourse) {

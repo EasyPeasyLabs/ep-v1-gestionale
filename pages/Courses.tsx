@@ -1,3 +1,8 @@
+import React, { useState, useEffect } from 'react';
+import { Location, Course, SlotType } from '../types';
+import * as courseService from '../services/courseService';
+import FullScreenSpinner from '../components/FullScreenSpinner';
+import { toast } from 'react-hot-toast';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import PlusIcon from '../components/icons/PlusIcon';
@@ -221,7 +226,7 @@ const Courses: React.FC = () => {
                                                         onClick={() => handleDeleteCourse(course.id)}
                                                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                                     >
-                                                        <TrashIcon className="w-4 h-4" />
+                                                        <div className="w-4 h-4"><TrashIcon /></div>
                                                     </button>
                                                 </div>
                                             </td>
@@ -239,8 +244,11 @@ const Courses: React.FC = () => {
             )}
 
             {isAddModalOpen && (
-                <Modal onClose={() => setIsAddModalOpen(false)} title="Nuovo Corso">
+                <Modal onClose={() => setIsAddModalOpen(false)}>
                     <div className="p-6 space-y-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <h2 className="text-xl font-black text-gray-900">Nuovo Corso</h2>
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Giorno</label>
