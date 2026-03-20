@@ -315,7 +315,7 @@ export const getPublicSlotsV2 = onRequest({
             const locations = supplierData.locations || [];
 
             locations.forEach((loc: any) => {
-                const locId = loc.id || loc.sedeId || "unknown";
+                const locId = loc.id || loc.sedeId || (loc.name ? `loc-${loc.name.replace(/\s+/g, '-').toLowerCase()}` : "unknown");
                 const isLocVisible = loc.isPubliclyVisible !== false && !loc.closedAt;
                 if (!isLocVisible) {
                     logger.info(`Location ${loc.name} (id: ${locId}) skipped: isPubliclyVisible=${loc.isPubliclyVisible}, closedAt=${loc.closedAt}`);
@@ -335,18 +335,15 @@ export const getPublicSlotsV2 = onRequest({
                     }
 
                     // Filtro compatibilità migliorato (LAB, SG, EVT)
-                    const labCount_slot = slot.type === 'LAB' ? 1 : 0;
-                    const sgCount_slot = slot.type === 'SG' ? 1 : 0;
-                    const evtCount_slot = slot.type === 'EVT' ? 1 : 0;
-
+                    const normalizedSlotType = slot.type || 'LAB';
+                    
                     const typeMatchFn = (sub: any): boolean => {
                         const labCount = Number(sub.labCount || 0);
                         const sgCount = Number(sub.sgCount || 0);
                         const evtCount = Number(sub.evtCount || 0);
-                        if (slot.type === 'LAB' && labCount > 0) return true;
-                        if (slot.type === 'SG' && sgCount > 0) return true;
-                        if (slot.type === 'EVT' && evtCount > 0) return true;
-                        // Slot senza tipo: nessun match per sicurezza
+                        if (normalizedSlotType === 'LAB' && labCount > 0) return true;
+                        if (normalizedSlotType === 'SG' && sgCount > 0) return true;
+                        if (normalizedSlotType === 'EVT' && evtCount > 0) return true;
                         return false;
                     };
 
@@ -363,10 +360,10 @@ export const getPublicSlotsV2 = onRequest({
                     if (compatibleSubs.length === 0) {
                         compatibleSubs = activeSubs.filter(sub => typeMatchFn(sub));
                         if (compatibleSubs.length > 0) {
-                            logger.info(`  Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
+                            logger.info(`  Location ${loc.name} slot ${normalizedSlotType} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
                         } else {
                             // Nessuna subscription di questo tipo è marcata come pubblica
-                            logger.info(`  Slot ${slot.type} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${slot.type} trovata.`);
+                            logger.info(`  Slot ${normalizedSlotType} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${normalizedSlotType} trovata.`);
                         }
                     }
 

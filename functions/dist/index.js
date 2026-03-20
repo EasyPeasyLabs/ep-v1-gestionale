@@ -296,7 +296,7 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
       const supplierData = doc.data();
       const locations = supplierData.locations || [];
       locations.forEach((loc) => {
-        const locId = loc.id || loc.sedeId || "unknown";
+        const locId = loc.id || loc.sedeId || (loc.name ? `loc-${loc.name.replace(/\s+/g, "-").toLowerCase()}` : "unknown");
         const isLocVisible = loc.isPubliclyVisible !== false && !loc.closedAt;
         if (!isLocVisible) {
           logger.info(`Location ${loc.name} (id: ${locId}) skipped: isPubliclyVisible=${loc.isPubliclyVisible}, closedAt=${loc.closedAt}`);
@@ -311,16 +311,14 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             logger.info(`  Slot ${slot.type} (${slot.dayOfWeek} ${slot.startTime}) skipped: isPubliclyVisible=false`);
             return;
           }
-          const labCount_slot = slot.type === "LAB" ? 1 : 0;
-          const sgCount_slot = slot.type === "SG" ? 1 : 0;
-          const evtCount_slot = slot.type === "EVT" ? 1 : 0;
+          const normalizedSlotType = slot.type || "LAB";
           const typeMatchFn = (sub) => {
             const labCount = Number(sub.labCount || 0);
             const sgCount = Number(sub.sgCount || 0);
             const evtCount = Number(sub.evtCount || 0);
-            if (slot.type === "LAB" && labCount > 0) return true;
-            if (slot.type === "SG" && sgCount > 0) return true;
-            if (slot.type === "EVT" && evtCount > 0) return true;
+            if (normalizedSlotType === "LAB" && labCount > 0) return true;
+            if (normalizedSlotType === "SG" && sgCount > 0) return true;
+            if (normalizedSlotType === "EVT" && evtCount > 0) return true;
             return false;
           };
           let compatibleSubs = activeSubs.filter((sub) => {
@@ -333,9 +331,9 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
           if (compatibleSubs.length === 0) {
             compatibleSubs = activeSubs.filter((sub) => typeMatchFn(sub));
             if (compatibleSubs.length > 0) {
-              logger.info(`  Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
+              logger.info(`  Location ${loc.name} slot ${normalizedSlotType} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
             } else {
-              logger.info(`  Slot ${slot.type} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${slot.type} trovata.`);
+              logger.info(`  Slot ${normalizedSlotType} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${normalizedSlotType} trovata.`);
             }
           }
           if (compatibleSubs.length === 0) return;
