@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate } from '../services/settingsService';
 import { migrateHistoricalEnrollments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
