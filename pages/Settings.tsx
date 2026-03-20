@@ -161,6 +161,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     const [statusConfig, setStatusConfig] = useState<SubscriptionStatusConfig>({ status: 'active' });
     const [isPubliclyVisible, setIsPubliclyVisible] = useState(true);
     const [allowedDays, setAllowedDays] = useState<number[]>([]);
+    const [allowedAges, setAllowedAges] = useState<{ min: number, max: number }>({ min: 3, max: 14 });
     const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
 
     useEffect(() => {
@@ -180,6 +181,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setStatusConfig(sub.statusConfig || { status: 'active' });
             setIsPubliclyVisible(sub.isPubliclyVisible !== undefined ? sub.isPubliclyVisible : true);
             setAllowedDays(sub.allowedDays || []);
+            setAllowedAges(sub.allowedAges || { min: 3, max: 14 });
         } else {
             setName('');
             setPublicName('');
@@ -220,7 +222,13 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             target,
             statusConfig,
             isPubliclyVisible,
-            allowedDays
+            allowedDays,
+            allowedAges,
+            tokens: [
+                { type: 'LAB', count: Number(labCount) },
+                { type: 'SG', count: Number(sgCount) },
+                { type: 'EVT', count: Number(evtCount) }
+            ].filter(t => t.count > 0)
         };
         try {
             if (sub?.id) {
@@ -304,15 +312,24 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                     <label htmlFor="subDescription" className="md-input-label">Descrizione Pubblica (opzionale)</label>
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="md-input-group">
                         <input id="subPrice" type="number" value={price} onChange={e => setPrice(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
                         <label htmlFor="subPrice" className="md-input-label">Prezzo (€)</label>
                     </div>
                     <div className="md-input-group">
-                        <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
-                        <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
+                        <input id="minAge" type="number" value={allowedAges.min} onChange={e => setAllowedAges({...allowedAges, min: Number(e.target.value)})} className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="minAge" className="md-input-label">Età Min</label>
                     </div>
+                    <div className="md-input-group">
+                        <input id="maxAge" type="number" value={allowedAges.max} onChange={e => setAllowedAges({...allowedAges, max: Number(e.target.value)})} className="md-input" placeholder=" " autoComplete="off" />
+                        <label htmlFor="maxAge" className="md-input-label">Età Max</label>
+                    </div>
+                </div>
+
+                <div className="md-input-group">
+                    <input id="subDuration" type="number" value={durationInDays} onChange={e => setDurationInDays(e.target.value)} className="md-input" placeholder=" " autoComplete="off" />
+                    <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
                 </div>
 
                 <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">

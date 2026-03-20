@@ -1,5 +1,5 @@
 
-export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'NotificationPlanning' | 'Profile' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation' | 'Leads';
+export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'NotificationPlanning' | 'Profile' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation' | 'Leads' | 'Courses';
 
 export enum ClientType {
     Parent = 'parent',
@@ -95,6 +95,7 @@ export type SupplierInput = Omit<Supplier, 'id'>;
 
 export interface Location {
     id: string;
+    supplierId: string; // Ref to Supplier
     name: string;
     address?: string;
     city?: string;
@@ -102,8 +103,8 @@ export interface Location {
     capacity?: number;
     rentalCost?: number;
     distance?: number;
+    status: 'active' | 'closed';
     closedAt?: string;
-    availability?: AvailabilitySlot[];
     notes?: string;
     notesHistory?: Note[];
     tags?: string[];
@@ -111,7 +112,23 @@ export interface Location {
     isPubliclyVisible?: boolean;
 }
 
+export interface Course {
+    id: string;
+    locationId: string; // Ref to Location
+    dayOfWeek: number; // 0-6
+    startTime: string; // HH:mm
+    endTime: string;
+    slotType: SlotType;
+    minAge: number;
+    maxAge: number;
+    capacity: number;
+    activeEnrollmentsCount: number;
+    status: 'open' | 'closed';
+    updatedAt?: any;
+}
+
 export type LocationInput = Omit<Location, 'id'>;
+export type CourseInput = Omit<Course, 'id'>;
 
 export type SlotType = 'LAB' | 'SG' | 'EVT';
 
@@ -335,15 +352,17 @@ export interface SubscriptionType {
     publicName?: string;
     description?: string;
     price: number;
-    lessons: number; // Total lessons (sum of lab, sg, evt)
+    lessons: number; 
     labCount: number;
     sgCount: number;
     evtCount: number;
+    tokens?: { type: SlotType, count: number }[]; // New Bundle concept
     durationInDays: number;
     target: 'kid' | 'adult';
     statusConfig?: SubscriptionStatusConfig;
     isPubliclyVisible?: boolean;
-    allowedDays?: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday. If undefined/empty, all days allowed.
+    allowedDays?: number[]; 
+    allowedAges?: { min: number, max: number }; // New target age range
 }
 
 export type SubscriptionTypeInput = Omit<SubscriptionType, 'id'>;
@@ -448,6 +467,7 @@ export interface Enrollment {
     locationId: string;
     locationName: string;
     locationColor: string;
+    courseId?: string; // New: link to Course document
     appointments: Appointment[];
     lessonsTotal: number;
     lessonsRemaining: number;

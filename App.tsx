@@ -30,6 +30,7 @@ import NotificationScheduler from './components/NotificationScheduler';
 import { requestNotificationPermission, setupForegroundMessaging } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
 import { LeadsPage } from './pages/LeadsPage';
+import Courses from './pages/Courses';
 import EnrollmentPortal from './pages/EnrollmentPortal';
 import { Page } from './types';
 
@@ -131,6 +132,7 @@ const App: React.FC = () => {
                       case 'Profile': return <Profile user={user} />;
                       case 'Manual': return <Manual />;
                       case 'Leads': return <LeadsPage />;
+                      case 'Courses': return <Courses />;
                       default: return <Dashboard setCurrentPage={handleNavigation} />;
                     }
                 })()}

@@ -270,8 +270,8 @@ export const receiveLeadV2 = onRequest({
     }
 });
 
-// --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V2 ---
-export const getPublicSlotsV2 = onRequest({
+// --- API PUBBLICA PER PAGINA ESTERNA (PROGETTO B) - V5 (CORE REFACTORING) ---
+export const getPublicSlotsV5 = onRequest({
     region: "europe-west1",
     cors: true
 }, async (req: any, res: any) => {
@@ -279,194 +279,130 @@ export const getPublicSlotsV2 = onRequest({
     const bridgeKey = req.headers['x-bridge-key'];
     const authHeader = req.headers['authorization'];
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.split('Bearer ')[1] : null;
+    
     if (bridgeKey !== API_SHARED_SECRET && bearerToken !== API_SHARED_SECRET) {
         res.status(403).json({ error: "Forbidden: Invalid API Key" });
         return;
     }
+
     try {
         const db = firebase.firestore();
-        const [suppliersSnap, enrollmentsSnap, subscriptionsSnap] = await Promise.all([
-            db.collection('suppliers').where('isDeleted', '==', false).get(),
-            db.collection('enrollments').where('status', 'in', ['active', 'pending', 'confirmed', 'Active', 'Pending', 'Confirmed']).get(),
+        const age = req.query.age ? parseInt(req.query.age.toString()) : null;
+
+        // 1. Fetch Dati Fondamentali (Parallel)
+        const [locationsSnap, coursesSnap, subsSnap] = await Promise.all([
+            db.collection('locations').where('status', '==', 'active').get(),
+            db.collection('courses').where('status', '==', 'open').get(),
             db.collection('subscriptionTypes').get()
         ]);
 
         const activeSubs: any[] = [];
-        subscriptionsSnap.forEach((doc: any) => {
+        subsSnap.forEach((doc: any) => {
             const sub = doc.data();
-            // Controllo più permissivo sulla visibilità pubblica
-            if (sub.isPubliclyVisible === true || sub.isPubliclyVisible === undefined || sub.isPubliclyVisible === "true") {
+            if (sub.isPubliclyVisible !== false) {
                 activeSubs.push({ id: doc.id, ...sub });
             }
         });
 
-        if (activeSubs.length === 0) {
-            logger.warn("CRITICAL: No active public subscriptions found in database!");
-        } else {
-            logger.info(`Found ${activeSubs.length} active public subscriptions: ${activeSubs.map(s => s.name).join(", ")}`);
-        }
-
-        const activeEnrollments = enrollmentsSnap.docs.map(doc => doc.data());
+        const locationsMap = new Map();
+        locationsSnap.forEach(doc => locationsMap.set(doc.id, doc.data()));
 
         const results: any[] = [];
+        const locationBundlesGrouped = new Map<string, any[]>();
 
-        suppliersSnap.forEach((doc: any) => {
-            const supplierData = doc.data();
-            const locations = supplierData.locations || [];
+        // 2. Filtro Corsi per Età (se fornita) e Matching con Bundle
+        coursesSnap.forEach(doc => {
+            const course = doc.data();
+            const loc = locationsMap.get(course.locationId);
+            if (!loc) return;
 
-            locations.forEach((loc: any) => {
-                const locId = loc.id || loc.sedeId || (loc.name ? `loc-${loc.name.replace(/\s+/g, '-').toLowerCase()}` : "unknown");
-                const isLocVisible = loc.isPubliclyVisible !== false && !loc.closedAt;
-                if (!isLocVisible) {
-                    logger.info(`Location ${loc.name} (id: ${locId}) skipped: isPubliclyVisible=${loc.isPubliclyVisible}, closedAt=${loc.closedAt}`);
-                    return;
+            // Filtro Età Rigoroso
+            if (age !== null && (age < course.minAge || age > course.maxAge)) return;
+
+            // Matching con SubscriptionTypes (Bundles)
+            // Un bundle è compatibile se ha almeno un gettone del tipo del corso
+            const compatibleSubs = activeSubs.filter(sub => {
+                const hasToken = (course.slotType === 'LAB' && sub.labCount > 0) ||
+                                 (course.slotType === 'SG' && sub.sgCount > 0) ||
+                                 (course.slotType === 'EVT' && sub.evtCount > 0);
+                
+                if (!hasToken) return false;
+
+                // Filtro giorni se definiti nel bundle
+                if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+                    if (!sub.allowedDays.includes(course.dayOfWeek)) return false;
                 }
 
-                const aggregatedBundles = new Map<string, any>();
-                const slots = loc.availability || loc.slots || []; 
+                // Filtro età sub se definito (intersezione con corso)
+                const subMinAge = sub.allowedAges?.min || sub.minAge || 0;
+                const subMaxAge = sub.allowedAges?.max || sub.maxAge || 99;
+                if (age !== null && (age < subMinAge || age > subMaxAge)) return false;
 
-                logger.info(`Location ${loc.name} (${locId}) has ${slots.length} raw slots. Processing...`);
+                return true;
+            });
 
-                slots.forEach((slot: any) => {
-                    const isSlotVisible = slot.isPubliclyVisible !== false;
-                    if (!isSlotVisible) {
-                        logger.info(`  Slot ${slot.type} (${slot.dayOfWeek} ${slot.startTime}) skipped: isPubliclyVisible=false`);
-                        return;
-                    }
+            compatibleSubs.forEach(sub => {
+                const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}`;
+                if (!locationBundlesGrouped.has(course.locationId)) {
+                    locationBundlesGrouped.set(course.locationId, []);
+                }
+                
+                const locBundles = locationBundlesGrouped.get(course.locationId)!;
+                let bundle = locBundles.find(b => b.bundleId === groupKey);
 
-                    // Filtro compatibilità migliorato (LAB, SG, EVT)
-                    const normalizedSlotType = slot.type || 'LAB';
-                    
-                    const typeMatchFn = (sub: any): boolean => {
-                        const labCount = Number(sub.labCount || 0);
-                        const sgCount = Number(sub.sgCount || 0);
-                        const evtCount = Number(sub.evtCount || 0);
-                        if (normalizedSlotType === 'LAB' && labCount > 0) return true;
-                        if (normalizedSlotType === 'SG' && sgCount > 0) return true;
-                        if (normalizedSlotType === 'EVT' && evtCount > 0) return true;
-                        return false;
+                const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
+
+                if (!bundle) {
+                    bundle = {
+                        bundleId: groupKey,
+                        subscriptionId: sub.id,
+                        name: sub.name,
+                        publicName: sub.publicName || sub.name,
+                        description: sub.description || '',
+                        price: sub.price,
+                        dayOfWeek: course.dayOfWeek,
+                        startTime: course.startTime,
+                        endTime: course.endTime,
+                        minAge: Math.max(course.minAge, sub.allowedAges?.min || sub.minAge || 0),
+                        maxAge: Math.min(course.maxAge, sub.allowedAges?.max || sub.maxAge || 99),
+                        availableSeats: available,
+                        isFull: available <= 0,
+                        includedSlots: []
                     };
-
-                    // Tentativo 1: filtro STRICT (rispetta allowedDays)
-                    let compatibleSubs = activeSubs.filter(sub => {
-                        if (!typeMatchFn(sub)) return false;
-                        if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
-                            return sub.allowedDays.includes(slot.dayOfWeek);
-                        }
-                        return true; // nessuna restrizione giorni → compatibile
-                    });
-
-                    // Tentativo 2: filtro LENIENT (ignora allowedDays) se lo strict non trova nulla
-                    if (compatibleSubs.length === 0) {
-                        compatibleSubs = activeSubs.filter(sub => typeMatchFn(sub));
-                        if (compatibleSubs.length > 0) {
-                            logger.info(`  Location ${loc.name} slot ${normalizedSlotType} day ${slot.dayOfWeek}: lenient mode active (no allowedDays match)`);
-                        } else {
-                            // Nessuna subscription di questo tipo è marcata come pubblica
-                            logger.info(`  Slot ${normalizedSlotType} (${slot.dayOfWeek}) scartato: nessuna subscription pubblica di tipo ${normalizedSlotType} trovata.`);
-                        }
-                    }
-
-                    if (compatibleSubs.length === 0) return;
-
-                    compatibleSubs.forEach(sub => {
-                        // Calcola occupazione per ABBONAMENTO: conta tutti gli iscritti attivi con
-                        // lo stesso abbonamento e la stessa sede, con lezioni residue.
-                        // Il campo sull'enrollment è 'selectedSubscriptionId' (come inviato da EnrollmentPortal formData).
-                        // Fallback su subscriptionTypeId e subscriptionName per enrollment storici.
-                        const occupied = activeEnrollments.filter(enr => {
-                            if (enr.locationId !== loc.id && enr.selectedLocationId !== loc.id) return false;
-                            if (!['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status || enr.enrollmentStatus || '')) return false;
-                            // Verifica che l'iscrizione non sia esaurita
-                            const hasRemaining = (enr.lessonsRemaining > 0) || (enr.labRemaining > 0) || (enr.sgRemaining > 0) || (enr.evtRemaining > 0);
-                            if (!hasRemaining && (enr.lessonsRemaining !== undefined || enr.labRemaining !== undefined)) return false;
-                            // Match per abbonamento: prova i vari nomi di campo usati nei diversi sprint
-                            const enrolledSubId = enr.selectedSubscriptionId || enr.subscriptionTypeId || enr.subscriptionId || '';
-                            if (enrolledSubId) return enrolledSubId === sub.id;
-                            // Fallback: confronto per nome dell'abbonamento
-                            return String(enr.subscriptionName || enr.selectedSubscriptionName || '').toLowerCase() === String(sub.name || '').toLowerCase();
-                        }).length;
-
-                        const capacity = loc.capacity || 10;
-                        const available = Math.max(0, capacity - occupied);
-                        const subMinAge = typeof sub.minAge === 'number' ? sub.minAge : (isNaN(parseInt(sub.minAge)) ? 0 : parseInt(sub.minAge));
-                        const subMaxAge = typeof sub.maxAge === 'number' ? sub.maxAge : (isNaN(parseInt(sub.maxAge)) ? 99 : parseInt(sub.maxAge));
-
-                        // Età determinata dal vincolo più restrittivo tra Sede e Abbonamento
-                        const finalMinAge = Math.max(subMinAge, slot.minAge || 0);
-                        const finalMaxAge = Math.min(subMaxAge, slot.maxAge || 99);
-
-                        // Se l'intersezione è vuota, questo bundle non ha senso per questo slot
-                        if (finalMinAge > finalMaxAge) {
-                            logger.info(`    Sub ${sub.name} vs Slot ${slot.type}: age mismatch! Sub(${subMinAge}-${subMaxAge}) vs Slot(${slot.minAge || 0}-${slot.maxAge || 99}) -> No intersection.`);
-                            return;
-                        }
-
-                        // CHIAVE DI AGGREGAZIONE: Sede + Abbonamento + Giorno della Settimana
-                        const groupKey = `${locId}_${sub.id}_${slot.dayOfWeek}`;
-
-                        if (!aggregatedBundles.has(groupKey)) {
-                            aggregatedBundles.set(groupKey, {
-                                bundleId: groupKey,
-                                name: sub.name,
-                                publicName: sub.publicName || sub.name,
-                                description: sub.description || '',
-                                price: sub.price,
-                                dayOfWeek: slot.dayOfWeek,
-                                startTime: slot.startTime, // Orario principale indicativo
-                                endTime: slot.endTime,
-                                minAge: finalMinAge,
-                                maxAge: finalMaxAge,
-                                availableSeats: available, // Inizializzato al primo slot, poi prenderà il minimo
-                                originalCapacity: capacity,
-                                isFull: available <= 0,
-                                includedSlots: []
-                            });
-                        }
-
-                        const bundle = aggregatedBundles.get(groupKey);
-
-                        // Aggiorniamo i limiti d'età per essere i più restrittivi
-                        bundle.minAge = Math.max(bundle.minAge, finalMinAge);
-                        bundle.maxAge = Math.min(bundle.maxAge, finalMaxAge);
-
-                        // I posti disponibili per l'intero Bundle combaciato corrispondono allo slot con meno posti liberi!
-                        bundle.availableSeats = Math.min(bundle.availableSeats, available);
-                        bundle.isFull = bundle.availableSeats <= 0;
-
-                        // Aggiungiamo lo slot attuale alla lista degli slot inclusi nel pacchetto
-                        bundle.includedSlots.push({
-                            type: slot.type || 'LAB',
-                            startTime: slot.startTime,
-                            endTime: slot.endTime,
-                            dayOfWeek: slot.dayOfWeek,
-                            minAge: slot.minAge,
-                            maxAge: slot.maxAge
-                        });
-                        logger.info(`    Added slot ${slot.type} (${slot.startTime}) to bundle ${sub.name} for ${loc.name}`);
-                    });
-                });
-
-                // Trasformiamo la mappa aggregata di nuovo in array, scartando eventuali bundle incongruenti
-                const locationBundles = Array.from(aggregatedBundles.values()).filter(b => b.minAge <= b.maxAge);
-
-                if (locationBundles.length > 0) {
-                    results.push({
-                        id: loc.id,
-                        name: loc.name,
-                        address: loc.address || '',
-                        city: loc.city || '',
-                        googleMapsLink: loc.googleMapsLink || '',
-                        bundles: locationBundles
-                    });
+                    locBundles.push(bundle);
                 }
+
+                // Per bundle multi-slot (se esistessero), prendiamo il minimo della disponibilità
+                bundle.availableSeats = Math.min(bundle.availableSeats, available);
+                bundle.isFull = bundle.availableSeats <= 0;
+                
+                bundle.includedSlots.push({
+                    courseId: course.id,
+                    type: course.slotType,
+                    startTime: course.startTime,
+                    endTime: course.endTime,
+                    dayOfWeek: course.dayOfWeek
+                });
+            });
+        });
+
+        // 3. Formattazione finale
+        locationBundlesGrouped.forEach((bundles, locId) => {
+            const loc = locationsMap.get(locId);
+            results.push({
+                id: loc.id,
+                name: loc.name,
+                address: loc.address || '',
+                city: loc.city || '',
+                googleMapsLink: loc.googleMapsLink || '',
+                bundles: bundles
             });
         });
 
         res.status(200).json({ success: true, data: results });
     } catch (error: any) {
-        logger.error("Error fetching public slots v2:", error?.message || error);
-        res.status(500).json({ error: "Failed to fetch slots" });
+        logger.error("Error in getPublicSlotsV5:", error);
+        res.status(500).json({ error: "Failed to fetch slots v5" });
     }
 });
 
@@ -510,8 +446,92 @@ export const checkPeriodicNotifications = onSchedule({ schedule: "* * * * *", ti
     logger.info("Checking periodic notifications...");
 });
 
-export const onEnrollmentCreated = onDocumentCreated({ region: "europe-west1", document: "enrollments/{id}" }, async (event: any) => {
-    logger.info("Enrollment created:", event.params.id);
+export const onEnrollmentCreated = onDocumentCreated({ 
+    region: "europe-west1", 
+    document: "enrollments/{id}" 
+}, async (event: any) => {
+    const firebase = getAdmin();
+    const db = firebase.firestore();
+    const enrollment = event.data?.data();
+    if (!enrollment) return;
+
+    logger.info(`Processing enrollment created: ${event.params.id}`);
+
+    // Solo se lo status è attivo/previsto contiamo l'occupazione
+    if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enrollment.status)) {
+        const courseId = enrollment.courseId || enrollment.selectedCourseId;
+        if (courseId) {
+            try {
+                await db.collection('courses').doc(courseId).update({
+                    activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                logger.info(`Incremented occupancy for course ${courseId}`);
+            } catch (e) {
+                logger.error(`Failed to increment occupancy for course ${courseId}:`, e);
+            }
+        }
+    }
+});
+
+import { onDocumentDeleted, onDocumentUpdated } from "firebase-functions/v2/firestore";
+
+export const onEnrollmentDeleted = onDocumentDeleted({ 
+    region: "europe-west1", 
+    document: "enrollments/{id}" 
+}, async (event: any) => {
+    const firebase = getAdmin();
+    const db = firebase.firestore();
+    const enrollment = event.data?.data();
+    if (!enrollment) return;
+
+    logger.info(`Processing enrollment deleted: ${event.params.id}`);
+
+    if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enrollment.status)) {
+        const courseId = enrollment.courseId || enrollment.selectedCourseId;
+        if (courseId) {
+            try {
+                await db.collection('courses').doc(courseId).update({
+                    activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+                logger.info(`Decremented occupancy for course ${courseId}`);
+            } catch (e) {
+                logger.error(`Failed to decrement occupancy for course ${courseId}:`, e);
+            }
+        }
+    }
+});
+
+export const onEnrollmentUpdated = onDocumentUpdated({
+    region: "europe-west1",
+    document: "enrollments/{id}"
+}, async (event: any) => {
+    const firebase = getAdmin();
+    const db = firebase.firestore();
+    const before = event.data?.before.data();
+    const after = event.data?.after.data();
+    if (!before || !after) return;
+
+    const oldStatus = before.status;
+    const newStatus = after.status;
+    const courseId = after.courseId || after.selectedCourseId || before.courseId || before.selectedCourseId;
+
+    if (!courseId) return;
+
+    const isActive = (s: string) => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s);
+
+    if (!isActive(oldStatus) && isActive(newStatus)) {
+        await db.collection('courses').doc(courseId).update({
+            activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    } else if (isActive(oldStatus) && !isActive(newStatus)) {
+        await db.collection('courses').doc(courseId).update({
+            activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+    }
 });
 
 export const enrollmentGateway = onRequest({ region: "europe-west1", cors: true }, async (req: any, res: any) => {

@@ -3,6 +3,7 @@ import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, 
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import { getEnrollmentsForClient } from '../services/enrollmentService';
+import { getOpenCourses } from '../services/courseService';
 import Spinner from './Spinner';
 import SearchIcon from './icons/SearchIcon';
 import PlusIcon from './icons/PlusIcon';
@@ -41,19 +42,27 @@ const isItalianHoliday = (date: Date): boolean => {
 };
 
 // Helper standard per calcolo date (solo Mode Standard)
-const calculateSlotBasedDates = (startStr: string, lessons: number): { start: string, end: string } => {
+const calculateSlotBasedDates = (startStr: string, lessons: number, dayOfWeek?: number): { start: string, end: string } => {
     if (!startStr || lessons <= 0) return { start: startStr, end: startStr };
     
     const currentDate = new Date(startStr);
+    // Align to dayOfWeek if provided
+    if (dayOfWeek !== undefined) {
+        while (currentDate.getDay() !== dayOfWeek) {
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+    }
+    
     let validSlots = 0;
     let firstDate: string | null = null;
     let lastDate: string = startStr;
 
     let loops = 0;
-    while (validSlots < lessons && loops < 100) {
+    while (validSlots < lessons && loops < 500) {
         if (!isItalianHoliday(currentDate)) {
-            if (!firstDate) firstDate = currentDate.toISOString().split('T')[0];
-            lastDate = currentDate.toISOString().split('T')[0];
+            const dateStr = currentDate.toISOString().split('T')[0];
+            if (!firstDate) firstDate = dateStr;
+            lastDate = dateStr;
             validSlots++;
         }
         currentDate.setDate(currentDate.getDate() + 7);
@@ -81,23 +90,12 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [endTime, setEndTime] = useState(existingEnrollment?.appointments?.[0]?.endTime || '18:00');
     const [isEndDateManual, setIsEndDateManual] = useState(false); 
 
-    // --- STATE CUSTOM SCHEDULE BUILDER (MODE A/B) ---
-    const [customSchedule, setCustomSchedule] = useState<Appointment[]>(existingEnrollment?.appointments || []);
-    
-    // Generator State
-    const [genLocationId, setGenLocationId] = useState('');
-    const [genDayOfWeek, setGenDayOfWeek] = useState(1);
-    const [genStartTime, setGenStartTime] = useState('16:00');
-    const [genEndTime, setGenEndTime] = useState('18:00');
-    const [genCount, setGenCount] = useState(10);
-    const [genSmartSlot, setGenSmartSlot] = useState(''); // "start-end" or "manual"
-
-    // Single Adder State
-    const [singleDate, setSingleDate] = useState(new Date().toISOString().split('T')[0]);
-    const [singleLocationId, setSingleLocationId] = useState('');
-    const [singleStartTime, setSingleStartTime] = useState('16:00');
-    const [singleEndTime, setSingleEndTime] = useState('18:00');
     const [singleSmartSlot, setSingleSmartSlot] = useState('');
+
+    // --- NEW COURSE STATE ---
+    const [courses, setCourses] = useState<Course[]>([]);
+    const [selectedCourseId, setSelectedCourseId] = useState<string>(existingEnrollment?.appointments?.[0]?.locationId || ''); // Reuse for simplicity or add courseId to Enrollment
+    const [isAgeFilteringActive, setIsAgeFilteringActive] = useState(true);
 
     // Resources
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -294,9 +292,14 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [subs, supps] = await Promise.all([getSubscriptionTypes(), getSuppliers()]);
+                const [subs, supps, openCourses] = await Promise.all([
+                    getSubscriptionTypes(), 
+                    getSuppliers(),
+                    getOpenCourses()
+                ]);
                 setSubscriptionTypes(subs);
                 setSuppliers(supps);
+                setCourses(openCourses);
             } catch (e) { console.error(e); } finally { setLoading(false); }
         };
         loadData();
@@ -432,20 +435,87 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             
             return (status === 'active' || status === 'promo') && !isOld;
         };
-        if (isInstitutional) return subscriptionTypes.filter(isVisible);
-        return subscriptionTypes.filter(s => {
+
+        // Age filter logic
+        let childrenAgeRange: { min: number, max: number } | null = null;
+        if (!isAdultEnrollment && selectedChildIds.length > 0 && currentClient?.clientType === ClientType.Parent) {
+            const ages = selectedChildIds.map(id => {
+                const child = (currentClient as ParentClient).children.find(c => c.id === id);
+                if (!child) return 0;
+                if (child.dateOfBirth) {
+                    const dob = new Date(child.dateOfBirth);
+                    return Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
+                }
+                return parseInt(child.age) || 0;
+            });
+            childrenAgeRange = { min: Math.min(...ages), max: Math.max(...ages) };
+        }
+
+        const baseSubs = isInstitutional ? subscriptionTypes.filter(isVisible) : subscriptionTypes.filter(s => {
             let matchesTarget = false;
             if (s.target) matchesTarget = isAdultEnrollment ? s.target === 'adult' : s.target === 'kid';
             else { const isAdultName = s.name.startsWith('A -'); matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName; }
+            
+            // Filter by age if subscription specifies it
+            if (childrenAgeRange && s.allowedAges) {
+                if (childrenAgeRange.min < s.allowedAges.min || childrenAgeRange.max > s.allowedAges.max) {
+                    return false;
+                }
+            }
+
             return matchesTarget && isVisible(s);
         });
-    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory]);
+
+        // If a course is selected, filter by compatible tokens
+        if (selectedCourseId) {
+            const course = courses.find(c => c.id === selectedCourseId);
+            if (course) {
+                return baseSubs.filter(s => {
+                    // Compatible if it has at least one token of the course's type
+                    if (s.tokens && s.tokens.length > 0) {
+                        return s.tokens.some(t => t.type === course.slotType);
+                    }
+                    // Fallback for legacy subscriptions (assume compatible if slotType matches legacy expectations)
+                    return true; 
+                });
+            }
+        }
+
+        return baseSubs;
+    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory, selectedChildIds, currentClient, courses, selectedCourseId]);
+
+    const filteredCourses = useMemo(() => {
+        if (!isAgeFilteringActive || isAdultEnrollment) return courses;
+        
+        // Age filter logic for courses
+        if (selectedChildIds.length > 0 && currentClient?.clientType === ClientType.Parent) {
+            const ages = selectedChildIds.map(id => {
+                const child = (currentClient as ParentClient).children.find(c => c.id === id);
+                if (!child) return 0;
+                if (child.dateOfBirth) {
+                    const dob = new Date(child.dateOfBirth);
+                    return Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
+                }
+                return parseInt(child.age) || 0;
+            });
+            const minChildAge = Math.min(...ages);
+            const maxChildAge = Math.max(...ages);
+
+            return courses.filter(c => {
+                // Return courses where all children fit in [minAge, maxAge]
+                return minChildAge >= c.minAge && maxChildAge <= c.maxAge;
+            });
+        }
+        return courses;
+    }, [courses, selectedChildIds, currentClient, isAgeFilteringActive, isAdultEnrollment]);
 
     const calculatedDates = useMemo(() => {
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
         if (!selectedSub || !startDateInput || isCustomMode) return null;
-        return calculateSlotBasedDates(startDateInput, selectedSub.lessons);
-    }, [subscriptionTypeId, startDateInput, subscriptionTypes, isCustomMode]);
+        
+        const course = courses.find(c => c.id === selectedCourseId);
+        return calculateSlotBasedDates(startDateInput, selectedSub.lessons, course?.dayOfWeek);
+    }, [subscriptionTypeId, startDateInput, subscriptionTypes, isCustomMode, selectedCourseId, courses]);
 
     useEffect(() => {
         if (!isEndDateManual && calculatedDates && !isCustomMode) {
@@ -487,6 +557,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         let finalEndDate = endDateInput;
         let finalLessonsTotal = Number(existingEnrollment?.lessonsTotal || selectedSub?.lessons || 0);
         let finalLocationId = targetLocationId || 'unassigned';
+        let finalCourseId = selectedCourseId || undefined;
         let finalLocationName = allLocations.find(l => l.id === targetLocationId)?.name || 'Sede Non Definita';
         const finalLocationColor = allLocations.find(l => l.id === targetLocationId)?.color || '#e5e7eb';
         const finalSupplierId = allLocations.find(l => l.id === targetLocationId)?.supplierId || 'unassigned';
@@ -506,6 +577,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             // For Institutional, location might be mixed, we use a placeholder or the most frequent
             finalLocationId = 'mixed'; 
             finalLocationName = 'Multi-Sede';
+            finalCourseId = undefined;
         } else {
             // Standard Mode
             let regenerateCalendar = false;
@@ -520,14 +592,16 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             }
 
             if (regenerateCalendar || !existingEnrollment) {
+                const course = courses.find(c => c.id === selectedCourseId);
+                
                 appointmentsPayload = [{
                     lessonId: 'template', 
                     date: new Date(startDateInput).toISOString(),
-                    startTime: startTime,
-                    endTime: endTime,
-                    locationId: finalLocationId,
-                    locationName: finalLocationName,
-                    locationColor: finalLocationColor,
+                    startTime: course?.startTime || startTime,
+                    endTime: course?.endTime || endTime,
+                    locationId: course?.locationId || finalLocationId,
+                    locationName: allLocations.find(l => l.id === course?.locationId)?.name || finalLocationName,
+                    locationColor: allLocations.find(l => l.id === course?.locationId)?.color || finalLocationColor,
                     childName: '', 
                     status: 'Scheduled'
                 }];
@@ -535,6 +609,18 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 appointmentsPayload = (existingEnrollment.appointments || []).map(app => ({
                     ...app, startTime, endTime, locationId: finalLocationId, locationName: finalLocationName, locationColor: finalLocationColor
                 }));
+            }
+        }
+
+        // Final overrides from selected course if standard mode
+        if (!isCustomMode && selectedCourseId) {
+            const course = courses.find(c => c.id === selectedCourseId);
+            if (course) {
+                finalLocationId = course.locationId;
+                finalCourseId = course.id;
+                const loc = allLocations.find(l => l.id === course.locationId);
+                finalLocationName = loc?.name || 'Sede';
+                // finalLocationColor = loc?.color || '#ccc'; // already handled if possible
             }
         }
 
@@ -567,6 +653,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 locationId: finalLocationId,
                 locationName: finalLocationName, 
                 locationColor: finalLocationColor, 
+                courseId: finalCourseId,
                 
                 appointments: appointmentsPayload, 
                 
@@ -726,33 +813,55 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             </div>
                         </div>
 
-                        {/* ASSEGNAZIONE SEDE STANDARD */}
+                        {/* ASSEGNAZIONE CORSO (NUOVA ARCHITETTURA) */}
                         <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mt-2">
-                            <label className="block text-xs font-bold text-indigo-800 uppercase mb-3">7. Assegnazione Sede & Orario</label>
+                            <div className="flex justify-between items-center mb-3">
+                                <label className="block text-xs font-bold text-indigo-800 uppercase">7. Selezione Corso (Fessura)</label>
+                                <label className="flex items-center gap-1 cursor-pointer">
+                                    <input type="checkbox" checked={isAgeFilteringActive} onChange={e => setIsAgeFilteringActive(e.target.checked)} className="rounded text-indigo-600 w-3 h-3" />
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Filtra per Età</span>
+                                </label>
+                            </div>
                             
                             <div className="md-input-group !mb-3">
                                 <select 
-                                    value={targetLocationId || ''} 
-                                    onChange={e => setTargetLocationId(e.target.value)} 
+                                    value={selectedCourseId} 
+                                    onChange={e => {
+                                        const cId = e.target.value;
+                                        setSelectedCourseId(cId);
+                                        const c = courses.find(x => x.id === cId);
+                                        if (c) {
+                                            setStartTime(c.startTime);
+                                            setEndTime(c.endTime);
+                                            setTargetLocationId(c.locationId);
+                                        }
+                                    }} 
+                                    required={!isCustomMode}
                                     className="md-input bg-white font-bold text-indigo-700"
                                 >
-                                    <option value="">-- Nessuna / Da Assegnare (Manuale) --</option>
-                                    {allLocations.map(l => (
-                                        <option key={l.id} value={l.id}>{l.name}</option>
-                                    ))}
+                                    <option value="">-- Seleziona un corso disponibile --</option>
+                                    {filteredCourses.map(c => {
+                                        const loc = allLocations.find(l => l.id === c.locationId);
+                                        const days = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+                                        return (
+                                            <option key={c.id} value={c.id}>
+                                                {days[c.dayOfWeek]} {c.startTime}-{c.endTime} | {loc?.name} ({c.slotType}) | {c.minAge}-{c.maxAge}a
+                                            </option>
+                                        );
+                                    })}
                                 </select>
-                                <label className="md-input-label !top-0">Recinto di Destinazione</label>
+                                <label className="md-input-label !top-0">Punto di Destinazione</label>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="md-input-group !mb-0">
-                                    <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="md-input text-sm font-bold" />
-                                    <label className="md-input-label !top-0">Inizio</label>
+                            <div className="flex items-center gap-4 px-2">
+                                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                                    <ClockIcon /> {startTime} - {endTime}
                                 </div>
-                                <div className="md-input-group !mb-0">
-                                    <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="md-input text-sm font-bold" />
-                                    <label className="md-input-label !top-0">Fine</label>
-                                </div>
+                                {selectedCourseId && (
+                                    <div className="text-[10px] font-black uppercase text-indigo-600">
+                                        Occupazione: {courses.find(c => c.id === selectedCourseId)?.activeEnrollmentsCount || 0} / {courses.find(c => c.id === selectedCourseId)?.capacity}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </>
