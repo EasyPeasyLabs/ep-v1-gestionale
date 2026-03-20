@@ -238,10 +238,6 @@ var receiveLeadV2 = (0, import_https.onRequest)({
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     const docRef = await db.collection("incoming_leads").add(leadDoc);
-    await sendPushToAllTokens("\u{1F680} Nuovo Lead Ricevuto!", `Nuovo lead: ${leadDoc.nome} ${leadDoc.cognome}`, {
-      leadId: docRef.id,
-      type: "lead"
-    });
     res.status(200).json({ success: true, referenceId: docRef.id });
   } catch (error2) {
     logger.error("Error saving lead v2:", error2?.message || error2);

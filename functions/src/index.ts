@@ -232,11 +232,7 @@ export const receiveLeadV2 = onRequest({
 
         const docRef = await db.collection("incoming_leads").add(leadDoc);
 
-        // Push immediata
-        await sendPushToAllTokens("🚀 Nuovo Lead Ricevuto!", `Nuovo lead: ${leadDoc.nome} ${leadDoc.cognome}`, {
-            leadId: docRef.id,
-            type: 'lead'
-        });
+        // Push delegato al trigger onLeadCreated per evitare duplicazioni di notifiche FCM
 
         res.status(200).json({ success: true, referenceId: docRef.id });
     } catch (error: any) {
