@@ -123,18 +123,38 @@ const Courses: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-gray-500 font-medium">{course.minAge} - {course.maxAge} anni</td>
                                             <td className="px-6 py-4">
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <div className="text-sm font-bold text-gray-900">
-                                                        {course.activeEnrollmentsCount || 0} / {course.capacity}
+                                                <div className="flex flex-col items-center gap-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-gray-900">
+                                                            {course.activeEnrollmentsCount || 0} /
+                                                        </span>
+                                                        <input 
+                                                            type="number" 
+                                                            defaultValue={course.capacity}
+                                                            onBlur={async (e) => {
+                                                                const newCap = parseInt(e.target.value);
+                                                                if (!isNaN(newCap) && newCap !== course.capacity) {
+                                                                    try {
+                                                                        await courseService.updateCourse(course.id, { capacity: newCap });
+                                                                        toast.success("Capienza aggiornata");
+                                                                        fetchCourses();
+                                                                    } catch (err) {
+                                                                        toast.error("Errore aggiornamento");
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="w-16 px-2 py-1 text-sm font-bold border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                            min="0"
+                                                        />
                                                     </div>
                                                     <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                                         <div 
                                                             className={`h-full transition-all duration-500 ${
-                                                                (course.activeEnrollmentsCount / course.capacity) > 0.8 ? 'bg-red-500' : 
-                                                                (course.activeEnrollmentsCount / course.capacity) > 0.5 ? 'bg-amber-500' : 
+                                                                (course.activeEnrollmentsCount / (course.capacity || 1)) > 0.8 ? 'bg-red-500' : 
+                                                                (course.activeEnrollmentsCount / (course.capacity || 1)) > 0.5 ? 'bg-amber-500' : 
                                                                 'bg-indigo-500'
                                                             }`}
-                                                            style={{ width: `${Math.min(100, ((course.activeEnrollmentsCount || 0) / course.capacity) * 100)}%` }}
+                                                            style={{ width: `${Math.min(100, ((course.activeEnrollmentsCount || 0) / (course.capacity || 1)) * 100)}%` }}
                                                         ></div>
                                                     </div>
                                                 </div>
