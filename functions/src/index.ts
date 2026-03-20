@@ -162,11 +162,14 @@ export const onLeadCreated = onDocumentCreated({
     const title = "👤 Nuova Richiesta Web";
     let body = sede ? `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!` : `${nome} ${cognome} ha richiesto informazioni. Contattalo subito!`;
 
+    // FCM invocato nativamente da receiveLeadV2 per garanzia cronologica e testuale.
+    /*
     await sendPushToAllTokens(title, body, {
         leadId: event.params.leadId,
         type: 'lead',
         click_action: 'WEB_REQUESTS'
     });
+    */
 });
 
 // --- API RICEZIONE LEAD V2 (PROGETTO B) ---
@@ -230,9 +233,35 @@ export const receiveLeadV2 = onRequest({
             createdAt: new Date().toISOString()
         };
 
+        // Rimuoviamo artefatti di sincronizzazione locali del Progetto B
+        delete leadDoc.syncStatus;
+
         const docRef = await db.collection("incoming_leads").add(leadDoc);
 
-        // Push delegato al trigger onLeadCreated per evitare duplicazioni di notifiche FCM
+        // --- INVIO NOTIFICA FCM (Sincrona e garantita, con il testo esatto) ---
+        try {
+            const dayNames = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+            let giornoBundle = "";
+            if (data.selectedSlot && typeof data.selectedSlot.dayOfWeek === 'number') {
+                giornoBundle = dayNames[data.selectedSlot.dayOfWeek];
+            } else if (data.selectedSlot && typeof data.selectedSlot.dayOfWeek === 'string') {
+                giornoBundle = data.selectedSlot.dayOfWeek;
+            }
+
+            const reqSede = data.selectedLocation || leadDoc.locationName || leadDoc.sede || "Sede";
+            const reqTitle = "👤 Nuova Richiesta Web";
+            const reqBody = giornoBundle
+                ? `${leadDoc.nome} ${leadDoc.cognome} ha richiesto informazioni per il corso presso ${reqSede} del ${giornoBundle}. Contattalo subito!`
+                : `${leadDoc.nome} ${leadDoc.cognome} ha richiesto informazioni per la sede di ${reqSede}. Contattalo subito!`;
+
+            await sendPushToAllTokens(reqTitle, reqBody, {
+                leadId: docRef.id,
+                type: 'lead',
+                click_action: 'WEB_REQUESTS'
+            });
+        } catch (fcmErr) {
+            logger.error("Error sending immediate FCM in receiveLeadV2:", fcmErr);
+        }
 
         res.status(200).json({ success: true, referenceId: docRef.id });
     } catch (error: any) {

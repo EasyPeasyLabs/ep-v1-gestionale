@@ -182,11 +182,6 @@ var onLeadCreated = (0, import_firestore.onDocumentCreated)({
   }
   const title = "\u{1F464} Nuova Richiesta Web";
   let body = sede ? `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!` : `${nome} ${cognome} ha richiesto informazioni. Contattalo subito!`;
-  await sendPushToAllTokens(title, body, {
-    leadId: event.params.leadId,
-    type: "lead",
-    click_action: "WEB_REQUESTS"
-  });
 });
 var receiveLeadV2 = (0, import_https.onRequest)({
   region: "europe-west1",
@@ -237,7 +232,27 @@ var receiveLeadV2 = (0, import_https.onRequest)({
       status: "pending",
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
+    delete leadDoc.syncStatus;
     const docRef = await db.collection("incoming_leads").add(leadDoc);
+    try {
+      const dayNames = ["Domenica", "Luned\xEC", "Marted\xEC", "Mercoled\xEC", "Gioved\xEC", "Venerd\xEC", "Sabato"];
+      let giornoBundle = "";
+      if (data.selectedSlot && typeof data.selectedSlot.dayOfWeek === "number") {
+        giornoBundle = dayNames[data.selectedSlot.dayOfWeek];
+      } else if (data.selectedSlot && typeof data.selectedSlot.dayOfWeek === "string") {
+        giornoBundle = data.selectedSlot.dayOfWeek;
+      }
+      const reqSede = data.selectedLocation || leadDoc.locationName || leadDoc.sede || "Sede";
+      const reqTitle = "\u{1F464} Nuova Richiesta Web";
+      const reqBody = giornoBundle ? `${leadDoc.nome} ${leadDoc.cognome} ha richiesto informazioni per il corso presso ${reqSede} del ${giornoBundle}. Contattalo subito!` : `${leadDoc.nome} ${leadDoc.cognome} ha richiesto informazioni per la sede di ${reqSede}. Contattalo subito!`;
+      await sendPushToAllTokens(reqTitle, reqBody, {
+        leadId: docRef.id,
+        type: "lead",
+        click_action: "WEB_REQUESTS"
+      });
+    } catch (fcmErr) {
+      logger.error("Error sending immediate FCM in receiveLeadV2:", fcmErr);
+    }
     res.status(200).json({ success: true, referenceId: docRef.id });
   } catch (error2) {
     logger.error("Error saving lead v2:", error2?.message || error2);
