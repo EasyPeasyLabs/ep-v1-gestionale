@@ -317,7 +317,7 @@ export const getPublicSlotsV2 = onRequest({
             locations.forEach((loc: any) => {
                 if (loc.isPubliclyVisible === false || loc.closedAt) return;
 
-                const locationBundles: any[] = [];
+                const aggregatedBundles = new Map<string, any>();
                 const slots = loc.availability || loc.slots || []; // Supporto entrambi i nomi campi
 
                 logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
@@ -390,24 +390,51 @@ export const getPublicSlotsV2 = onRequest({
                         // Se l'intersezione è vuota, questo bundle non ha senso per questo slot
                         if (finalMinAge > finalMaxAge) return;
 
-                        locationBundles.push({
-                            bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(':', '')}`,
-                            name: sub.name,
-                            publicName: sub.publicName || sub.name,
-                            description: sub.description || '',
-                            price: sub.price,
-                            dayOfWeek: slot.dayOfWeek,
+                        // CHIAVE DI AGGREGAZIONE: Sede + Abbonamento + Giorno della Settimana
+                        const groupKey = `${loc.id}_${sub.id}_${slot.dayOfWeek}`;
+
+                        if (!aggregatedBundles.has(groupKey)) {
+                            aggregatedBundles.set(groupKey, {
+                                bundleId: groupKey,
+                                name: sub.name,
+                                publicName: sub.publicName || sub.name,
+                                description: sub.description || '',
+                                price: sub.price,
+                                dayOfWeek: slot.dayOfWeek,
+                                startTime: slot.startTime, // Orario principale indicativo
+                                endTime: slot.endTime,
+                                minAge: finalMinAge,
+                                maxAge: finalMaxAge,
+                                availableSeats: available, // Inizializzato al primo slot, poi prenderà il minimo
+                                originalCapacity: capacity,
+                                isFull: available <= 0,
+                                includedSlots: []
+                            });
+                        }
+
+                        const bundle = aggregatedBundles.get(groupKey);
+
+                        // Aggiorniamo i limiti d'età per essere i più restrittivi
+                        bundle.minAge = Math.max(bundle.minAge, finalMinAge);
+                        bundle.maxAge = Math.min(bundle.maxAge, finalMaxAge);
+
+                        // I posti disponibili per l'intero Bundle combaciato corrispondono allo slot con meno posti liberi!
+                        bundle.availableSeats = Math.min(bundle.availableSeats, available);
+                        bundle.isFull = bundle.availableSeats <= 0;
+
+                        // Aggiungiamo lo slot attuale alla lista degli slot inclusi nel pacchetto
+                        bundle.includedSlots.push({
+                            type: slot.type || 'LAB',
                             startTime: slot.startTime,
                             endTime: slot.endTime,
-                            minAge: finalMinAge,
-                            maxAge: finalMaxAge,
-                            availableSeats: available,
-                            originalCapacity: capacity,
-                            isFull: available <= 0,
-                            includedSlots: [{ type: slot.type || 'LAB', startTime: slot.startTime, endTime: slot.endTime, minAge: slot.minAge, maxAge: slot.maxAge }]
+                            minAge: slot.minAge,
+                            maxAge: slot.maxAge
                         });
                     });
                 });
+
+                // Trasformiamo la mappa aggregata di nuovo in array, scartando eventuali bundle incongruenti
+                const locationBundles = Array.from(aggregatedBundles.values()).filter(b => b.minAge <= b.maxAge);
 
                 if (locationBundles.length > 0) {
                     results.push({

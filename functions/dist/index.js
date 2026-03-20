@@ -297,7 +297,7 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
       const locations = supplierData.locations || [];
       locations.forEach((loc) => {
         if (loc.isPubliclyVisible === false || loc.closedAt) return;
-        const locationBundles = [];
+        const aggregatedBundles = /* @__PURE__ */ new Map();
         const slots = loc.availability || loc.slots || [];
         logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
         slots.forEach((slot) => {
@@ -347,24 +347,42 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             const finalMinAge = Math.max(subMinAge, slot.minAge || 0);
             const finalMaxAge = Math.min(subMaxAge, slot.maxAge || 99);
             if (finalMinAge > finalMaxAge) return;
-            locationBundles.push({
-              bundleId: `${loc.id}_${sub.id}_${slot.dayOfWeek}_${slot.startTime.replace(":", "")}`,
-              name: sub.name,
-              publicName: sub.publicName || sub.name,
-              description: sub.description || "",
-              price: sub.price,
-              dayOfWeek: slot.dayOfWeek,
+            const groupKey = `${loc.id}_${sub.id}_${slot.dayOfWeek}`;
+            if (!aggregatedBundles.has(groupKey)) {
+              aggregatedBundles.set(groupKey, {
+                bundleId: groupKey,
+                name: sub.name,
+                publicName: sub.publicName || sub.name,
+                description: sub.description || "",
+                price: sub.price,
+                dayOfWeek: slot.dayOfWeek,
+                startTime: slot.startTime,
+                // Orario principale indicativo
+                endTime: slot.endTime,
+                minAge: finalMinAge,
+                maxAge: finalMaxAge,
+                availableSeats: available,
+                // Inizializzato al primo slot, poi prenderà il minimo
+                originalCapacity: capacity,
+                isFull: available <= 0,
+                includedSlots: []
+              });
+            }
+            const bundle = aggregatedBundles.get(groupKey);
+            bundle.minAge = Math.max(bundle.minAge, finalMinAge);
+            bundle.maxAge = Math.min(bundle.maxAge, finalMaxAge);
+            bundle.availableSeats = Math.min(bundle.availableSeats, available);
+            bundle.isFull = bundle.availableSeats <= 0;
+            bundle.includedSlots.push({
+              type: slot.type || "LAB",
               startTime: slot.startTime,
               endTime: slot.endTime,
-              minAge: finalMinAge,
-              maxAge: finalMaxAge,
-              availableSeats: available,
-              originalCapacity: capacity,
-              isFull: available <= 0,
-              includedSlots: [{ type: slot.type || "LAB", startTime: slot.startTime, endTime: slot.endTime, minAge: slot.minAge, maxAge: slot.maxAge }]
+              minAge: slot.minAge,
+              maxAge: slot.maxAge
             });
           });
         });
+        const locationBundles = Array.from(aggregatedBundles.values()).filter((b) => b.minAge <= b.maxAge);
         if (locationBundles.length > 0) {
           results.push({
             id: loc.id,

@@ -33,9 +33,9 @@ const Copy = (props: any) => <IconWrap Icon={ClipboardIcon} {...props} />;
 const Calendar = (props: any) => <IconWrap Icon={CalendarIcon} {...props} />;
 const Sparkles = (props: any) => <IconWrap Icon={SparklesIcon} {...props} />;
 import BanknotesIcon from '../components/icons/BanknotesIcon';
-import { 
-  SubscriptionType, 
-  CompanyInfo, 
+import {
+  SubscriptionType,
+  CompanyInfo,
   PaymentMethod,
   DocumentStatus,
   TransactionType,
@@ -87,15 +87,15 @@ interface Lead {
 const formatSlotToString = (slot: any): string => {
   if (!slot) return '';
   if (typeof slot === 'string') return slot;
-  
+
   // Se è l'oggetto descritto nell'errore {bundleName, dayOfWeek, startTime, endTime...}
   const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
   const day = daysMap[slot.dayOfWeek || 0] || '';
   const time = (slot.startTime && slot.endTime) ? `${slot.startTime} - ${slot.endTime}` : '';
-  
+
   if (day && time) return `${day}, ${time}`;
   if (slot.bundleName) return slot.bundleName;
-  
+
   return JSON.stringify(slot); // Fallback estremo per debug, ma ora gestito come stringa
 };
 
@@ -107,15 +107,15 @@ const calculateAgeString = (dob: string): string => {
   let months = now.getMonth() - birth.getMonth();
 
   if (months < 0 || (months === 0 && now.getDate() < birth.getDate())) {
-      years--;
-      months += 12;
+    years--;
+    months += 12;
   }
 
   if (now.getDate() < birth.getDate()) {
-      months--;
-      if (months < 0) {
-          months += 12;
-      }
+    months--;
+    if (months < 0) {
+      months += 12;
+    }
   }
 
   if (years < 0) return '0 mesi';
@@ -132,12 +132,12 @@ const getNextOccurrence = (dayName: string): string => {
 
   const now = new Date();
   const result = new Date(now);
-  
+
   // Calculate days until next occurrence
   const currentDay = now.getDay();
   let daysUntil = targetDay - currentDay;
   if (daysUntil <= 0) daysUntil += 7; // Always at least 1 day in the future (or next week if same day)
-  
+
   result.setDate(now.getDate() + daysUntil);
   return result.toISOString();
 };
@@ -149,10 +149,10 @@ const EnrollmentPortal: React.FC = () => {
   const [lead, setLead] = useState<Lead | null>(null);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
-  const [locations, setLocations] = useState<{id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[]>([]);
+  const [locations, setLocations] = useState<{ id: string, name: string, address: string, city: string, color: string, slots: { time: string, type: SlotType }[] }[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [existingEnrollment, setExistingEnrollment] = useState<any | null>(null);
-  
+
   // Form State
   const [formData, setFormData] = useState({
     parentFirstName: '',
@@ -183,11 +183,14 @@ const EnrollmentPortal: React.FC = () => {
   const [showAllOptions, setShowAllOptions] = useState(false);
   const [showOtherSubscriptions, setShowOtherSubscriptions] = useState(false);
 
+  // Bundle slots accorpati (es. [{type:'LAB', startTime:'10:00', endTime:'11:00'}, {type:'SG',...}])
+  const [selectedBundleSlots, setSelectedBundleSlots] = useState<{ type: string, startTime: string, endTime: string }[]>([]);
+
   useEffect(() => {
     // Extract ID from either search params or hash params (for SPA compatibility)
     const searchParams = new URLSearchParams(window.location.search);
     let leadId = searchParams.get('id');
-    
+
     if (!leadId && window.location.hash.includes('?')) {
       const hashPart = window.location.hash.split('?')[1];
       const hashParams = new URLSearchParams(hashPart);
@@ -215,9 +218,9 @@ const EnrollmentPortal: React.FC = () => {
         const data = result.data as any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
         if (data.existingEnrollment) {
-            setExistingEnrollment(data.existingEnrollment);
-            setLoading(false);
-            return;
+          setExistingEnrollment(data.existingEnrollment);
+          setLoading(false);
+          return;
         }
 
         const leadData = data.lead as Lead;
@@ -231,7 +234,7 @@ const EnrollmentPortal: React.FC = () => {
 
         // Extract locations from suppliers
         const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-        const locs: {id: string, name: string, address: string, city: string, color: string, slots: {time: string, type: SlotType}[]}[] = [];
+        const locs: { id: string, name: string, address: string, city: string, color: string, slots: { time: string, type: SlotType }[] }[] = [];
         suppliers.forEach((s: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
           s.locations.forEach((l: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
             // Filter out closed or hidden locations
@@ -258,7 +261,7 @@ const EnrollmentPortal: React.FC = () => {
 
         // Pre-fill form
         const normalizedSlotString = formatSlotToString(leadData.selectedSlot);
-        
+
         // --- CHIRURGICAL MATCHING LOGIC ---
         let matchedLocationId = '';
         let matchedLocationName = '';
@@ -268,15 +271,15 @@ const EnrollmentPortal: React.FC = () => {
         // 1. Match Location (Fuzzy & Deep)
         const leadLocRaw = String(leadData.selectedLocation || '');
         const leadLocNormalized = normalizeString(leadLocRaw);
-        
+
         const matchedLoc = locs.find(l => {
           const locNameNorm = normalizeString(l.name);
           const locIdNorm = normalizeString(l.id);
           // Check for exact match, ID match, or containment in both directions
-          return locNameNorm === leadLocNormalized || 
-                 locIdNorm === leadLocNormalized ||
-                 (leadLocNormalized.length > 2 && locNameNorm.includes(leadLocNormalized)) ||
-                 (locNameNorm.length > 2 && leadLocNormalized.includes(locNameNorm));
+          return locNameNorm === leadLocNormalized ||
+            locIdNorm === leadLocNormalized ||
+            (leadLocNormalized.length > 2 && locNameNorm.includes(leadLocNormalized)) ||
+            (locNameNorm.length > 2 && leadLocNormalized.includes(locNameNorm));
         });
 
         if (matchedLoc) {
@@ -286,7 +289,7 @@ const EnrollmentPortal: React.FC = () => {
           // 2. Match Slot within Location (Time-only matching)
           const extractTimeDigits = (s: string) => s.replace(/\D/g, '');
           const leadTimeDigits = extractTimeDigits(normalizedSlotString);
-          
+
           const matchedSlot = matchedLoc.slots.find(s => {
             const dbSlotTime = String(s.time || '');
             const dbTimeDigits = extractTimeDigits(dbSlotTime);
@@ -305,16 +308,16 @@ const EnrollmentPortal: React.FC = () => {
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
           preselectedSubId = (leadData.selectedSlot as any).bundleId || (leadData.selectedSlot as any).subscriptionId || '';
         }
-        
+
         // Validation & Name Fallback
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const subExists = preselectedSubId ? subs.find((s: any) => s.id === preselectedSubId) : null;
-        
+
         if (!subExists && normalizedSlotString) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const matchedSub = subs.find((s: any) => 
+          const matchedSub = subs.find((s: any) =>
             s.statusConfig?.status === 'active' && (
-              normalizeString(s.name).includes(normalizeString(normalizedSlotString)) || 
+              normalizeString(s.name).includes(normalizeString(normalizedSlotString)) ||
               normalizeString(normalizedSlotString).includes(normalizeString(s.name)) ||
               (s.publicName && normalizeString(s.publicName).includes(normalizeString(normalizedSlotString)))
             )
@@ -322,6 +325,14 @@ const EnrollmentPortal: React.FC = () => {
           if (matchedSub) preselectedSubId = matchedSub.id;
         } else if (subExists) {
           preselectedSubId = subExists.id;
+        }
+
+        // Estrai gli slot inclusi nel bundle (es. LAB + SG) se disponibili
+        if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
+          const bundleSlots = (leadData.selectedSlot as any).includedSlots;
+          if (Array.isArray(bundleSlots) && bundleSlots.length > 0) {
+            setSelectedBundleSlots(bundleSlots);
+          }
         }
 
         setFormData(prev => ({
@@ -358,7 +369,7 @@ const EnrollmentPortal: React.FC = () => {
     try {
       const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
       const isCash = method === 'Cash';
-      
+
       const clientData = {
         clientType: ClientType.Parent,
         firstName: formData.parentFirstName,
@@ -460,17 +471,17 @@ const EnrollmentPortal: React.FC = () => {
 
       const processEnrollment = httpsCallable(functions, 'processEnrollment');
       await processEnrollment({
-          leadId: lead.id,
-          formData,
-          clientData,
-          enrollmentData,
-          transactionData,
-          invoiceData
+        leadId: lead.id,
+        formData,
+        clientData,
+        enrollmentData,
+        transactionData,
+        invoiceData
       });
 
       if (method === PaymentMethod.PayPal && companyInfo?.paypal) {
-          const paypalLink = companyInfo.paypal.startsWith('http') ? companyInfo.paypal : `https://${companyInfo.paypal}`;
-          window.open(paypalLink, '_blank');
+        const paypalLink = companyInfo.paypal.startsWith('http') ? companyInfo.paypal : `https://${companyInfo.paypal}`;
+        window.open(paypalLink, '_blank');
       }
 
       setSuccessMode(isCash ? 'booking' : 'paid');
@@ -485,66 +496,66 @@ const EnrollmentPortal: React.FC = () => {
   };
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Spinner /></div>;
-  
+
   // Summary View for Existing Enrollments
   if (existingEnrollment) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-          <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl text-center border border-green-100 animate-fade-in">
-            <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-12 h-12" />
-            </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-2">
-              Iscrizione Già Completata!
-            </h2>
-            <p className="text-gray-600 mb-8 leading-relaxed">
-              Hai già completato l'iscrizione per {existingEnrollment.childName}.
-              Ecco il riepilogo dei dettagli:
-            </p>
-            
-            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 text-left space-y-4 mb-8">
-                <div className="flex items-center gap-3">
-                    <MapPin className="w-5 h-5 text-indigo-500" />
-                    <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p>
-                        <p className="font-bold text-gray-800">{existingEnrollment.locationName}</p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <Clock className="w-5 h-5 text-indigo-500" />
-                    <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
-                        <p className="font-bold text-gray-800">
-                            {existingEnrollment.appointments?.[0] ? 
-                                `${format(parseISO(existingEnrollment.appointments[0].date), 'EEEE')} ${existingEnrollment.appointments[0].startTime} - ${existingEnrollment.appointments[0].endTime}` 
-                                : 'Orario da definire'}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <Calendar className="w-5 h-5 text-indigo-500" />
-                    <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Inizio Corso</p>
-                        <p className="font-bold text-gray-800">
-                            {existingEnrollment.startDate ? format(parseISO(existingEnrollment.startDate), 'd MMMM yyyy') : 'Data da definire'}
-                        </p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <CreditCard className="w-5 h-5 text-indigo-500" />
-                    <div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase">Importo Abbonamento</p>
-                        <p className="font-bold text-gray-800">€ {existingEnrollment.price}</p>
-                    </div>
-                </div>
-            </div>
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl text-center border border-green-100 animate-fade-in">
+          <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="w-12 h-12" />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">
+            Iscrizione Già Completata!
+          </h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">
+            Hai già completato l'iscrizione per {existingEnrollment.childName}.
+            Ecco il riepilogo dei dettagli:
+          </p>
 
-            <div className="space-y-3">
-              <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
+          <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 text-left space-y-4 mb-8">
+            <div className="flex items-center gap-3">
+              <MapPin className="w-5 h-5 text-indigo-500" />
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p>
+                <p className="font-bold text-gray-800">{existingEnrollment.locationName}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-indigo-500" />
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
+                <p className="font-bold text-gray-800">
+                  {existingEnrollment.appointments?.[0] ?
+                    `${format(parseISO(existingEnrollment.appointments[0].date), 'EEEE')} ${existingEnrollment.appointments[0].startTime} - ${existingEnrollment.appointments[0].endTime}`
+                    : 'Orario da definire'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Calendar className="w-5 h-5 text-indigo-500" />
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Inizio Corso</p>
+                <p className="font-bold text-gray-800">
+                  {existingEnrollment.startDate ? format(parseISO(existingEnrollment.startDate), 'd MMMM yyyy') : 'Data da definire'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <CreditCard className="w-5 h-5 text-indigo-500" />
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Importo Abbonamento</p>
+                <p className="font-bold text-gray-800">€ {existingEnrollment.price}</p>
+              </div>
             </div>
           </div>
+
+          <div className="space-y-3">
+            <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
+          </div>
         </div>
-      );
+      </div>
+    );
   }
 
   if (error) return (
@@ -578,8 +589,8 @@ const EnrollmentPortal: React.FC = () => {
         </h2>
         <div className="space-y-4 mb-10">
           <p className="text-xl text-gray-600 font-medium leading-relaxed">
-            {successMode === 'booking' 
-              ? 'Abbiamo ricevuto la tua richiesta. Riceverai a breve una mail di conferma.' 
+            {successMode === 'booking'
+              ? 'Abbiamo ricevuto la tua richiesta. Riceverai a breve una mail di conferma.'
               : 'Grazie! Il pagamento è stato ricevuto. Riceverai a breve la mail di riepilogo.'}
           </p>
           <p className="text-2xl font-black text-indigo-600 uppercase tracking-widest">
@@ -587,8 +598,8 @@ const EnrollmentPortal: React.FC = () => {
           </p>
         </div>
         <div className="space-y-4">
-          <button 
-            onClick={() => window.location.href = 'https://sites.google.com/view/easypeasylabs/home'} 
+          <button
+            onClick={() => window.location.href = 'https://sites.google.com/view/easypeasylabs/home'}
             className="w-full bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-xl hover:bg-gray-800 transition-all uppercase tracking-[0.2em] text-sm"
           >
             Ho capito
@@ -614,7 +625,7 @@ const EnrollmentPortal: React.FC = () => {
       {/* Main Content Card */}
       <div className="max-w-2xl mx-auto -mt-12 px-4">
         <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
-          
+
           {/* Progress Bar */}
           <div className="flex h-1.5 bg-gray-100">
             {[1, 2, 3, 4].map(i => (
@@ -623,11 +634,11 @@ const EnrollmentPortal: React.FC = () => {
           </div>
 
           <div className="p-8">
-            
+
             {/* STEP 1: DATI ANAGRAFICI */}
             {step === 1 && (
               <div className="space-y-8 animate-fade-in">
-                
+
                 {/* Dati Genitore (Read Only) */}
                 <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200">
                   <div className="flex items-center gap-3 mb-4">
@@ -676,34 +687,34 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Codice Fiscale Genitore <span className="text-red-500">*</span></label>
-                      <input 
-                        type="text" 
-                        value={formData.parentFiscalCode} 
-                        onChange={e => setFormData({...formData, parentFiscalCode: e.target.value.toUpperCase()})} 
-                        placeholder="RSSMRA80A01H501Z" 
-                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentFiscalCode ? 'border-blue-300' : 'border-gray-200'}`} 
+                      <input
+                        type="text"
+                        value={formData.parentFiscalCode}
+                        onChange={e => setFormData({ ...formData, parentFiscalCode: e.target.value.toUpperCase() })}
+                        placeholder="RSSMRA80A01H501Z"
+                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentFiscalCode ? 'border-blue-300' : 'border-gray-200'}`}
                       />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-1 md:col-span-2">
                         <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Indirizzo (Via e Civico) <span className="text-red-500">*</span></label>
-                        <input 
-                          type="text" 
-                          value={formData.parentAddress} 
-                          onChange={e => setFormData({...formData, parentAddress: e.target.value.toUpperCase()})} 
+                        <input
+                          type="text"
+                          value={formData.parentAddress}
+                          onChange={e => setFormData({ ...formData, parentAddress: e.target.value.toUpperCase() })}
                           placeholder="VIA ROMA 1"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentAddress ? 'border-blue-300' : 'border-gray-200'}`} 
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentAddress ? 'border-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-500 uppercase ml-1">CAP <span className="text-red-500">*</span></label>
-                        <input 
-                          type="text" 
-                          value={formData.parentZip} 
-                          onChange={e => setFormData({...formData, parentZip: e.target.value})} 
+                        <input
+                          type="text"
+                          value={formData.parentZip}
+                          onChange={e => setFormData({ ...formData, parentZip: e.target.value })}
                           placeholder="00100"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.parentZip ? 'border-blue-300' : 'border-gray-200'}`} 
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.parentZip ? 'border-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                     </div>
@@ -711,23 +722,23 @@ const EnrollmentPortal: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Città <span className="text-red-500">*</span></label>
-                        <input 
-                          type="text" 
-                          value={formData.parentCity} 
-                          onChange={e => setFormData({...formData, parentCity: e.target.value.toUpperCase()})} 
+                        <input
+                          type="text"
+                          value={formData.parentCity}
+                          onChange={e => setFormData({ ...formData, parentCity: e.target.value.toUpperCase() })}
                           placeholder="ROMA"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentCity ? 'border-blue-300' : 'border-gray-200'}`} 
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentCity ? 'border-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Provincia <span className="text-red-500">*</span></label>
-                        <input 
-                          type="text" 
-                          value={formData.parentProvince} 
-                          onChange={e => setFormData({...formData, parentProvince: e.target.value.toUpperCase().substring(0, 2)})} 
+                        <input
+                          type="text"
+                          value={formData.parentProvince}
+                          onChange={e => setFormData({ ...formData, parentProvince: e.target.value.toUpperCase().substring(0, 2) })}
                           placeholder="RM"
                           maxLength={2}
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentProvince ? 'border-blue-300' : 'border-gray-200'}`} 
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentProvince ? 'border-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                     </div>
@@ -741,7 +752,7 @@ const EnrollmentPortal: React.FC = () => {
                     </div>
                     <h2 className="text-lg font-bold text-indigo-900 uppercase tracking-tight">Dati Allievo</h2>
                   </div>
-                  
+
                   {/* Child Read Only */}
                   <div className="mb-4 opacity-70 pointer-events-none select-none">
                     <label className="text-[10px] font-black text-gray-400 uppercase ml-1">Nome Allievo</label>
@@ -753,19 +764,19 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[10px] font-black text-gray-500 uppercase ml-1">Data di Nascita <span className="text-red-500">*</span></label>
-                      <input 
-                        type="date" 
-                        value={formData.childDateOfBirth} 
+                      <input
+                        type="date"
+                        value={formData.childDateOfBirth}
                         onChange={e => {
                           const dob = e.target.value;
                           const calculatedAge = calculateAgeString(dob);
                           setFormData({
-                            ...formData, 
+                            ...formData,
                             childDateOfBirth: dob,
                             childAge: calculatedAge || formData.childAge
                           });
-                        }} 
-                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.childDateOfBirth ? 'border-blue-300' : 'border-gray-200'}`} 
+                        }}
+                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.childDateOfBirth ? 'border-blue-300' : 'border-gray-200'}`}
                       />
                     </div>
                     <div className="space-y-1 opacity-70 pointer-events-none select-none">
@@ -802,7 +813,18 @@ const EnrollmentPortal: React.FC = () => {
                         <Clock className="w-6 h-6 text-amber-500" />
                         <div>
                           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Orario</p>
-                          <p className="font-bold text-gray-800 text-lg">{formData.selectedSlot}</p>
+                          {selectedBundleSlots.length > 0 ? (
+                            <div className="space-y-1 mt-1">
+                              {selectedBundleSlots.map((s, i) => (
+                                <div key={i} className="flex items-center gap-2">
+                                  <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 text-[10px] font-black rounded uppercase">{s.type}</span>
+                                  <span className="font-bold text-gray-800 text-sm">{s.startTime} – {s.endTime}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="font-bold text-gray-800 text-lg">{formData.selectedSlot}</p>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 bg-amber-100 p-4 rounded-2xl border border-amber-200 shadow-sm md:col-span-2">
@@ -829,7 +851,7 @@ const EnrollmentPortal: React.FC = () => {
                       <div className="flex justify-between items-end">
                         <label className="text-xs font-black text-gray-400 uppercase">Seleziona la Sede</label>
                         {lead?.selectedLocation && (
-                          <button 
+                          <button
                             onClick={() => setShowAllOptions(!showAllOptions)}
                             className="text-[10px] font-bold text-indigo-600 hover:underline uppercase"
                           >
@@ -847,44 +869,45 @@ const EnrollmentPortal: React.FC = () => {
                           })
                           .map(loc => {
                             const isPreferred = lead?.selectedLocation && (
-                              normalizeString(loc.name) === normalizeString(lead.selectedLocation) || 
+                              normalizeString(loc.name) === normalizeString(lead.selectedLocation) ||
                               normalizeString(loc.id) === normalizeString(lead.selectedLocation) ||
                               normalizeString(lead.selectedLocation).includes(normalizeString(loc.name)) ||
                               normalizeString(loc.name).includes(normalizeString(lead.selectedLocation))
                             );
                             return (
-                          <button 
-                            key={loc.id}
-                            onClick={() => setFormData({...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: ''})}
-                            className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedLocationId === loc.id ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-400/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: loc.color }}></div>
-                              <span className="font-black text-gray-800 text-lg">{loc.name}</span>
-                            </div>
-                            {(loc.address || loc.city) && (
-                              <div className="text-sm text-gray-600">
-                                {loc.address}{loc.city ? `, ${loc.city}` : ''}
-                              </div>
-                            )}
-                            {(loc.address || loc.city) && (
-                              <div className="mt-2">
-                                <a 
-                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.name} ${loc.address} ${loc.city}`)}`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
-                                >
-                                  <MapPin className="w-3 h-3" /> Mostra sulla mappa
-                                </a>
-                              </div>
-                            )}
-                            {isPreferred && !showAllOptions && (
-                              <span className="inline-block px-2 py-1 bg-indigo-100 text-[10px] text-indigo-600 font-bold rounded mt-1 uppercase self-start">Sede Preferita</span>
-                            )}
-                          </button>
-                        )})}
+                              <button
+                                key={loc.id}
+                                onClick={() => setFormData({ ...formData, selectedLocationId: loc.id, selectedLocationName: loc.name, selectedSlot: '' })}
+                                className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedLocationId === loc.id ? 'border-amber-400 bg-amber-50 ring-4 ring-amber-400/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: loc.color }}></div>
+                                  <span className="font-black text-gray-800 text-lg">{loc.name}</span>
+                                </div>
+                                {(loc.address || loc.city) && (
+                                  <div className="text-sm text-gray-600">
+                                    {loc.address}{loc.city ? `, ${loc.city}` : ''}
+                                  </div>
+                                )}
+                                {(loc.address || loc.city) && (
+                                  <div className="mt-2">
+                                    <a
+                                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.name} ${loc.address} ${loc.city}`)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                                    >
+                                      <MapPin className="w-3 h-3" /> Mostra sulla mappa
+                                    </a>
+                                  </div>
+                                )}
+                                {isPreferred && !showAllOptions && (
+                                  <span className="inline-block px-2 py-1 bg-indigo-100 text-[10px] text-indigo-600 font-bold rounded mt-1 uppercase self-start">Sede Preferita</span>
+                                )}
+                              </button>
+                            )
+                          })}
                       </div>
                     </div>
 
@@ -893,7 +916,7 @@ const EnrollmentPortal: React.FC = () => {
                         {['LAB', 'SG', 'EVT'].map(type => {
                           const typeSlots = locations.find(l => l.id === formData.selectedLocationId)?.slots.filter(s => s.type === type);
                           if (!typeSlots || typeSlots.length === 0) return null;
-                          
+
                           // Filter slots if preference exists and we are not showing all
                           const filteredSlots = typeSlots.filter(slot => {
                             if (showAllOptions || !lead?.selectedSlot) return true;
@@ -917,28 +940,29 @@ const EnrollmentPortal: React.FC = () => {
                                     normalizeString(slot.time).includes(normalizeString(lead.selectedSlot))
                                   );
                                   return (
-                                  <button 
-                                    key={slot.time}
-                                    onClick={() => setFormData({...formData, selectedSlot: slot.time})}
-                                    className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedSlot === slot.time ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-600/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
-                                  >
-                                    <div className="flex justify-between items-start w-full">
-                                      <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${typeColor}`}>
-                                        {type}
-                                      </span>
-                                      {isPreferred && (
-                                        <CheckCircle className="w-5 h-5 text-indigo-600" />
-                                      )}
-                                    </div>
-                                    <div className="font-bold text-gray-800 text-sm">
-                                      {typeLabel}
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-gray-600 font-medium mt-1">
-                                      <Clock className="w-4 h-4" />
-                                      {slot.time}
-                                    </div>
-                                  </button>
-                                )})}
+                                    <button
+                                      key={slot.time}
+                                      onClick={() => setFormData({ ...formData, selectedSlot: slot.time })}
+                                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedSlot === slot.time ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-600/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                                    >
+                                      <div className="flex justify-between items-start w-full">
+                                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${typeColor}`}>
+                                          {type}
+                                        </span>
+                                        {isPreferred && (
+                                          <CheckCircle className="w-5 h-5 text-indigo-600" />
+                                        )}
+                                      </div>
+                                      <div className="font-bold text-gray-800 text-sm">
+                                        {typeLabel}
+                                      </div>
+                                      <div className="flex items-center gap-2 text-sm text-gray-600 font-medium mt-1">
+                                        <Clock className="w-4 h-4" />
+                                        {slot.time}
+                                      </div>
+                                    </button>
+                                  )
+                                })}
                               </div>
                             </div>
                           );
@@ -964,7 +988,7 @@ const EnrollmentPortal: React.FC = () => {
                 {(() => {
                   const preSelectedId = formData.selectedSubscriptionId;
                   const sub = subscriptionTypes.find(s => s.id === preSelectedId);
-                  
+
                   // FALLBACK
                   const shouldForceList = !sub && !!preSelectedId;
                   const isListView = showOtherSubscriptions || !preSelectedId || shouldForceList;
@@ -972,7 +996,7 @@ const EnrollmentPortal: React.FC = () => {
                   if (!isListView && sub) {
                     const nameParts = sub.name.split('.');
                     const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
-                    
+
                     // First lesson logic
                     const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
                     const firstLessonDate = getNextOccurrence(slotDay);
@@ -983,17 +1007,27 @@ const EnrollmentPortal: React.FC = () => {
                         {/* HERO AMBER BOX */}
                         <div className="bg-amber-400 border-4 border-amber-500 rounded-[40px] p-10 shadow-2xl relative overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
                           <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 -mr-32 -mt-32 rounded-full"></div>
-                          
+
                           <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10 text-center md:text-left">
                             <div className="space-y-6 flex-1">
                               <span className="bg-white/30 text-gray-900 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.2em]">Selezione Confermata</span>
                               <h3 className="text-5xl font-black text-gray-900 leading-none break-words uppercase">{shortName}</h3>
+                              {selectedBundleSlots.length > 0 && (
+                                <div className="flex flex-col gap-1.5">
+                                  {selectedBundleSlots.map((s, i) => (
+                                    <div key={i} className="flex items-center gap-2">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-white/40 uppercase text-gray-900">{s.type}</span>
+                                      <span className="font-bold text-gray-900/80 text-sm">{s.startTime} – {s.endTime}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <div className="space-y-2">
                                 <p className="text-gray-900/80 font-bold text-xl uppercase tracking-tight">Prima Lezione Utile:</p>
                                 <p className="text-3xl font-black text-gray-900 capitalize">{formattedFirstLesson}</p>
                               </div>
                             </div>
-                            
+
                             <div className="flex flex-col items-center justify-center bg-white p-8 rounded-[32px] shadow-xl min-w-[200px]">
                               <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Prezzo Totale</p>
                               <p className="text-6xl font-black text-gray-900">{sub.price}€</p>
@@ -1003,7 +1037,7 @@ const EnrollmentPortal: React.FC = () => {
 
                         {/* SECONDARY CHANGE BUTTON */}
                         <div className="flex justify-center">
-                          <button 
+                          <button
                             onClick={() => setShowOtherSubscriptions(true)}
                             className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest hover:text-indigo-800 transition-colors bg-white px-8 py-4 rounded-2xl border-2 border-dashed border-indigo-100 hover:border-indigo-300 shadow-sm"
                           >
@@ -1022,7 +1056,7 @@ const EnrollmentPortal: React.FC = () => {
                           {shouldForceList ? 'Abbonamento precedente non disponibile. Scegline uno nuovo:' : 'Seleziona un Abbonamento:'}
                         </h3>
                         {showOtherSubscriptions && preSelectedId && (
-                          <button 
+                          <button
                             onClick={() => setShowOtherSubscriptions(false)}
                             className="text-[10px] font-bold text-indigo-600 hover:underline uppercase self-start"
                           >
@@ -1030,13 +1064,13 @@ const EnrollmentPortal: React.FC = () => {
                           </button>
                         )}
                       </div>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(() => {
                           const ageStr = String(formData.childAge || '');
                           const ageMatch = ageStr.match(/\d+/);
                           const ageNum = ageMatch ? parseInt(ageMatch[0]) : 0;
-                          
+
                           const isKid = ageNum > 0 && ageNum < 18;
                           const slotStr = String(formData.selectedSlot || '');
                           const dayName = slotStr.split(',')[0].trim().split(' ')[0].trim();
@@ -1084,10 +1118,10 @@ const EnrollmentPortal: React.FC = () => {
                             const isSelected = formData.selectedSubscriptionId === sub.id;
 
                             return (
-                              <button 
+                              <button
                                 key={sub.id}
                                 onClick={() => {
-                                  setFormData({...formData, selectedSubscriptionId: sub.id});
+                                  setFormData({ ...formData, selectedSubscriptionId: sub.id });
                                   setShowOtherSubscriptions(false);
                                 }}
                                 className={`relative w-full p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between group ${isSelected ? 'border-blue-900 bg-blue-50 ring-4 ring-blue-900/10' : 'border-gray-100 bg-white hover:border-blue-200 hover:shadow-lg'}`}
@@ -1140,7 +1174,18 @@ const EnrollmentPortal: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Giorno e Orario</span>
-                      <p className="font-bold text-lg text-gray-800">{formData.selectedSlot}</p>
+                      {selectedBundleSlots.length > 0 ? (
+                        <div className="space-y-1">
+                          {selectedBundleSlots.map((s, i) => (
+                            <p key={i} className="font-bold text-gray-800 flex items-center gap-2">
+                              <span className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-black uppercase">{s.type}</span>
+                              {s.startTime} – {s.endTime}
+                            </p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="font-bold text-lg text-gray-800">{formData.selectedSlot}</p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Abbonamento Scelto</span>
@@ -1160,14 +1205,14 @@ const EnrollmentPortal: React.FC = () => {
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Data Prima Lezione</span>
                       <p className="font-bold text-lg text-amber-600 capitalize">
                         {(() => {
-                            const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
-                            const firstLessonDate = getNextOccurrence(slotDay);
-                            return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM') : 'da definire';
+                          const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
+                          const firstLessonDate = getNextOccurrence(slotDay);
+                          return firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM') : 'da definire';
                         })()}
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="pt-6 border-t border-gray-200 flex justify-between items-center">
                     <span className="text-sm font-black text-gray-400 uppercase tracking-widest">Totale da pagare</span>
                     <span className="text-4xl font-black text-gray-900">
@@ -1188,7 +1233,7 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="space-y-2">
                     <h3 className="text-red-600 font-black uppercase tracking-widest text-sm">Regolamento Assenze</h3>
                     <p className="text-sm text-red-800 leading-relaxed font-bold">
-                      Le lezioni perse <span className="underline">NON sono recuperabili</span> e <span className="underline">NON sono previsti rimborsi</span> sulle quote pagate. 
+                      Le lezioni perse <span className="underline">NON sono recuperabili</span> e <span className="underline">NON sono previsti rimborsi</span> sulle quote pagate.
                       L'iscrizione impegna il posto per l'intera durata dell'abbonamento.
                     </p>
                   </div>
@@ -1196,7 +1241,7 @@ const EnrollmentPortal: React.FC = () => {
 
                 {/* STEP 4 ACTION */}
                 <div className="pt-4">
-                  <button 
+                  <button
                     onClick={() => setShowBookingModal(true)}
                     disabled={isProcessing}
                     className="w-full bg-indigo-600 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-indigo-700 transition-all uppercase tracking-[0.2em] text-sm flex items-center justify-center gap-3 animate-pulse-subtle"
@@ -1215,8 +1260,8 @@ const EnrollmentPortal: React.FC = () => {
                     <ChevronLeft className="w-4 h-4" /> Indietro
                   </button>
                 ) : <div></div>}
-                
-                <button 
+
+                <button
                   onClick={handleNext}
                   disabled={
                     (step === 1 && (!formData.parentFirstName || !formData.parentLastName || !formData.parentFiscalCode)) ||
@@ -1245,7 +1290,7 @@ const EnrollmentPortal: React.FC = () => {
 
             <div className="grid grid-cols-1 gap-4">
               {/* Option 1: Cash */}
-              <button 
+              <button
                 onClick={() => handleProcessEnrollment('Cash')}
                 disabled={isProcessing}
                 className="group flex items-center justify-between p-6 bg-white border-2 border-gray-100 rounded-[32px] hover:border-amber-400 hover:bg-amber-50 transition-all text-left shadow-sm hover:shadow-md"
@@ -1263,8 +1308,8 @@ const EnrollmentPortal: React.FC = () => {
               </button>
 
               {/* Option 2: Bank Transfer */}
-              <button 
-                onClick={() => setFormData({...formData, paymentMethod: PaymentMethod.BankTransfer})}
+              <button
+                onClick={() => setFormData({ ...formData, paymentMethod: PaymentMethod.BankTransfer })}
                 disabled={isProcessing}
                 className={`group flex flex-col p-6 bg-white border-2 rounded-[32px] transition-all text-left shadow-sm hover:shadow-md ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200'}`}
               >
@@ -1289,7 +1334,7 @@ const EnrollmentPortal: React.FC = () => {
                         <p className="font-mono text-lg font-bold text-gray-800 tracking-wider">
                           {companyInfo?.iban || 'IBAN NON DISPONIBILE'}
                         </p>
-                        <button 
+                        <button
                           onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(companyInfo?.iban || ''); alert("IBAN copiato!"); }}
                           className="p-2 hover:bg-indigo-50 rounded-lg text-indigo-600"
                         >
@@ -1303,7 +1348,7 @@ const EnrollmentPortal: React.FC = () => {
                         ISCRIZIONE {formData.childName.toUpperCase()} - {formData.selectedLocationName.toUpperCase()}
                       </p>
                     </div>
-                    <button 
+                    <button
                       onClick={(e) => { e.stopPropagation(); handleProcessEnrollment(PaymentMethod.BankTransfer); }}
                       className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs"
                     >
@@ -1314,7 +1359,7 @@ const EnrollmentPortal: React.FC = () => {
               </button>
 
               {/* Option 3: PayPal */}
-              <button 
+              <button
                 onClick={() => handleProcessEnrollment(PaymentMethod.PayPal)}
                 disabled={isProcessing}
                 className="group flex items-center justify-between p-6 bg-white border-2 border-gray-100 rounded-[32px] hover:border-blue-500 hover:bg-blue-50 transition-all text-left shadow-sm hover:shadow-md"
