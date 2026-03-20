@@ -339,43 +339,25 @@ export const getPublicSlotsV2 = onRequest({
                         if (slot.type === 'LAB' && labCount > 0) return true;
                         if (slot.type === 'SG' && sgCount > 0) return true;
                         if (slot.type === 'EVT' && evtCount > 0) return true;
-                        // Fallback se il tipo non è specificato nella sede: includi tutto per sicurezza
-                        if (!slot.type) return true;
+                        // NESSUN fallback: uno slot senza tipo non viene incluso in alcun abbonamento.
+                        // Un tipo non riconosciuto non corrisponde a nessun abbonamento tipizzato.
                         return false;
                     });
 
                     compatibleSubs.forEach(sub => {
-                        // Calcola occupazione FISICA: chiunque occupi questo slot in questa sede
+                        // Calcola occupazione per ABBONAMENTO: conta tutti gli iscritti attivi con
+                        // lo stesso abbonamento (subscriptionTypeId) e la stessa sede, con lezioni residue.
+                        // NON dipende dagli appointments (che negli enrollment possono essere vuoti),
+                        // ma dall'associazione diretta subscriptionTypeId + locationId.
                         const occupied = activeEnrollments.filter(enr => {
                             if (enr.locationId !== loc.id || enr.status !== 'active') return false;
-
                             // Verifica che l'iscrizione non sia esaurita
                             const hasRemaining = (enr.lessonsRemaining > 0) || (enr.labRemaining > 0) || (enr.sgRemaining > 0) || (enr.evtRemaining > 0);
                             if (!hasRemaining) return false;
-
-                            return enr.appointments?.some((app: any) => {
-                                if (!app.date || !app.startTime) return false;
-
-                                let appDay = -1;
-                                try {
-                                    if (app.date.includes('T')) {
-                                        const [year, month, day] = app.date.split('T')[0].split('-');
-                                        if (year && month && day) {
-                                            const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                                            appDay = dateObj.getDay();
-                                        }
-                                    }
-                                    if (appDay === -1) {
-                                        appDay = new Date(app.date).getDay();
-                                    }
-                                } catch (e) {
-                                    appDay = new Date(app.date).getDay();
-                                }
-
-                                // Verifica sovrapposizione temporale o coincidenza orario
-                                // Per semplicità usiamo coincidenza ora inizio e giorno
-                                return appDay === slot.dayOfWeek && app.startTime === slot.startTime;
-                            });
+                            // Match per abbonamento: usa subscriptionTypeId se disponibile, altrimenti subscriptionName
+                            if (enr.subscriptionTypeId) return enr.subscriptionTypeId === sub.id;
+                            // Fallback: confronto per nome dell'abbonamento
+                            return String(enr.subscriptionName || '').toLowerCase() === String(sub.name || '').toLowerCase();
                         }).length;
 
                         const capacity = loc.capacity || 10;

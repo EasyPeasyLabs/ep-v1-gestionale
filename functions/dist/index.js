@@ -312,7 +312,6 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             if (slot.type === "LAB" && labCount > 0) return true;
             if (slot.type === "SG" && sgCount > 0) return true;
             if (slot.type === "EVT" && evtCount > 0) return true;
-            if (!slot.type) return true;
             return false;
           });
           compatibleSubs.forEach((sub) => {
@@ -320,25 +319,8 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
               if (enr.locationId !== loc.id || enr.status !== "active") return false;
               const hasRemaining = enr.lessonsRemaining > 0 || enr.labRemaining > 0 || enr.sgRemaining > 0 || enr.evtRemaining > 0;
               if (!hasRemaining) return false;
-              return enr.appointments?.some((app) => {
-                if (!app.date || !app.startTime) return false;
-                let appDay = -1;
-                try {
-                  if (app.date.includes("T")) {
-                    const [year, month, day] = app.date.split("T")[0].split("-");
-                    if (year && month && day) {
-                      const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                      appDay = dateObj.getDay();
-                    }
-                  }
-                  if (appDay === -1) {
-                    appDay = new Date(app.date).getDay();
-                  }
-                } catch (e) {
-                  appDay = new Date(app.date).getDay();
-                }
-                return appDay === slot.dayOfWeek && app.startTime === slot.startTime;
-              });
+              if (enr.subscriptionTypeId) return enr.subscriptionTypeId === sub.id;
+              return String(enr.subscriptionName || "").toLowerCase() === String(sub.name || "").toLowerCase();
             }).length;
             const capacity = loc.capacity || 10;
             const available = Math.max(0, capacity - occupied);
