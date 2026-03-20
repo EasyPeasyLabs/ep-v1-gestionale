@@ -110,6 +110,7 @@ export interface Location {
     tags?: string[];
     rating?: LocationRating;
     isPubliclyVisible?: boolean;
+    availability?: AvailabilitySlot[];
 }
 
 export interface Course {

@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Appointment, LessonActivity, EnrollmentStatus, Homework, Supplier, AvailabilitySlot } from '../types';
+import { Activity, Appointment, LessonActivity, EnrollmentStatus, Homework, Supplier, Course } from '../types';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getActivities, getLessonActivities, saveLessonActivities } from '../services/activityService';
 import { getHomeworks } from '../services/homeworkService';
 import { getSuppliers } from '../services/supplierService';
+import { getOpenCourses } from '../services/courseService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import SearchIcon from '../components/icons/SearchIcon';
@@ -118,28 +119,22 @@ const ActivityLog: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [allEnrollments, allActivities, allHomeworks, allSuppliers] = await Promise.all([
+            const [allEnrollments, allActivities, allHomeworks, allCourses] = await Promise.all([
                 getAllEnrollments(),
                 getActivities(),
                 getHomeworks(),
-                getSuppliers()
+                getOpenCourses() 
             ]);
             setActivities(allActivities);
             setHomeworks(allHomeworks);
 
             // --- SMART SLOT MAP BUILDER ---
-            // Mappa: locationId_dayIndex -> AvailabilitySlot[]
-            const locationScheduleMap = new Map<string, AvailabilitySlot[]>();
-            allSuppliers.forEach(s => {
-                s.locations.forEach(l => {
-                    if (l.availability && l.availability.length > 0) {
-                        l.availability.forEach(slot => {
-                            const key = `${l.id}_${slot.dayOfWeek}`; // es. loc123_1 (Lunedì)
-                            if (!locationScheduleMap.has(key)) locationScheduleMap.set(key, []);
-                            locationScheduleMap.get(key)?.push(slot);
-                        });
-                    }
-                });
+            // Mappa: locationId_dayIndex -> Course[]
+            const locationScheduleMap = new Map<string, Course[]>();
+            allCourses.forEach(c => {
+                const key = `${c.locationId}_${c.dayOfWeek}`;
+                if (!locationScheduleMap.has(key)) locationScheduleMap.set(key, []);
+                locationScheduleMap.get(key)?.push(c);
             });
 
             // Calcola Range Date
@@ -186,22 +181,21 @@ const ActivityLog: React.FC = () => {
                                     
                                     if (officialSlots) {
                                         const appMinutes = getMinutesFromTime(app.startTime);
-                                        let bestSlot: AvailabilitySlot | null = null;
+                                        let bestCourse: Course | null = null;
                                         let minDiff = 45; // Tolerance threshold (minutes)
 
-                                        // Use for...of instead of forEach for better TS type inference in this context
-                                        for (const slot of officialSlots) {
-                                            const slotMinutes = getMinutesFromTime(slot.startTime);
+                                        for (const course of officialSlots) {
+                                            const slotMinutes = getMinutesFromTime(course.startTime);
                                             const diff = Math.abs(slotMinutes - appMinutes);
                                             if (diff <= minDiff) {
                                                 minDiff = diff;
-                                                bestSlot = slot;
+                                                bestCourse = course;
                                             }
                                         }
 
-                                        if (bestSlot) {
-                                            displayStartTime = bestSlot.startTime;
-                                            displayEndTime = bestSlot.endTime;
+                                        if (bestCourse) {
+                                            displayStartTime = bestCourse.startTime;
+                                            displayEndTime = bestCourse.endTime;
                                         }
                                     }
                                 }

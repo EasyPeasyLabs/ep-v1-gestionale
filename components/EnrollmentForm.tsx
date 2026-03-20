@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment } from '../types';
+import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment, Course } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import { getEnrollmentsForClient } from '../services/enrollmentService';
@@ -97,6 +97,21 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [selectedCourseId, setSelectedCourseId] = useState<string>(existingEnrollment?.appointments?.[0]?.locationId || ''); // Reuse for simplicity or add courseId to Enrollment
     const [isAgeFilteringActive, setIsAgeFilteringActive] = useState(true);
 
+    // --- CUSTOM BUILDER STATE (RESTORED) ---
+    const [singleDate, setSingleDate] = useState('');
+    const [singleLocationId, setSingleLocationId] = useState('');
+    const [singleStartTime, setSingleStartTime] = useState('16:00');
+    const [singleEndTime, setSingleEndTime] = useState('18:00');
+    
+    const [genLocationId, setGenLocationId] = useState('');
+    const [genDayOfWeek, setGenDayOfWeek] = useState(1);
+    const [genStartTime, setGenStartTime] = useState('16:00');
+    const [genEndTime, setGenEndTime] = useState('18:00');
+    const [genCount, setGenCount] = useState(4);
+    const [genSmartSlot, setGenSmartSlot] = useState('');
+    
+    const [customSchedule, setCustomSchedule] = useState<Appointment[]>(existingEnrollment?.appointments || []);
+
     // Resources
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
@@ -137,13 +152,12 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
     // Helper: Locations Flattened
     const allLocations = useMemo(() => {
-        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string, availability?: AvailabilitySlot[]}[] = [];
+        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string}[] = [];
         suppliers.forEach(s => {
             s.locations.forEach(l => {
                 locs.push({
                     id: l.id, name: l.name, color: l.color,
-                    supplierId: s.id, supplierName: s.companyName,
-                    availability: l.availability
+                    supplierId: s.id, supplierName: s.companyName
                 });
             });
         });
@@ -195,21 +209,20 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 const locIdToUse = lastEnrollment ? lastEnrollment.locationId : targetLocationId;
                 
                 if (locIdToUse && locIdToUse !== 'unassigned') {
-                    const loc = allLocations.find(l => l.id === locIdToUse);
-                    if (loc && loc.availability) {
-                        // Find a slot that fits the age
-                        const suitableSlot = loc.availability.find(slot => {
-                            const min = slot.minAge || 0;
-                            const max = slot.maxAge || 99;
-                            return age >= min && age <= max;
-                        });
-                        
-                        if (suitableSlot) {
-                            setTargetLocationId(loc.id);
-                            setStartTime(suitableSlot.startTime);
-                            setEndTime(suitableSlot.endTime);
-                            didAutoSelect = true;
-                        }
+                    // Find suitable course based on age and location
+                    const suitableCourse = courses.find(c => 
+                        c.locationId === locIdToUse && 
+                        age >= (c.minAge || 0) && 
+                        age <= (c.maxAge || 99) &&
+                        c.status === 'active'
+                    );
+                    
+                    if (suitableCourse) {
+                        setTargetLocationId(suitableCourse.locationId);
+                        setStartTime(suitableCourse.startTime);
+                        setEndTime(suitableCourse.endTime);
+                        setSelectedCourseId(suitableCourse.id);
+                        didAutoSelect = true;
                     }
                 }
             }
@@ -218,34 +231,21 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         if (didAutoSelect) {
             hasAutoSelected.current = true;
         }
-    }, [selectedChildIds, clientHistory, clients, selectedClientId, existingEnrollment, allLocations, subscriptionTypeId, targetLocationId]);
+    }, [selectedChildIds, clientHistory, clients, selectedClientId, existingEnrollment, courses, subscriptionTypeId, targetLocationId]);
 
     // Auto-select based on client preferences
     useEffect(() => {
         if (!existingEnrollment && currentClient && !targetLocationId) {
             const prefLoc = currentClient.preferredLocation;
-            const prefSlot = currentClient.preferredSlot;
-
+            // No simple mapping for prefSlot anymore as it depends on courses
             if (prefLoc) {
                 const matchedLoc = allLocations.find(l => l.name === prefLoc);
                 if (matchedLoc) {
                     setTargetLocationId(matchedLoc.id);
-                    
-                    if (prefSlot) {
-                        // Try to match slot time
-                        const matchedSlot = matchedLoc.availability?.find(s => 
-                            prefSlot.includes(`${s.startTime} - ${s.endTime}`) || 
-                            `${s.startTime} - ${s.endTime}`.includes(prefSlot)
-                        );
-                        if (matchedSlot) {
-                            setStartTime(matchedSlot.startTime);
-                            setEndTime(matchedSlot.endTime);
-                        }
-                    }
                 }
             }
         }
-    }, [selectedClientId, allLocations, existingEnrollment, currentClient, targetLocationId, setTargetLocationId, setStartTime, setEndTime]);
+    }, [selectedClientId, allLocations, existingEnrollment, currentClient, targetLocationId]);
 
     // Auto-update timeslot when location changes based on child age
     const prevLocationIdRef = useRef(targetLocationId);
@@ -270,24 +270,23 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             age = parseInt(child.age);
                         }
                         
-                        const loc = allLocations.find(l => l.id === targetLocationId);
-                        if (loc && loc.availability) {
-                            const suitableSlot = loc.availability.find(slot => {
-                                const min = slot.minAge || 0;
-                                const max = slot.maxAge || 99;
-                                return age >= min && age <= max;
-                            });
-                            
-                            if (suitableSlot) {
-                                setStartTime(suitableSlot.startTime);
-                                setEndTime(suitableSlot.endTime);
-                            }
+                        const suitableCourse = courses.find(c => 
+                            c.locationId === targetLocationId && 
+                            age >= (c.minAge || 0) && 
+                            age <= (c.maxAge || 99) &&
+                            c.status === 'active'
+                        );
+                        
+                        if (suitableCourse) {
+                            setStartTime(suitableCourse.startTime);
+                            setEndTime(suitableCourse.endTime);
+                            setSelectedCourseId(suitableCourse.id);
                         }
                     }
                 }
             }
         }
-    }, [targetLocationId, selectedChildIds, clients, selectedClientId, allLocations]);
+    }, [targetLocationId, selectedChildIds, clients, selectedClientId, courses]);
 
     useEffect(() => {
         const loadData = async () => {
@@ -308,10 +307,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     // --- SMART TIME SELECTOR LOGIC ---
     const getSlotsForContext = useCallback((locationId: string, dayOfWeek: number) => {
         if (!locationId) return [];
-        const loc = allLocations.find(l => l.id === locationId);
-        if (!loc || !loc.availability) return [];
-        return loc.availability.filter(slot => slot.dayOfWeek === dayOfWeek).sort((a,b) => a.startTime.localeCompare(b.startTime));
-    }, [allLocations]);
+        // Filter courses for this location and day
+        return courses
+            .filter(c => c.locationId === locationId && c.dayOfWeek === dayOfWeek)
+            .sort((a,b) => a.startTime.localeCompare(b.startTime));
+    }, [courses]);
 
     // Update Single Adder Time when Location or Date changes
     useEffect(() => {

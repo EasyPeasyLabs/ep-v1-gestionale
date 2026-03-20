@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Location, Course } from '../types';
-import * as courseService from '../services/courseService';
-import FullScreenSpinner from '../components/FullScreenSpinner';
-import { toast } from 'react-hot-toast';
+import Spinner from '../components/Spinner';
+import Modal from '../components/Modal';
+import PlusIcon from '../components/icons/PlusIcon';
+import TrashIcon from '../components/icons/TrashIcon';
 
 const Courses: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
@@ -10,6 +9,18 @@ const Courses: React.FC = () => {
     const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadingCourses, setLoadingCourses] = useState(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+    // Form State for New Course
+    const [newCourse, setNewCourse] = useState<any>({
+        dayOfWeek: 1,
+        startTime: '09:00',
+        endTime: '10:00',
+        slotType: 'LAB',
+        minAge: 3,
+        maxAge: 14,
+        capacity: 10
+    });
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -58,6 +69,33 @@ const Courses: React.FC = () => {
         }
     };
 
+    const handleAddCourse = async () => {
+        if (!selectedLocationId) return;
+        try {
+            await courseService.createCourse({ 
+                ...newCourse, 
+                locationId: selectedLocationId,
+                status: 'open'
+            });
+            toast.success("Corso aggiunto");
+            setIsAddModalOpen(false);
+            fetchCourses();
+        } catch (error) {
+            toast.error("Errore salvataggio");
+        }
+    };
+
+    const handleDeleteCourse = async (id: string) => {
+        if (!confirm("Sei sicuro di voler eliminare questo corso?")) return;
+        try {
+            await courseService.deleteCourse(id);
+            toast.success("Corso eliminato");
+            fetchCourses();
+        } catch (error) {
+            toast.error("Errore eliminazione");
+        }
+    };
+
     if (loading) return <FullScreenSpinner />;
 
     const days = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
@@ -81,6 +119,15 @@ const Courses: React.FC = () => {
                             <option key={loc.id} value={loc.id}>{loc.name} ({loc.city})</option>
                         ))}
                     </select>
+                    {selectedLocationId && (
+                        <button 
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="md-btn md-btn-raised md-btn-green py-2 px-4 whitespace-nowrap"
+                        >
+                            <PlusIcon />
+                            <span className="ml-2 font-bold uppercase tracking-wider text-xs">Nuovo Corso</span>
+                        </button>
+                    )}
                 </div>
             </header>
 
@@ -160,15 +207,23 @@ const Courses: React.FC = () => {
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 text-right">
-                                                <button 
-                                                    onClick={() => handleToggleStatus(course.id, course.status)}
-                                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all
-                                                        ${course.status === 'open' 
-                                                            ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                                                            : 'bg-green-50 text-green-600 hover:bg-green-100'}`}
-                                                >
-                                                    {course.status === 'open' ? 'Chiudi Corso' : 'Apri Corso'}
-                                                </button>
+                                                <div className="flex justify-end gap-2">
+                                                    <button 
+                                                        onClick={() => handleToggleStatus(course.id, course.status)}
+                                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all
+                                                            ${course.status === 'open' 
+                                                                ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-100' 
+                                                                : 'bg-green-50 text-green-600 hover:bg-green-100 border border-green-100'}`}
+                                                    >
+                                                        {course.status === 'open' ? 'Sospendi' : 'Riattiva'}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleDeleteCourse(course.id)}
+                                                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                    >
+                                                        <TrashIcon className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -181,6 +236,68 @@ const Courses: React.FC = () => {
                 <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
                     <p className="text-gray-400 font-bold">Seleziona una sede per gestire i corsi</p>
                 </div>
+            )}
+
+            {isAddModalOpen && (
+                <Modal onClose={() => setIsAddModalOpen(false)} title="Nuovo Corso">
+                    <div className="p-6 space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Giorno</label>
+                                <select 
+                                    className="md-input w-full"
+                                    value={newCourse.dayOfWeek}
+                                    onChange={(e) => setNewCourse({ ...newCourse, dayOfWeek: parseInt(e.target.value) })}
+                                >
+                                    {days.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Tipo</label>
+                                <select 
+                                    className="md-input w-full"
+                                    value={newCourse.slotType}
+                                    onChange={(e) => setNewCourse({ ...newCourse, slotType: e.target.value })}
+                                >
+                                    <option value="LAB">Laboratorio</option>
+                                    <option value="SG">Spazio Gioco</option>
+                                    <option value="EVT">Evento</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Inizio</label>
+                                <input type="time" className="md-input w-full" value={newCourse.startTime} onChange={(e) => setNewCourse({ ...newCourse, startTime: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Fine</label>
+                                <input type="time" className="md-input w-full" value={newCourse.endTime} onChange={(e) => setNewCourse({ ...newCourse, endTime: e.target.value })} />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Età Min</label>
+                                <input type="number" className="md-input w-full" value={newCourse.minAge} onChange={(e) => setNewCourse({ ...newCourse, minAge: parseInt(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Età Max</label>
+                                <input type="number" className="md-input w-full" value={newCourse.maxAge} onChange={(e) => setNewCourse({ ...newCourse, maxAge: parseInt(e.target.value) })} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Capienza</label>
+                                <input type="number" className="md-input w-full" value={newCourse.capacity} onChange={(e) => setNewCourse({ ...newCourse, capacity: parseInt(e.target.value) })} />
+                            </div>
+                        </div>
+
+                        <div className="pt-6 border-t flex justify-end gap-3">
+                            <button onClick={() => setIsAddModalOpen(false)} className="md-btn md-btn-flat">Annulla</button>
+                            <button onClick={handleAddCourse} className="md-btn md-btn-raised md-btn-green">Salva Corso</button>
+                        </div>
+                    </div>
+                </Modal>
             )}
         </div>
     );
