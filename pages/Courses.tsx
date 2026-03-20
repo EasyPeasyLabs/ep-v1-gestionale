@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Location, Course, SlotType } from '../types';
+import { Location, Course, SlotType, Note } from '../types';
 import * as courseService from '../services/courseService';
 import FullScreenSpinner from '../components/FullScreenSpinner';
 import { toast } from 'react-hot-toast';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import PlusIcon from '../components/icons/PlusIcon';
+import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 
 const Courses: React.FC = () => {
@@ -16,16 +17,18 @@ const Courses: React.FC = () => {
     const [loadingCourses, setLoadingCourses] = useState(false);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-    // Form State for New Course
-    const [newCourse, setNewCourse] = useState<any>({
-        dayOfWeek: 1,
-        startTime: '09:00',
-        endTime: '10:00',
-        slotType: 'LAB',
-        minAge: 3,
-        maxAge: 14,
-        capacity: 10
+    // New structured state for the 5 columns
+    const [dayOfWeek, setDayOfWeek] = useState(1);
+    const [activeType, setActiveType] = useState<SlotType>('LAB');
+    const [configs, setConfigs] = useState<Record<SlotType, any>>({
+        LAB: { quantity: 1, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
+        SG: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
+        'LAB+SG': { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
+        READ: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
+        EVT: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
     });
+
+    const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -76,18 +79,52 @@ const Courses: React.FC = () => {
 
     const handleAddCourse = async () => {
         if (!selectedLocationId) return;
+        const config = configs[activeType];
         try {
-            await courseService.createCourse({ 
-                ...newCourse, 
+            const courseData = {
+                dayOfWeek,
+                slotType: activeType,
+                startTime: config.startTime,
+                endTime: config.endTime,
+                minAge: config.minAge,
+                maxAge: config.maxAge,
+                capacity: config.capacity,
                 locationId: selectedLocationId,
-                status: 'open'
-            });
-            toast.success("Corso aggiunto");
+                status: 'open' as const
+            };
+
+            if (editingCourseId) {
+                await courseService.updateCourse(editingCourseId, courseData);
+                toast.success("Corso aggiornato");
+            } else {
+                await courseService.createCourse(courseData);
+                toast.success("Corso aggiunto");
+            }
+
             setIsAddModalOpen(false);
+            setEditingCourseId(null);
             fetchCourses();
         } catch (error) {
             toast.error("Errore salvataggio");
         }
+    };
+
+    const handleEditCourse = (course: Course) => {
+        setEditingCourseId(course.id);
+        setDayOfWeek(course.dayOfWeek);
+        setActiveType(course.slotType);
+        setConfigs(prev => ({
+            ...prev,
+            [course.slotType]: {
+                quantity: 1, // Defaulting to 1 for active
+                startTime: course.startTime,
+                endTime: course.endTime,
+                minAge: course.minAge,
+                maxAge: course.maxAge,
+                capacity: course.capacity
+            }
+        }));
+        setIsAddModalOpen(true);
     };
 
     const handleDeleteCourse = async (id: string) => {
@@ -168,6 +205,8 @@ const Courses: React.FC = () => {
                                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider
                                                     ${course.slotType === 'LAB' ? 'bg-indigo-50 text-indigo-600' : 
                                                       course.slotType === 'SG' ? 'bg-emerald-50 text-emerald-600' : 
+                                                      course.slotType === 'LAB+SG' ? 'bg-purple-50 text-purple-600' :
+                                                      course.slotType === 'READ' ? 'bg-blue-50 text-blue-600' :
                                                       'bg-amber-50 text-amber-600'}`}
                                                 >
                                                     {course.slotType}
@@ -223,6 +262,12 @@ const Courses: React.FC = () => {
                                                         {course.status === 'open' ? 'Sospendi' : 'Riattiva'}
                                                     </button>
                                                     <button 
+                                                        onClick={() => handleEditCourse(course)}
+                                                        className="p-2 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-xl transition-all"
+                                                    >
+                                                        <div className="w-4 h-4"><PencilIcon/></div>
+                                                    </button>
+                                                    <button 
                                                         onClick={() => handleDeleteCourse(course.id)}
                                                         className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                                     >
@@ -244,65 +289,159 @@ const Courses: React.FC = () => {
             )}
 
             {isAddModalOpen && (
-                <Modal onClose={() => setIsAddModalOpen(false)}>
-                    <div className="p-6 space-y-4">
-                        <div className="flex justify-between items-center mb-2">
-                            <h2 className="text-xl font-black text-gray-900">Nuovo Corso</h2>
+                <Modal onClose={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} size="xl">
+                    <div className="p-8 space-y-8 min-w-[900px]">
+                        <div className="flex justify-between items-center">
+                            <h2 className="text-2xl font-black text-gray-900">{editingCourseId ? 'Modifica Corso' : 'Nuovo Corso'}</h2>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Giorno</label>
+
+                        <div className="grid grid-cols-2 gap-8">
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Giorno</label>
                                 <select 
-                                    className="md-input w-full"
-                                    value={newCourse.dayOfWeek}
-                                    onChange={(e) => setNewCourse({ ...newCourse, dayOfWeek: parseInt(e.target.value) })}
+                                    className="md-input w-full bg-gray-50/50 border-gray-100"
+                                    value={dayOfWeek}
+                                    onChange={(e) => setDayOfWeek(parseInt(e.target.value))}
                                 >
                                     {days.map((d, i) => <option key={i} value={i}>{d}</option>)}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Tipo</label>
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Tipo Principale</label>
                                 <select 
-                                    className="md-input w-full"
-                                    value={newCourse.slotType}
-                                    onChange={(e) => setNewCourse({ ...newCourse, slotType: e.target.value })}
+                                    className="md-input w-full bg-gray-50/50 border-gray-100"
+                                    value={activeType}
+                                    onChange={(e) => {
+                                        const newType = e.target.value as SlotType;
+                                        setActiveType(newType);
+                                        // Update quantity logic: only active has 1, others 0
+                                        setConfigs(prev => {
+                                            const next = { ...prev };
+                                            Object.keys(next).forEach(k => {
+                                                next[k as SlotType].quantity = (k === newType ? 1 : 0);
+                                            });
+                                            return next;
+                                        });
+                                    }}
                                 >
                                     <option value="LAB">Laboratorio</option>
                                     <option value="SG">Spazio Gioco</option>
+                                    <option value="LAB+SG">Lab + Spazio Gioco</option>
+                                    <option value="READ">Lettura (READ)</option>
                                     <option value="EVT">Evento</option>
                                 </select>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Inizio</label>
-                                <input type="time" className="md-input w-full" value={newCourse.startTime} onChange={(e) => setNewCourse({ ...newCourse, startTime: e.target.value })} />
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between px-1">
+                                <h3 className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Fine</label>
-                                <input type="time" className="md-input w-full" value={newCourse.endTime} onChange={(e) => setNewCourse({ ...newCourse, endTime: e.target.value })} />
+                            
+                            <div className="grid grid-cols-5 gap-3">
+                                {(Object.keys(configs) as SlotType[]).map(type => {
+                                    const isActive = activeType === type;
+                                    const config = configs[type];
+                                    
+                                    return (
+                                        <div 
+                                            key={type}
+                                            className={`rounded-2xl border-2 transition-all duration-300 p-4 space-y-5
+                                                ${isActive 
+                                                    ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 scale-[1.02] z-10' 
+                                                    : 'bg-gray-50/50 border-gray-100 opacity-60 grayscale-[0.5]'}`}
+                                        >
+                                            {/* Quantity / Header */}
+                                            <div className="flex flex-col items-center gap-2 pb-4 border-b border-gray-100/10">
+                                                <span className={`text-[10px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                                    {type}
+                                                </span>
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl border-2 transition-colors
+                                                    ${isActive ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                                                    {config.quantity}
+                                                </div>
+                                            </div>
+
+                                            {/* Times */}
+                                            <div className="space-y-4">
+                                                <div className="space-y-1">
+                                                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Inizio</label>
+                                                    <input 
+                                                        type="time" 
+                                                        value={config.startTime} 
+                                                        disabled={!isActive}
+                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], startTime: e.target.value }}))}
+                                                        className={`w-full text-center py-2 rounded-xl text-sm font-bold border-2 transition-all
+                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Fine</label>
+                                                    <input 
+                                                        type="time" 
+                                                        value={config.endTime} 
+                                                        disabled={!isActive}
+                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], endTime: e.target.value }}))}
+                                                        className={`w-full text-center py-2 rounded-xl text-sm font-bold border-2 transition-all
+                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Ages */}
+                                            <div className="space-y-2">
+                                                <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Età Min / Max</label>
+                                                <div className="flex items-center gap-2">
+                                                    <input 
+                                                        type="number" 
+                                                        value={config.minAge} 
+                                                        disabled={!isActive}
+                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], minAge: parseInt(e.target.value) || 0 }}))}
+                                                        className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
+                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                    />
+                                                    <input 
+                                                        type="number" 
+                                                        value={config.maxAge} 
+                                                        disabled={!isActive}
+                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], maxAge: parseInt(e.target.value) || 0 }}))}
+                                                        className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
+                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Capacity */}
+                                            <div className="space-y-1 pt-2">
+                                                <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Capienza</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={config.capacity} 
+                                                    disabled={!isActive}
+                                                    onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], capacity: parseInt(e.target.value) || 0 }}))}
+                                                    className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
+                                                        ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                />
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Età Min</label>
-                                <input type="number" className="md-input w-full" value={newCourse.minAge} onChange={(e) => setNewCourse({ ...newCourse, minAge: parseInt(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Età Max</label>
-                                <input type="number" className="md-input w-full" value={newCourse.maxAge} onChange={(e) => setNewCourse({ ...newCourse, maxAge: parseInt(e.target.value) })} />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Capienza</label>
-                                <input type="number" className="md-input w-full" value={newCourse.capacity} onChange={(e) => setNewCourse({ ...newCourse, capacity: parseInt(e.target.value) })} />
-                            </div>
-                        </div>
-
-                        <div className="pt-6 border-t flex justify-end gap-3">
-                            <button onClick={() => setIsAddModalOpen(false)} className="md-btn md-btn-flat">Annulla</button>
-                            <button onClick={handleAddCourse} className="md-btn md-btn-raised md-btn-green">Salva Corso</button>
+                        <div className="pt-8 border-t border-gray-50 flex justify-end items-center gap-6">
+                            <button 
+                                onClick={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} 
+                                className="text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest"
+                            >
+                                Annulla
+                            </button>
+                            <button 
+                                onClick={handleAddCourse} 
+                                className="px-10 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5"
+                            >
+                                Salva Corso
+                            </button>
                         </div>
                     </div>
                 </Modal>
