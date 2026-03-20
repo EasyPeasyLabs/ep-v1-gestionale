@@ -155,7 +155,7 @@ export const onLeadCreated = onDocumentCreated({
         } catch (e) { logger.error("Error resolving location name:", e); }
     }
     if (!sede) {
-        const payloadSede = leadData.locationName || leadData.nomeSede || leadData.selectedLocation || leadData.sede; 
+        const payloadSede = leadData.locationName || leadData.nomeSede || leadData.selectedLocation || leadData.sede;
         if (payloadSede && typeof payloadSede === 'string') sede = payloadSede.trim();
     }
 
@@ -231,7 +231,7 @@ export const receiveLeadV2 = onRequest({
         };
 
         const docRef = await db.collection("incoming_leads").add(leadDoc);
-        
+
         // Push immediata
         await sendPushToAllTokens("🚀 Nuovo Lead Ricevuto!", `Nuovo lead: ${leadDoc.nome} ${leadDoc.cognome}`, {
             leadId: docRef.id,
@@ -282,19 +282,19 @@ export const getPublicSlotsV2 = onRequest({
         }
 
         const activeEnrollments = enrollmentsSnap.docs.map(doc => doc.data());
-        
+
         const results: any[] = [];
-        
+
         suppliersSnap.forEach((doc: any) => {
             const supplierData = doc.data();
             const locations = supplierData.locations || [];
-            
+
             locations.forEach((loc: any) => {
                 if (loc.isPubliclyVisible === false || loc.closedAt) return;
 
                 const locationBundles: any[] = [];
                 const slots = loc.availability || loc.slots || []; // Supporto entrambi i nomi campi
-                
+
                 logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
 
                 slots.forEach((slot: any) => {
@@ -302,6 +302,11 @@ export const getPublicSlotsV2 = onRequest({
 
                     // Filtro compatibilità migliorato (LAB, SG, EVT)
                     const compatibleSubs = activeSubs.filter(sub => {
+                        // Verifica se l'abbonamento permette questo giorno della settimana
+                        if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+                            if (!sub.allowedDays.includes(slot.dayOfWeek)) return false;
+                        }
+
                         const labCount = Number(sub.labCount || 0);
                         const sgCount = Number(sub.sgCount || 0);
                         const evtCount = Number(sub.evtCount || 0);
@@ -315,14 +320,33 @@ export const getPublicSlotsV2 = onRequest({
                     });
 
                     compatibleSubs.forEach(sub => {
-                         // Calcola occupazione FISICA: chiunque occupi questo slot in questa sede
+                        // Calcola occupazione FISICA: chiunque occupi questo slot in questa sede
                         const occupied = activeEnrollments.filter(enr => {
                             if (enr.locationId !== loc.id || enr.status !== 'active') return false;
 
+                            // Verifica che l'iscrizione non sia esaurita
+                            const hasRemaining = (enr.lessonsRemaining > 0) || (enr.labRemaining > 0) || (enr.sgRemaining > 0) || (enr.evtRemaining > 0);
+                            if (!hasRemaining) return false;
+
                             return enr.appointments?.some((app: any) => {
                                 if (!app.date || !app.startTime) return false;
-                                const appDay = new Date(app.date).getDay();
-                                
+
+                                let appDay = -1;
+                                try {
+                                    if (app.date.includes('T')) {
+                                        const [year, month, day] = app.date.split('T')[0].split('-');
+                                        if (year && month && day) {
+                                            const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                                            appDay = dateObj.getDay();
+                                        }
+                                    }
+                                    if (appDay === -1) {
+                                        appDay = new Date(app.date).getDay();
+                                    }
+                                } catch (e) {
+                                    appDay = new Date(app.date).getDay();
+                                }
+
                                 // Verifica sovrapposizione temporale o coincidenza orario
                                 // Per semplicità usiamo coincidenza ora inizio e giorno
                                 return appDay === slot.dayOfWeek && app.startTime === slot.startTime;
@@ -372,7 +396,7 @@ export const getPublicSlotsV2 = onRequest({
                 }
             });
         });
-        
+
         res.status(200).json({ success: true, data: results });
     } catch (error: any) {
         logger.error("Error fetching public slots v2:", error?.message || error);

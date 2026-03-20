@@ -292,6 +292,9 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
         slots.forEach((slot) => {
           if (slot.isPubliclyVisible === false) return;
           const compatibleSubs = activeSubs.filter((sub) => {
+            if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+              if (!sub.allowedDays.includes(slot.dayOfWeek)) return false;
+            }
             const labCount = Number(sub.labCount || 0);
             const sgCount = Number(sub.sgCount || 0);
             const evtCount = Number(sub.evtCount || 0);
@@ -304,9 +307,25 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
           compatibleSubs.forEach((sub) => {
             const occupied = activeEnrollments.filter((enr) => {
               if (enr.locationId !== loc.id || enr.status !== "active") return false;
+              const hasRemaining = enr.lessonsRemaining > 0 || enr.labRemaining > 0 || enr.sgRemaining > 0 || enr.evtRemaining > 0;
+              if (!hasRemaining) return false;
               return enr.appointments?.some((app) => {
                 if (!app.date || !app.startTime) return false;
-                const appDay = new Date(app.date).getDay();
+                let appDay = -1;
+                try {
+                  if (app.date.includes("T")) {
+                    const [year, month, day] = app.date.split("T")[0].split("-");
+                    if (year && month && day) {
+                      const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+                      appDay = dateObj.getDay();
+                    }
+                  }
+                  if (appDay === -1) {
+                    appDay = new Date(app.date).getDay();
+                  }
+                } catch (e) {
+                  appDay = new Date(app.date).getDay();
+                }
                 return appDay === slot.dayOfWeek && app.startTime === slot.startTime;
               });
             }).length;
