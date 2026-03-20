@@ -19,9 +19,13 @@ const COURSES_COLLECTION = 'courses';
 const LOCATIONS_COLLECTION = 'locations';
 
 export const getLocations = async (): Promise<Location[]> => {
-    const q = query(collection(db, LOCATIONS_COLLECTION), where('status', '==', 'active'));
+    const q = query(collection(db, LOCATIONS_COLLECTION));
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Location));
+    // Sort in-memory to keep it simple and handle case-insensitive or custom name logic if needed
+    return snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Location))
+        .filter(l => l.status !== 'closed') // Fetch all except explicitly closed
+        .sort((a, b) => a.name.localeCompare(b.name));
 };
 
 export const getOpenCourses = async (): Promise<Course[]> => {
@@ -39,12 +43,16 @@ export const getCourseById = async (id: string): Promise<Course | null> => {
 export const getCoursesByLocation = async (locationId: string): Promise<Course[]> => {
     const q = query(
         collection(db, COURSES_COLLECTION), 
-        where('locationId', '==', locationId),
-        orderBy('dayOfWeek', 'asc'),
-        orderBy('startTime', 'asc')
+        where('locationId', '==', locationId)
     );
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+    const courses = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+    
+    // Sort in-memory to avoid composite index requirements
+    return courses.sort((a, b) => {
+        if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+        return a.startTime.localeCompare(b.startTime);
+    });
 };
 
 export const createCourse = async (course: CourseInput): Promise<string> => {

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate } from '../services/settingsService';
 import { migrateHistoricalEnrollments } from '../services/enrollmentService';
+import { migrateLocations } from '../services/migrationService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import { requestNotificationPermission } from '../services/fcmService';
@@ -641,9 +642,11 @@ const Settings: React.FC = () => {
     // Notification Status & Debugging
     const [notifPermission, setNotifPermission] = useState(Notification.permission);
     const [debugLog, setDebugLog] = useState<string[]>([]);
-    const [isMigrating, setIsMigrating] = useState(false);
-    const [migrationResult, setMigrationResult] = useState<{ updated: number, errors: number } | null>(null);
     const [showConfirmMigrate, setShowConfirmMigrate] = useState(false);
+    const [showConfirmLocMigrate, setShowConfirmLocMigrate] = useState(false);
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [migrationResult, setMigrationResult] = useState<{ migrated: number; total: number } | null>(null);
+    const [locMigrationResult, setLocMigrationResult] = useState<number | null>(null);
 
     const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
 
@@ -1152,6 +1155,43 @@ const Settings: React.FC = () => {
                                 </button>
                             )}
                         </div>
+
+                        <div className="p-4 bg-slate-50 rounded border border-slate-200">
+                            <h3 className="text-sm font-bold text-slate-800 mb-2">Sincronizzazione Sedi</h3>
+                            <p className="text-xs text-slate-600 mb-4">
+                                Estrae tutte le sedi configurate nei fornitori e le sincronizza nella collezione globale "locations" necessaria per la nuova gestione Corsi.
+                            </p>
+                            
+                            {locMigrationResult !== null ? (
+                                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded text-xs">
+                                    <p className="font-bold text-emerald-800">Sincronizzazione completata!</p>
+                                    <p className="text-emerald-700">Sedi sincronizzate: {locMigrationResult}</p>
+                                    <button onClick={() => setLocMigrationResult(null)} className="mt-2 text-emerald-600 font-bold hover:underline">Chiudi</button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setShowConfirmLocMigrate(true)}
+                                    disabled={isMigrating}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded font-bold text-xs transition-all ${
+                                        isMigrating 
+                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
+                                        : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-md'
+                                    }`}
+                                >
+                                    {isMigrating ? (
+                                        <>
+                                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            Operazione in corso...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <UploadIcon />
+                                            Sincronizza Sedi
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1185,6 +1225,30 @@ const Settings: React.FC = () => {
                 }} 
                 title="Conferma Migrazione" 
                 message="Questa operazione ricalcolerà tutti i crediti residui degli allievi in base alle nuove regole dei Carnet. Procedere?" 
+                isDangerous={true}
+            />
+        )}
+
+        {showConfirmLocMigrate && (
+            <ConfirmModal 
+                isOpen={true} 
+                onClose={() => setShowConfirmLocMigrate(false)} 
+                onConfirm={async () => {
+                    setShowConfirmLocMigrate(false);
+                    setIsMigrating(true);
+                    try {
+                        const count = await migrateLocations();
+                        setLocMigrationResult(count);
+                        toast.success(`Migrazione completata: ${count} sedi sincronizzate`);
+                    } catch (e) {
+                        console.error(e);
+                        toast.error("Errore durante la migrazione delle sedi.");
+                    } finally {
+                        setIsMigrating(false);
+                    }
+                }} 
+                title="Sincronizzazione Sedi" 
+                message="Questa operazione sincronizzerà tutte le sedi dei fornitori nella collezione globale 'locations'. Procedere?" 
                 isDangerous={true}
             />
         )}
