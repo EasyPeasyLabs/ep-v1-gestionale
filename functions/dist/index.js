@@ -302,10 +302,10 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
         logger.info(`Location ${loc.name} has ${slots.length} raw slots`);
         slots.forEach((slot) => {
           if (slot.isPubliclyVisible === false) return;
-          const compatibleSubs = activeSubs.filter((sub) => {
-            if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
-              if (!sub.allowedDays.includes(slot.dayOfWeek)) return false;
-            }
+          const labCount_slot = slot.type === "LAB" ? 1 : 0;
+          const sgCount_slot = slot.type === "SG" ? 1 : 0;
+          const evtCount_slot = slot.type === "EVT" ? 1 : 0;
+          const typeMatchFn = (sub) => {
             const labCount = Number(sub.labCount || 0);
             const sgCount = Number(sub.sgCount || 0);
             const evtCount = Number(sub.evtCount || 0);
@@ -313,14 +313,29 @@ var getPublicSlotsV2 = (0, import_https.onRequest)({
             if (slot.type === "SG" && sgCount > 0) return true;
             if (slot.type === "EVT" && evtCount > 0) return true;
             return false;
+          };
+          let compatibleSubs = activeSubs.filter((sub) => {
+            if (!typeMatchFn(sub)) return false;
+            if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+              return sub.allowedDays.includes(slot.dayOfWeek);
+            }
+            return true;
           });
+          if (compatibleSubs.length === 0) {
+            compatibleSubs = activeSubs.filter((sub) => typeMatchFn(sub));
+            if (compatibleSubs.length > 0) {
+              logger.info(`Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: nessuna sub con allowedDays match, usando ${compatibleSubs.length} sub senza restrizione giorno.`);
+            }
+          }
           compatibleSubs.forEach((sub) => {
             const occupied = activeEnrollments.filter((enr) => {
-              if (enr.locationId !== loc.id || enr.status !== "active") return false;
+              if (enr.locationId !== loc.id && enr.selectedLocationId !== loc.id) return false;
+              if (!["active", "Active", "confirmed", "Confirmed", "pending", "Pending"].includes(enr.status || enr.enrollmentStatus || "")) return false;
               const hasRemaining = enr.lessonsRemaining > 0 || enr.labRemaining > 0 || enr.sgRemaining > 0 || enr.evtRemaining > 0;
-              if (!hasRemaining) return false;
-              if (enr.subscriptionTypeId) return enr.subscriptionTypeId === sub.id;
-              return String(enr.subscriptionName || "").toLowerCase() === String(sub.name || "").toLowerCase();
+              if (!hasRemaining && (enr.lessonsRemaining !== void 0 || enr.labRemaining !== void 0)) return false;
+              const enrolledSubId = enr.selectedSubscriptionId || enr.subscriptionTypeId || enr.subscriptionId || "";
+              if (enrolledSubId) return enrolledSubId === sub.id;
+              return String(enr.subscriptionName || enr.selectedSubscriptionName || "").toLowerCase() === String(sub.name || "").toLowerCase();
             }).length;
             const capacity = loc.capacity || 10;
             const available = Math.max(0, capacity - occupied);

@@ -326,38 +326,55 @@ export const getPublicSlotsV2 = onRequest({
                     if (slot.isPubliclyVisible === false) return;
 
                     // Filtro compatibilità migliorato (LAB, SG, EVT)
-                    const compatibleSubs = activeSubs.filter(sub => {
-                        // Verifica se l'abbonamento permette questo giorno della settimana
-                        if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
-                            if (!sub.allowedDays.includes(slot.dayOfWeek)) return false;
-                        }
+                    // Prima passa strict (rispetta allowedDays), se nessuna sub corrisponde usa lenient (ignora allowedDays)
+                    const labCount_slot = slot.type === 'LAB' ? 1 : 0;
+                    const sgCount_slot = slot.type === 'SG' ? 1 : 0;
+                    const evtCount_slot = slot.type === 'EVT' ? 1 : 0;
 
+                    const typeMatchFn = (sub: any): boolean => {
                         const labCount = Number(sub.labCount || 0);
                         const sgCount = Number(sub.sgCount || 0);
                         const evtCount = Number(sub.evtCount || 0);
-
                         if (slot.type === 'LAB' && labCount > 0) return true;
                         if (slot.type === 'SG' && sgCount > 0) return true;
                         if (slot.type === 'EVT' && evtCount > 0) return true;
-                        // NESSUN fallback: uno slot senza tipo non viene incluso in alcun abbonamento.
-                        // Un tipo non riconosciuto non corrisponde a nessun abbonamento tipizzato.
+                        // Slot senza tipo: nessun match per sicurezza
                         return false;
+                    };
+
+                    // Tentativo 1: filtro STRICT (rispetta allowedDays)
+                    let compatibleSubs = activeSubs.filter(sub => {
+                        if (!typeMatchFn(sub)) return false;
+                        if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+                            return sub.allowedDays.includes(slot.dayOfWeek);
+                        }
+                        return true; // nessuna restrizione giorni → compatibile
                     });
+
+                    // Tentativo 2: filtro LENIENT (ignora allowedDays) se lo strict non trova nulla
+                    if (compatibleSubs.length === 0) {
+                        compatibleSubs = activeSubs.filter(sub => typeMatchFn(sub));
+                        if (compatibleSubs.length > 0) {
+                            logger.info(`Location ${loc.name} slot ${slot.type} day ${slot.dayOfWeek}: nessuna sub con allowedDays match, usando ${compatibleSubs.length} sub senza restrizione giorno.`);
+                        }
+                    }
 
                     compatibleSubs.forEach(sub => {
                         // Calcola occupazione per ABBONAMENTO: conta tutti gli iscritti attivi con
-                        // lo stesso abbonamento (subscriptionTypeId) e la stessa sede, con lezioni residue.
-                        // NON dipende dagli appointments (che negli enrollment possono essere vuoti),
-                        // ma dall'associazione diretta subscriptionTypeId + locationId.
+                        // lo stesso abbonamento e la stessa sede, con lezioni residue.
+                        // Il campo sull'enrollment è 'selectedSubscriptionId' (come inviato da EnrollmentPortal formData).
+                        // Fallback su subscriptionTypeId e subscriptionName per enrollment storici.
                         const occupied = activeEnrollments.filter(enr => {
-                            if (enr.locationId !== loc.id || enr.status !== 'active') return false;
+                            if (enr.locationId !== loc.id && enr.selectedLocationId !== loc.id) return false;
+                            if (!['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status || enr.enrollmentStatus || '')) return false;
                             // Verifica che l'iscrizione non sia esaurita
                             const hasRemaining = (enr.lessonsRemaining > 0) || (enr.labRemaining > 0) || (enr.sgRemaining > 0) || (enr.evtRemaining > 0);
-                            if (!hasRemaining) return false;
-                            // Match per abbonamento: usa subscriptionTypeId se disponibile, altrimenti subscriptionName
-                            if (enr.subscriptionTypeId) return enr.subscriptionTypeId === sub.id;
+                            if (!hasRemaining && (enr.lessonsRemaining !== undefined || enr.labRemaining !== undefined)) return false;
+                            // Match per abbonamento: prova i vari nomi di campo usati nei diversi sprint
+                            const enrolledSubId = enr.selectedSubscriptionId || enr.subscriptionTypeId || enr.subscriptionId || '';
+                            if (enrolledSubId) return enrolledSubId === sub.id;
                             // Fallback: confronto per nome dell'abbonamento
-                            return String(enr.subscriptionName || '').toLowerCase() === String(sub.name || '').toLowerCase();
+                            return String(enr.subscriptionName || enr.selectedSubscriptionName || '').toLowerCase() === String(sub.name || '').toLowerCase();
                         }).length;
 
                         const capacity = loc.capacity || 10;
