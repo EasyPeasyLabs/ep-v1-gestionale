@@ -115,25 +115,46 @@ const Courses: React.FC = () => {
                 });
 
                 const daysMap: Record<number, string> = { 1: 'Lunedì', 2: 'Martedì', 3: 'Mercoledì', 4: 'Giovedì', 5: 'Venerdì', 6: 'Sabato', 0: 'Domenica' };
-                const targetDay = daysMap[courseData.dayOfWeek];
+                const targetDayName = daysMap[courseData.dayOfWeek];
 
                 const realCount = allDocs.filter(d => {
                     const data = d.data();
-                    const isActive = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(data.status);
-                    const remaining = data.lessonsRemaining !== undefined ? data.lessonsRemaining : (data.labRemaining || 0);
+                    const status = (data.status || '').toLowerCase();
+                    const isActive = ['active', 'confirmed', 'pending'].includes(status);
+                    
+                    // Controlliamo TUTTI i possibili campi lezioni residue
+                    const remaining = 
+                        (data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 0) +
+                        (data.labRemaining !== undefined ? Number(data.labRemaining) : 0) +
+                        (data.sgRemaining !== undefined ? Number(data.sgRemaining) : 0) +
+                        (data.evtRemaining !== undefined ? Number(data.evtRemaining) : 0);
                     
                     if (!isActive || remaining <= 0) return false;
 
                     // Se ha il courseId corretto, è un match certo
                     if (data.courseId === courseId) return true;
 
-                    // Altrimenti facciamo il matching intelligente (Legacy)
-                    // Verifichiamo Giorno e Tipo Slot
-                    const enrDay = data.selectedSlot?.dayOfWeek || data.dayOfWeek;
-                    const enrType = data.selectedSlot?.type || data.slotType || data.type;
+                    // MATCHING ULTRA-FLESSIBILE (Legacy/Migrate)
+                    // 1. Identificazione Giorno (può essere numero o stringa)
+                    const enrDayRaw = data.selectedSlot?.dayOfWeek || data.dayOfWeek || data.giorno;
+                    let matchDay = false;
+                    if (typeof enrDayRaw === 'number') {
+                        matchDay = enrDayRaw === courseData.dayOfWeek;
+                    } else if (typeof enrDayRaw === 'string') {
+                        const cleanEnrDay = enrDayRaw.trim().toLowerCase();
+                        const cleanTargetDay = targetDayName.toLowerCase();
+                        matchDay = cleanEnrDay === cleanTargetDay || cleanEnrDay.startsWith(cleanTargetDay.substring(0,3));
+                    }
 
-                    const matchDay = enrDay === targetDay || enrDay === courseData.dayOfWeek;
-                    const matchType = enrType === courseData.slotType;
+                    // 2. Identificazione Tipo (LAB, SG, ecc.)
+                    const enrTypeRaw = data.selectedSlot?.type || data.slotType || data.type || data.tipo;
+                    let matchType = false;
+                    if (enrTypeRaw) {
+                        const cleanEnrType = String(enrTypeRaw).trim().toUpperCase();
+                        const cleanTargetType = String(courseData.slotType).toUpperCase();
+                        matchType = cleanEnrType === cleanTargetType || 
+                                    (cleanTargetType === 'LAB' && (cleanEnrType.includes('LAB') || cleanEnrType === 'MENSILE LAB'));
+                    }
 
                     return matchDay && matchType;
                 }).length;
