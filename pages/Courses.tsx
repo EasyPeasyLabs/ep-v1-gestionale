@@ -100,16 +100,42 @@ const Courses: React.FC = () => {
                 const courseId = courseDoc.id;
                 const courseData = courseDoc.data();
 
-                const enrQuery = query(
-                    collection(db, 'enrollments'),
-                    where('courseId', '==', courseId)
-                );
-                const enrSnap = await getDocs(enrQuery);
-                const realCount = enrSnap.docs.filter(d => {
+                // 1. Cerchiamo per courseId (Nuovo Modello)
+                const qByCourse = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
+                const snapByCourse = await getDocs(qByCourse);
+                
+                // 2. Cerchiamo per locationId (Backup per Iscrizioni Legacy/Migrate)
+                const qByLoc = query(collection(db, 'enrollments'), where('locationId', '==', courseData.locationId));
+                const snapByLoc = await getDocs(qByLoc);
+
+                // Uniamo i risultati evitando duplicati
+                const allDocs = [...snapByCourse.docs];
+                snapByLoc.docs.forEach(d => {
+                    if (!allDocs.find(ad => ad.id === d.id)) allDocs.push(d);
+                });
+
+                const daysMap: Record<number, string> = { 1: 'Lunedì', 2: 'Martedì', 3: 'Mercoledì', 4: 'Giovedì', 5: 'Venerdì', 6: 'Sabato', 0: 'Domenica' };
+                const targetDay = daysMap[courseData.dayOfWeek];
+
+                const realCount = allDocs.filter(d => {
                     const data = d.data();
                     const isActive = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(data.status);
                     const remaining = data.lessonsRemaining !== undefined ? data.lessonsRemaining : (data.labRemaining || 0);
-                    return isActive && remaining > 0;
+                    
+                    if (!isActive || remaining <= 0) return false;
+
+                    // Se ha il courseId corretto, è un match certo
+                    if (data.courseId === courseId) return true;
+
+                    // Altrimenti facciamo il matching intelligente (Legacy)
+                    // Verifichiamo Giorno e Tipo Slot
+                    const enrDay = data.selectedSlot?.dayOfWeek || data.dayOfWeek;
+                    const enrType = data.selectedSlot?.type || data.slotType || data.type;
+
+                    const matchDay = enrDay === targetDay || enrDay === courseData.dayOfWeek;
+                    const matchType = enrType === courseData.slotType;
+
+                    return matchDay && matchType;
                 }).length;
 
                 if ((courseData.activeEnrollmentsCount || 0) !== realCount) {
