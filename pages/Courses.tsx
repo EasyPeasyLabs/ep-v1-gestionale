@@ -221,8 +221,20 @@ const Courses: React.FC = () => {
         <div className="space-y-6">
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-gray-900">Gestione Corsi</h1>
-                    <p className="text-gray-500 font-medium">Configurazione fessure e disponibilità per sede</p>
+                    <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Gestione Corsi</h1>
+                    <div className="flex items-center gap-4 mt-1">
+                        <p className="text-gray-500 font-medium">Configurazione fessure e disponibilità per sede</p>
+                        <button 
+                            onClick={realignAllOccupancy}
+                            disabled={isRealigning}
+                            className={`px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-sm
+                                ${isRealigning 
+                                    ? 'bg-gray-50 text-gray-400 border-gray-100 italic' 
+                                    : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 hover:border-amber-300'}`}
+                        >
+                            {isRealigning ? '⏳ Ricalcolo in corso...' : '⚡ Ricalcola Occupazione'}
+                        </button>
+                    </div>
                 </div>
                 
                 <div className="flex items-center gap-3">
