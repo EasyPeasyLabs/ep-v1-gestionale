@@ -47,6 +47,35 @@ const Courses: React.FC = () => {
         fetchInitialData();
     }, []);
 
+    const [selectedCourseForStudents, setSelectedCourseForStudents] = useState<{ id: string, name: string } | null>(null);
+    const [enrolledStudents, setEnrolledStudents] = useState<{ name: string, remaining: number }[]>([]);
+    const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+
+    const fetchEnrolledStudents = async (courseId: string, courseName: string) => {
+        setSelectedCourseForStudents({ id: courseId, name: courseName });
+        setIsLoadingStudents(true);
+        try {
+            const q = query(
+                collection(db, 'enrollments'),
+                where('courseId', '==', courseId)
+            );
+            const snap = await getDocs(q);
+            const students = snap.docs
+                .map(doc => ({
+                    name: doc.data().childName,
+                    status: doc.data().status,
+                    remaining: doc.data().lessonsRemaining !== undefined ? doc.data().lessonsRemaining : (doc.data().labRemaining || 0)
+                }))
+                .filter(s => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s.status) && s.remaining > 0);
+            setEnrolledStudents(students);
+        } catch (error) {
+            console.error("Errore recupero allievi:", error);
+            toast.error("Errore recupero allievi");
+        } finally {
+            setIsLoadingStudents(false);
+        }
+    };
+
     useEffect(() => {
         if (selectedLocationId) {
             fetchCourses();
@@ -234,15 +263,22 @@ const Courses: React.FC = () => {
                                                                     }
                                                                 }
                                                             }}
-                                                            className="w-16 px-2 py-1 text-sm font-bold border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                            className="w-12 px-1.5 py-0.5 text-sm font-bold border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                                                             min="0"
                                                         />
+                                                        <button 
+                                                            onClick={() => fetchEnrolledStudents(course.id, `${days[course.dayOfWeek]} ${course.startTime}`)}
+                                                            className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                            title="Vedi iscritti"
+                                                        >
+                                                            <div className="w-4 h-4"><ProfileIcon /></div>
+                                                        </button>
                                                     </div>
                                                     <div className="w-24 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                                                         <div 
                                                             className={`h-full transition-all duration-500 ${
-                                                                (course.activeEnrollmentsCount / (course.capacity || 1)) > 0.8 ? 'bg-red-500' : 
-                                                                (course.activeEnrollmentsCount / (course.capacity || 1)) > 0.5 ? 'bg-amber-500' : 
+                                                                ((course.activeEnrollmentsCount || 0) / (course.capacity || 1)) > 0.8 ? 'bg-red-500' : 
+                                                                ((course.activeEnrollmentsCount || 0) / (course.capacity || 1)) > 0.5 ? 'bg-amber-500' : 
                                                                 'bg-indigo-500'
                                                             }`}
                                                             style={{ width: `${Math.min(100, ((course.activeEnrollmentsCount || 0) / (course.capacity || 1)) * 100)}%` }}
@@ -466,6 +502,39 @@ const Courses: React.FC = () => {
                                     Salva Corso
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </Modal>
+            )}
+
+            {selectedCourseForStudents && (
+                <Modal 
+                    onClose={() => setSelectedCourseForStudents(null)} 
+                    title={`Allievi Iscritti - ${selectedCourseForStudents.name}`}
+                    size="md"
+                >
+                    <div className="p-6">
+                        {isLoadingStudents ? (
+                            <div className="flex justify-center py-8"><Spinner /></div>
+                        ) : enrolledStudents.length === 0 ? (
+                            <p className="text-center text-gray-400 italic py-8 text-sm">Nessun allievo con lezioni residue trovato per questo corso.</p>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b pb-2 mb-4">Elenco Allievi Attivi ({enrolledStudents.length})</p>
+                                <div className="max-h-[400px] overflow-y-auto pr-2 space-y-2">
+                                    {enrolledStudents.map((s, i) => (
+                                        <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                            <span className="font-bold text-gray-800 text-sm">{s.name}</span>
+                                            <span className="px-2 py-1 bg-white border border-indigo-100 text-indigo-600 rounded-lg text-[10px] font-black uppercase">
+                                                {s.remaining} lez. residue
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        <div className="mt-8 flex justify-end">
+                            <button onClick={() => setSelectedCourseForStudents(null)} className="md-btn md-btn-flat">Chiudi</button>
                         </div>
                     </div>
                 </Modal>

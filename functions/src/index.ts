@@ -515,18 +515,25 @@ export const onEnrollmentUpdated = onDocumentUpdated({
 
     const oldStatus = before.status;
     const newStatus = after.status;
+    const oldRemaining = before.lessonsRemaining !== undefined ? before.lessonsRemaining : (before.labRemaining || 0);
+    const newRemaining = after.lessonsRemaining !== undefined ? after.lessonsRemaining : (after.labRemaining || 0);
     const courseId = after.courseId || after.selectedCourseId || before.courseId || before.selectedCourseId;
 
     if (!courseId) return;
 
     const isActive = (s: string) => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s);
 
-    if (!isActive(oldStatus) && isActive(newStatus)) {
+    const wasValid = isActive(oldStatus) && oldRemaining > 0;
+    const isValid = isActive(newStatus) && newRemaining > 0;
+
+    if (!wasValid && isValid) {
+        // Incrementa se diventa valido (nuovo attivo o ricarica carnet)
         await db.collection('courses').doc(courseId).update({
             activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
-    } else if (isActive(oldStatus) && !isActive(newStatus)) {
+    } else if (wasValid && !isValid) {
+        // Decrementa se non più valido (cancellato, sospeso o carnet esaurito)
         await db.collection('courses').doc(courseId).update({
             activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
