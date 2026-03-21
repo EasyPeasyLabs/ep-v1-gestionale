@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'react-hot-toast';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate } from '../services/settingsService';
 import { migrateHistoricalEnrollments } from '../services/enrollmentService';
@@ -645,7 +646,7 @@ const Settings: React.FC = () => {
     const [showConfirmMigrate, setShowConfirmMigrate] = useState(false);
     const [showConfirmLocMigrate, setShowConfirmLocMigrate] = useState(false);
     const [isMigrating, setIsMigrating] = useState(false);
-    const [migrationResult, setMigrationResult] = useState<{ migrated: number; total: number } | null>(null);
+    const [migrationResult, setMigrationResult] = useState<{ updated: number, errors: number } | null>(null);
     const [locMigrationResult, setLocMigrationResult] = useState<number | null>(null);
 
     const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);

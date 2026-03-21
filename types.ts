@@ -129,7 +129,7 @@ export interface Course {
 }
 
 export type LocationInput = Omit<Location, 'id'>;
-export type CourseInput = Omit<Course, 'id'>;
+export type CourseInput = Omit<Course, 'id' | 'activeEnrollmentsCount'> & { activeEnrollmentsCount?: number };
 
 export type SlotType = 'LAB' | 'SG' | 'EVT' | 'LAB+SG' | 'READ';
 

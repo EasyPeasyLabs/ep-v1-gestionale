@@ -65,8 +65,6 @@ export const addSupplier = async (supplier: SupplierInput): Promise<string> => {
 
 export const updateSupplier = async (id: string, supplier: Partial<SupplierInput>): Promise<void> => {
     const supplierDoc = doc(db, 'suppliers', id);
-    await updateDoc(supplierDoc, { ...supplier });
-    
     // Sync locations to top-level collection
     if (supplier.locations) {
         for (const loc of supplier.locations) {
@@ -83,6 +81,8 @@ export const updateSupplier = async (id: string, supplier: Partial<SupplierInput
             });
         }
     }
+
+    await updateDoc(supplierDoc, { ...supplier });
 };
 
 // Soft Delete: sposta nel cestino

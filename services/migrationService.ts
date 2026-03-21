@@ -1,5 +1,5 @@
 
-import { db } from './firebase/config';
+import { db } from '../firebase/config';
 import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 export const migrateLocations = async () => {
