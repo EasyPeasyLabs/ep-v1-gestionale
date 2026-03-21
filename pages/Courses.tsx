@@ -10,7 +10,7 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ProfileIcon from '../components/icons/ProfileIcon';
 import { db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 
 const Courses: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
