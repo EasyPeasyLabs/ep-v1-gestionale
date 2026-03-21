@@ -87,6 +87,49 @@ const Courses: React.FC = () => {
         }
     }, [selectedLocationId]);
 
+    const [isRealigning, setIsRealigning] = useState(false);
+
+    const realignAllOccupancy = async () => {
+        if (!window.confirm("Questa operazione ricalcolerà l'occupazione reale di tutti i corsi basandosi sulle iscrizioni attive con lezioni residue. Procedere?")) return;
+        setIsRealigning(true);
+        try {
+            const coursesSnap = await getDocs(collection(db, 'courses'));
+            let updatedCount = 0;
+
+            for (const courseDoc of coursesSnap.docs) {
+                const courseId = courseDoc.id;
+                const courseData = courseDoc.data();
+
+                const enrQuery = query(
+                    collection(db, 'enrollments'),
+                    where('courseId', '==', courseId)
+                );
+                const enrSnap = await getDocs(enrQuery);
+                const realCount = enrSnap.docs.filter(d => {
+                    const data = d.data();
+                    const isActive = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(data.status);
+                    const remaining = data.lessonsRemaining !== undefined ? data.lessonsRemaining : (data.labRemaining || 0);
+                    return isActive && remaining > 0;
+                }).length;
+
+                if ((courseData.activeEnrollmentsCount || 0) !== realCount) {
+                    await updateDoc(doc(db, 'courses', courseId), {
+                        activeEnrollmentsCount: realCount,
+                        lastManualSyncAt: new Date().toISOString()
+                    });
+                    updatedCount++;
+                }
+            }
+            toast.success(`Riallineamento completato: ${updatedCount} corsi aggiornati.`);
+            fetchCourses();
+        } catch (error) {
+            console.error("Errore riallineamento:", error);
+            toast.error("Errore durante il riallineamento");
+        } finally {
+            setIsRealigning(false);
+        }
+    };
+
     const fetchCourses = async () => {
         setLoadingCourses(true);
         try {
