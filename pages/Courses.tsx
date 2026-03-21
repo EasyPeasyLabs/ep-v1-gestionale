@@ -90,83 +90,65 @@ const Courses: React.FC = () => {
     const [isRealigning, setIsRealigning] = useState(false);
 
     const realignAllOccupancy = async () => {
-        if (!window.confirm("Questa operazione ricalcolerà l'occupazione reale di tutti i corsi basandosi sulle iscrizioni attive con lezioni residue. Procedere?")) return;
+        if (!window.confirm("Questa operazione ricalcolerà l'occupazione reale di tutti i corsi basandosi sulle iscrizioni attive. Procedere?")) return;
         setIsRealigning(true);
         try {
             const coursesSnap = await getDocs(collection(db, 'courses'));
             let updatedCount = 0;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
             for (const courseDoc of coursesSnap.docs) {
                 const courseId = courseDoc.id;
                 const courseData = courseDoc.data();
 
-                // 1. Cerchiamo per courseId (Nuovo Modello)
-                const qByCourse = query(collection(db, 'enrollments'), where('courseId', '==', courseId));
-                const snapByCourse = await getDocs(qByCourse);
+                // --- QUERY 1: NUOVO MODELLO (con courseId) ---
+                const qNew = query(
+                    collection(db, 'enrollments'),
+                    where('courseId', '==', courseId),
+                    where('status', 'in', ['active', 'confirmed', 'pending']),
+                    where('endDate', '>=', today)
+                );
+                const snapNew = await getDocs(qNew);
+                const newModelCount = snapNew.docs.filter(d => (d.data().lessonsRemaining || 0) > 0).length;
+
+                // --- QUERY 2: MODELLO LEGACY (senza courseId, matching fuzzy) ---
+                // Questa query è più ampia e richiede un filtro JS aggiuntivo
+                const qLegacy = query(
+                    collection(db, 'enrollments'),
+                    where('locationId', '==', courseData.locationId),
+                    where('status', 'in', ['active', 'confirmed', 'pending']),
+                    where('endDate', '>=', today)
+                );
+                const snapLegacy = await getDocs(qLegacy);
                 
-                // 2. Cerchiamo per locationId (Backup per Iscrizioni Legacy/Migrate)
-                const qByLoc = query(collection(db, 'enrollments'), where('locationId', '==', courseData.locationId));
-                const snapByLoc = await getDocs(qByLoc);
-
-                // Uniamo i risultati evitando duplicati
-                const allDocs = [...snapByCourse.docs];
-                snapByLoc.docs.forEach(d => {
-                    if (!allDocs.find(ad => ad.id === d.id)) allDocs.push(d);
-                });
-
                 const daysMap: Record<number, string> = { 1: 'Lunedì', 2: 'Martedì', 3: 'Mercoledì', 4: 'Giovedì', 5: 'Venerdì', 6: 'Sabato', 0: 'Domenica' };
                 const targetDayName = daysMap[courseData.dayOfWeek];
 
-                const today = new Date();
-                today.setHours(0, 0, 0, 0); // Azzera l'ora per confronti precisi
-
-                const realCount = allDocs.filter(d => {
+                const legacyModelCount = snapLegacy.docs.filter(d => {
                     const data = d.data();
-                    
-                    // --- CONTROLLO 1: Stato Attivo ---
-                    const status = (data.status || '').toLowerCase();
-                    const isActive = ['active', 'confirmed', 'pending'].includes(status);
-                    if (!isActive) return false;
+                    if (data.courseId) return false; // Già conteggiato nel nuovo modello
 
-                    // --- CONTROLLO 2: Slot Residui ---
-                    const remaining = 
-                        (data.lessonsRemaining !== undefined ? Number(data.lessonsRemaining) : 0) +
-                        (data.labRemaining !== undefined ? Number(data.labRemaining) : 0) +
-                        (data.sgRemaining !== undefined ? Number(data.sgRemaining) : 0) +
-                        (data.evtRemaining !== undefined ? Number(data.evtRemaining) : 0);
+                    const remaining = (data.lessonsRemaining || 0) + (data.labRemaining || 0) + (data.sgRemaining || 0) + (data.evtRemaining || 0);
                     if (remaining <= 0) return false;
 
-                    // --- CONTROLLO 3: Validità Temporale ---
-                    const startDate = data.startDate?.toDate ? data.startDate.toDate() : (data.startDate ? new Date(data.startDate) : null);
-                    const endDate = data.endDate?.toDate ? data.endDate.toDate() : (data.endDate ? new Date(data.endDate) : null);
-                    if (!startDate || !endDate) return false; // Se mancano le date, non possiamo considerarla valida
-                    if (today < startDate || today > endDate) return false; // Se è scaduta o non ancora iniziata
-
-                    // --- Se tutti i controlli passano, procedi al matching ---
-                    if (data.courseId === courseId) return true;
-
-                    // MATCHING ULTRA-FLESSIBILE (Legacy/Migrate)
                     const enrDayRaw = data.selectedSlot?.dayOfWeek || data.dayOfWeek || data.giorno;
                     let matchDay = false;
-                    if (typeof enrDayRaw === 'number') {
-                        matchDay = enrDayRaw === courseData.dayOfWeek;
-                    } else if (typeof enrDayRaw === 'string') {
-                        const cleanEnrDay = enrDayRaw.trim().toLowerCase();
-                        const cleanTargetDay = targetDayName.toLowerCase();
-                        matchDay = cleanEnrDay === cleanTargetDay || cleanEnrDay.startsWith(cleanTargetDay.substring(0,3));
-                    }
+                    if (typeof enrDayRaw === 'number') matchDay = enrDayRaw === courseData.dayOfWeek;
+                    else if (typeof enrDayRaw === 'string') matchDay = enrDayRaw.toLowerCase().startsWith(targetDayName.substring(0,3).toLowerCase());
 
                     const enrTypeRaw = data.selectedSlot?.type || data.slotType || data.type || data.tipo;
                     let matchType = false;
                     if (enrTypeRaw) {
-                        const cleanEnrType = String(enrTypeRaw).trim().toUpperCase();
+                        const cleanEnrType = String(enrTypeRaw).toUpperCase();
                         const cleanTargetType = String(courseData.slotType).toUpperCase();
-                        matchType = cleanEnrType === cleanTargetType || 
-                                    (cleanTargetType === 'LAB' && (cleanEnrType.includes('LAB') || cleanEnrType.includes('MENSILE')));
+                        matchType = cleanEnrType.includes(cleanTargetType) || cleanTargetType.includes(cleanEnrType);
                     }
-
+                    
                     return matchDay && matchType;
                 }).length;
+
+                const realCount = newModelCount + legacyModelCount;
 
                 if ((courseData.activeEnrollmentsCount || 0) !== realCount) {
                     await updateDoc(doc(db, 'courses', courseId), {
@@ -177,10 +159,10 @@ const Courses: React.FC = () => {
                 }
             }
             toast.success(`Riallineamento completato: ${updatedCount} corsi aggiornati.`);
-            fetchCourses();
+            if (updatedCount > 0) fetchCourses();
         } catch (error) {
             console.error("Errore riallineamento:", error);
-            toast.error("Errore durante il riallineamento");
+            toast.error("Errore durante il riallineamento. Controlla gli indici Firestore.");
         } finally {
             setIsRealigning(false);
         }
