@@ -75,7 +75,7 @@ const calculateSlotBasedDates = (startStr: string, lessons: number, dayOfWeek?: 
 const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient, existingEnrollment, onSave, onCancel }) => {
     // --- STATE CORE ---
     const [selectedClientId, setSelectedClientId] = useState<string>(initialClient?.id || existingEnrollment?.clientId || '');
-    const [selectedChildIds, setSelectedChildIds] = useState<string[]>(existingEnrollment ? [existingEnrollment.childId] : []);
+    const [selectedChildIds, setSelectedChildIds] = useState<string[]>(existingEnrollment?.childId ? [existingEnrollment.childId] : []);
     const [isAdultEnrollment, setIsAdultEnrollment] = useState<boolean>(existingEnrollment?.isAdult || false);
     const [subscriptionTypeId, setSubscriptionTypeId] = useState(existingEnrollment?.subscriptionTypeId || '');
     const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
@@ -83,8 +83,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [projectName, setProjectName] = useState<string>(existingEnrollment?.childName || '');
 
     // --- STATE STANDARD MODE ---
-    const [startDateInput, setStartDateInput] = useState(existingEnrollment ? existingEnrollment.startDate.split('T')[0] : new Date().toISOString().split('T')[0]); 
-    const [endDateInput, setEndDateInput] = useState(existingEnrollment ? existingEnrollment.endDate.split('T')[0] : '');
+    const [startDateInput, setStartDateInput] = useState(existingEnrollment?.startDate?.split('T')[0] || new Date().toISOString().split('T')[0]); 
+    const [endDateInput, setEndDateInput] = useState(existingEnrollment?.endDate?.split('T')[0] || '');
     const [targetLocationId, setTargetLocationId] = useState(existingEnrollment?.locationId !== 'unassigned' ? existingEnrollment?.locationId : '');
     const [startTime, setStartTime] = useState(existingEnrollment?.appointments?.[0]?.startTime || '16:00');
     const [endTime, setEndTime] = useState(existingEnrollment?.appointments?.[0]?.endTime || '18:00');
@@ -94,7 +94,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
     // --- NEW COURSE STATE ---
     const [courses, setCourses] = useState<Course[]>([]);
-    const [selectedCourseId, setSelectedCourseId] = useState<string>(existingEnrollment?.appointments?.[0]?.locationId || ''); // Reuse for simplicity or add courseId to Enrollment
+    const [selectedCourseId, setSelectedCourseId] = useState<string>(existingEnrollment?.courseId || '');
     const [isAgeFilteringActive, setIsAgeFilteringActive] = useState(true);
 
     // --- CUSTOM BUILDER STATE (RESTORED) ---
@@ -122,9 +122,9 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [clientHistory, setClientHistory] = useState<Enrollment[]>([]);
 
     const initialValues = useRef({
-        startDate: existingEnrollment ? existingEnrollment.startDate.split('T')[0] : '',
+        startDate: existingEnrollment?.startDate?.split('T')[0] || '',
         subscriptionId: existingEnrollment?.subscriptionTypeId || '',
-        endDate: existingEnrollment ? existingEnrollment.endDate.split('T')[0] : '',
+        endDate: existingEnrollment?.endDate?.split('T')[0] || '',
         startTime: existingEnrollment?.appointments?.[0]?.startTime || '16:00',
         endTime: existingEnrollment?.appointments?.[0]?.endTime || '18:00'
     });
