@@ -290,146 +290,152 @@ const Courses: React.FC = () => {
 
             {isAddModalOpen && (
                 <Modal onClose={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} size="xl">
-                    <div className="p-8 space-y-8 min-w-[900px]">
-                        <div className="flex justify-between items-center">
-                            <h2 className="text-2xl font-black text-gray-900">{editingCourseId ? 'Modifica Corso' : 'Nuovo Corso'}</h2>
+                    <div className="flex flex-col max-h-[90vh]">
+                        {/* Header Fisso */}
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-20 rounded-t-3xl">
+                            <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">
+                                {editingCourseId ? 'Modifica Corso' : 'Nuovo Corso'}
+                            </h2>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-8">
-                            <div className="space-y-1">
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Giorno</label>
-                                <select 
-                                    className="md-input w-full bg-gray-50/50 border-gray-100"
-                                    value={dayOfWeek}
-                                    onChange={(e) => setDayOfWeek(parseInt(e.target.value))}
-                                >
-                                    {days.map((d, i) => <option key={i} value={i}>{d}</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Tipo Principale</label>
-                                <select 
-                                    className="md-input w-full bg-gray-50/50 border-gray-100"
-                                    value={activeType}
-                                    onChange={(e) => {
-                                        const newType = e.target.value as SlotType;
-                                        setActiveType(newType);
-                                        // Update quantity logic: only active has 1, others 0
-                                        setConfigs(prev => {
-                                            const next = { ...prev };
-                                            Object.keys(next).forEach(k => {
-                                                next[k as SlotType].quantity = (k === newType ? 1 : 0);
+                        {/* Area Contenuto Scrollabile */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Giorno</label>
+                                    <select 
+                                        className="md-input w-full bg-gray-50/50 border-gray-100"
+                                        value={dayOfWeek}
+                                        onChange={(e) => setDayOfWeek(parseInt(e.target.value))}
+                                    >
+                                        {days.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Tipo Principale</label>
+                                    <select 
+                                        className="md-input w-full bg-gray-50/50 border-gray-100"
+                                        value={activeType}
+                                        onChange={(e) => {
+                                            const newType = e.target.value as SlotType;
+                                            setActiveType(newType);
+                                            setConfigs(prev => {
+                                                const next = { ...prev };
+                                                Object.keys(next).forEach(k => {
+                                                    next[k as SlotType].quantity = (k === newType ? 1 : 0);
+                                                });
+                                                return next;
                                             });
-                                            return next;
-                                        });
-                                    }}
-                                >
-                                    <option value="LAB">Laboratorio</option>
-                                    <option value="SG">Spazio Gioco</option>
-                                    <option value="LAB+SG">Lab + Spazio Gioco</option>
-                                    <option value="READ">Lettura (READ)</option>
-                                    <option value="EVT">Evento</option>
-                                </select>
+                                        }}
+                                    >
+                                        <option value="LAB">Laboratorio</option>
+                                        <option value="SG">Spazio Gioco</option>
+                                        <option value="LAB+SG">Lab + Spazio Gioco</option>
+                                        <option value="READ">Lettura (READ)</option>
+                                        <option value="EVT">Evento</option>
+                                    </select>
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between px-1">
-                                <h3 className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
-                            </div>
-                            
-                            <div className="grid grid-cols-5 gap-3">
-                                {(Object.keys(configs) as SlotType[]).map(type => {
-                                    const isActive = activeType === type;
-                                    const config = configs[type];
-                                    
-                                    return (
-                                        <div 
-                                            key={type}
-                                            className={`rounded-2xl border-2 transition-all duration-300 p-4 space-y-5
-                                                ${isActive 
-                                                    ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 scale-[1.02] z-10' 
-                                                    : 'bg-gray-50/50 border-gray-100 opacity-60 grayscale-[0.5]'}`}
-                                        >
-                                            {/* Quantity / Header */}
-                                            <div className="flex flex-col items-center gap-2 pb-4 border-b border-gray-100/10">
-                                                <span className={`text-[10px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
-                                                    {type}
-                                                </span>
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl border-2 transition-colors
-                                                    ${isActive ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
-                                                    {config.quantity}
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between px-1">
+                                    <h3 className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                    {(Object.keys(configs) as SlotType[]).map(type => {
+                                        const isActive = activeType === type;
+                                        const config = configs[type];
+                                        
+                                        return (
+                                            <div 
+                                                key={type}
+                                                className={`rounded-2xl border-2 transition-all duration-300 p-4 space-y-5
+                                                    ${isActive 
+                                                        ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 scale-[1.02] z-10' 
+                                                        : 'bg-gray-50/50 border-gray-100 opacity-60 grayscale-[0.5]'}`}
+                                            >
+                                                {/* Quantity / Header */}
+                                                <div className="flex flex-col items-center gap-2 pb-4 border-b border-gray-100/10">
+                                                    <span className={`text-[10px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                                        {type}
+                                                    </span>
+                                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl border-2 transition-colors
+                                                        ${isActive ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                                                        {config.quantity}
+                                                    </div>
                                                 </div>
-                                            </div>
 
-                                            {/* Times */}
-                                            <div className="space-y-4">
-                                                <div className="space-y-1">
-                                                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Inizio</label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={config.startTime} 
-                                                        disabled={!isActive}
-                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], startTime: e.target.value }}))}
-                                                        className={`w-full text-center py-2 rounded-xl text-sm font-bold border-2 transition-all
-                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
-                                                    />
+                                                {/* Times */}
+                                                <div className="space-y-4">
+                                                    <div className="space-y-1">
+                                                        <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Inizio</label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={config.startTime} 
+                                                            disabled={!isActive}
+                                                            onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], startTime: e.target.value }}))}
+                                                            className={`w-full text-center py-2 rounded-xl text-sm font-bold border-2 transition-all
+                                                                ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Fine</label>
+                                                        <input 
+                                                            type="time" 
+                                                            value={config.endTime} 
+                                                            disabled={!isActive}
+                                                            onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], endTime: e.target.value }}))}
+                                                            className={`w-full text-center py-2 rounded-xl text-sm font-bold border-2 transition-all
+                                                                ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div className="space-y-1">
-                                                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Fine</label>
-                                                    <input 
-                                                        type="time" 
-                                                        value={config.endTime} 
-                                                        disabled={!isActive}
-                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], endTime: e.target.value }}))}
-                                                        className={`w-full text-center py-2 rounded-xl text-sm font-bold border-2 transition-all
-                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
-                                                    />
-                                                </div>
-                                            </div>
 
-                                            {/* Ages */}
-                                            <div className="space-y-2">
-                                                <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Età Min / Max</label>
-                                                <div className="flex items-center gap-2">
+                                                {/* Ages */}
+                                                <div className="space-y-2">
+                                                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Età Min / Max</label>
+                                                    <div className="flex items-center gap-2">
+                                                        <input 
+                                                            type="number" 
+                                                            value={config.minAge} 
+                                                            disabled={!isActive}
+                                                            onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], minAge: parseInt(e.target.value) || 0 }}))}
+                                                            className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
+                                                                ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                        />
+                                                        <input 
+                                                            type="number" 
+                                                            value={config.maxAge} 
+                                                            disabled={!isActive}
+                                                            onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], maxAge: parseInt(e.target.value) || 0 }}))}
+                                                            className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
+                                                                ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Capacity */}
+                                                <div className="space-y-1 pt-2">
+                                                    <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Capienza</label>
                                                     <input 
                                                         type="number" 
-                                                        value={config.minAge} 
+                                                        value={config.capacity} 
                                                         disabled={!isActive}
-                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], minAge: parseInt(e.target.value) || 0 }}))}
+                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], capacity: parseInt(e.target.value) || 0 }}))}
                                                         className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
                                                             ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
                                                     />
-                                                    <input 
-                                                        type="number" 
-                                                        value={config.maxAge} 
-                                                        disabled={!isActive}
-                                                        onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], maxAge: parseInt(e.target.value) || 0 }}))}
-                                                        className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
-                                                            ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
-                                                    />
                                                 </div>
                                             </div>
-
-                                            {/* Capacity */}
-                                            <div className="space-y-1 pt-2">
-                                                <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Capienza</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={config.capacity} 
-                                                    disabled={!isActive}
-                                                    onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], capacity: parseInt(e.target.value) || 0 }}))}
-                                                    className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
-                                                        ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
-                                                />
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="pt-8 border-t border-gray-50 flex justify-between items-center gap-6">
+                        {/* Footer Fisso */}
+                        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-between items-center sticky bottom-0 z-20 rounded-b-3xl">
                             {editingCourseId ? (
                                 <button 
                                     onClick={() => {
@@ -455,7 +461,7 @@ const Courses: React.FC = () => {
                                 </button>
                                 <button 
                                   onClick={handleAddCourse} 
-                                  className="px-10 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5"
+                                  className="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black uppercase tracking-[0.2em] text-xs shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5"
                                 >
                                     Salva Corso
                                 </button>
