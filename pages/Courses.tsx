@@ -125,7 +125,7 @@ const Courses: React.FC = () => {
                     
                     // --- CONTROLLO 1: Stato Attivo ---
                     const status = (data.status || '').toLowerCase();
-                    const isActive = ['active', 'confirmed'].includes(status);
+                    const isActive = ['active', 'confirmed', 'pending'].includes(status);
                     if (!isActive) return false;
 
                     // --- CONTROLLO 2: Slot Residui ---
