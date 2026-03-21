@@ -429,19 +429,37 @@ const Courses: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="pt-8 border-t border-gray-50 flex justify-end items-center gap-6">
-                            <button 
-                                onClick={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} 
-                                className="text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest"
-                            >
-                                Annulla
-                            </button>
-                            <button 
-                                onClick={handleAddCourse} 
-                                className="px-10 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5"
-                            >
-                                Salva Corso
-                            </button>
+                        <div className="pt-8 border-t border-gray-50 flex justify-between items-center gap-6">
+                            {editingCourseId ? (
+                                <button 
+                                    onClick={() => {
+                                        if (window.confirm("Sei sicuro di voler eliminare questo corso?")) {
+                                            handleDeleteCourse(editingCourseId);
+                                            setIsAddModalOpen(false);
+                                            setEditingCourseId(null);
+                                        }
+                                    }}
+                                    className="text-xs font-black text-red-400 hover:text-red-600 transition-colors uppercase tracking-widest flex items-center gap-2"
+                                >
+                                    <TrashIcon className="w-4 h-4" />
+                                    Elimina Corso
+                                </button>
+                            ) : <div></div>}
+
+                            <div className="flex items-center gap-6">
+                                <button 
+                                    onClick={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} 
+                                    className="text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest"
+                                >
+                                    Annulla
+                                </button>
+                                <button 
+                                  onClick={handleAddCourse} 
+                                  className="px-10 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5"
+                                >
+                                    Salva Corso
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </Modal>
