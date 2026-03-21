@@ -8,6 +8,9 @@ import Modal from '../components/Modal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import ProfileIcon from '../components/icons/ProfileIcon';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const Courses: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
@@ -61,12 +64,12 @@ const Courses: React.FC = () => {
             );
             const snap = await getDocs(q);
             const students = snap.docs
-                .map(doc => ({
+                .map((doc: any) => ({
                     name: doc.data().childName,
                     status: doc.data().status,
                     remaining: doc.data().lessonsRemaining !== undefined ? doc.data().lessonsRemaining : (doc.data().labRemaining || 0)
                 }))
-                .filter(s => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s.status) && s.remaining > 0);
+                .filter((s: any) => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s.status) && s.remaining > 0);
             setEnrolledStudents(students);
         } catch (error) {
             console.error("Errore recupero allievi:", error);
@@ -510,10 +513,14 @@ const Courses: React.FC = () => {
             {selectedCourseForStudents && (
                 <Modal 
                     onClose={() => setSelectedCourseForStudents(null)} 
-                    title={`Allievi Iscritti - ${selectedCourseForStudents.name}`}
                     size="md"
                 >
                     <div className="p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">
+                                Allievi Iscritti - {selectedCourseForStudents.name}
+                            </h2>
+                        </div>
                         {isLoadingStudents ? (
                             <div className="flex justify-center py-8"><Spinner /></div>
                         ) : enrolledStudents.length === 0 ? (
