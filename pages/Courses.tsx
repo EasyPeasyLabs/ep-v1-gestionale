@@ -34,6 +34,7 @@ const Courses: React.FC = () => {
     });
 
     const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -193,7 +194,8 @@ const Courses: React.FC = () => {
     };
 
     const handleAddCourse = async () => {
-        if (!selectedLocationId) return;
+        if (!selectedLocationId || isSaving) return;
+        setIsSaving(true);
         const mainConfig = configs[activeType];
         try {
             const courseData: any = {
@@ -226,7 +228,6 @@ const Courses: React.FC = () => {
                     }
                 };
                 courseData.weeklyPlan = weeklyPlan;
-                // Use LAB as fallback for main times if needed
                 courseData.startTime = configs.LAB.startTime;
                 courseData.endTime = configs.LAB.endTime;
                 courseData.capacity = Math.max(configs.LAB.capacity, configs.SG.capacity);
@@ -234,18 +235,21 @@ const Courses: React.FC = () => {
 
             if (editingCourseId) {
                 await courseService.updateCourse(editingCourseId, courseData);
-                toast.success("Corso aggiornato");
+                toast.success("Corso aggiornato correttamente");
             } else {
                 await courseService.createCourse(courseData);
-                toast.success("Corso aggiunto");
+                toast.success("Corso aggiunto correttamente");
             }
 
             setIsAddModalOpen(false);
             setEditingCourseId(null);
             setWeeklyPlan({ 1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG' });
             fetchCourses();
-        } catch (error) {
-            toast.error("Errore salvataggio");
+        } catch (error: any) {
+            console.error("Errore salvataggio corso:", error);
+            toast.error("Errore salvataggio: " + (error.message || "riprova più tardi"));
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -674,10 +678,17 @@ const Courses: React.FC = () => {
                                     Annulla
                                 </button>
                                 <button 
-                                  onClick={handleAddCourse} 
-                                  className="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black uppercase tracking-[0.2em] text-xs shadow-lg shadow-emerald-100 transition-all hover:-translate-y-0.5"
+                                  onClick={handleAddCourse}
+                                  disabled={isSaving}
+                                  className={`px-8 py-3 rounded-xl font-black uppercase tracking-[0.2em] text-xs shadow-lg transition-all flex items-center gap-2
+                                    ${isSaving 
+                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none' 
+                                        : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-100 hover:-translate-y-0.5'}`}
                                 >
-                                    Salva Corso
+                                    {isSaving && (
+                                        <div className="w-3 h-3 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin"></div>
+                                    )}
+                                    {isSaving ? 'Salvataggio...' : 'Salva Corso'}
                                 </button>
                             </div>
                         </div>
