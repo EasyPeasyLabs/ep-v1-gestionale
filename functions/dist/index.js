@@ -463,21 +463,48 @@ var onEnrollmentUpdated = (0, import_firestore2.onDocumentUpdated)({
   const newStatus = after.status;
   const oldRemaining = before.lessonsRemaining !== void 0 ? before.lessonsRemaining : before.labRemaining || 0;
   const newRemaining = after.lessonsRemaining !== void 0 ? after.lessonsRemaining : after.labRemaining || 0;
-  const courseId = after.courseId || after.selectedCourseId || before.courseId || before.selectedCourseId;
-  if (!courseId) return;
+  const oldCourseId = before.courseId || before.selectedCourseId;
+  const newCourseId = after.courseId || after.selectedCourseId;
   const isActive = (s) => ["active", "Active", "confirmed", "Confirmed", "pending", "Pending"].includes(s);
   const wasValid = isActive(oldStatus) && oldRemaining > 0;
   const isValid = isActive(newStatus) && newRemaining > 0;
-  if (!wasValid && isValid) {
-    await db.collection("courses").doc(courseId).update({
-      activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
-  } else if (wasValid && !isValid) {
-    await db.collection("courses").doc(courseId).update({
-      activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    });
+  if (oldCourseId !== newCourseId) {
+    if (oldCourseId && wasValid) {
+      try {
+        await db.collection("courses").doc(oldCourseId).update({
+          activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        logger.info(`Decremented old course ${oldCourseId} due to course move`);
+      } catch (e) {
+        logger.error(`Error decrementing old course ${oldCourseId}:`, e);
+      }
+    }
+    if (newCourseId && isValid) {
+      try {
+        await db.collection("courses").doc(newCourseId).update({
+          activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        logger.info(`Incremented new course ${newCourseId} due to course move`);
+      } catch (e) {
+        logger.error(`Error incrementing new course ${newCourseId}:`, e);
+      }
+    }
+  } else if (newCourseId) {
+    if (!wasValid && isValid) {
+      await db.collection("courses").doc(newCourseId).update({
+        activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      logger.info(`Incremented course ${newCourseId} (became valid)`);
+    } else if (wasValid && !isValid) {
+      await db.collection("courses").doc(newCourseId).update({
+        activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      logger.info(`Decremented course ${newCourseId} (became invalid)`);
+    }
   }
 });
 var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", cors: true }, async (req, res) => {
