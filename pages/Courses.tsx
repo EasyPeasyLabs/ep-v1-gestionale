@@ -246,6 +246,15 @@ const Courses: React.FC = () => {
 
             setIsAddModalOpen(false);
             setEditingCourseId(null);
+            // Reset sicuro delle configurazioni
+            setConfigs(prev => {
+                const reset = { ...prev };
+                Object.keys(reset).forEach(k => {
+                    const type = k as SlotType;
+                    if (reset[type]) reset[type].quantity = 0;
+                });
+                return reset;
+            });
             setWeeklyPlan({ 1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG' });
             fetchCourses();
         } catch (error: any) {
