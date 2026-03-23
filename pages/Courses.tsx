@@ -29,7 +29,6 @@ const Courses: React.FC = () => {
     const [configs, setConfigs] = useState<Record<SlotType, any>>({
         LAB: { quantity: 1, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
         SG: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
-        'LAB+SG': { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
         READ: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
         EVT: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
     });
@@ -275,14 +274,6 @@ const Courses: React.FC = () => {
             newConfigs.SG = { 
                 quantity: 1, 
                 ...course.comboConfigs.SG 
-            };
-            newConfigs['LAB+SG'] = {
-                quantity: 1,
-                startTime: course.startTime,
-                endTime: course.endTime,
-                minAge: course.minAge,
-                maxAge: course.maxAge,
-                capacity: course.capacity
             };
         } else {
             newConfigs[course.slotType] = {

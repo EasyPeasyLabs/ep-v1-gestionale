@@ -558,6 +558,28 @@ export const registerAbsence = async (
     });
 };
 
+const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appointment[]) => {
+    const labCount = enrollment.labCount || 0;
+    const sgCount = enrollment.sgCount || 0;
+    const evtCount = enrollment.evtCount || 0;
+    const readCount = enrollment.readCount || 0;
+
+    const labAttended = appointments.filter(a => (a.type === 'LAB' || !a.type) && a.status === 'Present').length;
+    const sgAttended = appointments.filter(a => a.type === 'SG' && a.status === 'Present').length;
+    const evtAttended = appointments.filter(a => a.type === 'EVT' && a.status === 'Present').length;
+    const readAttended = appointments.filter(a => a.type === 'READ' && a.status === 'Present').length;
+
+    const totalAttended = appointments.filter(a => a.status === 'Present').length;
+
+    return {
+        lessonsRemaining: Math.max(0, enrollment.lessonsTotal - totalAttended),
+        labRemaining: Math.max(0, labCount - labAttended),
+        sgRemaining: Math.max(0, sgCount - sgAttended),
+        evtRemaining: Math.max(0, evtCount - evtAttended),
+        readRemaining: Math.max(0, readCount - readAttended)
+    };
+};
+
 export const registerPresence = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
@@ -573,8 +595,8 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
     appointments[appIndex].locationName = enrollment.locationName;
     appointments[appIndex].locationColor = enrollment.locationColor;
     
-    const newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
-    await updateDoc(enrollmentDocRef, { appointments, lessonsRemaining: newRemaining });
+    const newCounters = calculateRemainingCounters(enrollment, appointments);
+    await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
 export const resetAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
@@ -585,13 +607,10 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
     const appointments = [...(enrollment.appointments || [])];
     const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
     if (appIndex === -1) throw new Error("Lezione non trovata");
-    const previousStatus = appointments[appIndex].status;
+    
     appointments[appIndex].status = 'Scheduled';
-    let newRemaining = enrollment.lessonsRemaining;
-    if (previousStatus === 'Present') {
-        newRemaining = Math.min(enrollment.lessonsTotal, enrollment.lessonsRemaining + 1);
-    }
-    await updateDoc(enrollmentDocRef, { appointments, lessonsRemaining: newRemaining });
+    const newCounters = calculateRemainingCounters(enrollment, appointments);
+    await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
 export const deleteAppointment = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
@@ -602,14 +621,10 @@ export const deleteAppointment = async (enrollmentId: string, appointmentLessonI
     const appointments = [...(enrollment.appointments || [])];
     const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
     if (appIndex === -1) throw new Error("Lezione non trovata");
-    const previousStatus = appointments[appIndex].status;
-    appointments.splice(appIndex, 1);
-    let newRemaining = enrollment.lessonsRemaining;
     
-    if (previousStatus === 'Present' || previousStatus === 'Absent') {
-        newRemaining = Math.min(enrollment.lessonsTotal, enrollment.lessonsRemaining + 1);
-    }
-    await updateDoc(enrollmentDocRef, { appointments, lessonsRemaining: newRemaining });
+    appointments.splice(appIndex, 1);
+    const newCounters = calculateRemainingCounters(enrollment, appointments);
+    await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
 export const toggleAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
@@ -621,7 +636,6 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
     const appIndex = appointments.findIndex(a => a.lessonId === appointmentLessonId);
     if (appIndex === -1) throw new Error("Lezione non trovata");
     const currentStatus = appointments[appIndex].status;
-    let newRemaining = enrollment.lessonsRemaining;
     
     if (currentStatus === 'Present') {
         appointments[appIndex].status = 'Absent';
@@ -629,10 +643,10 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
         appointments[appIndex].status = 'Present';
     } else if (currentStatus === 'Scheduled') {
         appointments[appIndex].status = 'Present';
-        newRemaining = Math.max(0, enrollment.lessonsRemaining - 1);
     }
 
-    await updateDoc(enrollmentDocRef, { appointments, lessonsRemaining: newRemaining });
+    const newCounters = calculateRemainingCounters(enrollment, appointments);
+    await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
 export const addRecoveryLessons = async (
