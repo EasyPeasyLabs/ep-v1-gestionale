@@ -196,7 +196,10 @@ const Courses: React.FC = () => {
     const handleAddCourse = async () => {
         if (!selectedLocationId || isSaving) return;
         setIsSaving(true);
-        const mainConfig = configs[activeType];
+        
+        // FIX: Se il tipo è LAB+SG, usiamo LAB come config di riferimento principale per evitare undefined
+        const mainConfig = activeType === 'LAB+SG' ? configs.LAB : configs[activeType];
+        
         try {
             const courseData: any = {
                 dayOfWeek,
