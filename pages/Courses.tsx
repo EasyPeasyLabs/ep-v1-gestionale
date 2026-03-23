@@ -476,21 +476,21 @@ const Courses: React.FC = () => {
 
             {isAddModalOpen && (
                 <Modal onClose={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} size="xl">
-                    <div className="flex flex-col max-h-[90vh]">
-                        {/* Header Fisso */}
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-20 rounded-t-3xl">
-                            <h2 className="text-xl font-black text-gray-900 uppercase tracking-tight">
+                    <div className="flex flex-col max-h-[90vh] md:max-h-[85vh]">
+                        {/* Header Fisso - Più compatto su mobile */}
+                        <div className="p-4 md:p-6 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-20 rounded-t-3xl">
+                            <h2 className="text-lg md:text-xl font-black text-gray-900 uppercase tracking-tight">
                                 {editingCourseId ? 'Modifica Corso' : 'Nuovo Corso'}
                             </h2>
                         </div>
 
                         {/* Area Contenuto Scrollabile */}
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 md:space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                                 <div className="space-y-1">
                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Giorno</label>
                                     <select 
-                                        className="md-input w-full bg-gray-50/50 border-gray-100"
+                                        className="md-input w-full bg-gray-50/50 border-gray-100 py-3 md:py-2"
                                         value={dayOfWeek}
                                         onChange={(e) => setDayOfWeek(parseInt(e.target.value))}
                                     >
@@ -500,7 +500,7 @@ const Courses: React.FC = () => {
                                 <div className="space-y-1">
                                     <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Tipo Principale</label>
                                     <select 
-                                        className="md-input w-full bg-gray-50/50 border-gray-100"
+                                        className="md-input w-full bg-gray-50/50 border-gray-100 py-3 md:py-2"
                                         value={activeType}
                                         onChange={(e) => {
                                             const newType = e.target.value as SlotType;
@@ -529,23 +529,23 @@ const Courses: React.FC = () => {
                                 </div>
 
                                 {activeType === 'LAB+SG' && (
-                                <div className="p-6 bg-indigo-50/30 rounded-3xl border border-indigo-100/50 space-y-6 animate-fade-in shadow-inner">
-                                   <div className="flex items-center justify-between">
+                                <div className="p-4 md:p-6 bg-indigo-50/30 rounded-3xl border border-indigo-100/50 space-y-4 md:space-y-6 animate-fade-in shadow-inner">
+                                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                        <div className="flex flex-col">
-                                           <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-[0.2em] mb-1 pl-1">Pianificazione Mensile (Settimane)</h3>
-                                           <p className="text-[9px] text-indigo-400 font-bold italic pl-1">Stabilisci l'alternanza attività per ogni settimana del mese</p>
+                                           <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-[0.2em] mb-1 pl-1">Pianificazione Mensile</h3>
+                                           <p className="text-[9px] text-indigo-400 font-bold italic pl-1">Alternanza LAB/SG per settimana</p>
                                        </div>
-                                       <div className="flex gap-1.5 p-1 bg-white/50 rounded-2xl border border-indigo-100">
+                                       <div className="flex flex-wrap md:flex-nowrap gap-2 p-1.5 bg-white/50 rounded-2xl border border-indigo-100 justify-center">
                                            {[1, 2, 3, 4, 5].map((week) => (
-                                               <div key={week} className="flex flex-col items-center gap-1.5 p-2 min-w-[64px] rounded-xl border border-indigo-50 bg-white shadow-sm">
-                                                   <span className="text-[8px] font-black text-indigo-300 uppercase">Sett. {week}</span>
+                                               <div key={week} className="flex flex-col items-center gap-1 p-2 min-w-[55px] md:min-w-[64px] rounded-xl border border-indigo-50 bg-white shadow-sm">
+                                                   <span className="text-[7px] md:text-[8px] font-black text-indigo-300 uppercase">S{week}</span>
                                                    <button
                                                        type="button"
                                                        onClick={() => setWeeklyPlan(prev => ({ ...prev, [week]: prev[week] === 'LAB' ? 'SG' : 'LAB' }))}
-                                                       className={`w-full py-2.5 rounded-lg text-[10px] font-black transition-all duration-300 transform active:scale-95
+                                                       className={`w-full py-1.5 md:py-2.5 rounded-lg text-[9px] md:text-[10px] font-black transition-all duration-300 transform active:scale-95
                                                            ${weeklyPlan[week] === 'LAB' 
-                                                               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
-                                                               : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200'}`}
+                                                               ? 'bg-indigo-600 text-white shadow-md' 
+                                                               : 'bg-emerald-500 text-white shadow-md'}`}
                                                    >
                                                        {weeklyPlan[week]}
                                                    </button>
@@ -558,9 +558,9 @@ const Courses: React.FC = () => {
 
                                 <div className="space-y-4">
                                 <div className="flex items-center justify-between px-1">
-                                    <h3 className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
+                                    <h3 className="text-[10px] md:text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
                                 </div>                                
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
                                     {(Object.keys(configs) as SlotType[]).map(type => {
                                         const isActive = activeType === type || (activeType === 'LAB+SG' && (type === 'LAB' || type === 'SG'));
                                         const config = configs[type];
@@ -568,24 +568,24 @@ const Courses: React.FC = () => {
                                         return (
                                             <div 
                                                 key={type}
-                                                className={`rounded-2xl border-2 transition-all duration-300 p-4 space-y-5
+                                                className={`rounded-2xl border-2 transition-all duration-300 p-3 md:p-4 space-y-4 md:space-y-5
                                                     ${isActive 
-                                                        ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 scale-[1.02] z-10' 
+                                                        ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 md:scale-[1.02] z-10' 
                                                         : 'bg-gray-50/50 border-gray-100 opacity-60 grayscale-[0.5]'}`}
                                             >
                                                 {/* Quantity / Header */}
-                                                <div className="flex flex-col items-center gap-2 pb-4 border-b border-gray-100/10">
+                                                <div className="flex items-center md:flex-col justify-between md:justify-center gap-2 pb-3 md:pb-4 border-b border-gray-100/10">
                                                     <span className={`text-[10px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
                                                         {type}
                                                     </span>
-                                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl border-2 transition-colors
+                                                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-lg md:text-xl border-2 transition-colors
                                                         ${isActive ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
                                                         {config.quantity}
                                                     </div>
                                                 </div>
 
                                                 {/* Times */}
-                                                <div className="space-y-4">
+                                                <div className="grid grid-cols-2 md:grid-cols-1 gap-3 md:gap-4">
                                                     <div className="space-y-1">
                                                         <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Inizio</label>
                                                         <input 
@@ -634,7 +634,7 @@ const Courses: React.FC = () => {
                                                 </div>
 
                                                 {/* Capacity */}
-                                                <div className="space-y-1 pt-2">
+                                                <div className="space-y-1 pt-1 md:pt-2">
                                                     <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Capienza</label>
                                                     <input 
                                                         type="number" 
@@ -652,35 +652,37 @@ const Courses: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* Footer Fisso */}
-                        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-between items-center sticky bottom-0 z-20 rounded-b-3xl">
-                            {editingCourseId ? (
-                                <button 
-                                    onClick={() => {
-                                        if (window.confirm("Sei sicuro di voler eliminare questo corso?")) {
-                                            handleDeleteCourse(editingCourseId);
-                                            setIsAddModalOpen(false);
-                                            setEditingCourseId(null);
-                                        }
-                                    }}
-                                    className="text-xs font-black text-red-400 hover:text-red-600 transition-colors uppercase tracking-widest flex items-center gap-2"
-                                >
-                                    <TrashIcon className="w-4 h-4" />
-                                    Elimina Corso
-                                </button>
-                            ) : <div></div>}
+                        {/* Footer Fisso - Più compatto e ordinato su mobile */}
+                        <div className="p-4 md:p-6 border-t border-gray-100 bg-gray-50/50 flex flex-col md:flex-row gap-4 justify-between items-center sticky bottom-0 z-20 rounded-b-3xl">
+                            <div className="order-2 md:order-1 w-full md:w-auto flex justify-center md:justify-start">
+                                {editingCourseId && (
+                                    <button 
+                                        onClick={() => {
+                                            if (window.confirm("Sei sicuro di voler eliminare questo corso?")) {
+                                                handleDeleteCourse(editingCourseId);
+                                                setIsAddModalOpen(false);
+                                                setEditingCourseId(null);
+                                            }
+                                        }}
+                                        className="text-[10px] font-black text-red-400 hover:text-red-600 transition-colors uppercase tracking-widest flex items-center gap-2"
+                                    >
+                                        <TrashIcon className="w-3 h-3" />
+                                        Elimina Corso
+                                    </button>
+                                )}
+                            </div>
 
-                            <div className="flex items-center gap-6">
+                            <div className="order-1 md:order-2 w-full md:w-auto flex items-center justify-between md:justify-end gap-4 md:gap-6">
                                 <button 
                                     onClick={() => { setIsAddModalOpen(false); setEditingCourseId(null); }} 
-                                    className="text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest"
+                                    className="text-xs font-bold text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest"
                                 >
                                     Annulla
                                 </button>
                                 <button 
                                   onClick={handleAddCourse}
                                   disabled={isSaving}
-                                  className={`px-8 py-3 rounded-xl font-black uppercase tracking-[0.2em] text-xs shadow-lg transition-all flex items-center gap-2
+                                  className={`px-6 md:px-8 py-3 rounded-xl font-black uppercase tracking-[0.2em] text-[10px] md:text-xs shadow-lg transition-all flex items-center gap-2
                                     ${isSaving 
                                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed shadow-none' 
                                         : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-100 hover:-translate-y-0.5'}`}
