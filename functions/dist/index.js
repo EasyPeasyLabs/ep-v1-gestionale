@@ -310,7 +310,7 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
         return true;
       });
       compatibleSubs.forEach((sub) => {
-        const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}`;
+        const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(":", "")}`;
         if (!locationBundlesGrouped.has(course.locationId)) {
           locationBundlesGrouped.set(course.locationId, []);
         }

@@ -341,12 +341,12 @@ export const getPublicSlotsV5 = onRequest({
                 return true;
             });
 
-            compatibleSubs.forEach(sub => {
-                const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}`;
+            compatibleSubs.forEach(sub => {    
+                const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(':', '')}`;        
                 if (!locationBundlesGrouped.has(course.locationId)) {
                     locationBundlesGrouped.set(course.locationId, []);
                 }
-                
+
                 const locBundles = locationBundlesGrouped.get(course.locationId)!;
                 let bundle = locBundles.find(b => b.bundleId === groupKey);
 
@@ -354,12 +354,12 @@ export const getPublicSlotsV5 = onRequest({
 
                 if (!bundle) {
                     bundle = {
-                        bundleId: groupKey,
+                        bundleId: groupKey,    
                         subscriptionId: sub.id,
-                        name: sub.name,
+                        name: sub.name,        
                         publicName: sub.publicName || sub.name,
                         description: sub.description || '',
-                        price: sub.price,
+                        price: sub.price,      
                         dayOfWeek: course.dayOfWeek,
                         startTime: course.startTime,
                         endTime: course.endTime,
@@ -367,15 +367,14 @@ export const getPublicSlotsV5 = onRequest({
                         maxAge: Math.min(course.maxAge, sub.allowedAges?.max || sub.maxAge || 99),
                         availableSeats: available,
                         isFull: available <= 0,
-                        includedSlots: []
+                        includedSlots: []      
                     };
-                    locBundles.push(bundle);
+                    locBundles.push(bundle);   
                 }
 
-                // Per bundle multi-slot (se esistessero), prendiamo il minimo della disponibilità
+                // Per bundle multi-slot (se esistessero nello stesso orario), prendiamo il minimo
                 bundle.availableSeats = Math.min(bundle.availableSeats, available);
                 bundle.isFull = bundle.availableSeats <= 0;
-                
                 bundle.includedSlots.push({
                     courseId: course.id,
                     type: course.slotType,
