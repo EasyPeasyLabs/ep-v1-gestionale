@@ -26,7 +26,7 @@ const Courses: React.FC = () => {
     const [weeklyPlan, setWeeklyPlan] = useState<Record<number, SlotType>>({
         1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG'
     });
-    const [configs, setConfigs] = useState<Record<SlotType, any>>({
+    const [configs, setConfigs] = useState<Partial<Record<SlotType, any>>>({
         LAB: { quantity: 1, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
         SG: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
         READ: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
