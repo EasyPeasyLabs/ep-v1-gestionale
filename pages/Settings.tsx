@@ -157,6 +157,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
     const [price, setPrice] = useState('0');
     const [labCount, setLabCount] = useState('0');
     const [sgCount, setSgCount] = useState('0');
+    const [readCount, setReadCount] = useState('0');
     const [evtCount, setEvtCount] = useState('0');
     const [durationInDays, setDurationInDays] = useState('0');
     const [target, setTarget] = useState<'kid' | 'adult'>('kid');
@@ -177,6 +178,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setPrice(sub.price?.toString() || '0');
             setLabCount(sub.labCount?.toString() || '0');
             setSgCount(sub.sgCount?.toString() || '0');
+            setReadCount(sub.readCount?.toString() || '0');
             setEvtCount(sub.evtCount?.toString() || '0');
             setDurationInDays(sub.durationInDays?.toString() || '0');
             setTarget(sub.target || 'kid');
@@ -193,6 +195,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setPrice('0');
             setLabCount('0');
             setSgCount('0');
+            setReadCount('0');
             setEvtCount('0');
             setDurationInDays('0');
             setTarget('kid');
@@ -204,7 +207,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        const totalLessons = Number(labCount) + Number(sgCount) + Number(evtCount);
+        const totalLessons = Number(labCount) + Number(sgCount) + Number(evtCount) + Number(readCount);
         if (!name || !price || !durationInDays || totalLessons === 0) {
             alert("Compila tutti i campi obbligatori e inserisci almeno una lezione.");
             return;
@@ -220,6 +223,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             labCount: Number(labCount),
             sgCount: Number(sgCount),
             evtCount: Number(evtCount),
+            readCount: Number(readCount),
             durationInDays: Number(durationInDays),
             target,
             statusConfig,
@@ -229,7 +233,8 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             tokens: [
                 { type: 'LAB' as SlotType, count: Number(labCount) },
                 { type: 'SG' as SlotType, count: Number(sgCount) },
-                { type: 'EVT' as SlotType, count: Number(evtCount) }
+                { type: 'EVT' as SlotType, count: Number(evtCount) },
+                { type: 'READ' as SlotType, count: Number(readCount) }
             ].filter(t => t.count > 0)
         };
         try {
@@ -334,23 +339,65 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                     <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
                 </div>
 
-                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-                    <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3 tracking-wider">Composizione Carnet (Lezioni)</h3>
-                    <div className="grid grid-cols-3 gap-3">
-                        <div className="md-input-group">
-                            <input id="labCount" type="number" value={labCount} onChange={e => setLabCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
-                            <label htmlFor="labCount" className="md-input-label">Lab</label>
-                        </div>
-                        <div className="md-input-group">
-                            <input id="sgCount" type="number" value={sgCount} onChange={e => setSgCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
-                            <label htmlFor="sgCount" className="md-input-label">SG</label>
-                        </div>
-                        <div className="md-input-group">
-                            <input id="evtCount" type="number" value={evtCount} onChange={e => setEvtCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
-                            <label htmlFor="evtCount" className="md-input-label">Evt</label>
+                <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-[0.2em]">Composizione Carnet (Lezioni)</h3>
+                        <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">
+                            Totale: <span className="text-indigo-700">{Number(labCount) + Number(sgCount) + Number(evtCount) + Number(readCount)}</span> lezioni
                         </div>
                     </div>
-                    <p className="text-[10px] text-indigo-500 mt-2 text-center font-bold">Totale: {Number(labCount) + Number(sgCount) + Number(evtCount)} lezioni</p>
+
+                    <div className="flex flex-col md:flex-row gap-6">
+                        {/* Inputs Grid */}
+                        <div className="flex-1 grid grid-cols-2 gap-4">
+                            <div className="md-input-group !mb-0">
+                                <input id="labCount" type="number" value={labCount} onChange={e => setLabCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                                <label htmlFor="labCount" className="md-input-label">Lab</label>
+                            </div>
+                            <div className="md-input-group !mb-0">
+                                <input id="sgCount" type="number" value={sgCount} onChange={e => setSgCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                                <label htmlFor="sgCount" className="md-input-label">SG</label>
+                            </div>
+                            <div className="md-input-group !mb-0">
+                                <input id="readCount" type="number" value={readCount} onChange={e => setReadCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                                <label htmlFor="readCount" className="md-input-label">Read</label>
+                            </div>
+                            <div className="md-input-group !mb-0">
+                                <input id="evtCount" type="number" value={evtCount} onChange={e => setEvtCount(e.target.value)} className="md-input bg-white" placeholder=" " autoComplete="off" />
+                                <label htmlFor="evtCount" className="md-input-label">Evt</label>
+                            </div>
+                        </div>
+
+                        {/* Summary Circles */}
+                        <div className="flex md:flex-col justify-center gap-3 px-4 border-l border-indigo-100/30">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">Lab</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                        {labCount}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">SG</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                        {sgCount}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">Read</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                        {readCount}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">Evt</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                        {evtCount}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Allowed Days Selection */}

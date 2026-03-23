@@ -127,7 +127,9 @@ const generateTheoreticalAppointments = (
     locationColor: string,
     startTime: string,
     endTime: string,
-    childName: string
+    childName: string,
+    comboConfigs?: any,
+    weeklyPlan?: Record<number, string>
 ): Appointment[] => {
     const appointments: Appointment[] = [];
     const startObj = new Date(startDate);
@@ -144,16 +146,37 @@ const generateTheoreticalAppointments = (
         // Verifica se il giorno è corretto (dovrebbe esserlo dato che incrementiamo di 7)
         // E verifica festivi (USING CENTRALIZED UTILS)
         if (!isItalianHoliday(current)) {
+            let sTime = startTime;
+            let eTime = endTime;
+            let aType = 'LAB';
+
+            if (comboConfigs && comboConfigs.LAB && comboConfigs.SG && weeklyPlan) {
+                const day = current.getDate();
+                const weekNum = Math.ceil(day / 7);
+                const plannedType = weeklyPlan[weekNum] || 'LAB';
+                
+                if (plannedType === 'LAB') {
+                    sTime = comboConfigs.LAB.startTime;
+                    eTime = comboConfigs.LAB.endTime;
+                    aType = 'LAB';
+                } else {
+                    sTime = comboConfigs.SG.startTime;
+                    eTime = comboConfigs.SG.endTime;
+                    aType = 'SG';
+                }
+            }
+
             appointments.push({
                 lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
                 date: current.toISOString(),
-                startTime: startTime,
-                endTime: endTime,
+                startTime: sTime,
+                endTime: eTime,
                 locationId: locationId,
                 locationName: locationName,
                 locationColor: locationColor,
                 childName: childName,
-                status: 'Scheduled'
+                status: 'Scheduled',
+                type: aType
             });
             count++;
         }
@@ -707,13 +730,15 @@ export const migrateHistoricalEnrollments = async (): Promise<{ updated: number,
             const labCount = newApps.filter(a => a.type === 'LAB').length;
             const sgCount = newApps.filter(a => a.type === 'SG').length;
             const evtCount = newApps.filter(a => a.type === 'EVT').length;
+            const readCount = newApps.filter(a => a.type === 'READ').length;
 
             const labAttended = newApps.filter(a => a.type === 'LAB' && a.status === 'Present').length;
             const sgAttended = newApps.filter(a => a.type === 'SG' && a.status === 'Present').length;
             const evtAttended = newApps.filter(a => a.type === 'EVT' && a.status === 'Present').length;
+            const readAttended = newApps.filter(a => a.type === 'READ' && a.status === 'Present').length;
 
             // Update if appointments changed or if carnet counts are missing
-            const needsUpdate = modified || enr.labCount === undefined || enr.sgCount === undefined || enr.evtCount === undefined;
+            const needsUpdate = modified || enr.labCount === undefined || enr.sgCount === undefined || enr.evtCount === undefined || enr.readCount === undefined;
 
             if (needsUpdate) {
                 const updateData: Record<string, any> = {
@@ -721,9 +746,11 @@ export const migrateHistoricalEnrollments = async (): Promise<{ updated: number,
                     labCount,
                     sgCount,
                     evtCount,
+                    readCount,
                     labRemaining: Math.max(0, labCount - labAttended),
                     sgRemaining: Math.max(0, sgCount - sgAttended),
-                    evtRemaining: Math.max(0, evtCount - evtAttended)
+                    evtRemaining: Math.max(0, evtCount - evtAttended),
+                    readRemaining: Math.max(0, readCount - readAttended)
                 };
 
                 batch.update(docSnap.ref, updateData);
@@ -764,32 +791,46 @@ export const activateEnrollmentWithLocation = async (
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
     const enrollment = enrollmentSnap.data() as Enrollment;
-    const currentDate = new Date(enrollment.startDate);
     
+    let comboConfigs = undefined;
+    let weeklyPlan = undefined;
+    if (enrollment.courseId) {
+        const courseSnap = await getDoc(doc(db, 'courses', enrollment.courseId));
+        if (courseSnap.exists()) {
+            const courseData = courseSnap.data() as any;
+            if (courseData.slotType === 'LAB+SG') {
+                comboConfigs = courseData.comboConfigs;
+                weeklyPlan = courseData.weeklyPlan;
+            }
+        }
+    }
+
+    // Align start date to the correct day of week
+    const currentDate = new Date(enrollment.startDate);
     while (currentDate.getDay() !== dayOfWeek) {
         currentDate.setDate(currentDate.getDate() + 1);
     }
     
-    const appointments: Appointment[] = [];
-    const lessonsTotal = enrollment.lessonsTotal;
-    let generatedCount = 0;
+    const appointments = generateTheoreticalAppointments(
+        currentDate.toISOString(),
+        enrollment.lessonsTotal,
+        locationId,
+        locationName,
+        locationColor,
+        startTime,
+        endTime,
+        enrollment.childName,
+        comboConfigs,
+        weeklyPlan
+    );
+
+    // Calculate specific counts if it was a combo
+    let labCount = enrollment.labCount || 0;
+    let sgCount = enrollment.sgCount || 0;
     
-    while (generatedCount < lessonsTotal) {
-        if (!isItalianHoliday(currentDate)) {
-            appointments.push({
-                lessonId: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                date: currentDate.toISOString(),
-                startTime: startTime,
-                endTime: endTime,
-                locationId: locationId,
-                locationName: locationName,
-                locationColor: locationColor,
-                childName: enrollment.childName,
-                status: 'Scheduled'
-            });
-            generatedCount++;
-        }
-        currentDate.setDate(currentDate.getDate() + 7);
+    if (comboConfigs) {
+        labCount = appointments.filter(a => a.type === 'LAB').length;
+        sgCount = appointments.filter(a => a.type === 'SG').length;
     }
 
     await updateDoc(enrollmentDocRef, {
@@ -799,6 +840,10 @@ export const activateEnrollmentWithLocation = async (
         locationName,
         locationColor,
         appointments: appointments,
+        labCount: labCount > 0 ? labCount : (enrollment.labCount || 0),
+        sgCount: sgCount > 0 ? sgCount : (enrollment.sgCount || 0),
+        labRemaining: labCount > 0 ? labCount : (enrollment.labRemaining || 0),
+        sgRemaining: sgCount > 0 ? sgCount : (enrollment.sgRemaining || 0),
         startDate: appointments[0]?.date || enrollment.startDate, 
         endDate: appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate
     });

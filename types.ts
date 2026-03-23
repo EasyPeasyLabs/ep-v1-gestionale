@@ -126,10 +126,28 @@ export interface Course {
     activeEnrollmentsCount: number;
     status: 'open' | 'closed';
     updatedAt?: any;
+    comboConfigs?: Partial<Record<SlotType, {
+        startTime: string;
+        endTime: string;
+        minAge: number;
+        maxAge: number;
+        capacity: number;
+    }>>;
+    weeklyPlan?: Record<number, SlotType>;
 }
 
 export type LocationInput = Omit<Location, 'id'>;
-export type CourseInput = Omit<Course, 'id' | 'activeEnrollmentsCount'> & { activeEnrollmentsCount?: number };
+export type CourseInput = Omit<Course, 'id' | 'activeEnrollmentsCount'> & { 
+    activeEnrollmentsCount?: number;
+    comboConfigs?: Partial<Record<SlotType, {
+        startTime: string;
+        endTime: string;
+        minAge: number;
+        maxAge: number;
+        capacity: number;
+    }>>;
+    weeklyPlan?: Record<number, SlotType>;
+};
 
 export type SlotType = 'LAB' | 'SG' | 'EVT' | 'LAB+SG' | 'READ';
 
@@ -357,6 +375,7 @@ export interface SubscriptionType {
     labCount: number;
     sgCount: number;
     evtCount: number;
+    readCount: number;
     tokens?: { type: SlotType, count: number }[]; // New Bundle concept
     durationInDays: number;
     target: 'kid' | 'adult';
@@ -475,9 +494,11 @@ export interface Enrollment {
     labCount?: number;
     sgCount?: number;
     evtCount?: number;
+    readCount?: number;
     labRemaining?: number;
     sgRemaining?: number;
     evtRemaining?: number;
+    readRemaining?: number;
     startDate: string;
     endDate: string;
     status: EnrollmentStatus;

@@ -23,6 +23,9 @@ const Courses: React.FC = () => {
     // New structured state for the 5 columns
     const [dayOfWeek, setDayOfWeek] = useState(1);
     const [activeType, setActiveType] = useState<SlotType>('LAB');
+    const [weeklyPlan, setWeeklyPlan] = useState<Record<number, SlotType>>({
+        1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG'
+    });
     const [configs, setConfigs] = useState<Record<SlotType, any>>({
         LAB: { quantity: 1, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
         SG: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
@@ -192,19 +195,43 @@ const Courses: React.FC = () => {
 
     const handleAddCourse = async () => {
         if (!selectedLocationId) return;
-        const config = configs[activeType];
+        const mainConfig = configs[activeType];
         try {
-            const courseData = {
+            const courseData: any = {
                 dayOfWeek,
                 slotType: activeType,
-                startTime: config.startTime,
-                endTime: config.endTime,
-                minAge: config.minAge,
-                maxAge: config.maxAge,
-                capacity: config.capacity,
+                startTime: mainConfig.startTime,
+                endTime: mainConfig.endTime,
+                minAge: mainConfig.minAge,
+                maxAge: mainConfig.maxAge,
+                capacity: mainConfig.capacity,
                 locationId: selectedLocationId,
                 status: 'open' as const
             };
+
+            if (activeType === 'LAB+SG') {
+                courseData.comboConfigs = {
+                    LAB: { 
+                        startTime: configs.LAB.startTime, 
+                        endTime: configs.LAB.endTime, 
+                        minAge: configs.LAB.minAge, 
+                        maxAge: configs.LAB.maxAge, 
+                        capacity: configs.LAB.capacity 
+                    },
+                    SG: { 
+                        startTime: configs.SG.startTime, 
+                        endTime: configs.SG.endTime, 
+                        minAge: configs.SG.minAge, 
+                        maxAge: configs.SG.maxAge, 
+                        capacity: configs.SG.capacity 
+                    }
+                };
+                courseData.weeklyPlan = weeklyPlan;
+                // Use LAB as fallback for main times if needed
+                courseData.startTime = configs.LAB.startTime;
+                courseData.endTime = configs.LAB.endTime;
+                courseData.capacity = Math.max(configs.LAB.capacity, configs.SG.capacity);
+            }
 
             if (editingCourseId) {
                 await courseService.updateCourse(editingCourseId, courseData);
@@ -216,6 +243,7 @@ const Courses: React.FC = () => {
 
             setIsAddModalOpen(false);
             setEditingCourseId(null);
+            setWeeklyPlan({ 1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG' });
             fetchCourses();
         } catch (error) {
             toast.error("Errore salvataggio");
@@ -226,17 +254,48 @@ const Courses: React.FC = () => {
         setEditingCourseId(course.id);
         setDayOfWeek(course.dayOfWeek);
         setActiveType(course.slotType);
-        setConfigs(prev => ({
-            ...prev,
-            [course.slotType]: {
-                quantity: 1, // Defaulting to 1 for active
+        if (course.weeklyPlan) {
+            setWeeklyPlan(course.weeklyPlan);
+        } else {
+            setWeeklyPlan({ 1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG' });
+        }
+        
+        const newConfigs = { ...configs };
+        
+        // Reset quantities
+        Object.keys(newConfigs).forEach(k => {
+            newConfigs[k as SlotType].quantity = 0;
+        });
+
+        if (course.slotType === 'LAB+SG' && course.comboConfigs) {
+            newConfigs.LAB = { 
+                quantity: 1, 
+                ...course.comboConfigs.LAB 
+            };
+            newConfigs.SG = { 
+                quantity: 1, 
+                ...course.comboConfigs.SG 
+            };
+            newConfigs['LAB+SG'] = {
+                quantity: 1,
                 startTime: course.startTime,
                 endTime: course.endTime,
                 minAge: course.minAge,
                 maxAge: course.maxAge,
                 capacity: course.capacity
-            }
-        }));
+            };
+        } else {
+            newConfigs[course.slotType] = {
+                quantity: 1,
+                startTime: course.startTime,
+                endTime: course.endTime,
+                minAge: course.minAge,
+                maxAge: course.maxAge,
+                capacity: course.capacity
+            };
+        }
+        
+        setConfigs(newConfigs);
         setIsAddModalOpen(true);
     };
 
@@ -454,7 +513,12 @@ const Courses: React.FC = () => {
                                             setConfigs(prev => {
                                                 const next = { ...prev };
                                                 Object.keys(next).forEach(k => {
-                                                    next[k as SlotType].quantity = (k === newType ? 1 : 0);
+                                                    const slotK = k as SlotType;
+                                                    if (newType === 'LAB+SG') {
+                                                        next[slotK].quantity = (slotK === 'LAB' || slotK === 'SG') ? 1 : 0;
+                                                    } else {
+                                                        next[slotK].quantity = (slotK === newType ? 1 : 0);
+                                                    }
                                                 });
                                                 return next;
                                             });
@@ -467,16 +531,43 @@ const Courses: React.FC = () => {
                                         <option value="EVT">Evento</option>
                                     </select>
                                 </div>
-                            </div>
+                                </div>
 
-                            <div className="space-y-4">
+                                {activeType === 'LAB+SG' && (
+                                <div className="p-6 bg-indigo-50/30 rounded-3xl border border-indigo-100/50 space-y-6 animate-fade-in shadow-inner">
+                                   <div className="flex items-center justify-between">
+                                       <div className="flex flex-col">
+                                           <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-[0.2em] mb-1 pl-1">Pianificazione Mensile (Settimane)</h3>
+                                           <p className="text-[9px] text-indigo-400 font-bold italic pl-1">Stabilisci l'alternanza attività per ogni settimana del mese</p>
+                                       </div>
+                                       <div className="flex gap-1.5 p-1 bg-white/50 rounded-2xl border border-indigo-100">
+                                           {[1, 2, 3, 4, 5].map((week) => (
+                                               <div key={week} className="flex flex-col items-center gap-1.5 p-2 min-w-[64px] rounded-xl border border-indigo-50 bg-white shadow-sm">
+                                                   <span className="text-[8px] font-black text-indigo-300 uppercase">Sett. {week}</span>
+                                                   <button
+                                                       type="button"
+                                                       onClick={() => setWeeklyPlan(prev => ({ ...prev, [week]: prev[week] === 'LAB' ? 'SG' : 'LAB' }))}
+                                                       className={`w-full py-2.5 rounded-lg text-[10px] font-black transition-all duration-300 transform active:scale-95
+                                                           ${weeklyPlan[week] === 'LAB' 
+                                                               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' 
+                                                               : 'bg-emerald-500 text-white shadow-lg shadow-emerald-200'}`}
+                                                   >
+                                                       {weeklyPlan[week]}
+                                                   </button>
+                                               </div>
+                                           ))}
+                                       </div>
+                                   </div>
+                                </div>
+                                )}
+
+                                <div className="space-y-4">
                                 <div className="flex items-center justify-between px-1">
                                     <h3 className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
-                                </div>
-                                
+                                </div>                                
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                                     {(Object.keys(configs) as SlotType[]).map(type => {
-                                        const isActive = activeType === type;
+                                        const isActive = activeType === type || (activeType === 'LAB+SG' && (type === 'LAB' || type === 'SG'));
                                         const config = configs[type];
                                         
                                         return (
