@@ -18,6 +18,3 @@ export default {
       animation: { 'neon-pulse': 'neon-pulse 2s infinite' },
       keyframes: { 'neon-pulse': { '0%, 100%': { boxShadow: 'inset 0 0 0 4px #FACC15' }, '50%': { boxShadow: 'inset 0 0 15px 4px #CCFF00' } } }
     },
-  },
-  plugins: [],
-}

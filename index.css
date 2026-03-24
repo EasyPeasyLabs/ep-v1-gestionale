@@ -1,14 +1,37 @@
-/* 
+/*
    CSS VANILLA PURO - HYBRID MODE
    Compatibile con Vercel/Netlify senza build step PostCSS complessi.
    Le utility Tailwind sono gestite dal CDN in index.html.
 */
 
-body { 
-  font-family: 'Inter', sans-serif; 
+body {
+  font-family: 'Inter', sans-serif;
   background-color: #F6F8FA;
   color: #1F2937;
   -webkit-font-smoothing: antialiased;
+}
+
+#boot-monitor {
+  position: fixed;
+  inset: 0;
+  background: #f6f8fa;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#boot-monitor div {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #3C3C52;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  100% { transform: rotate(360deg); }
 }
 
 /* --- CARD SYSTEM --- */

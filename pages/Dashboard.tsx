@@ -234,6 +234,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                 if(enr.appointments) {
                     enr.appointments.forEach(app => {
                          const appDateObj = new Date(app.date);
+                         if (isNaN(appDateObj.getTime())) return; // Skip invalid dates
                          const appDateStr = toLocalISOString(appDateObj);
                          
                          // Conta solo se la data corrisponde e non è sospesa
@@ -251,6 +252,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                                  let isClosedLocation = false;
                                  if (config.closedAt) {
                                      const closingDate = new Date(config.closedAt);
+                                     if (isNaN(closingDate.getTime())) return; // Skip if invalid
                                      closingDate.setHours(0,0,0,0);
                                      if (appDateObj >= closingDate) isClosedLocation = true;
                                  }
@@ -268,6 +270,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
             // 2. Lezioni Manuali (Extra)
             manualLessons.forEach(ml => {
                 const mlDateObj = new Date(ml.date);
+                if (isNaN(mlDateObj.getTime())) return; // Skip invalid dates
                 const mlDateStr = toLocalISOString(mlDateObj);
 
                 if(mlDateStr === currentDayStr) {
@@ -282,6 +285,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                     const config = locationConfigMap.get(loc);
                     if (config && config.closedAt) {
                          const closingDate = new Date(config.closedAt);
+                         if (isNaN(closingDate.getTime())) return; // Skip if invalid
                          closingDate.setHours(0,0,0,0);
                          if (mlDateObj >= closingDate) return;
                     }
