@@ -360,8 +360,12 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       const locationClosureMap = new Map<string, Date | null>();
       suppliersData.forEach(s => {
           s.locations.forEach((l: any) => {
-              if (l.closedAt) locationClosureMap.set(l.id, new Date(l.closedAt));
-              else locationClosureMap.set(l.id, null);
+              if (l.closedAt) {
+                  const closedDate = new Date(l.closedAt);
+                  locationClosureMap.set(l.id, isNaN(closedDate.getTime()) ? null : closedDate);
+              } else {
+                  locationClosureMap.set(l.id, null);
+              }
           });
       });
 
@@ -391,9 +395,10 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       Object.values(enrollmentsByClient).forEach(list => {
           if (list.length > 1) { 
               const totalDays = list.reduce((acc, curr) => {
-                  const start = new Date(curr.startDate).getTime();
-                  const end = new Date(curr.endDate).getTime();
-                  return acc + ((end - start) / (1000 * 60 * 60 * 24));
+                  const start = new Date(curr.startDate);
+                  const end = new Date(curr.endDate);
+                  if (isNaN(start.getTime()) || isNaN(end.getTime())) return acc; // Skip invalid dates
+                  return acc + ((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
               }, 0);
               if (totalDays >= 90) enthusiasticCount++;
           }
@@ -432,6 +437,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
                       // Extract date parts strictly
                       const d = new Date(app.date);
+                      if (isNaN(d.getTime())) return; // Skip invalid dates
                       const appDateStr = toLocalISOString(d); // YYYY-MM-DD
 
                       // STRICT MONTH FILTER
@@ -449,6 +455,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
                       if (config) {
                           if (config.closedAt) {
                               const closingDate = new Date(config.closedAt);
+                              if (isNaN(closingDate.getTime())) return; // Skip if invalid
                               closingDate.setHours(0,0,0,0);
                               if (d >= closingDate) return;
                           }
@@ -492,6 +499,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           if (ml.attendees && ml.attendees.length > 0) return;
 
           const d = new Date(ml.date);
+          if (isNaN(d.getTime())) return; // Skip invalid dates
           const mlDateStr = toLocalISOString(d);
 
           // STRICT MONTH FILTER
@@ -506,6 +514,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           const config = locationConfigMap.get(locKey);
           if (config && config.closedAt) {
                const closingDate = new Date(config.closedAt);
+               if (isNaN(closingDate.getTime())) return; // Skip if invalid
                closingDate.setHours(0,0,0,0);
                if (d >= closingDate) return;
           }
@@ -561,6 +570,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           const hasActiveLocation = s.locations.some((l: any) => {
               if (!l.closedAt) return true; 
               const closeDate = new Date(l.closedAt);
+              if (isNaN(closeDate.getTime())) return true; // If invalid, consider active
               return closeDate > now; 
           });
           if (hasActiveLocation) activeCount++; else closedCount++;
