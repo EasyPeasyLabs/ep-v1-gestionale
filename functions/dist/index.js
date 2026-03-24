@@ -709,7 +709,7 @@ var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", co
     const title = `Completa l'iscrizione di ${nomeAllievo}`;
     const description = `Ciao ${lead.nome || "Genitore"}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
     const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
-    const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
+    const portalUrl = `https://ep-portal-chi.vercel.app/iscrizione?id=${leadId}`;
     const html = `
 <!DOCTYPE html>
 <html lang="it">
