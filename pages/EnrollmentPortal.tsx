@@ -1030,7 +1030,16 @@ const EnrollmentPortal: React.FC = () => {
 
                             <div className="flex flex-col items-center justify-center bg-white p-8 rounded-[32px] shadow-xl min-w-[200px]">
                               <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Prezzo Totale</p>
-                              <p className="text-6xl font-black text-gray-900">{sub.price}€</p>
+                              <div className="text-center">
+                                <p className="text-6xl font-black text-gray-900 leading-none">
+                                  {sub.price >= 77 ? sub.price + 2 : sub.price}€
+                                </p>
+                                {sub.price >= 77 && (
+                                  <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tighter italic">
+                                    Include 2€ bollo virtuale
+                                  </p>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1117,6 +1126,12 @@ const EnrollmentPortal: React.FC = () => {
                             const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
                             const isSelected = formData.selectedSubscriptionId === sub.id;
 
+                            // LOGICA MESI E BOLLO
+                            const monthsCount = Math.round(sub.durationInDays / 30);
+                            const labelMesi = monthsCount === 1 ? '1 MESE' : `${monthsCount} MESI`;
+                            const needsStamp = sub.price >= 77;
+                            const totalPrice = needsStamp ? sub.price + 2 : sub.price;
+
                             return (
                               <button
                                 key={sub.id}
@@ -1128,15 +1143,22 @@ const EnrollmentPortal: React.FC = () => {
                               >
                                 <div className="space-y-2">
                                   <div className="flex justify-between items-start">
-                                    <h3 className={`font-black text-xl tracking-tight ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                                    <h3 className={`font-black text-xl tracking-tight leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
                                       {shortName}
                                     </h3>
-                                    <span className="bg-amber-400 text-gray-900 px-3 py-1 rounded-lg text-lg font-black shadow-sm group-hover:scale-110 transition-transform">
-                                      {sub.price}€
-                                    </span>
+                                    <div className="text-right">
+                                      <span className="bg-amber-400 text-gray-900 px-3 py-1 rounded-lg text-lg font-black shadow-sm group-hover:scale-110 transition-transform block">
+                                        {totalPrice}€
+                                      </span>
+                                      {needsStamp && (
+                                        <p className="text-[9px] font-bold text-gray-400 mt-1 uppercase tracking-tighter leading-none">
+                                          Listino {sub.price}€ + 2€ bollo
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
                                   <p className="text-xs text-gray-500 font-bold uppercase tracking-tighter">
-                                    {sub.lessons} lezioni • Validità {Math.round(sub.durationInDays / 30)} mesi
+                                    {sub.lessons} lezioni • Validità {labelMesi}
                                   </p>
                                 </div>
                                 <div className="mt-6 flex justify-between items-end w-full">
@@ -1192,12 +1214,12 @@ const EnrollmentPortal: React.FC = () => {
                       <p className="font-bold text-lg text-blue-900 uppercase">
                         {subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.name.split('.').pop() || 'Abbonamento'}
                       </p>
-                      <p className="text-sm font-bold text-gray-600">
+                      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
                         {(() => {
                           const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
-                          const basePrice = sub?.price || 0;
-                          const hasStamp = basePrice >= 77;
-                          return (<>Base: {basePrice}€ {hasStamp && <span className="text-amber-600"> (+2€ bollo)</span>}</>);
+                          if (!sub) return '';
+                          const months = Math.round(sub.durationInDays / 30);
+                          return `${sub.lessons} lezioni • ${months === 1 ? '1 MESE' : `${months} MESI`}`;
                         })()}
                       </p>
                     </div>
@@ -1214,8 +1236,17 @@ const EnrollmentPortal: React.FC = () => {
                   </div>
 
                   <div className="pt-6 border-t border-gray-200 flex justify-between items-center">
-                    <span className="text-sm font-black text-gray-400 uppercase tracking-widest">Totale da pagare</span>
-                    <span className="text-4xl font-black text-gray-900">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-black text-gray-400 uppercase tracking-widest leading-none">Totale da pagare</span>
+                      {(() => {
+                        const basePrice = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price || 0;
+                        if (basePrice >= 77) {
+                          return <span className="text-[10px] font-bold text-amber-600 uppercase mt-1">Include 2€ bollo virtuale</span>;
+                        }
+                        return null;
+                      })()}
+                    </div>
+                    <span className="text-5xl font-black text-gray-900">
                       {(() => {
                         const basePrice = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.price || 0;
                         const totalPrice = basePrice >= 77 ? basePrice + 2 : basePrice;
