@@ -49,6 +49,58 @@ var import_scheduler = require("firebase-functions/v2/scheduler");
 var logger = __toESM(require("firebase-functions/logger"));
 var import_params = require("firebase-functions/params");
 var admin = __toESM(require("firebase-admin"));
+
+// ../utils/dateUtils.ts
+var toLocalISOString = (date) => {
+  const offset = date.getTimezoneOffset() * 6e4;
+  const localISOTime = new Date(date.getTime() - offset).toISOString().slice(0, 10);
+  return localISOTime;
+};
+var getEasterDate = (year) => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = (h + l - 7 * m + 114) % 31 + 1;
+  return new Date(year, month - 1, day);
+};
+var getItalianHolidays = (year) => {
+  const holidays = {
+    [`${year}-01-01`]: "Capodanno",
+    [`${year}-01-06`]: "Epifania",
+    [`${year}-04-25`]: "Liberazione",
+    [`${year}-05-01`]: "Lavoro",
+    [`${year}-06-02`]: "Repubblica",
+    [`${year}-08-15`]: "Ferragosto",
+    [`${year}-11-01`]: "Ognissanti",
+    [`${year}-12-08`]: "Immacolata",
+    [`${year}-12-25`]: "Natale",
+    [`${year}-12-26`]: "S. Stefano"
+  };
+  const easter = getEasterDate(year);
+  const easterMonday = new Date(easter);
+  easterMonday.setDate(easter.getDate() + 1);
+  holidays[toLocalISOString(easter)] = "Pasqua";
+  holidays[toLocalISOString(easterMonday)] = "Pasquetta";
+  return holidays;
+};
+var isItalianHoliday = (date) => {
+  const year = date.getFullYear();
+  const dateStr = toLocalISOString(date);
+  const holidays = getItalianHolidays(year);
+  return !!holidays[dateStr];
+};
+
+// src/index.ts
 var import_firestore2 = require("firebase-functions/v2/firestore");
 function getAdmin() {
   if (admin.apps.length === 0) {
@@ -367,30 +419,162 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
 var getEnrollmentData = (0, import_https.onCall)({ region: "europe-west1", cors: true }, async (request) => {
   const firebase = getAdmin();
   const { leadId } = request.data;
+  if (!leadId) throw new import_https.HttpsError("invalid-argument", "Missing leadId");
   try {
     const db = firebase.firestore();
     const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
+    if (!leadSnap.exists) {
+      throw new import_https.HttpsError("not-found", "Lead non trovato");
+    }
+    const leadData = leadSnap.data();
+    const existingEnrSnap = await db.collection("enrollments").where("email", "==", leadData.email).where("childName", "==", leadData.childName).where("status", "in", ["active", "Active", "pending", "Pending", "confirmed", "Confirmed"]).limit(1).get();
+    if (!existingEnrSnap.empty) {
+      return { existingEnrollment: { id: existingEnrSnap.docs[0].id, ...existingEnrSnap.docs[0].data() } };
+    }
     const [companySnap, subsSnap, suppliersSnap] = await Promise.all([
       db.collection("settings").doc("company").get(),
       db.collection("subscriptionTypes").get(),
       db.collection("suppliers").where("isDeleted", "==", false).get()
     ]);
-    return { lead: leadSnap.data(), company: companySnap.data() };
+    const subscriptions = subsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((s) => s.statusConfig?.status === "active" && s.isPubliclyVisible !== false);
+    const suppliers = suppliersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return {
+      lead: leadData,
+      company: companySnap.data(),
+      subscriptions,
+      suppliers
+    };
   } catch (e) {
+    logger.error("Error in getEnrollmentData:", e);
     throw new import_https.HttpsError("internal", e.message);
   }
 });
 var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors: true }, async (request) => {
   const firebase = getAdmin();
-  const { leadId, formData } = request.data;
   const db = firebase.firestore();
-  const batch = db.batch();
+  const { leadId, clientData, enrollmentData, transactionData, invoiceData } = request.data;
+  if (!leadId) throw new import_https.HttpsError("invalid-argument", "Missing leadId");
   try {
-    const enrRef = db.collection("enrollments").doc();
-    batch.set(enrRef, { ...formData, id: enrRef.id });
-    await batch.commit();
-    return { success: true, enrollmentId: enrRef.id };
+    return await db.runTransaction(async (transaction) => {
+      const subRef = db.collection("subscriptionTypes").doc(enrollmentData.subscriptionTypeId);
+      const subSnap = await transaction.get(subRef);
+      if (!subSnap.exists) throw new Error("Tipo abbonamento non trovato.");
+      const sub = subSnap.data();
+      const basePrice = sub.price || 0;
+      const stampPrice = basePrice >= 77 ? 2 : 0;
+      const totalPrice = basePrice + stampPrice;
+      let clientId = "";
+      const clientsSnap = await db.collection("clients").where("email", "==", clientData.email.toLowerCase()).limit(1).get();
+      if (!clientsSnap.empty) {
+        clientId = clientsSnap.docs[0].id;
+        transaction.update(db.collection("clients").doc(clientId), {
+          firstName: clientData.firstName,
+          lastName: clientData.lastName,
+          phone: clientData.phone,
+          taxCode: clientData.taxCode,
+          address: clientData.address,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        const clientRef = db.collection("clients").doc();
+        clientId = clientRef.id;
+        transaction.set(clientRef, { ...clientData, id: clientId, email: clientData.email.toLowerCase() });
+      }
+      const enrRef = db.collection("enrollments").doc();
+      const finalEnrollment = {
+        ...enrollmentData,
+        id: enrRef.id,
+        clientId,
+        price: totalPrice,
+        // Sovrascritto con calcolo certificato
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        startDate: admin.firestore.FieldValue.serverTimestamp()
+        // Default, verrà aggiornato dal generatore lezioni
+      };
+      transaction.set(enrRef, finalEnrollment);
+      const transRef = db.collection("transactions").doc();
+      transaction.set(transRef, {
+        ...transactionData,
+        id: transRef.id,
+        clientId,
+        relatedEnrollmentId: enrRef.id,
+        amount: totalPrice,
+        // Sovrascritto
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      if (invoiceData) {
+        const invRef = db.collection("invoices").doc();
+        transaction.set(invRef, {
+          ...invoiceData,
+          id: invRef.id,
+          clientId,
+          relatedEnrollmentId: enrRef.id,
+          totalAmount: totalPrice,
+          // Sovrascritto
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      const dayNames = ["Domenica", "Luned\xEC", "Marted\xEC", "Mercoled\xEC", "Gioved\xEC", "Venerd\xEC", "Sabato"];
+      const mainAppt = enrollmentData.appointments?.[0];
+      const slotDayName = mainAppt?.time?.split(",")[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+      const targetDayIndex = dayNames.indexOf(slotDayName);
+      if (targetDayIndex !== -1) {
+        let currentLessonDate = /* @__PURE__ */ new Date();
+        while (currentLessonDate.getDay() !== targetDayIndex) {
+          currentLessonDate.setDate(currentLessonDate.getDate() + 1);
+        }
+        const lessonsToCreate = enrollmentData.lessonsTotal || sub.lessons || 1;
+        let createdCount = 0;
+        let firstDate = "";
+        while (createdCount < lessonsToCreate) {
+          const dateStr = currentLessonDate.toISOString().split("T")[0];
+          const isHoliday = isItalianHoliday(currentLessonDate);
+          if (!isHoliday) {
+            const lessonRef = db.collection("lessons").doc();
+            const lessonData = {
+              id: lessonRef.id,
+              enrollmentId: enrRef.id,
+              courseId: enrollmentData.courseId || "manual",
+              locationId: enrollmentData.locationId,
+              locationName: enrollmentData.locationName,
+              date: dateStr,
+              startTime: mainAppt?.startTime || "00:00",
+              endTime: mainAppt?.endTime || "00:00",
+              childName: enrollmentData.childName,
+              status: "Scheduled",
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            transaction.set(lessonRef, lessonData);
+            if (createdCount === 0) firstDate = dateStr;
+            createdCount++;
+          }
+          currentLessonDate.setDate(currentLessonDate.getDate() + 7);
+        }
+        if (firstDate) {
+          transaction.update(enrRef, { startDate: firstDate });
+        }
+      }
+      transaction.update(db.collection("incoming_leads").doc(leadId), {
+        status: "processed",
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        relatedEnrollmentId: enrRef.id,
+        relatedClientId: clientId
+      });
+      try {
+        const title = "\u{1F680} Nuova Iscrizione!";
+        const body = `${finalEnrollment.childName} si \xE8 iscritto a ${finalEnrollment.locationName} (${finalEnrollment.subscriptionName})`;
+        await sendPushToAllTokens(title, body, {
+          enrollmentId: enrRef.id,
+          type: "enrollment",
+          click_action: "ENROLLMENTS"
+        });
+      } catch (pushErr) {
+        logger.error("Error sending push notification for enrollment:", pushErr);
+      }
+      return { success: true, enrollmentId: enrRef.id, clientId };
+    });
   } catch (e) {
+    logger.error("Error in processEnrollment:", e);
     throw new import_https.HttpsError("internal", e.message);
   }
 });
@@ -508,7 +692,76 @@ var onEnrollmentUpdated = (0, import_firestore2.onDocumentUpdated)({
   }
 });
 var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", cors: true }, async (req, res) => {
-  res.status(200).send("Enrollment Gateway Active");
+  const firebase = getAdmin();
+  const leadId = req.query.id;
+  if (!leadId) {
+    return res.status(400).send("ID Iscrizione mancante");
+  }
+  try {
+    const db = firebase.firestore();
+    const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
+    if (!leadSnap.exists) {
+      return res.status(404).send("Iscrizione non trovata o scaduta.");
+    }
+    const lead = leadSnap.data();
+    const nomeAllievo = lead.childName || lead.nome || "Allievo";
+    const sede = lead.selectedLocation || lead.locationName || "EasyPeasy Lab";
+    const title = `Completa l'iscrizione di ${nomeAllievo}`;
+    const description = `Ciao ${lead.nome || "Genitore"}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
+    const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
+    const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
+    const html = `
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Dynamic Open Graph Tags -->
+    <title>${title}</title>
+    <meta name="description" content="${description}">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${description}">
+    <meta property="og:image" content="${logoUrl}">
+    <meta property="og:url" content="${portalUrl}">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${title}">
+    <meta name="twitter:description" content="${description}">
+    <meta name="twitter:image" content="${logoUrl}">
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f9fafb; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #111827; }
+        .card { background: white; padding: 2rem; border-radius: 1.5rem; shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; width: 90%; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; }
+        p { color: #6b7280; font-size: 0.875rem; }
+    </style>
+
+    <!-- Redirect immediato -->
+    <script>
+        window.location.href = "${portalUrl}";
+    </script>
+    <meta http-equiv="refresh" content="2;url=${portalUrl}">
+</head>
+<body>
+    <div class="card">
+        <div class="spinner"></div>
+        <h1>Reindirizzamento in corso...</h1>
+        <p>Ti stiamo portando al modulo di iscrizione di <strong>${nomeAllievo}</strong>.</p>
+        <p style="margin-top: 1rem; font-size: 0.75rem;">Se non vieni reindirizzato, <a href="${portalUrl}" style="color: #4f46e5; font-weight: bold;">clicca qui</a>.</p>
+    </div>
+</body>
+</html>
+        `;
+    res.status(200).set("Content-Type", "text/html").send(html);
+  } catch (err) {
+    logger.error("Error in enrollmentGateway:", err);
+    res.status(500).send("Errore interno del server");
+  }
 });
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

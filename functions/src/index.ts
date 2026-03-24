@@ -5,6 +5,9 @@ import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 
+// Importazione helper per date (condiviso con il resto del progetto)
+import { isItalianHoliday } from "../../utils/dateUtils";
+
 // Helper per inizializzazione pigra (Lazy Initialization)
 function getAdmin() {
     if (admin.apps.length === 0) {
@@ -410,29 +413,216 @@ export const getPublicSlotsV5 = onRequest({
 export const getEnrollmentData = onCall({ region: "europe-west1", cors: true }, async (request: any) => {
     const firebase = getAdmin();
     const { leadId } = request.data;
+    if (!leadId) throw new HttpsError("invalid-argument", "Missing leadId");
+
     try {
         const db = firebase.firestore();
+        
+        // 1. Recupero Lead e Verifica Esistenza
         const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
+        if (!leadSnap.exists) {
+            throw new HttpsError("not-found", "Lead non trovato");
+        }
+        const leadData = leadSnap.data() as any;
+
+        // 2. Controllo Iscrizioni Esistenti (Anti-duplicazione)
+        // Cerchiamo un enrollment con lo stesso email del lead o ID lead se tracciato
+        const existingEnrSnap = await db.collection("enrollments")
+            .where("email", "==", leadData.email)
+            .where("childName", "==", leadData.childName)
+            .where("status", "in", ["active", "Active", "pending", "Pending", "confirmed", "Confirmed"])
+            .limit(1).get();
+
+        if (!existingEnrSnap.empty) {
+            return { existingEnrollment: { id: existingEnrSnap.docs[0].id, ...existingEnrSnap.docs[0].data() } };
+        }
+
+        // 3. Recupero Dati di Sistema (Parallel)
         const [companySnap, subsSnap, suppliersSnap] = await Promise.all([
             db.collection("settings").doc("company").get(),
             db.collection("subscriptionTypes").get(),
             db.collection("suppliers").where("isDeleted", "==", false).get()
         ]);
-        return { lead: leadSnap.data(), company: companySnap.data() };
-    } catch (e: any) { throw new HttpsError("internal", e.message); }
+
+        const subscriptions = subsSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter((s: any) => s.statusConfig?.status === 'active' && s.isPubliclyVisible !== false);
+
+        const suppliers = suppliersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // 4. Return Data for EnrollmentPortal
+        return { 
+            lead: leadData, 
+            company: companySnap.data(),
+            subscriptions: subscriptions,
+            suppliers: suppliers
+        };
+    } catch (e: any) { 
+        logger.error("Error in getEnrollmentData:", e);
+        throw new HttpsError("internal", e.message); 
+    }
 });
 
 export const processEnrollment = onCall({ region: "europe-west1", cors: true }, async (request: any) => {
     const firebase = getAdmin();
-    const { leadId, formData } = request.data;
     const db = firebase.firestore();
-    const batch = db.batch();
+    const { leadId, clientData, enrollmentData, transactionData, invoiceData } = request.data;
+    
+    if (!leadId) throw new HttpsError("invalid-argument", "Missing leadId");
+
     try {
-        const enrRef = db.collection("enrollments").doc();
-        batch.set(enrRef, { ...formData, id: enrRef.id });
-        await batch.commit();
-        return { success: true, enrollmentId: enrRef.id };
-    } catch (e: any) { throw new HttpsError("internal", e.message); }
+        return await db.runTransaction(async (transaction) => {
+            // 1. Validazione Prezzo Server-Side (Security Shield)
+            const subRef = db.collection("subscriptionTypes").doc(enrollmentData.subscriptionTypeId);
+            const subSnap = await transaction.get(subRef);
+            if (!subSnap.exists) throw new Error("Tipo abbonamento non trovato.");
+            
+            const sub = subSnap.data() as any;
+            const basePrice = sub.price || 0;
+            const stampPrice = basePrice >= 77 ? 2 : 0;
+            const totalPrice = basePrice + stampPrice;
+
+            // 2. Creazione o Aggiornamento Cliente (Basato su Email)
+            let clientId = "";
+            const clientsSnap = await db.collection("clients")
+                .where("email", "==", clientData.email.toLowerCase())
+                .limit(1).get();
+            
+            if (!clientsSnap.empty) {
+                clientId = clientsSnap.docs[0].id;
+                // Aggiorniamo eventuali nuovi campi ma manteniamo lo storico
+                transaction.update(db.collection("clients").doc(clientId), {
+                    firstName: clientData.firstName,
+                    lastName: clientData.lastName,
+                    phone: clientData.phone,
+                    taxCode: clientData.taxCode,
+                    address: clientData.address,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            } else {
+                const clientRef = db.collection("clients").doc();
+                clientId = clientRef.id;
+                transaction.set(clientRef, { ...clientData, id: clientId, email: clientData.email.toLowerCase() });
+            }
+
+            // 3. Creazione Iscrizione
+            const enrRef = db.collection("enrollments").doc();
+            const finalEnrollment = {
+                ...enrollmentData,
+                id: enrRef.id,
+                clientId: clientId,
+                price: totalPrice, // Sovrascritto con calcolo certificato
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                startDate: admin.firestore.FieldValue.serverTimestamp() // Default, verrà aggiornato dal generatore lezioni
+            };
+            transaction.set(enrRef, finalEnrollment);
+
+            // 4. Creazione Transazione
+            const transRef = db.collection("transactions").doc();
+            transaction.set(transRef, {
+                ...transactionData,
+                id: transRef.id,
+                clientId: clientId,
+                relatedEnrollmentId: enrRef.id,
+                amount: totalPrice, // Sovrascritto
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+
+            // 5. Creazione Fattura (se prevista)
+            if (invoiceData) {
+                const invRef = db.collection("invoices").doc();
+                transaction.set(invRef, {
+                    ...invoiceData,
+                    id: invRef.id,
+                    clientId: clientId,
+                    relatedEnrollmentId: enrRef.id,
+                    totalAmount: totalPrice, // Sovrascritto
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+
+            // 6. Generazione Automatica Lezioni (Physical Lesson Engine)
+            // Semplificazione: generiamo lezioni basate sul primo slot per la durata dell'abbonamento
+            // Nota: In un sistema reale, gestirebbe meglio bundle multi-slot
+            const dayNames = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+            const mainAppt = enrollmentData.appointments?.[0];
+            const slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+            const targetDayIndex = dayNames.indexOf(slotDayName);
+            
+            if (targetDayIndex !== -1) {
+                let currentLessonDate = new Date();
+                // Sposta alla prossima occorrenza del giorno scelto
+                while (currentLessonDate.getDay() !== targetDayIndex) {
+                    currentLessonDate.setDate(currentLessonDate.getDate() + 1);
+                }
+
+                const lessonsToCreate = enrollmentData.lessonsTotal || sub.lessons || 1;
+                let createdCount = 0;
+                let firstDate = "";
+
+                while (createdCount < lessonsToCreate) {
+                    // Skip Italian Holidays (Physical Lesson Engine)
+                    const dateStr = currentLessonDate.toISOString().split('T')[0];
+                    const isHoliday = isItalianHoliday(currentLessonDate);
+                    
+                    if (!isHoliday) {
+                        const lessonRef = db.collection("lessons").doc();
+                        const lessonData = {
+                            id: lessonRef.id,
+                            enrollmentId: enrRef.id,
+                            courseId: enrollmentData.courseId || "manual",
+                            locationId: enrollmentData.locationId,
+                            locationName: enrollmentData.locationName,
+                            date: dateStr,
+                            startTime: mainAppt?.startTime || "00:00",
+                            endTime: mainAppt?.endTime || "00:00",
+                            childName: enrollmentData.childName,
+                            status: 'Scheduled',
+                            createdAt: admin.firestore.FieldValue.serverTimestamp()
+                        };
+                        transaction.set(lessonRef, lessonData);
+                        
+                        if (createdCount === 0) firstDate = dateStr;
+                        createdCount++;
+                    }
+                    
+                    // Vai alla settimana successiva
+                    currentLessonDate.setDate(currentLessonDate.getDate() + 7);
+                }
+                
+                // Aggiorna data inizio reale nell'enrollment
+                if (firstDate) {
+                    transaction.update(enrRef, { startDate: firstDate });
+                }
+            }
+
+            // 7. Aggiornamento Lead
+            transaction.update(db.collection("incoming_leads").doc(leadId), {
+                status: 'processed',
+                processedAt: admin.firestore.FieldValue.serverTimestamp(),
+                relatedEnrollmentId: enrRef.id,
+                relatedClientId: clientId
+            });
+
+            // 8. Notifica Push (Nuova Iscrizione)
+            try {
+                const title = "🚀 Nuova Iscrizione!";
+                const body = `${finalEnrollment.childName} si è iscritto a ${finalEnrollment.locationName} (${finalEnrollment.subscriptionName})`;
+                await sendPushToAllTokens(title, body, {
+                    enrollmentId: enrRef.id,
+                    type: 'enrollment',
+                    click_action: 'ENROLLMENTS'
+                });
+            } catch (pushErr) {
+                logger.error("Error sending push notification for enrollment:", pushErr);
+            }
+
+            return { success: true, enrollmentId: enrRef.id, clientId };
+        });
+    } catch (e: any) {
+        logger.error("Error in processEnrollment:", e);
+        throw new HttpsError("internal", e.message);
+    }
 });
 
 export const suggestBookTags = onCall({ region: "europe-west1", cors: true }, async (request: any) => {
@@ -566,5 +756,85 @@ export const onEnrollmentUpdated = onDocumentUpdated({
     }
 });
 export const enrollmentGateway = onRequest({ region: "europe-west1", cors: true }, async (req: any, res: any) => {
-    res.status(200).send("Enrollment Gateway Active");
+    const firebase = getAdmin();
+    const leadId = req.query.id as string;
+    
+    if (!leadId) {
+        return res.status(400).send("ID Iscrizione mancante");
+    }
+
+    try {
+        const db = firebase.firestore();
+        const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
+        
+        if (!leadSnap.exists) {
+            return res.status(404).send("Iscrizione non trovata o scaduta.");
+        }
+
+        const lead = leadSnap.data() as any;
+        const nomeAllievo = lead.childName || lead.nome || "Allievo";
+        const sede = lead.selectedLocation || lead.locationName || "EasyPeasy Lab";
+        
+        // Costruiamo i Meta Tag dinamici per l'anteprima WhatsApp/Social
+        const title = `Completa l'iscrizione di ${nomeAllievo}`;
+        const description = `Ciao ${lead.nome || 'Genitore'}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
+        const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
+        
+        // URL del portale reale (Progetto C)
+        const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
+
+        const html = `
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Dynamic Open Graph Tags -->
+    <title>${title}</title>
+    <meta name="description" content="${description}">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${description}">
+    <meta property="og:image" content="${logoUrl}">
+    <meta property="og:url" content="${portalUrl}">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${title}">
+    <meta name="twitter:description" content="${description}">
+    <meta name="twitter:image" content="${logoUrl}">
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f9fafb; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #111827; }
+        .card { background: white; padding: 2rem; border-radius: 1.5rem; shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; width: 90%; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; }
+        p { color: #6b7280; font-size: 0.875rem; }
+    </style>
+
+    <!-- Redirect immediato -->
+    <script>
+        window.location.href = "${portalUrl}";
+    </script>
+    <meta http-equiv="refresh" content="2;url=${portalUrl}">
+</head>
+<body>
+    <div class="card">
+        <div class="spinner"></div>
+        <h1>Reindirizzamento in corso...</h1>
+        <p>Ti stiamo portando al modulo di iscrizione di <strong>${nomeAllievo}</strong>.</p>
+        <p style="margin-top: 1rem; font-size: 0.75rem;">Se non vieni reindirizzato, <a href="${portalUrl}" style="color: #4f46e5; font-weight: bold;">clicca qui</a>.</p>
+    </div>
+</body>
+</html>
+        `;
+
+        res.status(200).set('Content-Type', 'text/html').send(html);
+
+    } catch (err: any) {
+        logger.error("Error in enrollmentGateway:", err);
+        res.status(500).send("Errore interno del server");
+    }
 });
