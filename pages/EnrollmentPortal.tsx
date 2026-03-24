@@ -211,6 +211,9 @@ const EnrollmentPortal: React.FC = () => {
       return;
     }
 
+    // Initialize lead state with the ID from URL to ensure it's available for functions
+    setLead({ id: leadId } as any);
+
     const fetchData = async () => {
       try {
         const getEnrollmentData = httpsCallable(functions, 'getEnrollmentData');
@@ -469,10 +472,9 @@ const EnrollmentPortal: React.FC = () => {
         };
       }
 
-      const processEnrollment = httpsCallable(functions, 'processEnrollment');
-      await processEnrollment({
+      const processEnrollmentFunction = httpsCallable(functions, 'processEnrollment');
+      await processEnrollmentFunction({
         leadId: lead.id,
-        formData,
         clientData,
         enrollmentData,
         transactionData,
