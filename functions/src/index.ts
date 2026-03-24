@@ -425,7 +425,7 @@ export const getEnrollmentData = onCall({ region: "europe-west1", cors: true }, 
         if (!leadSnap.exists) {
             throw new HttpsError("not-found", "Lead non trovato");
         }
-        const leadData = leadSnap.data() as any;
+        const leadData = { id: leadSnap.id, ...leadSnap.data() as any };
 
         // 2. Controllo Iscrizioni Esistenti (Anti-duplicazione)
         // Cerchiamo un enrollment con lo stesso email del lead o ID lead se tracciato

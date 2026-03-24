@@ -426,7 +426,7 @@ var getEnrollmentData = (0, import_https.onCall)({ region: "europe-west1", cors:
     if (!leadSnap.exists) {
       throw new import_https.HttpsError("not-found", "Lead non trovato");
     }
-    const leadData = leadSnap.data();
+    const leadData = { id: leadSnap.id, ...leadSnap.data() };
     const existingEnrSnap = await db.collection("enrollments").where("email", "==", leadData.email).where("childName", "==", leadData.childName).where("status", "in", ["active", "Active", "pending", "Pending", "confirmed", "Confirmed"]).limit(1).get();
     if (!existingEnrSnap.empty) {
       return { existingEnrollment: { id: existingEnrSnap.docs[0].id, ...existingEnrSnap.docs[0].data() } };
