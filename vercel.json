@@ -3,6 +3,10 @@
     {
       "source": "/i/:id",
       "destination": "https://enrollmentgateway-7wnvtld3xq-ew.a.run.app?id=:id"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }

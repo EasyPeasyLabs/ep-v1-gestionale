@@ -780,7 +780,7 @@ export const enrollmentGateway = onRequest({ region: "europe-west1", cors: true 
         const description = `Ciao ${lead.nome || 'Genitore'}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
         const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
         
-        // URL del portale reale (Progetto C)
+        // URL del portale reale (Progetto C) - Correzione dominio: rimosso punto extra
         const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
 
         const html = `
