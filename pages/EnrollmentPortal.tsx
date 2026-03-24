@@ -1313,10 +1313,10 @@ const EnrollmentPortal: React.FC = () => {
       {/* UNIFIED PAYMENT MODAL (Step 13) */}
       {showBookingModal && (
         <Modal onClose={() => !isProcessing && setShowBookingModal(false)} size="lg">
-          <div className="p-8 md:p-12 space-y-10">
-            <div className="text-center space-y-2">
-              <h3 className="text-3xl font-black text-gray-900 uppercase tracking-tight">Metodo di Pagamento</h3>
-              <p className="text-gray-500 font-medium">Seleziona come desideri saldare l'iscrizione</p>
+          <div className="max-h-[85vh] overflow-y-auto p-6 md:p-12 space-y-8 scroll-smooth" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="text-center space-y-2 sticky top-0 bg-white z-10 pb-4 border-b border-gray-50 -mx-6 md:-mx-12 px-6 md:px-12">
+              <h3 className="text-2xl md:text-3xl font-black text-gray-900 uppercase tracking-tight">Metodo di Pagamento</h3>
+              <p className="text-xs md:text-sm text-gray-500 font-medium">Seleziona come desideri saldare l'iscrizione</p>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
