@@ -102,10 +102,10 @@ var isItalianHoliday = (date) => {
 
 // src/index.ts
 var import_firestore2 = require("firebase-functions/v2/firestore");
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
 function getAdmin() {
-  if (admin.apps.length === 0) {
-    admin.initializeApp();
-  }
   return admin;
 }
 var API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";

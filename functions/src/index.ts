@@ -5,14 +5,16 @@ import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
 import * as admin from "firebase-admin";
 
+// Inizializzazione Globale (Richiesta per Firebase Functions v2)
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
+
 // Importazione helper per date (condiviso con il resto del progetto)
 import { isItalianHoliday } from "../../utils/dateUtils";
 
-// Helper per inizializzazione pigra (Lazy Initialization)
+// Helper rimosso perché l'inizializzazione è ora globale
 function getAdmin() {
-    if (admin.apps.length === 0) {
-        admin.initializeApp();
-    }
     return admin;
 }
 
