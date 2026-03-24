@@ -1362,11 +1362,11 @@ const EnrollmentPortal: React.FC = () => {
                     <div className="space-y-2">
                       <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">IBAN per il bonifico</p>
                       <div className="bg-white p-4 rounded-2xl flex justify-between items-center border border-indigo-100">
-                        <p className="font-mono text-lg font-bold text-gray-800 tracking-wider">
-                          {companyInfo?.iban || 'IBAN NON DISPONIBILE'}
+                        <p className="font-mono text-base md:text-lg font-bold text-gray-800 tracking-wider">
+                          IT68G36772223000EM001966427
                         </p>
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(companyInfo?.iban || ''); alert("IBAN copiato!"); }}
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText('IT68G36772223000EM001966427'); alert("IBAN copiato!"); }}
                           className="p-2 hover:bg-indigo-50 rounded-lg text-indigo-600"
                         >
                           <Copy className="w-5 h-5" />
