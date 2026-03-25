@@ -563,6 +563,8 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         courseId: matchedCourseId,
         // Collegamento al corso reale per visibilità liste/archivio
         price: totalPrice,
+        startTime: enrichedAppointments[0]?.startTime || "16:00",
+        endTime: enrichedAppointments[0]?.endTime || "17:00",
         appointments: enrichedAppointments,
         status: enrollmentData.status || "Active",
         // Manteniamo Case-Sensitive

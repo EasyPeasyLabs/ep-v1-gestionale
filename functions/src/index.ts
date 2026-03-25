@@ -613,6 +613,8 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 childId: childId, // COLLEGAMENTO CRUCIALE PER MODALE
                 courseId: matchedCourseId, // Collegamento al corso reale per visibilità liste/archivio
                 price: totalPrice,
+                startTime: enrichedAppointments[0]?.startTime || "16:00",
+                endTime: enrichedAppointments[0]?.endTime || "17:00",
                 appointments: enrichedAppointments,
                 status: (enrollmentData.status || 'Active'), // Manteniamo Case-Sensitive
                 source: 'portal',

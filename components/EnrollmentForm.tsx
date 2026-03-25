@@ -75,7 +75,28 @@ const calculateSlotBasedDates = (startStr: string, lessons: number, dayOfWeek?: 
 const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient, existingEnrollment, onSave, onCancel }) => {
     // --- STATE CORE ---
     const [selectedClientId, setSelectedClientId] = useState<string>(initialClient?.id || existingEnrollment?.clientId || '');
-    const [selectedChildIds, setSelectedChildIds] = useState<string[]>(existingEnrollment?.childId ? [existingEnrollment.childId] : []);
+    
+    // Fallback: Se childId manca nell'iscrizione, cerchiamolo nel client tramite il nome dell'allievo
+    const resolvedChildId = useMemo(() => {
+        if (existingEnrollment?.childId) return existingEnrollment.childId;
+        if (!existingEnrollment?.childName || !selectedClientId) return null;
+        
+        const client = clients.find(c => c.id === selectedClientId);
+        if (client?.clientType === ClientType.Parent) {
+            const parent = client as ParentClient;
+            const child = parent.children.find(c => c.name === existingEnrollment.childName);
+            return child?.id || null;
+        }
+        return null;
+    }, [existingEnrollment, selectedClientId, clients]);
+
+    const [selectedChildIds, setSelectedChildIds] = useState<string[]>(resolvedChildId ? [resolvedChildId] : []);
+
+    useEffect(() => {
+        if (resolvedChildId && selectedChildIds.length === 0) {
+            setSelectedChildIds([resolvedChildId]);
+        }
+    }, [resolvedChildId, selectedChildIds]);
     const [isAdultEnrollment, setIsAdultEnrollment] = useState<boolean>(existingEnrollment?.isAdult || false);
     const [subscriptionTypeId, setSubscriptionTypeId] = useState(existingEnrollment?.subscriptionTypeId || '');
     const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
@@ -86,8 +107,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [startDateInput, setStartDateInput] = useState(existingEnrollment?.startDate?.split('T')[0] || new Date().toISOString().split('T')[0]); 
     const [endDateInput, setEndDateInput] = useState(existingEnrollment?.endDate?.split('T')[0] || '');
     const [targetLocationId, setTargetLocationId] = useState(existingEnrollment?.locationId !== 'unassigned' ? existingEnrollment?.locationId : '');
-    const [startTime, setStartTime] = useState(existingEnrollment?.appointments?.[0]?.startTime || '16:00');
-    const [endTime, setEndTime] = useState(existingEnrollment?.appointments?.[0]?.endTime || '18:00');
+    
+    // Migliorato recupero orari dagli appointments
+    const initialStartTime = existingEnrollment?.appointments?.[0]?.startTime || existingEnrollment?.startTime || '16:00';
+    const initialEndTime = existingEnrollment?.appointments?.[0]?.endTime || existingEnrollment?.endTime || '18:00';
+
+    const [startTime, setStartTime] = useState(initialStartTime);
+    const [endTime, setEndTime] = useState(initialEndTime);
     const [isEndDateManual, setIsEndDateManual] = useState(false); 
 
     const [singleSmartSlot, setSingleSmartSlot] = useState('');

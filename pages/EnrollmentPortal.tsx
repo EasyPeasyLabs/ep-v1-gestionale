@@ -380,8 +380,10 @@ const EnrollmentPortal: React.FC = () => {
         email: formData.parentEmail,
         phone: formData.parentPhone,
         taxCode: formData.parentFiscalCode,
-        address: `${formData.parentAddress}, ${formData.parentZip} ${formData.parentCity} (${formData.parentProvince})`,
+        address: formData.parentAddress,
         city: formData.parentCity,
+        zipCode: formData.parentZip,
+        province: formData.parentProvince,
         children: [{
           id: '', // Will be set by server
           name: formData.childName,
@@ -399,6 +401,21 @@ const EnrollmentPortal: React.FC = () => {
         createdAt: new Date().toISOString(),
         source: 'portal'
       };
+
+      // Estrazione orari dal bundle o dallo slot selezionato
+      let startTime = '';
+      let endTime = '';
+      
+      if (selectedBundleSlots.length > 0) {
+          startTime = selectedBundleSlots[0].startTime;
+          endTime = selectedBundleSlots[0].endTime;
+      } else if (formData.selectedSlot.includes(',')) {
+          // Formato: "Lunedì, 17:00 - 18:00"
+          const timePart = formData.selectedSlot.split(',')[1]?.trim();
+          if (timePart && timePart.includes('-')) {
+              [startTime, endTime] = timePart.split('-').map(s => s.trim());
+          }
+      }
 
       const enrollmentData = {
         clientId: '', // Will be set by server
@@ -424,8 +441,8 @@ const EnrollmentPortal: React.FC = () => {
         appointments: [{
           lessonId: '', // Will be set by server
           date: '', // Will be set by server
-          startTime: '', // Will be set by server
-          endTime: '', // Will be set by server
+          startTime: startTime,
+          endTime: endTime,
           locationId: formData.selectedLocationId || 'unassigned',
           locationName: formData.selectedLocationName || 'Sede Preferita',
           locationColor: '#6366f1',
