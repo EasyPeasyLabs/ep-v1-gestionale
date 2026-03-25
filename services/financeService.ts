@@ -596,6 +596,11 @@ export const runFinancialHealthCheck = async (
             const today = new Date().toISOString().split('T')[0];
             const overdueGhosts = linkedInvoices.filter(i => i.isGhost && i.dueDate && i.dueDate < today);
             for (const ghost of overdueGhosts) {
+                // --- CHECK IF ALREADY IGNORED (OBLIVION) ---
+                if (fiscalYear?.ignoredIssues?.includes(`health-ghost-${ghost.id}`)) {
+                    continue; // Skip if in oblivion
+                }
+
                 const ghostSuggestions: IntegrityIssueSuggestion[] = [];
                 
                 // Add Oblio option if year is closed
@@ -639,8 +644,8 @@ export const fixIntegrityIssue = async (
     // Determine target date for the check
     const targetDateToCheck = forceDate || issue.date;
     
-    // Always check if the target year is closed
-    if (await isYearClosed(targetDateToCheck)) {
+    // Always check if the target year is closed (EXCEPT for oblivion strategy which is specifically for closed years)
+    if (strategy !== 'oblivion' && await isYearClosed(targetDateToCheck)) {
         throw new Error("FISCAL_YEAR_CLOSED");
     }
 
