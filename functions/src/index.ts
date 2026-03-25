@@ -508,14 +508,43 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
 
             // 2. Creazione o Aggiornamento Cliente (Basato su Email) con Tag Management (FASE D)
             let clientId = "";
+            let childId = ""; // ID del figlio specifico per questa iscrizione
             const clientsSnap = await db.collection("clients")
                 .where("email", "==", clientData.email.toLowerCase())
                 .limit(1).get();
 
+            // Scomposizione Indirizzo Tassonomica (per compatibilità Gestionale)
+            const structuredAddress = {
+                address: clientData.address || "",
+                city: clientData.city || "",
+                zipCode: clientData.zipCode || clientData.zip || "",
+                province: clientData.province || ""
+            };
+
+            // Mappatura strutturata dei Figli (Evitiamo il collasso nelle note)
+            const structuredChildren = (clientData.children || []).map((child: any) => {
+                const id = child.id || `child_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+                // Memorizziamo l'ID del figlio corrispondente al nome nell'iscrizione
+                if (!childId || child.name === enrollmentData.childName) childId = id;
+
+                return {
+                    id: id,
+                    name: child.name || "",
+                    firstName: child.name?.split(' ')[0] || "",
+                    lastName: child.name?.split(' ').slice(1).join(' ') || "",
+                    dateOfBirth: child.dateOfBirth || "",
+                    age: child.age || 0,
+                    notes: child.notes || "",
+                    tags: child.tags || [],
+                    rating: child.rating || { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+                };
+            });
+
             if (!clientsSnap.empty) {
                 const clientDoc = clientsSnap.docs[0];
                 clientId = clientDoc.id;
-                const currentTags = clientDoc.data().tags || [];
+                const existingData = clientDoc.data();
+                const currentTags = existingData.tags || [];
 
                 // Rimuoviamo LEAD e aggiungiamo GENITORE
                 const updatedTags = Array.from(new Set(
@@ -524,22 +553,39 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                         .concat(['GENITORE'])
                 ));
 
+                // Fusione intelligente dei figli per evitare duplicati o sovrascritture distruttive
+                const mergedChildren = [...(existingData.children || [])];
+                structuredChildren.forEach((newChild: any) => {
+                    const existingChild = mergedChildren.find((c: any) =>
+                        c.name?.toLowerCase() === newChild.name?.toLowerCase()
+                    );
+                    if (!existingChild) {
+                        mergedChildren.push(newChild);
+                    } else {
+                        // Se esiste già, usiamo il suo ID reale
+                        if (newChild.name === enrollmentData.childName) childId = existingChild.id;
+                    }
+                });
+
                 transaction.update(db.collection("clients").doc(clientId), {
                     firstName: clientData.firstName,
                     lastName: clientData.lastName,
                     phone: clientData.phone,
                     taxCode: clientData.taxCode,
-                    address: clientData.address,
+                    ...structuredAddress,
+                    children: mergedChildren,
                     tags: updatedTags,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
             } else {
                 const clientRef = db.collection("clients").doc();
                 clientId = clientRef.id;
-                transaction.set(clientRef, { 
-                    ...clientData, 
-                    id: clientId, 
+                transaction.set(clientRef, {
+                    ...clientData,
+                    id: clientId,
                     email: clientData.email.toLowerCase(),
+                    ...structuredAddress,
+                    children: structuredChildren,
                     tags: ['GENITORE'],
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
@@ -556,14 +602,16 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 endTime: app.endTime || mainAppt?.endTime || "17:00",
                 locationId: enrollmentData.locationId,
                 locationName: enrollmentData.locationName,
-                locationColor: enrollmentData.locationColor || "#6366f1"
+                locationColor: enrollmentData.locationColor || "#6366f1",
+                childName: enrollmentData.childName
             }));
 
             const finalEnrollment = {
                 ...enrollmentData,
                 id: enrRef.id,
                 clientId: clientId,
-                courseId: matchedCourseId, // Collegamento al corso reale
+                childId: childId, // COLLEGAMENTO CRUCIALE PER MODALE
+                courseId: matchedCourseId, // Collegamento al corso reale per visibilità liste/archivio
                 price: totalPrice,
                 appointments: enrichedAppointments,
                 status: (enrollmentData.status || 'Active'), // Manteniamo Case-Sensitive
@@ -572,7 +620,6 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 startDate: admin.firestore.FieldValue.serverTimestamp()
             };
             transaction.set(enrRef, finalEnrollment);
-
             // 4. Creazione Transazione (con allocationId)
             const transRef = db.collection("transactions").doc();
             transaction.set(transRef, {

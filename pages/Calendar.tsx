@@ -404,11 +404,11 @@ const Calendar: React.FC = () => {
                                 <div 
                                     key={idx} 
                                     // Aumento altezza minima a 180px
-                                    className={`min-h-[80px] md:min-h-[180px] border-b border-r border-gray-100 p-1 md:p-2 flex flex-col relative transition-colors group ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'} ${isToday ? 'bg-indigo-50/30 animate-neon-pulse z-10' : ''}`}
+                                    className={`min-h-[80px] md:min-h-[180px] border-b border-r border-gray-100 p-1 md:p-2 flex flex-col relative transition-colors group ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'} ${isToday ? 'animate-neon-pulse z-10' : ''}`}
                                     onClick={() => !closure && setManageClosureData({ date: dayItem })}
                                 >
                                     <div className="flex justify-between items-start mb-1 md:mb-2">
-                                        <span className={`text-xs md:text-sm font-bold w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-700' } ${holidayName ? 'text-red-500' : ''}`}>
+                                        <span className={`text-xs md:text-sm font-bold w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full ${isToday ? 'text-indigo-700' : 'text-gray-700' } ${holidayName ? 'text-red-500' : ''}`}>
                                             {dayItem.getDate()}
                                         </span>
                                         {closure ? (

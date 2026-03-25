@@ -478,20 +478,55 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         }
       }
       let clientId = "";
+      let childId = "";
       const clientsSnap = await db.collection("clients").where("email", "==", clientData.email.toLowerCase()).limit(1).get();
+      const structuredAddress = {
+        address: clientData.address || "",
+        city: clientData.city || "",
+        zipCode: clientData.zipCode || clientData.zip || "",
+        province: clientData.province || ""
+      };
+      const structuredChildren = (clientData.children || []).map((child) => {
+        const id = child.id || `child_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        if (!childId || child.name === enrollmentData.childName) childId = id;
+        return {
+          id,
+          name: child.name || "",
+          firstName: child.name?.split(" ")[0] || "",
+          lastName: child.name?.split(" ").slice(1).join(" ") || "",
+          dateOfBirth: child.dateOfBirth || "",
+          age: child.age || 0,
+          notes: child.notes || "",
+          tags: child.tags || [],
+          rating: child.rating || { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+        };
+      });
       if (!clientsSnap.empty) {
         const clientDoc = clientsSnap.docs[0];
         clientId = clientDoc.id;
-        const currentTags = clientDoc.data().tags || [];
+        const existingData = clientDoc.data();
+        const currentTags = existingData.tags || [];
         const updatedTags = Array.from(new Set(
           currentTags.filter((t) => t.toUpperCase() !== "LEAD").concat(["GENITORE"])
         ));
+        const mergedChildren = [...existingData.children || []];
+        structuredChildren.forEach((newChild) => {
+          const existingChild = mergedChildren.find(
+            (c) => c.name?.toLowerCase() === newChild.name?.toLowerCase()
+          );
+          if (!existingChild) {
+            mergedChildren.push(newChild);
+          } else {
+            if (newChild.name === enrollmentData.childName) childId = existingChild.id;
+          }
+        });
         transaction.update(db.collection("clients").doc(clientId), {
           firstName: clientData.firstName,
           lastName: clientData.lastName,
           phone: clientData.phone,
           taxCode: clientData.taxCode,
-          address: clientData.address,
+          ...structuredAddress,
+          children: mergedChildren,
           tags: updatedTags,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -502,6 +537,8 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
           ...clientData,
           id: clientId,
           email: clientData.email.toLowerCase(),
+          ...structuredAddress,
+          children: structuredChildren,
           tags: ["GENITORE"],
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
@@ -514,14 +551,17 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         endTime: app.endTime || mainAppt?.endTime || "17:00",
         locationId: enrollmentData.locationId,
         locationName: enrollmentData.locationName,
-        locationColor: enrollmentData.locationColor || "#6366f1"
+        locationColor: enrollmentData.locationColor || "#6366f1",
+        childName: enrollmentData.childName
       }));
       const finalEnrollment = {
         ...enrollmentData,
         id: enrRef.id,
         clientId,
+        childId,
+        // COLLEGAMENTO CRUCIALE PER MODALE
         courseId: matchedCourseId,
-        // Collegamento al corso reale
+        // Collegamento al corso reale per visibilità liste/archivio
         price: totalPrice,
         appointments: enrichedAppointments,
         status: enrollmentData.status || "Active",
