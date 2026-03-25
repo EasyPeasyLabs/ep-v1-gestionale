@@ -64,6 +64,7 @@ import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import { deleteEnrollment } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials } from '../services/financeService';
+import { getOpenCourses } from '../services/courseService';
 import { Enrollment } from '../types';
 
 interface Lead {
@@ -198,6 +199,31 @@ export const LeadsPage: React.FC = () => {
       `Vuoi creare un nuovo cliente e iscrizione per ${lead.childName}?`,
       async () => {
         try {
+          // 0. Matching Corso Intelligente (Sprint 13)
+          const openCourses = await getOpenCourses();
+          let matchedCourseId = '';
+          let matchedLocationId = 'unassigned';
+          let finalStartTime = '16:00';
+          let finalEndTime = '18:00';
+
+          if (lead.selectedSlot && typeof lead.selectedSlot === 'object') {
+            const slot = lead.selectedSlot;
+            const match = openCourses.find(c => 
+              c.dayOfWeek === slot.dayOfWeek &&
+              c.startTime === slot.startTime &&
+              (c.locationId === slot.locationId || c.locationName === lead.selectedLocation)
+            );
+            if (match) {
+              matchedCourseId = match.id;
+              matchedLocationId = match.locationId;
+              finalStartTime = match.startTime;
+              finalEndTime = match.endTime;
+            } else {
+              finalStartTime = slot.startTime || '16:00';
+              finalEndTime = slot.endTime || '18:00';
+            }
+          }
+
           // 1. Crea Cliente (nella collezione corretta 'clients')
           const clientData = {
             clientType: 'parent', // ClientType.Parent
@@ -222,7 +248,7 @@ export const LeadsPage: React.FC = () => {
             }],
             status: 'Active',
             notesHistory: [],
-            tags: [],
+            tags: ['GENITORE'], // Tag GENITORE (Sprint 13)
             rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
             createdAt: new Date().toISOString(),
             source: 'web_lead'
@@ -230,7 +256,7 @@ export const LeadsPage: React.FC = () => {
 
           const clientRef = await addDoc(collection(db, 'clients'), clientData);
 
-          // 2. Crea Iscrizione Bozza (Pending)
+          // 2. Crea Iscrizione (Pending) con dati corso (Sprint 13)
           const enrollmentData = {
             clientId: clientRef.id,
             clientName: `${lead.nome} ${lead.cognome}`,
@@ -238,13 +264,25 @@ export const LeadsPage: React.FC = () => {
             childName: lead.childName,
             subscriptionTypeId: '',
             subscriptionName: 'Da definire',
-            locationId: 'unassigned',
+            locationId: matchedLocationId,
             locationName: lead.selectedLocation || 'Sede Preferita',
+            courseId: matchedCourseId,
+            startTime: finalStartTime,
+            endTime: finalEndTime,
             price: 0,
             lessonsTotal: 0,
             lessonsRemaining: 0,
             status: 'Pending', // EnrollmentStatus.Pending
-            appointments: [],
+            appointments: [{
+              lessonId: 'template',
+              date: new Date().toISOString(),
+              startTime: finalStartTime,
+              endTime: finalEndTime,
+              locationId: matchedLocationId,
+              locationName: lead.selectedLocation || 'Sede Preferita',
+              childName: lead.childName,
+              status: 'Scheduled'
+            }],
             createdAt: new Date().toISOString()
           };
           
@@ -253,7 +291,7 @@ export const LeadsPage: React.FC = () => {
           // 3. Elimina il Lead (Traslazione completata)
           await deleteDoc(doc(db, 'incoming_leads', lead.id));
 
-          alert(`Cliente e Iscrizione creati con successo!`);
+          alert(`Cliente e Iscrizione creati con successo! Matching corso: ${matchedCourseId ? 'SI' : 'NO'}`);
         } catch (error) {
           console.error("Error converting lead:", error);
           alert("Errore nella conversione del lead");

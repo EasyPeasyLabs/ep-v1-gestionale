@@ -754,7 +754,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                         )}
                         {!isAdultEnrollment && (
                             <div className={`md-input-group relative ${!selectedClientId ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <div className="md-input cursor-pointer flex justify-between items-center" onClick={() => !existingEnrollment && setIsChildDropdownOpen(!isChildDropdownOpen)}>
+                                <div className="md-input cursor-pointer flex justify-between items-center" onClick={() => setIsChildDropdownOpen(!isChildDropdownOpen)}>
                                     <span className="truncate">{selectedChildIds.length === 0 ? "Seleziona figli..." : (currentClient as ParentClient)?.children.filter(c => selectedChildIds.includes(c.id)).map(c => c.name).join(', ')}</span>
                                 </div>
                                 <label className="md-input-label !top-0 !text-xs">2. Allievi</label>
@@ -762,7 +762,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                                     <div className="absolute z-20 w-full bg-white shadow-xl border rounded-md mt-1 max-h-48 overflow-y-auto">
                                         {(currentClient as ParentClient).children.map(child => (
                                             <label key={child.id} className="flex items-center px-4 py-2 hover:bg-gray-50 cursor-pointer">
-                                                <input type="checkbox" checked={selectedChildIds.includes(child.id)} onChange={() => toggleChildSelection(child.id)} disabled={!!existingEnrollment} className="mr-3" />
+                                                <input type="checkbox" checked={selectedChildIds.includes(child.id)} onChange={() => toggleChildSelection(child.id)} className="mr-3" />
                                                 <span className="text-sm">{child.name}</span>
                                             </label>
                                         ))}
