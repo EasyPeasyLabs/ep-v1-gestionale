@@ -29,6 +29,10 @@ Distinti per fase di esecuzione interna alla function.
 Prima di creare l'iscrizione, la function deve identificare l'ID originale del corso per evitare il "manual fallback" che causa l'invisibilità nei registri.
 
 - **Azione**: Query sulla collezione `courses`.
+- **Parametri di ricerca**:
+    - `locationId` : `enrollmentData.locationId`
+    - `dayOfWeek` : `enrollmentData.appointments[0].dayOfWeek` (derivato dal portale)
+    - `startTime` : `enrollmentData.appointments[0].startTime` (es. "17:00")
 - **Criteri di Filtro**: 
     - `locationId` == `formData.selectedLocationId`
     - `dayOfWeek` == `dayIndex` (calcolato dal giorno della settimana scelto)
@@ -41,8 +45,8 @@ Per risolvere l'errore `nd/nd`, l'oggetto `enrollment` deve essere popolato inte
     - `dayOfWeek`: number (0-6)
     - `startTime`: string "HH:MM"
     - `endTime`: string "HH:MM"
-    - `locationId`, `locationName`, `locationColor` (recuperato da `locations`)
-2.  **Status Standard**: Usare solo `pending` (contanti) o `active` (bonifico/online). **ATTENZIONE**: minuscolo, mai maiuscolo.
+    - `locationId`, `locationName`, `locationColor` (recuperato da `locations` del fornitore)
+2.  **Status Standard**: Usare solo `Pending` o `Active` (Case-Sensitive, come da Enum `EnrollmentStatus` in `types.ts`).
 3.  **Source**: Impostare `portal`.
 
 ### Fase C : Physical Lesson Engine (Generazione schedula)
@@ -51,9 +55,77 @@ La collezione `lessons` deve essere popolata con rigore per apparire nel Registr
 2.  **Date Precise**: Usare `dateUtils.isItalianHoliday` per saltare i festivi.
     - Data Inizio: La prima data disponibile dopo oggi che corrisponda al giorno scelto.
 
-### Fase D : Client & Finance Bridge
-1.  **Profilo Cliente**: Se il cliente esiste già, aggiornare l'anagrafica. Rimuovere eventuali metadati `lead` obsoleti.
+### Fase D : Client & Finance Bridge (Tag Management)
+1.  **Profilo Cliente**:
+    - Se il cliente esiste già:
+        - Recuperare i `tags` attuali.
+        - Rimuovere il tag `LEAD`.
+        - Aggiungere il tag `GENITORE` (se non presente).
+        - Aggiornare con `transaction.update`.
+    - Se il cliente è nuovo:
+        - Impostare `tags: ["GENITORE"]`.
 2.  **Transazione**: La transazione deve avere il riferimento `allocationId` (della sede) per apparire nelle statistiche di finanza.
+
+---
+
+## 2.1 Istruzioni Tecniche per lo Sviluppatore (Pseudo-Codice)
+
+L'intervento deve essere eseguito nel file `functions/src/index.ts` all'interno della transazione di `processEnrollment`.
+
+#### 1. Implementazione Matcher Corso
+```typescript
+// All'interno della transazione Firestore
+const coursesSnap = await db.collection("courses")
+    .where("locationId", "==", enrollmentData.locationId)
+    .where("dayOfWeek", "==", mainAppt.dayOfWeek)
+    .where("startTime", "==", mainAppt.startTime)
+    .limit(1).get();
+
+let matchedCourseId = "manual";
+if (!coursesSnap.empty) {
+    matchedCourseId = coursesSnap.docs[0].id;
+    logger.info(`[matcher] Trovato corso ${matchedCourseId} per l'iscrizione.`);
+} else {
+    logger.warn(`[matcher] Nessun corso trovato. Fallback su 'manual'.`);
+}
+```
+
+#### 2. Correzione Tag Clienti
+```typescript
+// Durante l'aggiornamento del cliente esistente
+const currentTags = clientsSnap.docs[0].data().tags || [];
+const updatedTags = currentTags
+    .filter((t: string) => t.toLowerCase() !== 'lead')
+    .concat(currentTags.includes('GENITORE') ? [] : ['GENITORE']);
+
+transaction.update(clientRef, {
+    tags: updatedTags,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+});
+
+// Durante la creazione del nuovo cliente
+transaction.set(clientRef, { 
+    ...clientData, 
+    id: clientId, 
+    tags: ['GENITORE'],
+    email: clientData.email.toLowerCase() 
+});
+```
+
+#### 3. Arricchimento Appointments
+```typescript
+const enrichedEnrollment = {
+    ...enrollmentData,
+    courseId: matchedCourseId, // Cruciale per visibilità
+    appointments: enrollmentData.appointments.map((app: any) => ({
+        ...app,
+        startTime: mainAppt.startTime,
+        endTime: mainAppt.endTime,
+        locationColor: enrollmentData.locationColor || "#6366f1"
+    })),
+    // ... altri campi
+};
+```
 
 ---
 

@@ -1,5 +1,5 @@
 import { onCall, onRequest, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 import { defineSecret } from "firebase-functions/params";
@@ -469,7 +469,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
     const firebase = getAdmin();
     const db = firebase.firestore();
     const { leadId, clientData, enrollmentData, transactionData, invoiceData } = request.data;
-    
+
     if (!leadId) throw new HttpsError("invalid-argument", "Missing leadId");
 
     try {
@@ -478,55 +478,111 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             const subRef = db.collection("subscriptionTypes").doc(enrollmentData.subscriptionTypeId);
             const subSnap = await transaction.get(subRef);
             if (!subSnap.exists) throw new Error("Tipo abbonamento non trovato.");
-            
+
             const sub = subSnap.data() as any;
             const basePrice = sub.price || 0;
             const stampPrice = basePrice >= 77 ? 2 : 0;
             const totalPrice = basePrice + stampPrice;
 
-            // 2. Creazione o Aggiornamento Cliente (Basato su Email)
+            // 1.1 MOTORE DI MATCHING CORSO (FASE A)
+            const mainAppt = enrollmentData.appointments?.[0];
+            const dayNames = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
+            const slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+            const targetDayIndex = dayNames.indexOf(slotDayName);
+
+            let matchedCourseId = "manual";
+            if (targetDayIndex !== -1 && mainAppt?.startTime) {
+                const coursesSnap = await db.collection("courses")
+                    .where("locationId", "==", enrollmentData.locationId)
+                    .where("dayOfWeek", "==", targetDayIndex)
+                    .where("startTime", "==", mainAppt.startTime)
+                    .limit(1).get();
+
+                if (!coursesSnap.empty) {
+                    matchedCourseId = coursesSnap.docs[0].id;
+                    logger.info(`[matcher] Iscrizione collegata al corso ${matchedCourseId}`);
+                } else {
+                    logger.warn(`[matcher] Nessun corso trovato per ${enrollmentData.locationName} il ${slotDayName} alle ${mainAppt.startTime}. Fallback su manual.`);
+                }
+            }
+
+            // 2. Creazione o Aggiornamento Cliente (Basato su Email) con Tag Management (FASE D)
             let clientId = "";
             const clientsSnap = await db.collection("clients")
                 .where("email", "==", clientData.email.toLowerCase())
                 .limit(1).get();
-            
+
             if (!clientsSnap.empty) {
-                clientId = clientsSnap.docs[0].id;
-                // Aggiorniamo eventuali nuovi campi ma manteniamo lo storico
+                const clientDoc = clientsSnap.docs[0];
+                clientId = clientDoc.id;
+                const currentTags = clientDoc.data().tags || [];
+
+                // Rimuoviamo LEAD e aggiungiamo GENITORE
+                const updatedTags = Array.from(new Set(
+                    currentTags
+                        .filter((t: string) => t.toUpperCase() !== 'LEAD')
+                        .concat(['GENITORE'])
+                ));
+
                 transaction.update(db.collection("clients").doc(clientId), {
                     firstName: clientData.firstName,
                     lastName: clientData.lastName,
                     phone: clientData.phone,
                     taxCode: clientData.taxCode,
                     address: clientData.address,
+                    tags: updatedTags,
                     updatedAt: admin.firestore.FieldValue.serverTimestamp()
                 });
             } else {
                 const clientRef = db.collection("clients").doc();
                 clientId = clientRef.id;
-                transaction.set(clientRef, { ...clientData, id: clientId, email: clientData.email.toLowerCase() });
+                transaction.set(clientRef, { 
+                    ...clientData, 
+                    id: clientId, 
+                    email: clientData.email.toLowerCase(),
+                    tags: ['GENITORE'],
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
             }
 
-            // 3. Creazione Iscrizione
+            // 3. Creazione Iscrizione Arricchita (FASE B)
             const enrRef = db.collection("enrollments").doc();
+
+            // Arricchimento appointments per evitare N/D nel frontend
+            const enrichedAppointments = (enrollmentData.appointments || []).map((app: any) => ({
+                ...app,
+                dayOfWeek: targetDayIndex,
+                startTime: app.startTime || mainAppt?.startTime || "16:00",
+                endTime: app.endTime || mainAppt?.endTime || "17:00",
+                locationId: enrollmentData.locationId,
+                locationName: enrollmentData.locationName,
+                locationColor: enrollmentData.locationColor || "#6366f1"
+            }));
+
             const finalEnrollment = {
                 ...enrollmentData,
                 id: enrRef.id,
                 clientId: clientId,
-                price: totalPrice, // Sovrascritto con calcolo certificato
+                courseId: matchedCourseId, // Collegamento al corso reale
+                price: totalPrice,
+                appointments: enrichedAppointments,
+                status: (enrollmentData.status || 'Active'), // Manteniamo Case-Sensitive
+                source: 'portal',
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                startDate: admin.firestore.FieldValue.serverTimestamp() // Default, verrà aggiornato dal generatore lezioni
+                startDate: admin.firestore.FieldValue.serverTimestamp()
             };
             transaction.set(enrRef, finalEnrollment);
 
-            // 4. Creazione Transazione
+            // 4. Creazione Transazione (con allocationId)
             const transRef = db.collection("transactions").doc();
             transaction.set(transRef, {
                 ...transactionData,
                 id: transRef.id,
                 clientId: clientId,
                 relatedEnrollmentId: enrRef.id,
-                amount: totalPrice, // Sovrascritto
+                amount: totalPrice,
+                allocationId: enrollmentData.locationId,
+                allocationName: enrollmentData.locationName,
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
@@ -538,22 +594,14 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     id: invRef.id,
                     clientId: clientId,
                     relatedEnrollmentId: enrRef.id,
-                    totalAmount: totalPrice, // Sovrascritto
+                    totalAmount: totalPrice,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
             }
 
-            // 6. Generazione Automatica Lezioni (Physical Lesson Engine)
-            // Semplificazione: generiamo lezioni basate sul primo slot per la durata dell'abbonamento
-            // Nota: In un sistema reale, gestirebbe meglio bundle multi-slot
-            const dayNames = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
-            const mainAppt = enrollmentData.appointments?.[0];
-            const slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
-            const targetDayIndex = dayNames.indexOf(slotDayName);
-            
+            // 6. Generazione Automatica Lezioni (Physical Lesson Engine - FASE C)
             if (targetDayIndex !== -1) {
                 let currentLessonDate = new Date();
-                // Sposta alla prossima occorrenza del giorno scelto
                 while (currentLessonDate.getDay() !== targetDayIndex) {
                     currentLessonDate.setDate(currentLessonDate.getDate() + 1);
                 }
@@ -563,36 +611,30 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 let firstDate = "";
 
                 while (createdCount < lessonsToCreate) {
-                    // Skip Italian Holidays (Physical Lesson Engine)
                     const dateStr = currentLessonDate.toISOString().split('T')[0];
-                    const isHoliday = isItalianHoliday(currentLessonDate);
-                    
-                    if (!isHoliday) {
+                    if (!isItalianHoliday(currentLessonDate)) {
                         const lessonRef = db.collection("lessons").doc();
-                        const lessonData = {
+                        transaction.set(lessonRef, {
                             id: lessonRef.id,
                             enrollmentId: enrRef.id,
-                            courseId: enrollmentData.courseId || "manual",
+                            courseId: matchedCourseId, // OBBLIGATORIO PER GETTONIERA
                             locationId: enrollmentData.locationId,
                             locationName: enrollmentData.locationName,
+                            locationColor: enrollmentData.locationColor || "#6366f1",
                             date: dateStr,
-                            startTime: mainAppt?.startTime || "00:00",
-                            endTime: mainAppt?.endTime || "00:00",
+                            startTime: enrichedAppointments[0]?.startTime || "16:00",
+                            endTime: enrichedAppointments[0]?.endTime || "17:00",
                             childName: enrollmentData.childName,
                             status: 'Scheduled',
                             createdAt: admin.firestore.FieldValue.serverTimestamp()
-                        };
-                        transaction.set(lessonRef, lessonData);
-                        
+                        });
+
                         if (createdCount === 0) firstDate = dateStr;
                         createdCount++;
                     }
-                    
-                    // Vai alla settimana successiva
                     currentLessonDate.setDate(currentLessonDate.getDate() + 7);
                 }
-                
-                // Aggiorna data inizio reale nell'enrollment
+
                 if (firstDate) {
                     transaction.update(enrRef, { startDate: firstDate });
                 }
@@ -606,7 +648,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 relatedClientId: clientId
             });
 
-            // 8. Notifica Push (Nuova Iscrizione)
+            // 8. Notifica Push
             try {
                 const title = "🚀 Nuova Iscrizione!";
                 const body = `${finalEnrollment.childName} si è iscritto a ${finalEnrollment.locationName} (${finalEnrollment.subscriptionName})`;
@@ -616,7 +658,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     click_action: 'ENROLLMENTS'
                 });
             } catch (pushErr) {
-                logger.error("Error sending push notification for enrollment:", pushErr);
+                logger.error("Error sending push notification:", pushErr);
             }
 
             return { success: true, enrollmentId: enrRef.id, clientId };
@@ -626,7 +668,6 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
         throw new HttpsError("internal", e.message);
     }
 });
-
 export const suggestBookTags = onCall({ region: "europe-west1", cors: true }, async (request: any) => {
     const { title } = request.data;
     return { target: ["piccoli"], category: ["testo & immagini"], theme: ["società"] };
