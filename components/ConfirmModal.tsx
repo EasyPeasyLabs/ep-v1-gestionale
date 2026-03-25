@@ -6,7 +6,7 @@ interface ConfirmModalProps {
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   isDangerous?: boolean;
@@ -27,7 +27,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <Modal onClose={onClose} size="md">
       <h2 className="text-xl font-bold mb-4">{title}</h2>
-      <p className="text-gray-600 mb-6">{message}</p>
+      <div className="text-gray-600 mb-6">{message}</div>
       <div className="flex justify-end space-x-3">
         <button 
             onClick={onClose} 

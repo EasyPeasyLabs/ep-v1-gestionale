@@ -67,7 +67,8 @@ import { cleanupEnrollmentFinancials } from '../services/financeService';
 import { getOpenCourses } from '../services/courseService';
 import { getSuppliers } from '../services/supplierService';
 import { getSubscriptionTypes } from '../services/settingsService';
-import { Enrollment, EnrollmentStatus } from '../types';
+import { addTransaction } from '../services/financeService';
+import { Enrollment, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus } from '../types';
 
 interface Lead {
   id: string;
@@ -100,11 +101,20 @@ export const LeadsPage: React.FC = () => {
   const [selectedLeadForLink, setSelectedLeadForLink] = useState<Lead | null>(null);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
 
+  // Conversion Options (Sprint 14)
+  const [conversionOptions, setConversionOptions] = useState<{
+    paymentMethod: PaymentMethod;
+    generateInvoice: boolean;
+  }>({
+    paymentMethod: PaymentMethod.Cash,
+    generateInvoice: false
+  });
+
   // Confirm Modal State
   const [confirmModalState, setConfirmModalState] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: string | React.ReactNode;
     onConfirm: () => void;
     isDangerous?: boolean;
     confirmText?: string;
@@ -119,7 +129,7 @@ export const LeadsPage: React.FC = () => {
 
   const openConfirmModal = (
     title: string, 
-    message: string, 
+    message: string | React.ReactNode, 
     onConfirm: () => void, 
     isDangerous = false,
     confirmText = 'Conferma'
@@ -197,11 +207,51 @@ export const LeadsPage: React.FC = () => {
   };
 
   const handleConvertToStudent = async (lead: Lead) => {
+    // Reset options for this conversion
+    setConversionOptions({ paymentMethod: PaymentMethod.Cash, generateInvoice: false });
+
+    // Internal component for the conversion UI
+    const ConversionUI = () => (
+      <div className="space-y-4 py-2">
+        <p className="text-sm text-gray-600">Vuoi creare un nuovo cliente e iscrizione per <strong>{lead.childName}</strong>?</p>
+        
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-bold text-gray-500 uppercase">Metodo di Pagamento</label>
+            <select 
+              className="md-input !py-1 text-sm bg-white"
+              value={conversionOptions.paymentMethod}
+              onChange={(e) => setConversionOptions(prev => ({ ...prev, paymentMethod: e.target.value as PaymentMethod }))}
+            >
+              <option value={PaymentMethod.Cash}>Contanti</option>
+              <option value={PaymentMethod.BankTransfer}>Bonifico</option>
+              <option value={PaymentMethod.PayPal}>PayPal</option>
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer p-1">
+            <input 
+              type="checkbox" 
+              className="w-4 h-4 rounded text-indigo-600 border-gray-300 focus:ring-indigo-500"
+              checked={conversionOptions.generateInvoice}
+              onChange={(e) => setConversionOptions(prev => ({ ...prev, generateInvoice: e.target.checked }))}
+            />
+            <span className="text-sm font-medium text-gray-700">Genera Fattura (No Doc se deselezionata)</span>
+          </label>
+        </div>
+      </div>
+    );
+
     openConfirmModal(
-      "Creazione Cliente",
-      `Vuoi creare un nuovo cliente e iscrizione per ${lead.childName}?`,
+      "Conversione Lead",
+      <ConversionUI />,
       async () => {
         try {
+          // Read latest options directly from state in the callback
+          // Note: React state in callback might be stale, but since we are in the same component, 
+          // we use the current closure or ref if needed. For functional components, we access state directly.
+          const { paymentMethod, generateInvoice } = conversionOptions;
+
           // 0. Matching Corso e Abbonamento Intelligente (Sprint 14)
           const [openCourses, suppliers, subTypes] = await Promise.all([
             getOpenCourses(),
@@ -209,13 +259,11 @@ export const LeadsPage: React.FC = () => {
             getSubscriptionTypes()
           ]);
           
-          // Mappa ID Sede -> Nome Sede per confronto
           const locationMap: Record<string, string> = {};
           suppliers.forEach(s => s.locations.forEach(l => {
               locationMap[l.id] = l.name;
           }));
 
-          // Trova Abbonamento corrispondente
           const leadSubName = lead.selectedSubscription || '';
           const matchedSub = subTypes.find(s => 
             s.name.toLowerCase().trim() === leadSubName.toLowerCase().trim() ||
@@ -245,9 +293,9 @@ export const LeadsPage: React.FC = () => {
             }
           }
 
-          // 1. Crea Cliente (nella collezione corretta 'clients')
+          // 1. Crea Cliente
           const clientData = {
-            clientType: 'parent', // ClientType.Parent
+            clientType: 'parent',
             firstName: lead.nome,
             lastName: lead.cognome,
             email: lead.email,
@@ -269,7 +317,7 @@ export const LeadsPage: React.FC = () => {
             }],
             status: 'Active',
             notesHistory: [],
-            tags: ['GENITORE'], // Tag GENITORE (Sprint 13)
+            tags: ['GENITORE'],
             rating: { availability: 0, complaints: 0, churnRate: 0, distance: 0 },
             createdAt: new Date().toISOString(),
             source: 'web_lead'
@@ -277,7 +325,7 @@ export const LeadsPage: React.FC = () => {
 
           const clientRef = await addDoc(collection(db, 'clients'), clientData);
 
-          // 2. Crea Iscrizione (Active) con dati corso e abbonamento (Sprint 14)
+          // 2. Crea Iscrizione
           const enrollmentData = {
             clientId: clientRef.id,
             clientName: `${lead.nome} ${lead.cognome}`,
@@ -293,7 +341,7 @@ export const LeadsPage: React.FC = () => {
             price: matchedSub?.price || 0,
             lessonsTotal: matchedSub?.lessons || 0,
             lessonsRemaining: matchedSub?.lessons || 0,
-            status: EnrollmentStatus.Active, // Forziamo Active perché abbiamo i dati (Sprint 14)
+            status: EnrollmentStatus.Active,
             appointments: [{
               lessonId: 'template',
               date: new Date().toISOString(),
@@ -307,12 +355,33 @@ export const LeadsPage: React.FC = () => {
             createdAt: new Date().toISOString()
           };
           
-          await addDoc(collection(db, 'enrollments'), enrollmentData);
+          const enrollmentRef = await addDoc(collection(db, 'enrollments'), enrollmentData);
 
-          // 3. Elimina il Lead (Traslazione completata)
+          // 2.5 Genera Transazione Incasso (Registro Cassa) con Tassonomia Rigorosa (Sprint 14)
+          if (enrollmentData.price > 0) {
+              const isNoDoc = paymentMethod === PaymentMethod.Cash && !generateInvoice;
+              const causal = isNoDoc 
+                ? `Incasso Iscrizione (No Doc) - ${lead.childName} - ${enrollmentData.subscriptionName}`
+                : `Incasso Iscrizione - ${lead.childName} - ${enrollmentData.subscriptionName}`;
+
+              await addTransaction({
+                  date: new Date().toISOString(),
+                  description: causal,
+                  amount: enrollmentData.price,
+                  type: TransactionType.Income,
+                  category: TransactionCategory.Vendite,
+                  paymentMethod: paymentMethod,
+                  status: paymentMethod === PaymentMethod.Cash ? TransactionStatus.Completed : TransactionStatus.Pending,
+                  relatedEnrollmentId: enrollmentRef.id,
+                  clientName: `${lead.nome} ${lead.cognome}`,
+                  isDeleted: false
+              });
+          }
+
+          // 3. Elimina il Lead
           await deleteDoc(doc(db, 'incoming_leads', lead.id));
 
-          alert(`Conversione completata! Abbonamento: ${enrollmentData.subscriptionName}, Corso Matching: ${matchedCourseId ? 'SI' : 'NO'}`);
+          alert(`Conversione completata!\nAbbonamento: ${enrollmentData.subscriptionName}\nRegistro Cassa: GENERATO (${paymentMethod === PaymentMethod.Cash ? 'COMPLETED' : 'PENDING'})`);
         } catch (error) {
           console.error("Error converting lead:", error);
           alert("Errore nella conversione del lead");
