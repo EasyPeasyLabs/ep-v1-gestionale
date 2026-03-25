@@ -65,6 +65,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { deleteEnrollment } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials } from '../services/financeService';
 import { getOpenCourses } from '../services/courseService';
+import { getSuppliers } from '../services/supplierService';
 import { Enrollment } from '../types';
 
 interface Lead {
@@ -200,7 +201,17 @@ export const LeadsPage: React.FC = () => {
       async () => {
         try {
           // 0. Matching Corso Intelligente (Sprint 13)
-          const openCourses = await getOpenCourses();
+          const [openCourses, suppliers] = await Promise.all([
+            getOpenCourses(),
+            getSuppliers()
+          ]);
+          
+          // Mappa ID Sede -> Nome Sede per confronto
+          const locationMap: Record<string, string> = {};
+          suppliers.forEach(s => s.locations.forEach(l => {
+              locationMap[l.id] = l.name;
+          }));
+
           let matchedCourseId = '';
           let matchedLocationId = 'unassigned';
           let finalStartTime = '16:00';
@@ -211,7 +222,7 @@ export const LeadsPage: React.FC = () => {
             const match = openCourses.find(c => 
               c.dayOfWeek === slot.dayOfWeek &&
               c.startTime === slot.startTime &&
-              (c.locationId === slot.locationId || c.locationName === lead.selectedLocation)
+              (c.locationId === slot.locationId || locationMap[c.locationId] === lead.selectedLocation)
             );
             if (match) {
               matchedCourseId = match.id;

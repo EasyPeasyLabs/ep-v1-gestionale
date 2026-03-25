@@ -109,8 +109,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [targetLocationId, setTargetLocationId] = useState(existingEnrollment?.locationId !== 'unassigned' ? existingEnrollment?.locationId : '');
     
     // Migliorato recupero orari dagli appointments
-    const initialStartTime = existingEnrollment?.appointments?.[0]?.startTime || existingEnrollment?.startTime || '16:00';
-    const initialEndTime = existingEnrollment?.appointments?.[0]?.endTime || existingEnrollment?.endTime || '18:00';
+    const initialStartTime = existingEnrollment?.appointments?.[0]?.startTime || '16:00';
+    const initialEndTime = existingEnrollment?.appointments?.[0]?.endTime || '18:00';
 
     const [startTime, setStartTime] = useState(initialStartTime);
     const [endTime, setEndTime] = useState(initialEndTime);
