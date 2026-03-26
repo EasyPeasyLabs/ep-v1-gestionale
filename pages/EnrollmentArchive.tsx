@@ -30,8 +30,20 @@ const getClientName = (c?: Client) => {
         : (c as InstitutionalClient).companyName;
 };
 
-const getStatusColor = (status: EnrollmentStatus) => {
-    switch (status) {
+type AnyEnrollmentStatus = EnrollmentStatus | string;
+
+const normalizeEnrollmentStatus = (status: AnyEnrollmentStatus): EnrollmentStatus => {
+    const s = String(status || '').trim().toLowerCase();
+    if (s === 'active' || s === 'confirmed') return EnrollmentStatus.Active;
+    if (s === 'completed') return EnrollmentStatus.Completed;
+    if (s === 'expired') return EnrollmentStatus.Expired;
+    if (s === 'pending') return EnrollmentStatus.Pending;
+    return EnrollmentStatus.Pending;
+};
+
+const getStatusColor = (status: AnyEnrollmentStatus) => {
+    const normalized = normalizeEnrollmentStatus(status);
+    switch (normalized) {
         case EnrollmentStatus.Active: return 'bg-green-500 border-green-600';
         case EnrollmentStatus.Completed: return 'bg-blue-500 border-blue-600';
         case EnrollmentStatus.Expired: return 'bg-gray-400 border-gray-500';
@@ -745,7 +757,16 @@ const EnrollmentArchive: React.FC = () => {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <h4 className="font-bold text-gray-800 text-sm">{enr.subscriptionName}</h4>
-                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${enr.status === 'Active' ? 'bg-green-100 text-green-700 border-green-200' : enr.status === 'Completed' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>{enr.status === 'Active' ? 'Attivo' : enr.status === 'Completed' ? 'Completato' : enr.status === 'Expired' ? 'Scaduto' : 'In Attesa'}</span>
+                                                        {(() => {
+                                                            const normalizedStatus = normalizeEnrollmentStatus(enr.status);
+                                                            const statusLabel = normalizedStatus === EnrollmentStatus.Active ? 'Attivo' : normalizedStatus === EnrollmentStatus.Completed ? 'Completato' : normalizedStatus === EnrollmentStatus.Expired ? 'Scaduto' : 'In Attesa';
+                                                            const statusClass = normalizedStatus === EnrollmentStatus.Active ? 'bg-green-100 text-green-700 border-green-200' : normalizedStatus === EnrollmentStatus.Completed ? 'bg-blue-100 text-blue-700 border-blue-200' : normalizedStatus === EnrollmentStatus.Expired ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-amber-100 text-amber-700 border-amber-200';
+                                                            return (
+                                                                <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${statusClass}`}>
+                                                                    {statusLabel}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </div>
                                                     <div className="flex flex-wrap gap-y-1 gap-x-4 text-xs text-gray-500">
                                                         <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: enr.locationColor || '#ccc' }}></span><span>{enr.locationName}</span></div>
