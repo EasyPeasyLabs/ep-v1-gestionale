@@ -153,6 +153,9 @@ interface Lead {
   status: 'pending' | 'contacted' | 'converted' | 'rejected';
   createdAt: string;
   source: string;
+  convertedAt?: string; // Data di conversione
+  convertedEnrollmentId?: string; // ID dell'iscrizione creata
+  convertedStudentId?: string; // ID dello studente creato (legacy)
 }
 
 export const LeadsPage: React.FC = () => {
@@ -448,8 +451,14 @@ export const LeadsPage: React.FC = () => {
               });
           }
 
-          // 3. Elimina il Lead
-          await deleteDoc(doc(db, 'incoming_leads', lead.id));
+          // 3. Aggiorna lo stato del Lead a 'converted' invece di eliminarlo
+          await updateDoc(doc(db, 'incoming_leads', lead.id), {
+            status: 'converted',
+            convertedAt: new Date().toISOString(),
+            convertedEnrollmentId: enrollmentRef.id,
+            convertedStudentId: clientData.children[0].id, // ID del bambino creato
+            updatedAt: new Date().toISOString()
+          });
 
           alert(`Conversione completata!\nAbbonamento: ${enrollmentData.subscriptionName}\nRegistro Cassa: GENERATO (${paymentMethod === PaymentMethod.Cash ? 'COMPLETED' : 'PENDING'})`);
         } catch (error) {
@@ -461,9 +470,13 @@ export const LeadsPage: React.FC = () => {
   };
 
   const handleDeleteEnrollmentFromLead = (lead: Lead) => {
+    const isConverted = lead.status === 'converted';
+    const actionText = isConverted ? "annullare la conversione" : "eliminare l'iscrizione";
+    const revertText = isConverted ? "riporterà questa richiesta allo stato 'Nuovo'" : "riporterà questa richiesta allo stato 'Nuovo'";
+
     openConfirmModal(
-      "Eliminazione Iscrizione",
-      `ATTENZIONE: Stai per eliminare l'iscrizione collegata a ${lead.childName || 'questo studente'}.\n\nQuesta azione eliminerà:\n- L'iscrizione dall'Archivio\n- I dati finanziari collegati\n- Riporterà questa richiesta allo stato 'Nuovo'\n\nSei sicuro di voler procedere?`,
+      isConverted ? "Annullamento Conversione" : "Eliminazione Iscrizione",
+      `ATTENZIONE: Stai per ${actionText} collegata a ${lead.childName || 'questo studente'}.\n\nQuesta azione eliminerà:\n- L'iscrizione dall'Archivio\n- I dati finanziari collegati\n- ${revertText}\n\nSei sicuro di voler procedere?`,
       async () => {
         setLoading(true);
         try {

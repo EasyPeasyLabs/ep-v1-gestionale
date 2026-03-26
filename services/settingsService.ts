@@ -1,7 +1,7 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, getDoc, setDoc } from 'firebase/firestore';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate, NotificationRule, NotificationType } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate, NotificationRule, NotificationType, PortalText } from '../types';
 
 const getSettingsDocRef = () => doc(db, 'settings', 'companyInfo');
 const getSubscriptionCollectionRef = () => collection(db, 'subscriptionTypes');
@@ -304,4 +304,60 @@ export const saveNotificationRule = async (rule: NotificationRule): Promise<void
 export const deleteNotificationRule = async (id: string): Promise<void> => {
     const docRef = doc(db, 'notification_rules', id);
     await deleteDoc(docRef);
+};
+
+// --- PORTAL TEXTS ---
+const getPortalTextsCollectionRef = () => collection(db, 'portalTexts');
+
+export const getPortalTexts = async (): Promise<PortalText[]> => {
+    try {
+        const querySnapshot = await getDocs(getPortalTextsCollectionRef());
+        return querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        } as PortalText));
+    } catch (error) {
+        console.error('Error fetching portal texts:', error);
+        return [];
+    }
+};
+
+export const savePortalText = async (text: PortalText): Promise<void> => {
+    try {
+        const docRef = doc(db, 'portalTexts', text.id);
+        await setDoc(docRef, text, { merge: true });
+    } catch (error) {
+        console.error('Error saving portal text:', error);
+        throw error;
+    }
+};
+
+export const addPortalText = async (text: Omit<PortalText, 'id'>): Promise<string> => {
+    try {
+        const docRef = await addDoc(getPortalTextsCollectionRef(), text);
+        return docRef.id;
+    } catch (error) {
+        console.error('Error adding portal text:', error);
+        throw error;
+    }
+};
+
+export const updatePortalText = async (id: string, updates: Partial<PortalText>): Promise<void> => {
+    try {
+        const docRef = doc(db, 'portalTexts', id);
+        await updateDoc(docRef, updates);
+    } catch (error) {
+        console.error('Error updating portal text:', error);
+        throw error;
+    }
+};
+
+export const deletePortalText = async (id: string): Promise<void> => {
+    try {
+        const docRef = doc(db, 'portalTexts', id);
+        await deleteDoc(docRef);
+    } catch (error) {
+        console.error('Error deleting portal text:', error);
+        throw error;
+    }
 };

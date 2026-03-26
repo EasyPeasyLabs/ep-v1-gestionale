@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate } from '../services/settingsService';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType, PortalText } from '../types';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate, getPortalTexts, savePortalText, addPortalText, updatePortalText, deletePortalText } from '../services/settingsService';
 import { migrateHistoricalEnrollments } from '../services/enrollmentService';
 import { migrateLocations } from '../services/migrationService';
 import { getSuppliers } from '../services/supplierService';
@@ -579,6 +579,77 @@ const ContractTemplateForm: React.FC<{ template: ContractTemplate; onSave: (t: C
     );
 };
 
+const PortalTextForm: React.FC<{ text: PortalText; onSave: (t: PortalText) => void; onCancel: () => void; }> = ({ text, onSave, onCancel }) => {
+    const [type, setType] = useState<'absence_recovery_warning' | 'payment_method'>(text.type);
+    const [title, setTitle] = useState(text.title);
+    const [content, setContent] = useState(text.content);
+    const [paymentMethod, setPaymentMethod] = useState(text.paymentMethod || '');
+    const [isActive, setIsActive] = useState(text.isActive);
+    const [order, setOrder] = useState(text.order);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onSave({ ...text, type, title, content, paymentMethod: type === 'payment_method' ? paymentMethod : undefined, isActive, order });
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
+            <div className="p-6 pb-2 flex-shrink-0 border-b border-gray-100">
+                <h2 className="text-xl font-bold text-gray-800">{text.id ? `Modifica Testo Portale: ${text.title}` : 'Nuovo Testo Portale'}</h2>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
+                <div className="bg-blue-50 p-3 rounded text-xs text-blue-800">
+                    <strong>Testi visualizzati nel portale pubblico di iscrizione.</strong> Questi testi vengono mostrati ai lead durante il processo di registrazione.
+                </div>
+
+                <div className="md-input-group">
+                    <select value={type} onChange={e => setType(e.target.value as any)} required className="md-input">
+                        <option value="absence_recovery_warning">Avviso Assenze e Recuperi</option>
+                        <option value="payment_method">Modalità di Pagamento</option>
+                    </select>
+                    <label className="md-input-label">Tipo di Testo</label>
+                </div>
+
+                <div className="md-input-group">
+                    <input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input" placeholder=" " />
+                    <label className="md-input-label">Titolo</label>
+                </div>
+
+                {type === 'payment_method' && (
+                    <div className="md-input-group">
+                        <input type="text" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} required className="md-input" placeholder=" " />
+                        <label className="md-input-label">Metodo di Pagamento (es. PayPal, Bonifico)</label>
+                    </div>
+                )}
+
+                <div className="md-input-group">
+                    <input type="number" value={order} onChange={e => setOrder(Number(e.target.value))} className="md-input" placeholder=" " />
+                    <label className="md-input-label">Ordine di Visualizzazione</label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isActive" checked={isActive} onChange={e => setIsActive(e.target.checked)} className="rounded text-blue-600" />
+                    <label htmlFor="isActive" className="text-sm text-gray-700">Testo Attivo</label>
+                </div>
+
+                <div>
+                    <RichTextEditor
+                        label="Contenuto"
+                        value={content}
+                        onChange={setContent}
+                        placeholder="Scrivi qui il contenuto del testo..."
+                        className="min-h-[200px]"
+                    />
+                </div>
+            </div>
+            <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat">Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-primary">Salva</button>
+            </div>
+        </form>
+    );
+};
+
 const checkCategoryLabels: Record<CheckCategory, string> = {
     [CheckCategory.Payments]: 'Pagamenti e Scadenze (es. rate, affitti)',
     [CheckCategory.Operations]: 'Operatività e Didattica (es. presenze, materiali)',
@@ -684,6 +755,11 @@ const Settings: React.FC = () => {
     const [isCheckModalOpen, setIsCheckModalOpen] = useState(false);
     const [editingCheck, setEditingCheck] = useState<PeriodicCheck | null>(null);
 
+    const [portalTexts, setPortalTexts] = useState<PortalText[]>([]);
+    const [isPortalTextModalOpen, setIsPortalTextModalOpen] = useState(false);
+    const [editingPortalText, setEditingPortalText] = useState<PortalText | null>(null);
+    const [portalTextToDelete, setPortalTextToDelete] = useState<string | null>(null);
+
     const [primaryColor, setPrimaryColor] = useState(defaultTheme.primary);
     const [bgColor, setBgColor] = useState(defaultTheme.bgLight);
     
@@ -701,14 +777,15 @@ const Settings: React.FC = () => {
     const fetchAllData = useCallback(async () => {
         try {
             setLoading(true);
-            const [companyData, subsData, templatesData, checksData, supsData, recData, contractData] = await Promise.all([
+            const [companyData, subsData, templatesData, checksData, supsData, recData, contractData, portalTextsData] = await Promise.all([
                 getCompanyInfo(), 
                 getSubscriptionTypes(),
                 getCommunicationTemplates(),
                 getPeriodicChecks(),
                 getSuppliers(),
                 getRecoveryPolicies(),
-                getContractTemplates()
+                getContractTemplates(),
+                getPortalTexts()
             ]);
             setInfo(companyData); 
             setSubscriptions(subsData);
@@ -717,6 +794,7 @@ const Settings: React.FC = () => {
             setSuppliers(supsData);
             setRecoveryPolicies(recData);
             setContractTemplates(contractData);
+            setPortalTexts(portalTextsData);
             
             const savedTheme = getSavedTheme();
             setPrimaryColor(savedTheme.primary);
@@ -758,6 +836,33 @@ const Settings: React.FC = () => {
 
     const handleSaveCheck = async (c: PeriodicCheckInput | PeriodicCheck) => { if ('id' in c) await updatePeriodicCheck(c.id, c); else await addPeriodicCheck(c); setIsCheckModalOpen(false); setEditingCheck(null); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); };
     const handleDeleteCheck = async (id: string) => { if(confirm("Eliminare questo controllo periodico?")) { await deletePeriodicCheck(id); fetchAllData(); window.dispatchEvent(new Event('EP_DataUpdated')); } };
+
+    // Portal Texts CRUD
+    const handleCreatePortalText = () => {
+        setEditingPortalText({ id: '', type: 'absence_recovery_warning', title: '', content: '', isActive: true, order: portalTexts.length });
+        setIsPortalTextModalOpen(true);
+    };
+    const handleOpenPortalTextModal = (t: PortalText) => { setEditingPortalText(t); setIsPortalTextModalOpen(true); };
+    const handleSavePortalText = async (t: PortalText) => {
+        if (t.id) {
+            await updatePortalText(t.id, t);
+        } else {
+            const newId = await addPortalText(t);
+            t.id = newId;
+        }
+        setIsPortalTextModalOpen(false);
+        setEditingPortalText(null);
+        fetchAllData();
+    };
+    const handleDeletePortalTextClick = (id: string) => { setPortalTextToDelete(id); };
+    const handleConfirmDeletePortalText = async () => {
+        if (portalTextToDelete) {
+            await deletePortalText(portalTextToDelete);
+            fetchAllData();
+            setPortalTextToDelete(null);
+        }
+    };
+
     const handleColorChange = (newPrimary: string, newBg: string) => { setPrimaryColor(newPrimary); setBgColor(newBg); applyTheme(newPrimary, newBg); };
     const handleResetTheme = () => { handleColorChange(defaultTheme.primary, defaultTheme.bgLight); };
 
@@ -1151,7 +1256,44 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 7. Personalizzazione Tema */}
+                {/* 7. Testi Portale Pubblico */}
+                <div className="md-card p-6 border-l-4 border-purple-500">
+                    <div className="flex justify-between items-center border-b pb-3 mb-3">
+                        <div>
+                            <h2 className="text-lg font-semibold">Testi Portale Pubblico</h2>
+                            <p className="text-xs text-gray-500">Gestisci i testi mostrati nel portale di iscrizione</p>
+                        </div>
+                        <button onClick={handleCreatePortalText} className="md-btn md-btn-sm md-btn-primary"><PlusIcon /> Nuovo</button>
+                    </div>
+                    <div className="mt-4 space-y-3 max-h-60 overflow-y-auto">
+                        {portalTexts
+                            .sort((a, b) => a.order - b.order)
+                            .map(t => (
+                            <div key={t.id} className={`flex flex-col sm:flex-row justify-between items-start sm:items-center p-3 rounded border gap-3 ${t.isActive ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200 opacity-60'}`}>
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded" style={{backgroundColor: t.type === 'absence_recovery_warning' ? '#fef3c7' : '#dbeafe', color: t.type === 'absence_recovery_warning' ? '#92400e' : '#1e40af'}}>
+                                            {t.type === 'absence_recovery_warning' ? 'Assenze' : 'Pagamento'}
+                                        </span>
+                                        {t.paymentMethod && <span className="text-xs text-gray-600">• {t.paymentMethod}</span>}
+                                        {!t.isActive && <span className="text-xs text-red-600 font-bold">INATTIVO</span>}
+                                    </div>
+                                    <p className="font-medium text-sm text-gray-800">{t.title}</p>
+                                    <p className="text-xs text-gray-500 truncate max-w-[200px]">{t.content.replace(/<[^>]*>/g, '').substring(0, 100)}...</p>
+                                </div>
+                                <div className="flex gap-1 self-end sm:self-auto">
+                                    <button onClick={() => handleOpenPortalTextModal(t)} className="md-icon-btn edit p-2"><PencilIcon /></button>
+                                    <button onClick={() => handleDeletePortalTextClick(t.id)} className="md-icon-btn delete p-2"><TrashIcon /></button>
+                                </div>
+                            </div>
+                        ))}
+                        {portalTexts.length === 0 && (
+                            <p className="text-sm italic text-gray-400 text-center py-4">Nessun testo configurato. Crea il primo testo per il portale.</p>
+                        )}
+                    </div>
+                </div>
+
+                {/* 8. Personalizzazione Tema */}
                 <div className="md-card p-6">
                     <h2 className="text-lg font-semibold border-b pb-3 mb-4" style={{borderColor: 'var(--md-divider)'}}>Personalizzazione Tema</h2>
                     <div className="grid grid-cols-1 gap-4">
@@ -1161,7 +1303,7 @@ const Settings: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 8. Manutenzione Sistema */}
+                {/* 9. Manutenzione Sistema */}
                 <div className="md-card p-6 border-l-4 border-red-500">
                     <h2 className="text-lg font-semibold border-b pb-3 mb-4">Manutenzione Sistema</h2>
                     <p className="text-xs text-gray-500 mb-4">Procedure avanzate per la gestione del database e la migrazione dei dati.</p>
@@ -1249,10 +1391,12 @@ const Settings: React.FC = () => {
         {isTemplateModalOpen && editingTemplate && <Modal onClose={() => setIsTemplateModalOpen(false)}><TemplateForm template={editingTemplate} onSave={handleSaveTemplate} onCancel={() => setIsTemplateModalOpen(false)} /></Modal>}
         {isContractModalOpen && editingContract && <Modal onClose={() => setIsContractModalOpen(false)}><ContractTemplateForm template={editingContract} onSave={handleSaveContract} onCancel={() => setIsContractModalOpen(false)} /></Modal>}
         {isCheckModalOpen && <Modal onClose={() => setIsCheckModalOpen(false)}><CheckForm check={editingCheck} onSave={handleSaveCheck} onCancel={() => setIsCheckModalOpen(false)} /></Modal>}
+        {isPortalTextModalOpen && editingPortalText && <Modal onClose={() => setIsPortalTextModalOpen(false)}><PortalTextForm text={editingPortalText} onSave={handleSavePortalText} onCancel={() => setIsPortalTextModalOpen(false)} /></Modal>}
         
         <ConfirmModal isOpen={!!subToDelete} onClose={() => setSubToDelete(null)} onConfirm={handleConfirmDelete} title="Elimina Abbonamento" message="Sei sicuro?" isDangerous={true} />
         <ConfirmModal isOpen={!!templateToDelete} onClose={() => setTemplateToDelete(null)} onConfirm={handleConfirmDeleteTemplate} title="Elimina Template" message="Sei sicuro di voler eliminare questo template?" isDangerous={true} />
         <ConfirmModal isOpen={!!contractToDelete} onClose={() => setContractToDelete(null)} onConfirm={handleConfirmDeleteContract} title="Elimina Contratto" message="Sei sicuro di voler eliminare questo contratto?" isDangerous={true} />
+        <ConfirmModal isOpen={!!portalTextToDelete} onClose={() => setPortalTextToDelete(null)} onConfirm={handleConfirmDeletePortalText} title="Elimina Testo Portale" message="Sei sicuro di voler eliminare questo testo del portale?" isDangerous={true} />
         
         {showConfirmMigrate && (
             <ConfirmModal 
