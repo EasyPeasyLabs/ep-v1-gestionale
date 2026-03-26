@@ -52,6 +52,37 @@ const getStatusColor = (status: AnyEnrollmentStatus) => {
     }
 };
 
+const getStatusLabel = (status: AnyEnrollmentStatus, isFullyPaid: boolean) => {
+    const normalized = normalizeEnrollmentStatus(status);
+    const resolved = normalized === EnrollmentStatus.Pending && isFullyPaid ? EnrollmentStatus.Active : normalized;
+    switch (resolved) {
+        case EnrollmentStatus.Active: return 'Attivo';
+        case EnrollmentStatus.Completed: return 'Completato';
+        case EnrollmentStatus.Expired: return 'Scaduto';
+        case EnrollmentStatus.Pending: return 'In Attesa';
+        default: return 'In Attesa';
+    }
+};
+
+const computePaymentStatus = (enr: Enrollment, invoices: Invoice[], transactions: Transaction[]) => {
+    const relatedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
+    const invoicePaid = relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
+    const directTransactions = transactions.filter(t => 
+        t.relatedEnrollmentId === enr.id && 
+        !t.isDeleted && 
+        (!t.relatedDocumentId || t.relatedDocumentId.startsWith('ENR-'))
+    );
+    const cashPaid = directTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
+    const totalPaid = invoicePaid + cashPaid;
+    const price = Number(enr.price) || 0;
+    const adjustment = Number(enr.adjustmentAmount || 0);
+    const linkedGhosts = invoices.filter(i => i.relatedEnrollmentId === enr.id && i.isGhost && !i.isDeleted);
+    const ghostTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
+    const remaining = Math.max(0, price - totalPaid - adjustment - ghostTotal);
+    const isFullyPaid = remaining < 0.5 && price > 0;
+    return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
+};
+
 // --- FINANCIAL WIZARD COMPONENT ---
 const EnrollmentFinancialWizard: React.FC<{
     enrollment: Enrollment;
@@ -380,7 +411,25 @@ const EnrollmentArchive: React.FC = () => {
                 getInvoices(),
                 getTransactions()
             ]);
-            setEnrollments(enrData);
+
+            // 1) Auto-activation logic: se pagamento completamente coperto, promuovi Pending -> Active
+            const toActivate = enrData.filter(enr =>
+                normalizeEnrollmentStatus(enr.status) === EnrollmentStatus.Pending &&
+                computePaymentStatus(enr, invData, trnData).isFullyPaid
+            );
+
+            if (toActivate.length > 0) {
+                await Promise.all(toActivate.map(enr =>
+                    updateEnrollment(enr.id, { status: EnrollmentStatus.Active })
+                        .catch(err => { console.warn('Errore aggiornamento stato iscrizione:', err); })
+                ));
+                // Ricarica dopo la sincronizzazione per evitare incoerenze nella UI
+                const refreshed = await getAllEnrollments();
+                setEnrollments(refreshed);
+            } else {
+                setEnrollments(enrData);
+            }
+
             setClients(cliData);
             setSuppliers(supData);
             setInvoices(invData);
@@ -413,29 +462,7 @@ const EnrollmentArchive: React.FC = () => {
     // UPDATED PAYMENT STATUS LOGIC (Hoisted)
     const getPaymentStatus = useCallback((enr: Enrollment) => {
         // 1. Sum linked invoices (Standard)
-        const relatedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
-        const invoicePaid = relatedInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
-        
-        // 2. Sum linked cash transactions (Solo Cassa)
-        const directTransactions = transactions.filter(t => 
-            t.relatedEnrollmentId === enr.id && 
-            !t.isDeleted && 
-            (!t.relatedDocumentId || t.relatedDocumentId.startsWith('ENR-'))
-        );
-        const cashPaid = directTransactions.reduce((sum, t) => sum + Number(t.amount), 0);
-
-        const totalPaid = invoicePaid + cashPaid;
-
-        const price = Number(enr.price) || 0;
-        const adjustment = Number(enr.adjustmentAmount || 0);
-        
-        const linkedGhosts = invoices.filter(i => i.relatedEnrollmentId === enr.id && i.isGhost && !i.isDeleted);
-        const ghostTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
-        
-        const remaining = Math.max(0, price - totalPaid - adjustment - ghostTotal);
-        const isFullyPaid = remaining < 0.5 && price > 0;
-        
-        return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
+        return computePaymentStatus(enr, invoices, transactions);
     }, [invoices, transactions]);
 
     const filteredEnrollments = useMemo(() => {
@@ -505,8 +532,14 @@ const EnrollmentArchive: React.FC = () => {
                                 const effectiveStart = start < yearStart ? yearStart : start; const effectiveEnd = end > yearEnd ? yearEnd : end;
                                 const totalDays = 365; const startDay = Math.floor((effectiveStart.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)); const durationDays = Math.ceil((effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24));
                                 const leftPercent = (startDay / totalDays) * 100; const widthPercent = Math.max(0.5, (durationDays / totalDays) * 100);
+
+                                const enrPayment = getPaymentStatus(enr);
+                                const displayStatus = (normalizeEnrollmentStatus(enr.status) === EnrollmentStatus.Pending && enrPayment.isFullyPaid)
+                                    ? EnrollmentStatus.Active
+                                    : normalizeEnrollmentStatus(enr.status);
+
                                 return (
-                                    <div key={enr.id} className={`absolute h-4 top-2 rounded shadow-sm border-l-2 ${getStatusColor(enr.status)} opacity-80 hover:opacity-100 hover:z-10 transition-all cursor-pointer`} style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, backgroundColor: enr.locationColor || '#ccc' }} title={`${enr.subscriptionName} | ${enr.locationName}`} onClick={() => handleEditRequest(enr)}></div>
+                                    <div key={enr.id} className={`absolute h-4 top-2 rounded shadow-sm border-l-2 ${getStatusColor(displayStatus)} opacity-80 hover:opacity-100 hover:z-10 transition-all cursor-pointer`} style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, backgroundColor: enr.locationColor || '#ccc' }} title={`${enr.subscriptionName} | ${enr.locationName}`} onClick={() => handleEditRequest(enr)}></div>
                                 );
                             })}
                         </div>
@@ -758,9 +791,12 @@ const EnrollmentArchive: React.FC = () => {
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <h4 className="font-bold text-gray-800 text-sm">{enr.subscriptionName}</h4>
                                                         {(() => {
-                                                            const normalizedStatus = normalizeEnrollmentStatus(enr.status);
-                                                            const statusLabel = normalizedStatus === EnrollmentStatus.Active ? 'Attivo' : normalizedStatus === EnrollmentStatus.Completed ? 'Completato' : normalizedStatus === EnrollmentStatus.Expired ? 'Scaduto' : 'In Attesa';
-                                                            const statusClass = normalizedStatus === EnrollmentStatus.Active ? 'bg-green-100 text-green-700 border-green-200' : normalizedStatus === EnrollmentStatus.Completed ? 'bg-blue-100 text-blue-700 border-blue-200' : normalizedStatus === EnrollmentStatus.Expired ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-amber-100 text-amber-700 border-amber-200';
+                                                            const isFullyPaid = getPaymentStatus(enr).isFullyPaid;
+                                                            const statusLabel = getStatusLabel(enr.status, isFullyPaid);
+                                                            const statusClass = (statusLabel === 'Attivo') ? 'bg-green-100 text-green-700 border-green-200'
+                                                                : (statusLabel === 'Completato') ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                                                : (statusLabel === 'Scaduto') ? 'bg-gray-100 text-gray-600 border-gray-200'
+                                                                : 'bg-amber-100 text-amber-700 border-amber-200';
                                                             return (
                                                                 <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold border ${statusClass}`}>
                                                                     {statusLabel}
