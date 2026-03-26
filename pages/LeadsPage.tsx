@@ -29,6 +29,73 @@ const endOfWeek = (date: Date) => {
 const isWithinInterval = (date: Date, { start, end }: { start: Date, end: Date }) => {
   return date >= start && date <= end;
 };
+
+interface ParsedAddress {
+  address: string;
+  zipCode: string;
+  city: string;
+  province: string;
+}
+
+const parseAddress = (raw: string | undefined | null): ParsedAddress => {
+  const result: ParsedAddress = {
+    address: '',
+    zipCode: '',
+    city: '',
+    province: ''
+  };
+
+  if (!raw || !raw.trim()) return result;
+
+  const normalized = raw.trim();
+
+  // Extract ZIP/CITY/PROVINCE portion: es. "70010 ADELFIA (BA)" oppure "70010 ADELFIA BA"
+  const zipCityProvMatch = normalized.match(/([0-9]{5})\s+([^()\d]+?)\s*(?:\(([^)]+)\)|([A-Za-z]{2}))?$/i);
+
+  if (zipCityProvMatch) {
+    result.zipCode = zipCityProvMatch[1];
+    result.city = zipCityProvMatch[2].trim();
+    result.province = (zipCityProvMatch[3] || zipCityProvMatch[4] || '').trim().toUpperCase();
+
+    // address is everything before the matched postal block
+    const idx = normalized.lastIndexOf(zipCityProvMatch[0]);
+    if (idx > 0) {
+      let base = normalized.slice(0, idx).trim();
+      // keep only first two chunks before ZIP block (es. VIA CHIANCARO, 2)
+      const chunks = base.split(',').map(c => c.trim()).filter(Boolean);
+      if (chunks.length >= 2) {
+        result.address = `${chunks[0]}, ${chunks[1]}`;
+      } else {
+        result.address = base;
+      }
+      // fallback to full raw if parsing gave empty but raw at least has text
+      if (!result.address) {
+        result.address = base;
+      }
+    }
+    return result;
+  }
+
+  // Fallback: try splitting by comma, non-strict
+  const parts = normalized.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    result.address = `${parts[0]}, ${parts[1]}`;
+  } else {
+    result.address = parts[0] || '';
+  }
+
+  // try to pick zip/city/province from last part if present
+  const fallback = parts.slice(-1)[0] || '';
+  const fallbackMatch = fallback.match(/([0-9]{5})\s+([^()]+?)\s*(?:\(([^)]+)\)|([A-Za-z]{2}))?$/i);
+  if (fallbackMatch) {
+    result.zipCode = fallbackMatch[1];
+    result.city = fallbackMatch[2].trim();
+    result.province = (fallbackMatch[3] || fallbackMatch[4] || '').trim().toUpperCase();
+  }
+
+  return result;
+};
+
 import ClientsIcon from '../components/icons/ClientsIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import CheckIcon from '../components/icons/CheckIcon';
@@ -81,6 +148,7 @@ interface Lead {
   selectedLocation: string;
   selectedSubscription?: string; // Nome abbonamento scelto dal lead
   selectedSlot: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  address?: string; // Indirizzo completo formato Google Maps
   notes?: string;
   status: 'pending' | 'contacted' | 'converted' | 'rejected';
   createdAt: string;
@@ -294,6 +362,8 @@ export const LeadsPage: React.FC = () => {
           }
 
           // 1. Crea Cliente
+          const parsedAddress = parseAddress(lead.address || lead.selectedLocation || '');
+
           const clientData = {
             clientType: 'parent',
             firstName: lead.nome,
@@ -301,10 +371,10 @@ export const LeadsPage: React.FC = () => {
             email: lead.email,
             phone: lead.telefono,
             taxCode: '',
-            address: '',
-            city: '',
-            province: '',
-            zipCode: '',
+            address: parsedAddress.address,
+            city: parsedAddress.city,
+            province: parsedAddress.province,
+            zipCode: parsedAddress.zipCode,
             children: [{
               id: crypto.randomUUID(),
               name: lead.childName,
