@@ -65,6 +65,8 @@ const AbsenceWizardModal: React.FC<{
     }, [suppliers]);
 
     const handleAction = async (strategy: 'lost' | 'recover_auto' | 'recover_manual') => {
+        if (loading) return; // Prevent double clicks
+        
         if (strategy === 'recover_manual') {
             const loc = allLocations.find(l => l.id === manualLocationId);
             if (!loc) return alert("Seleziona una sede valida.");

@@ -497,10 +497,11 @@ export const registerAbsence = async (
     if (strategy === 'recover_auto' || strategy === 'recover_manual') {
         const originalApp = appointments[appIndex];
         let newAppointment: Appointment | null = null;
+        const recoveryId = `REC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
         if (strategy === 'recover_manual' && manualDetails) {
             newAppointment = {
-                lessonId: `REC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                lessonId: recoveryId,
                 date: new Date(manualDetails.date).toISOString(),
                 startTime: manualDetails.startTime,
                 endTime: manualDetails.endTime,
@@ -508,15 +509,20 @@ export const registerAbsence = async (
                 locationName: manualDetails.locationName,
                 locationColor: manualDetails.locationColor,
                 childName: originalApp.childName,
-                status: 'Scheduled'
+                status: 'Scheduled',
+                recoveredLessonId: originalApp.lessonId
             };
         } else {
-            // RECUPERO AUTOMATICO
+            // RECUPERO AUTOMATICO: Slitta alla prima settimana disponibile DOPO l'ultima lezione programmata
             const closures = cachedClosures || await getSchoolClosures();
             const closedDates = new Set(closures.map(c => c.date.split('T')[0]));
 
-            const nextDate = new Date(originalApp.date);
-            const originalDayOfWeek = nextDate.getDay();
+            // Trova l'ultima data programmata attualmente per determinare il punto di accodamento
+            const sortedApps = [...appointments].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            const lastApp = sortedApps[sortedApps.length - 1];
+            
+            const nextDate = new Date(lastApp.date);
+            const originalDayOfWeek = new Date(originalApp.date).getDay();
             let foundDate = false;
             let safetyCounter = 0;
             
@@ -524,7 +530,7 @@ export const registerAbsence = async (
                 nextDate.setDate(nextDate.getDate() + 1);
                 const isoDate = nextDate.toISOString().split('T')[0];
 
-                // Cerca stesso giorno della settimana, non festivo e NON chiusura sede
+                // Cerca lo stesso giorno della settimana dell'originale, DOPO l'ultima lezione, non festivo e NON chiusura
                 if (nextDate.getDay() === originalDayOfWeek && !isItalianHoliday(nextDate) && !closedDates.has(isoDate)) {
                     foundDate = true;
                 }
@@ -533,7 +539,7 @@ export const registerAbsence = async (
 
             if (foundDate) {
                 newAppointment = {
-                    lessonId: `REC-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    lessonId: recoveryId,
                     date: nextDate.toISOString(),
                     startTime: originalApp.startTime,
                     endTime: originalApp.endTime,
@@ -541,12 +547,15 @@ export const registerAbsence = async (
                     locationName: originalApp.locationName,
                     locationColor: originalApp.locationColor,
                     childName: originalApp.childName,
-                    status: 'Scheduled'
+                    status: 'Scheduled',
+                    recoveredLessonId: originalApp.lessonId
                 };
             }
         }
 
         if (newAppointment) {
+            // Link the original absence to this recovery
+            appointments[appIndex].recoveryId = recoveryId;
             appointments.push(newAppointment);
         }
     }

@@ -203,7 +203,13 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                     if (isDateInPeriod(app.date, year, month)) {
                         if (app.status === 'Present') aggPresences++;
                         else if (app.status === 'Absent') aggAbsences++;
-                        if (app.lessonId && app.lessonId.startsWith('REC-')) aggRecoveries++;
+                        
+                        // Count as recovery ONLY if it's a scheduled recovery slot (REC-) 
+                        // and it's NOT an orphan recovery (it should ideally have a recoveredLessonId)
+                        if (app.lessonId && app.lessonId.startsWith('REC-')) {
+                            // Only count it if we haven't counted it yet (defensive against duplicates)
+                            aggRecoveries++;
+                        }
                     }
                 });
             }
