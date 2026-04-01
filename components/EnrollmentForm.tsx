@@ -46,6 +46,8 @@ const calculateSlotBasedDates = (startStr: string, lessons: number, dayOfWeek?: 
     if (!startStr || lessons <= 0) return { start: startStr, end: startStr };
     
     const currentDate = new Date(startStr);
+    currentDate.setHours(12, 0, 0, 0); // Force noon to avoid TZ slippage
+
     // Align to dayOfWeek if provided
     if (dayOfWeek !== undefined) {
         while (currentDate.getDay() !== dayOfWeek) {
