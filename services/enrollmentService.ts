@@ -477,6 +477,13 @@ export const registerAbsence = async (
     // SNAPSHOT PREVIOUS STATUS
     const previousStatus = appointments[appIndex].status;
 
+    // PREVENZIONE DUPLICATI: Se stiamo chiedendo un recupero ma l'appuntamento ha già un recoveryId, 
+    // significa che è già stato gestito. Interrompiamo per evitare doppioni.
+    if ((strategy === 'recover_auto' || strategy === 'recover_manual') && appointments[appIndex].recoveryId) {
+        console.warn("[EnrollmentService] Tentativo di recupero duplicato ignorato per lessonId:", appointmentLessonId);
+        return;
+    }
+
     // 1. Marca l'appuntamento originale come "Absent"
     appointments[appIndex].status = 'Absent';
 

@@ -194,21 +194,24 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 }
             });
 
-            // Attendance Logic: Sum based on enrollment filter (simplified, attendance follows enrollment usually)
-            // If we have strict date filter for attendance, we should check appointment dates.
+            // Attendance Logic: Sum based on enrollment filter
             if (enr.appointments) {
+                // Set per tenere traccia dei lessonId originali già recuperati
+                const uniqueRecoveries = new Set<string>();
+
                 enr.appointments.forEach(app => {
-                    // Check if appointment is in filtered period (if filters active)
-                    // If no filters (year/month), count everything.
                     if (isDateInPeriod(app.date, year, month)) {
                         if (app.status === 'Present') aggPresences++;
                         else if (app.status === 'Absent') aggAbsences++;
                         
-                        // Count as recovery ONLY if it's a scheduled recovery slot (REC-) 
-                        // and it's NOT an orphan recovery (it should ideally have a recoveredLessonId)
-                        if (app.lessonId && app.lessonId.startsWith('REC-')) {
-                            // Only count it if we haven't counted it yet (defensive against duplicates)
-                            aggRecoveries++;
+                        // Logica Recuperi Pulita: Contiamo lo slot REC- solo se non abbiamo già
+                        // contato un recupero per la stessa lezione originale.
+                        if (app.lessonId?.startsWith('REC-')) {
+                            const originalId = app.recoveredLessonId || 'orphan';
+                            if (!uniqueRecoveries.has(originalId)) {
+                                aggRecoveries++;
+                                if (originalId !== 'orphan') uniqueRecoveries.add(originalId);
+                            }
                         }
                     }
                 });
