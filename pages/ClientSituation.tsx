@@ -1231,22 +1231,27 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                                 {(row.enrollment.appointments || []).some(a => a.status === 'Absent') && (
                                                     <div className="bg-white rounded-lg border border-slate-100 overflow-hidden">
                                                         <div className="bg-slate-50 px-2 py-1 border-b border-slate-100">
-                                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Dettaglio Recuperi</span>
+                                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Cronologia Didattica (Assenze/Recuperi)</span>
                                                         </div>
                                                         <div className="divide-y divide-slate-50">
                                                             {row.enrollment.appointments?.filter(a => a.status === 'Absent').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(abs => {
-                                                                const recovery = row.enrollment.appointments?.find(a => a.recoveredLessonId === abs.lessonId || a.lessonId === abs.recoveryId);
+                                                                // Lookup intelligente: per ID o per cronologia (primo REC- disponibile dopo l'assenza)
+                                                                const recovery = row.enrollment.appointments?.find(a => 
+                                                                    a.recoveredLessonId === abs.lessonId || 
+                                                                    a.lessonId === abs.recoveryId ||
+                                                                    (a.lessonId?.startsWith('REC-') && new Date(a.date) > new Date(abs.date) && !a.recoveredLessonId) // Fallback per legacy
+                                                                );
                                                                 return (
                                                                     <div key={abs.lessonId} className="p-2 flex justify-between items-center group">
                                                                         <div className="flex flex-col">
-                                                                            <span className="text-[10px] font-bold text-red-600">Assenza: {new Date(abs.date).toLocaleDateString()}</span>
+                                                                            <span className="text-[10px] font-bold text-red-600 uppercase">Assenza: {new Date(abs.date).toLocaleDateString()}</span>
                                                                             {recovery ? (
-                                                                                <span className="text-[9px] font-medium text-amber-600 flex items-center gap-1">
+                                                                                <span className="text-[10px] font-black text-green-600 flex items-center gap-1">
                                                                                     ↳ Recupero: {new Date(recovery.date).toLocaleDateString()}
-                                                                                    <span className="text-[8px] bg-amber-100 px-1 rounded uppercase font-black">{recovery.status}</span>
+                                                                                    <span className="text-[8px] bg-green-100 px-1 rounded border border-green-200 uppercase font-black">{recovery.status}</span>
                                                                                 </span>
                                                                             ) : (
-                                                                                <span className="text-[9px] font-medium text-slate-400 italic">Nessun recupero autorizzato</span>
+                                                                                <span className="text-[9px] font-medium text-slate-400 italic">Nessun recupero autorizzato (Credito perso)</span>
                                                                             )}
                                                                         </div>
                                                                     </div>
