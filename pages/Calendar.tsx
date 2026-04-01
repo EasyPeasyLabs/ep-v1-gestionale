@@ -31,6 +31,7 @@ const Calendar: React.FC = () => {
     const [closures, setClosures] = useState<SchoolClosure[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
+    const [enrollments, setEnrollments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Modals State
@@ -45,13 +46,15 @@ const Calendar: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [manualLessons, enrollments, c, s, cli] = await Promise.all([
+            const [manualLessons, allEnrs, c, s, cli] = await Promise.all([
                 getLessons(),
                 getAllEnrollments(),
                 getSchoolClosures(),
                 getSuppliers(),
                 getClients()
             ]);
+
+            setEnrollments(allEnrs);
 
             // --- 0. PRE-PROCESSING: REGISTRO SEDI UFFICIALI (MASTER) ---
             const officialLocations = new Map<string, { name: string, color: string }>();
@@ -108,7 +111,7 @@ const Calendar: React.FC = () => {
             });
 
             // Processa Appuntamenti Iscrizioni
-            enrollments.forEach(enr => {
+            allEnrs.forEach(enr => {
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments) {
                         enr.appointments.forEach(app => {
@@ -499,17 +502,17 @@ const Calendar: React.FC = () => {
             {/* Modals */}
             {isLessonModalOpen && (
                 <Modal onClose={() => setIsLessonModalOpen(false)} size="lg">
-                    <LessonForm 
-                        lesson={editingLesson} 
-                        suppliers={suppliers} 
-                        clients={clients} 
-                        onSave={handleSaveLesson} 
+                    <LessonForm
+                        lesson={editingLesson}
+                        suppliers={suppliers}
+                        clients={clients}
+                        enrollments={enrollments}
+                        onSave={handleSaveLesson}
                         onDelete={handleDeleteLesson}
-                        onCancel={() => setIsLessonModalOpen(false)} 
+                        onCancel={() => setIsLessonModalOpen(false)}
                     />
                 </Modal>
             )}
-
             {manageClosureData && (
                 <Modal onClose={() => setManageClosureData(null)} size="md">
                     <div className="p-6">

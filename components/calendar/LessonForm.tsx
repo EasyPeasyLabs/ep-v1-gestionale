@@ -1,17 +1,18 @@
 
 import React, { useState, useMemo } from 'react';
-import { Lesson, LessonInput, Supplier, Client, ClientType, ParentClient, LessonAttendee } from '../../types';
+import { Lesson, LessonInput, Supplier, Client, ClientType, ParentClient, LessonAttendee, Enrollment } from '../../types';
 
 interface LessonFormProps {
     lesson?: Lesson | null;
     suppliers: Supplier[];
     clients: Client[];
+    enrollments: Enrollment[];
     onSave: (data: LessonInput | Lesson) => void;
     onDelete?: (id: string) => void;
     onCancel: () => void;
 }
 
-const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onSave, onDelete, onCancel }) => {
+const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, enrollments, onSave, onDelete, onCancel }) => {
     const [date, setDate] = useState(lesson?.date ? lesson.date.split('T')[0] : new Date().toISOString().split('T')[0]);
     const [startTime, setStartTime] = useState(lesson?.startTime || '16:00');
     const [endTime, setEndTime] = useState(lesson?.endTime || '18:00');
@@ -25,7 +26,7 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onS
         (lesson?.clientId && lesson?.childName ? [{ clientId: lesson.clientId, childId: 'legacy', childName: lesson.childName }] : []);
         
     const [attendees, setAttendees] = useState<LessonAttendee[]>(initialAttendees);
-    const [viewParentId, setViewParentId] = useState(''); // Id del genitore di cui stiamo visualizzando i figli per la selezione
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Derived Lists
     const allLocations = useMemo(() => {
@@ -38,9 +39,52 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onS
         clients.filter(c => c.clientType === ClientType.Parent) as ParentClient[], 
     [clients]);
 
-    const selectedViewParent = useMemo(() => 
-        parentClients.find(c => c.id === viewParentId), 
-    [parentClients, viewParentId]);
+    // Mappatura figli con info genitore e iscrizioni per ricerca veloce
+    const childrenData = useMemo(() => {
+        const list: { 
+            childId: string, 
+            childName: string, 
+            parentId: string, 
+            parentName: string,
+            courses: string[],
+            locations: string[]
+        }[] = [];
+
+        parentClients.forEach(p => {
+            p.children.forEach(c => {
+                // Trova iscrizioni per questo figlio
+                const childEnrollments = enrollments.filter(e => e.childId === c.id && e.clientId === p.id);
+                const courses = Array.from(new Set(childEnrollments.map(e => e.subscriptionName)));
+                const locations = Array.from(new Set(childEnrollments.map(e => e.locationName)));
+                
+                // Aggiungi anche la sede preferita del genitore se presente
+                if (p.preferredLocation && !locations.includes(p.preferredLocation)) {
+                    locations.push(p.preferredLocation);
+                }
+
+                list.push({
+                    childId: c.id,
+                    childName: c.name,
+                    parentId: p.id,
+                    parentName: `${p.lastName} ${p.firstName}`,
+                    courses,
+                    locations
+                });
+            });
+        });
+        return list;
+    }, [parentClients, enrollments]);
+
+    const filteredChildren = useMemo(() => {
+        if (!searchTerm.trim()) return [];
+        const s = searchTerm.toLowerCase();
+        return childrenData.filter(item => 
+            item.childName.toLowerCase().includes(s) ||
+            item.parentName.toLowerCase().includes(s) ||
+            item.courses.some(c => c.toLowerCase().includes(s)) ||
+            item.locations.some(l => l.toLowerCase().includes(s))
+        ).slice(0, 15); // Limitiamo i risultati per performance
+    }, [childrenData, searchTerm]);
 
     const handleLocationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         const name = e.target.value;
@@ -51,14 +95,14 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onS
 
     const isChildSelected = (childName: string) => attendees.some(a => a.childName === childName);
 
-    const toggleAttendee = (parent: ParentClient, childId: string, childName: string) => {
+    const toggleAttendee = (parentId: string, childId: string, childName: string) => {
         if (isChildSelected(childName)) {
             // Remove
             setAttendees(prev => prev.filter(a => a.childName !== childName));
         } else {
             // Add
             setAttendees(prev => [...prev, {
-                clientId: parent.id,
+                clientId: parentId,
                 childId: childId,
                 childName: childName
             }]);
@@ -140,32 +184,39 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onS
                 <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-3">
                     <h4 className="text-xs font-bold text-indigo-800 uppercase mb-2">Partecipanti (Opzionale)</h4>
                     
-                    {/* Filtro Genitore */}
-                    <div>
-                        <label className="block text-xs text-indigo-600 mb-1">Cerca Genitore</label>
-                        <select value={viewParentId} onChange={e => setViewParentId(e.target.value)} className="md-input bg-white border-indigo-200 focus:border-indigo-500 text-sm">
-                            <option value="">-- Seleziona un Genitore per vedere i figli --</option>
-                            {parentClients.map(c => (
-                                <option key={c.id} value={c.id}>{c.lastName} {c.firstName}</option>
-                            ))}
-                        </select>
+                    {/* Filtro Ricerca */}
+                    <div className="md-input-group bg-white rounded border border-indigo-200 px-2">
+                        <input 
+                            type="text" 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)} 
+                            className="md-input border-none focus:ring-0" 
+                            placeholder="Filtra per nome, genitore, corso o sede..." 
+                        />
+                        <label className="md-input-label !left-2">Cerca Partecipante</label>
                     </div>
 
-                    {/* Checkbox Figli del Genitore Selezionato */}
-                    {selectedViewParent && (
-                        <div className="bg-white p-2 rounded border border-indigo-100 animate-fade-in">
-                            <p className="text-xs font-bold text-gray-500 mb-2">Figli di {selectedViewParent.firstName}:</p>
+                    {/* Risultati della Ricerca */}
+                    {searchTerm.trim() !== '' && (
+                        <div className="bg-white p-2 rounded border border-indigo-100 animate-fade-in max-h-48 overflow-y-auto shadow-sm">
                             <div className="space-y-1">
-                                {selectedViewParent.children.length === 0 && <p className="text-xs italic text-gray-400">Nessun figlio registrato.</p>}
-                                {selectedViewParent.children.map(child => (
-                                    <label key={child.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                                {filteredChildren.length === 0 && <p className="text-xs italic text-gray-400 p-2">Nessun risultato trovato.</p>}
+                                {filteredChildren.map(item => (
+                                    <label key={`${item.parentId}-${item.childId}`} className="flex items-center gap-3 cursor-pointer hover:bg-indigo-50 p-2 rounded transition-colors border-b border-gray-50 last:border-none">
                                         <input 
                                             type="checkbox" 
-                                            checked={isChildSelected(child.name)} 
-                                            onChange={() => toggleAttendee(selectedViewParent, child.id, child.name)}
-                                            className="rounded text-indigo-600 focus:ring-indigo-500"
+                                            checked={isChildSelected(item.childName)} 
+                                            onChange={() => toggleAttendee(item.parentId, item.childId, item.childName)}
+                                            className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
                                         />
-                                        <span className="text-sm text-gray-700">{child.name}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-bold text-gray-800">{item.childName}</span>
+                                            <span className="text-[10px] text-gray-500 uppercase tracking-tight">
+                                                Genitore: {item.parentName}
+                                                {item.courses.length > 0 && ` • ${item.courses.join(', ')}`}
+                                                {item.locations.length > 0 && ` • ${item.locations.join(', ')}`}
+                                            </span>
+                                        </div>
                                     </label>
                                 ))}
                             </div>
@@ -174,7 +225,12 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onS
 
                     {/* Lista Partecipanti Selezionati */}
                     <div className="mt-4 border-t border-indigo-200 pt-2">
-                        <label className="block text-xs font-bold text-gray-500 mb-2">Selezionati ({attendees.length})</label>
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="block text-xs font-bold text-gray-500">Selezionati ({attendees.length})</label>
+                            {attendees.length > 0 && (
+                                <button type="button" onClick={() => setAttendees([])} className="text-[10px] text-red-500 hover:text-red-700 font-bold uppercase">Svuota Tutti</button>
+                            )}
+                        </div>
                         <div className="flex flex-wrap gap-2">
                             {attendees.map((a, idx) => (
                                 <span key={idx} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 border border-indigo-200">
@@ -188,7 +244,7 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, onS
                                     </button>
                                 </span>
                             ))}
-                            {attendees.length === 0 && <span className="text-xs text-gray-400 italic">Nessuno.</span>}
+                            {attendees.length === 0 && <span className="text-xs text-gray-400 italic">Nessuno selezionato.</span>}
                         </div>
                     </div>
                 </div>
