@@ -1186,19 +1186,50 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                             ))}
 
                                             {/* Monitoring Badge */}
-                                            <div className="flex gap-2 border-t border-dashed border-gray-200 pt-2">
-                                                <div className="flex-1 bg-green-50 text-green-700 text-center rounded border border-green-100 p-1">
-                                                    <span className="block text-[8px] uppercase font-bold">Presenze</span>
-                                                    <span className="text-xs font-black">{row.stats.presences}</span>
+                                            <div className="flex flex-col gap-3 border-t border-dashed border-gray-200 pt-2">
+                                                <div className="flex gap-2">
+                                                    <div className="flex-1 bg-green-50 text-green-700 text-center rounded border border-green-100 p-1">
+                                                        <span className="block text-[8px] uppercase font-bold">Presenze</span>
+                                                        <span className="text-xs font-black">{row.stats.presences}</span>
+                                                    </div>
+                                                    <div className="flex-1 bg-red-50 text-red-700 text-center rounded border border-red-100 p-1">
+                                                        <span className="block text-[8px] uppercase font-bold">Assenze</span>
+                                                        <span className="text-xs font-black">{row.stats.absences}</span>
+                                                    </div>
+                                                    <div className="flex-1 bg-amber-50 text-amber-700 text-center rounded border border-amber-100 p-1">
+                                                        <span className="block text-[8px] uppercase font-bold">Recuperi</span>
+                                                        <span className="text-xs font-black">{row.stats.recoveries}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="flex-1 bg-red-50 text-red-700 text-center rounded border border-red-100 p-1">
-                                                    <span className="block text-[8px] uppercase font-bold">Assenze</span>
-                                                    <span className="text-xs font-black">{row.stats.absences}</span>
-                                                </div>
-                                                <div className="flex-1 bg-amber-50 text-amber-700 text-center rounded border border-amber-100 p-1">
-                                                    <span className="block text-[8px] uppercase font-bold">Recuperi</span>
-                                                    <span className="text-xs font-black">{row.stats.recoveries}</span>
-                                                </div>
+
+                                                {/* Detailed Absences & Recoveries List */}
+                                                {(row.enrollment.appointments || []).some(a => a.status === 'Absent') && (
+                                                    <div className="bg-white rounded-lg border border-slate-100 overflow-hidden">
+                                                        <div className="bg-slate-50 px-2 py-1 border-b border-slate-100">
+                                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Dettaglio Recuperi</span>
+                                                        </div>
+                                                        <div className="divide-y divide-slate-50">
+                                                            {row.enrollment.appointments?.filter(a => a.status === 'Absent').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(abs => {
+                                                                const recovery = row.enrollment.appointments?.find(a => a.recoveredLessonId === abs.lessonId || a.lessonId === abs.recoveryId);
+                                                                return (
+                                                                    <div key={abs.lessonId} className="p-2 flex justify-between items-center group">
+                                                                        <div className="flex flex-col">
+                                                                            <span className="text-[10px] font-bold text-red-600">Assenza: {new Date(abs.date).toLocaleDateString()}</span>
+                                                                            {recovery ? (
+                                                                                <span className="text-[9px] font-medium text-amber-600 flex items-center gap-1">
+                                                                                    ↳ Recupero: {new Date(recovery.date).toLocaleDateString()}
+                                                                                    <span className="text-[8px] bg-amber-100 px-1 rounded uppercase font-black">{recovery.status}</span>
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-[9px] font-medium text-slate-400 italic">Nessun recupero autorizzato</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>

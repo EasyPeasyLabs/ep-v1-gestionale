@@ -4,6 +4,7 @@ import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentD
 /* Added DocumentStatus to imports */
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput } from '../types';
 import { isItalianHoliday, toLocalISOString } from '../utils/dateUtils';
+import { getSchoolClosures } from './calendarService';
 
 const getEnrollmentCollectionRef = () => collection(db, 'enrollments');
 
@@ -460,7 +461,8 @@ export const registerAbsence = async (
     enrollmentId: string, 
     appointmentLessonId: string, 
     strategy: 'lost' | 'recover_auto' | 'recover_manual',
-    manualDetails?: { date: string, startTime: string, endTime: string, locationId: string, locationName: string, locationColor: string }
+    manualDetails?: { date: string, startTime: string, endTime: string, locationId: string, locationName: string, locationColor: string },
+    cachedClosures?: SchoolClosure[]
 ): Promise<void> => {
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
@@ -510,6 +512,9 @@ export const registerAbsence = async (
             };
         } else {
             // RECUPERO AUTOMATICO
+            const closures = cachedClosures || await getSchoolClosures();
+            const closedDates = new Set(closures.map(c => c.date.split('T')[0]));
+
             const nextDate = new Date(originalApp.date);
             const originalDayOfWeek = nextDate.getDay();
             let foundDate = false;
@@ -517,8 +522,10 @@ export const registerAbsence = async (
             
             while (!foundDate && safetyCounter < 52) { 
                 nextDate.setDate(nextDate.getDate() + 1);
-                // Cerca stesso giorno della settimana e non festivo (USING CENTRALIZED UTILS)
-                if (nextDate.getDay() === originalDayOfWeek && !isItalianHoliday(nextDate)) {
+                const isoDate = nextDate.toISOString().split('T')[0];
+
+                // Cerca stesso giorno della settimana, non festivo e NON chiusura sede
+                if (nextDate.getDay() === originalDayOfWeek && !isItalianHoliday(nextDate) && !closedDates.has(isoDate)) {
                     foundDate = true;
                 }
                 safetyCounter++;
@@ -541,13 +548,14 @@ export const registerAbsence = async (
 
         if (newAppointment) {
             appointments.push(newAppointment);
-            appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         }
     }
 
+    // Sort always to find the real end date
+    appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
     let newEndDate = enrollment.endDate;
     if (appointments.length > 0) {
-        appointments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
         newEndDate = appointments[appointments.length - 1].date;
     }
 

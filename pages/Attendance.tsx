@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier } from '../types';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier, SchoolClosure } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, resetAppointmentStatus, toggleAppointmentStatus, deleteAppointment } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
+import { getSchoolClosures } from '../services/calendarService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import CalendarIcon from '../components/icons/CalendarIcon';
@@ -344,10 +345,14 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const handleWizardConfirm = async (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: any) => {
         if (wizardItems.length === 0) return;
         try {
+            setLoading(true);
+            const closures = schoolClosures.length > 0 ? schoolClosures : await getSchoolClosures();
+            if (schoolClosures.length === 0) setSchoolClosures(closures);
+
             // Se recover_manual, usiamo i dettagli per TUTTI gli item (es. spostamento classe intera)
             // Se recover_auto, ognuno calcola il suo prossimo slot.
             for (const item of wizardItems) {
-                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details);
+                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details, closures);
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
@@ -355,6 +360,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         } catch (e) {
             console.error(e);
             alert("Errore durante l'elaborazione dell'assenza.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -405,9 +412,12 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         if (!confirm("Segnare TUTTI gli studenti visualizzati come ASSENTI con RECUPERO automatico?")) return;
         setLoading(true);
         try {
+            const closures = schoolClosures.length > 0 ? schoolClosures : await getSchoolClosures();
+            if (schoolClosures.length === 0) setSchoolClosures(closures);
+
             const targets = attendanceItems.filter(i => i.status !== 'Absent');
             for (const item of targets) {
-                await registerAbsence(item.enrollmentId, item.lessonId, 'recover_auto'); 
+                await registerAbsence(item.enrollmentId, item.lessonId, 'recover_auto', undefined, closures); 
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
