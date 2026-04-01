@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo, IntegrityIssue, IntegrityIssueSuggestion } from '../types';
+import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo, IntegrityIssue, IntegrityIssueSuggestion, SubscriptionType } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions, getInvoices, fixIntegrityIssue } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
-import { getCompanyInfo } from '../services/settingsService';
+import { getCompanyInfo, getSubscriptionTypes } from '../services/settingsService';
 import Spinner from '../components/Spinner';
 import SearchIcon from '../components/icons/SearchIcon';
 import IdentificationIcon from '../components/icons/IdentificationIcon';
@@ -43,6 +43,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     
     // Filters
@@ -57,16 +58,23 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [fixingId, setFixingId] = useState<string | null>(null);
 
+    // Helper to get public name of subscription
+    const getPublicSubscriptionName = useCallback((enr: Enrollment) => {
+        const subType = subscriptionTypes.find(s => s.id === enr.subscriptionTypeId);
+        return subType?.publicName || enr.subscriptionName;
+    }, [subscriptionTypes]);
+
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [cData, eData, tData, iData, sData, infoData] = await Promise.all([
+            const [cData, eData, tData, iData, sData, infoData, subData] = await Promise.all([
                 getClients(),
                 getAllEnrollments(),
                 getTransactions(),
                 getInvoices(),
                 getSuppliers(),
-                getCompanyInfo()
+                getCompanyInfo(),
+                getSubscriptionTypes()
             ]);
             setClients(cData || []);
             setEnrollments(eData || []);
@@ -74,6 +82,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             setInvoices(iData || []);
             setSuppliers(sData || []);
             setCompanyInfo(infoData);
+            setSubscriptionTypes(subData || []);
         } catch (e) {
             console.error("ClientSituation Error:", e);
         } finally {
@@ -178,7 +187,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             
             if (dueInPeriod) {
                 if (enr.status === EnrollmentStatus.Active) {
-                    activeSubscriptions.push(enr.subscriptionName);
+                    activeSubscriptions.push(getPublicSubscriptionName(enr));
                     if (enr.locationName && enr.locationName !== 'Sede Non Definita') locations.add(enr.locationName);
                 }
                 totalDue += (Number(enr.price) || 0);
@@ -506,7 +515,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         clientFinancials.rows.forEach(row => {
             // Header Iscrizione
             detailRows.push({
-                "Contesto": `ISCRIZIONE: ${row.enrollment.subscriptionName}`,
+                "Contesto": `ISCRIZIONE: ${getPublicSubscriptionName(row.enrollment)}`,
                 "Data": new Date(row.enrollment.startDate).toLocaleDateString(),
                 "Dettaglio": `Prezzo: ${row.enrollment.price}€ - Allievo: ${row.enrollment.childName}`,
                 "Importo": -row.enrollment.price,
@@ -616,10 +625,12 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 doc.setFontSize(11);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(60, 60, 82);
-                doc.text(`${index + 1}. ${row.enrollment.subscriptionName}`, 14, currentY);
+                doc.text(`${index + 1}. CORSO: ${getPublicSubscriptionName(row.enrollment)}`, 14, currentY);
+                
                 doc.setFontSize(9);
                 doc.setFont("helvetica", "normal");
-                doc.text(`Allievo: ${row.enrollment.childName} | Prezzo: ${row.enrollment.price}€`, 14, currentY + 5);
+                doc.setTextColor(0, 0, 0);
+                doc.text(`SEDE: ${row.enrollment.locationName || 'N/D'} | Allievo: ${row.enrollment.childName} | Prezzo: ${row.enrollment.price}€`, 14, currentY + 5);
                 
                 // Attendance Mini-Stats line
                 doc.setFontSize(8);
@@ -1207,7 +1218,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         {clientFinancials && clientFinancials.rows.map((row, idx) => (
                             <div key={idx} className="border-b last:border-0 border-gray-100">
                                 <div className="bg-gray-50 p-3 flex justify-between items-center">
-                                    <span className="font-bold text-gray-700">{row.enrollment.subscriptionName}</span>
+                                    <span className="font-bold text-gray-700">{getPublicSubscriptionName(row.enrollment)}</span>
                                     <span className="text-xs font-mono font-black">{Number(row.enrollment.price).toFixed(2)}€</span>
                                 </div>
                                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
