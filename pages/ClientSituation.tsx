@@ -625,8 +625,38 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 doc.setFontSize(8);
                 doc.setTextColor(100, 100, 100);
                 doc.text(`Didattica: ${row.stats.presences} Presenze | ${row.stats.absences} Assenze | ${row.stats.recoveries} Recuperi`, 14, currentY + 10);
+                
+                currentY += 15;
 
-                currentY += 14;
+                // --- NEW: Detailed Absence/Recovery Table in PDF ---
+                const absenceDetailRows: any[] = (row.enrollment.appointments || [])
+                    .filter(a => a.status === 'Absent')
+                    .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                    .map(abs => {
+                        const rec = row.enrollment.appointments?.find(a => 
+                            a.recoveredLessonId === abs.lessonId || 
+                            a.lessonId === abs.recoveryId ||
+                            (a.lessonId?.startsWith('REC-') && new Date(a.date) > new Date(abs.date) && !a.recoveredLessonId)
+                        );
+                        return [
+                            `ASSENZA: ${new Date(abs.date).toLocaleDateString()}`,
+                            rec ? `↳ RECUPERO: ${new Date(rec.date).toLocaleDateString()}` : 'Nessun recupero autorizzato (Credito perso)',
+                            rec ? rec.status : '-'
+                        ];
+                    });
+
+                if (absenceDetailRows.length > 0) {
+                    autoTable(doc, {
+                        startY: currentY,
+                        head: [['Data Assenza', 'Stato / Data Recupero', 'Esito']],
+                        body: absenceDetailRows,
+                        theme: 'plain',
+                        styles: { fontSize: 7, cellPadding: 1 },
+                        headStyles: { fillColor: [255, 240, 240], textColor: [200, 0, 0], fontStyle: 'bold' },
+                        margin: { left: 20, right: 14 } // Indented slightly
+                    });
+                    currentY = (doc as any).lastAutoTable.finalY + 5;
+                }
 
                 const tableData: any[] = [];
                 row.invoices.forEach(inv => tableData.push(['Fattura', inv.invoiceNumber, new Date(inv.issueDate).toLocaleDateString(), `${inv.totalAmount.toFixed(2)}€`]));
