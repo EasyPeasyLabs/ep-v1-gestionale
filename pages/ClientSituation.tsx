@@ -338,7 +338,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             .filter(e => e.clientId === selectedClient.id)
             .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
         
-        // Group by Enrollment ID for structured view
+            // Group by Enrollment ID for structured view
         const rows = clientEnrollments.map(enr => {
             const linkedInvoices = invoices.filter(i => 
                 i.relatedEnrollmentId === enr.id && 
@@ -353,20 +353,36 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             const totalPaid = linkedTrans.reduce((s, t) => s + Number(t.amount), 0) + (Number(enr.adjustmentAmount) || 0);
             const balance = totalDue - totalPaid;
 
-            // Calculate Attendance Stats for this enrollment
+            // --- ATTENDANCE STATS (CORRECTED & DETERMINISTIC) ---
             let presences = 0;
             let absences = 0;
             let recoveries = 0;
 
             if (enr.appointments) {
+                const uniqueRecoveredFrom = new Set<string>();
+                let orphanRecoveries = 0;
+
                 enr.appointments.forEach(app => {
                     if (app.status === 'Present') presences++;
                     else if (app.status === 'Absent') absences++;
                     
-                    if (app.lessonId && app.lessonId.startsWith('REC-')) {
-                        recoveries++;
+                    if (app.lessonId?.startsWith('REC-')) {
+                        if (app.recoveredLessonId) {
+                            if (!uniqueRecoveredFrom.has(app.recoveredLessonId)) {
+                                recoveries++;
+                                uniqueRecoveredFrom.add(app.recoveredLessonId);
+                            }
+                        } else {
+                            // Legacy/Orphan recovery slot
+                            orphanRecoveries++;
+                        }
                     }
                 });
+
+                // Bonifica dati sporchi: i recuperi orfani vengono contati solo se abbiamo assenze scoperte
+                const documentedRecoveries = recoveries;
+                const availableAbsencesForOrphans = Math.max(0, absences - documentedRecoveries);
+                recoveries += Math.min(orphanRecoveries, availableAbsencesForOrphans);
             }
 
             // --- AI SUGGESTIONS FOR RECONCILIATION ---
