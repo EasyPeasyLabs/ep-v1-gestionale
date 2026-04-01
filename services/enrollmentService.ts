@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, getDocFromServer, writeBatch, orderBy } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
-import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput } from '../types';
+import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure } from '../types';
 import { isItalianHoliday, toLocalISOString } from '../utils/dateUtils';
 import { getSchoolClosures } from './calendarService';
 

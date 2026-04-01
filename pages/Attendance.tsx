@@ -163,6 +163,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [schoolClosures, setSchoolClosures] = useState<SchoolClosure[]>([]);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     

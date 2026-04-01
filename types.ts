@@ -470,6 +470,8 @@ export interface Appointment {
     childName: string;
     status: AppointmentStatus | string;
     type?: string;
+    recoveryId?: string; // ID of the recovery lesson generated for this absence
+    recoveredLessonId?: string; // ID of the original lesson that this one is recovering
 }
 
 export interface Enrollment {
