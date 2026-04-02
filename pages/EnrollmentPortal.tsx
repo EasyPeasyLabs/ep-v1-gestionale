@@ -446,7 +446,7 @@ const EnrollmentPortal: React.FC = () => {
           locationId: formData.selectedLocationId || 'unassigned',
           locationName: formData.selectedLocationName || 'Sede Preferita',
           locationColor: '#3C3C52',
-          childName: child.name,
+          childName: formData.childName,
           status: 'Scheduled'
         }],
         createdAt: new Date().toISOString(),
