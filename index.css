@@ -56,7 +56,7 @@ body {
   cursor: pointer;
 }
 .md-btn:focus {
-  box-shadow: 0 0 0 2px #E0E7FF;
+  box-shadow: 0 0 0 2px #E6E6EA;
 }
 .md-btn:disabled {
   opacity: 0.5;
@@ -124,8 +124,8 @@ body {
   background-color: #F1F5F9;
 }
 .md-icon-btn.edit:hover { 
-  color: #4F46E5; 
-  background-color: #EEF2FF; 
+  color: #3C3C52; 
+  background-color: #F2F2F5; 
 }
 .md-icon-btn.delete:hover { 
   color: #DC2626; 
@@ -153,8 +153,8 @@ body {
   outline: none;
 }
 .md-input:focus {
-  border-color: #6366F1;
-  box-shadow: 0 0 0 2px #C7D2FE;
+  border-color: #3C3C52;
+  box-shadow: 0 0 0 2px #CDCDD6;
 }
 
 /* Floating Label Logic via CSS Puro */
@@ -166,7 +166,7 @@ body {
   padding: 0 0.25rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #4F46E5;
+  color: #3C3C52;
   transition: all 0.2s;
   pointer-events: none;
 }
@@ -183,7 +183,7 @@ body {
   top: -0.6rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #4F46E5;
+  color: #3C3C52;
   background-color: white;
 }
 

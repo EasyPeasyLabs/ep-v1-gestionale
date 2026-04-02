@@ -17,18 +17,24 @@ Gestione e allineamento dati tra **Progetto B** (Iscrizioni Pubbliche) e **Gesti
 - [x] **Calendario - Eventi Extra**: Migliorata la selezione dei partecipanti con ricerca avanzata (Sprint 15).
 - [x] **Presenze - Recupero Automatico**: Lo slittamento ora rispetta festività e chiusure sede, con aggiornamento automatico dell'endDate (Sprint 15).
 - [x] **Situazione Clienti - Dettaglio Recuperi**: La scheda cliente ora mostra le date esatte di assenza e la corrispondente data di recupero (Sprint 15).
+- [x] **GUI - Nuovo Tema Colore**: Sostituito il colore Indaco con il Grigio Primario (#3C3C52) in tutta l'applicazione (Sprint 15).
+- [x] **Fix Calcolo Data Fine**: Risolto slittamento date dovuto al fuso orario nelle iscrizioni standard (Sprint 15).
 
 ## Moduli Completati - 2026-04-01
+- **Restyling Cromatico (Sprint 15)**:
+    - Sostituzione globale del colore Indaco con il Grigio Primario #3C3C52.
+    - Aggiornamento palette Tailwind (Config + Runtime CDN) e stili CSS (Input, Label, Bottoni).
+    - Preservati colori semantici per Grafici e Badge di stato.
 - **Ricerca Partecipanti Extra (Sprint 15)**: Rifattorizzazione modale `LessonForm`.
-    - Sostituto menu a tendina con campo filtro testuale.
-    - Filtro per: Nome Genitore, Nome Figlio, Corso (Iscrizione), Sede/Recinto Abituale.
+    - Sostituto menu a tendina con campo filtro testuale (Nome, Genitore, Corso, Sede).
 - **Recupero Automatico Intelligente (Sprint 15)**: 
-    - La logica di slittamento in `registerAbsence` ora interroga la collezione `school_closures`.
-    - Garantito che il nuovo slot non cada in un giorno festivo o di chiusura.
+    - Integrazione `school_closures` nello slittamento assenze.
+    - Accodamento recuperi alla fine del pacchetto lezioni (non più sovrapposti).
     - Sincronizzazione automatica del campo `endDate`.
 - **Tracciabilità Assenze/Recuperi (Sprint 15)**:
-    - Implementato sistema di linking tra appuntamento "Absent" e appuntamento "REC-".
-    - Nuova sezione "Dettaglio Recuperi" nella Situazione Clienti che elenca cronologicamente le assenze e indica la data dello slittamento (se autorizzato) o lo stato "Nessun recupero" (se credito perso).
+    - Linking biunivoco tra assenza e recupero (`recoveryId`).
+    - Nuova sezione "Cronologia Didattica" nella Situazione Clienti (UI, PDF, Excel).
+    - Utilizzo dei Nomi Commerciali (Public Name) nei report invece dei codici tecnici.
 - **Gestione Corsi (Sprint 13)**: Rifattorizzazione completa. 
 ...
     - Integrazione CRUD totale in modale.

@@ -67,7 +67,7 @@ const KpiDetailChart: React.FC<{ type: string; stats: any; transactions: Transac
 };
 
 const KpiCard = ({ title, value, color, progress, label, sub, onClick }: any) => (
-    <div onClick={onClick} className={`md-card p-6 bg-white shadow-xl border-l-4 cursor-pointer transition-transform transform hover:scale-105 active:scale-95 group relative overflow-hidden`} style={{ borderLeftColor: color === 'emerald' ? '#10b981' : color === 'red' ? '#ef4444' : color === 'indigo' ? '#6366f1' : '#f59e0b' }}>
+    <div onClick={onClick} className={`md-card p-6 bg-white shadow-xl border-l-4 cursor-pointer transition-transform transform hover:scale-105 active:scale-95 group relative overflow-hidden`} style={{ borderLeftColor: color === 'emerald' ? '#10b981' : color === 'red' ? '#ef4444' : color === 'indigo' ? '#3C3C52' : '#f59e0b' }}>
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h3>
         <p className="text-2xl font-black text-slate-900">{value}</p>
         {sub && <p className="text-[10px] text-slate-400 mt-1 font-bold truncate">{sub}</p>}
