@@ -106,6 +106,14 @@ const MISSION_DETAILS: Record<string, MissionDetails> = {
             "Configura gli slot orari precisi per permettere il drag-and-drop nel calendario."
         ]
     },
+    'Corsi': {
+        objective: "Il modulo Corsi è il cuore della pianificazione didattica. Qui si definiscono le 'Fessure' temporali (slot) disponibili per ogni sede, associando un tipo di attività (LAB, SG, EVT), un target d'età e una capienza massima. Il sistema calcola in tempo reale l'occupazione incrociando le iscrizioni attive, permettendo di prevenire l'overbooking e di visualizzare l'elenco nominativo degli allievi per ogni singolo corso.",
+        pros: [
+            "Usa il tasto 'Ricalcola Occupazione' se noti discrepanze tra iscritti e posti liberi.",
+            "La modalità 'LAB+SG' gestisce automaticamente l'alternanza settimanale dei pacchetti combo.",
+            "Clicca sull'icona dell'omino per vedere i nomi dei bambini iscritti in quella specifica fascia oraria."
+        ]
+    },
     'Attività': {
         objective: "Libreria didattica e materiale multimediale. Funge da database centrale per la preparazione delle lezioni. Include il sistema 'Peek-a-Boo(k)' per la gestione dei prestiti bibliotecari. Le attività qui salvate diventano selezionabili nel Registro Elettronico, creando un ponte tra pianificazione e didattica reale.",
         pros: [
@@ -394,6 +402,34 @@ const ClientSituationScenario: React.FC<{ step: number }> = ({ step }) => (
     </div>
 );
 
+const CourseScenario: React.FC<{ step: number }> = ({ step }) => (
+    <div className="bg-white rounded-xl shadow-xl overflow-hidden border h-full">
+        <div className="p-2 border-b bg-gray-50 flex justify-between items-center">
+            <div className={`h-6 w-32 rounded bg-white border flex items-center px-2 text-[8px] ${step === 0 ? 'ring-2 ring-indigo-500 shadow-md scale-105 z-20' : ''}`}>Sede Bari (Via Verdi)</div>
+            {step === 2 && <div className="h-6 px-3 bg-green-500 text-white rounded-lg flex items-center text-[8px] font-black animate-bounce">NUOVO CORSO +</div>}
+        </div>
+        <table className="w-full text-[8px] md:text-[9px]">
+            <thead className="bg-gray-50/50 border-b">
+                <tr><th className="p-2 text-left">Giorno</th><th className="p-2 text-left">Orario</th><th className="p-2 text-center">Occupazione</th></tr>
+            </thead>
+            <tbody>
+                <tr className="border-b">
+                    <td className="p-2 font-bold">Lunedì</td>
+                    <td className="p-2">16:30 - 17:30</td>
+                    <td className="p-2">
+                        <div className={`flex flex-col items-center gap-1 transition-all ${step === 1 ? 'scale-110 relative z-20' : ''}`}>
+                            <span className="font-black text-indigo-600">5 / 10</span>
+                            <div className="w-16 h-1 bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-indigo-500 w-1/2"></div>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+);
+
 // --- MINI-APP SIMULATOR CORE ---
 const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
     const [stepIdx, setStepIdx] = useState(0);
@@ -453,6 +489,7 @@ const UIEmulator: React.FC<{ mission: Mission }> = ({ mission }) => {
                     {mission.emulatorType === 'log' && <LogScenario step={stepIdx} />}
                     {mission.emulatorType === 'planning' && <PlanningScenario step={stepIdx} />}
                     {mission.emulatorType === 'clientsituation' && <ClientSituationScenario step={stepIdx} />}
+                    {mission.emulatorType === 'courses' && <CourseScenario step={stepIdx} />}
                 </div>
 
                 <div className="absolute bottom-4 md:bottom-6 left-1/2 -translate-x-1/2 w-[90%] md:w-4/5 bg-white/95 backdrop-blur shadow-2xl border-l-4 border-indigo-600 p-3 md:p-4 rounded-xl md:rounded-2xl z-50 animate-manual-slide-up">
@@ -560,6 +597,15 @@ const MISSIONS: Record<string, Mission> = {
             { id: 1, caption: 'Slot Orari', description: 'Configura la disponibilità oraria per abilitare l\'assegnazione.', handX: '80%', handY: '45%', action: 'click' }
         ]
     },
+    'Corsi': {
+        title: 'Pianificazione Slot',
+        emulatorType: 'courses',
+        steps: [
+            { id: 0, caption: 'Selezione Sede', description: 'Scegli il recinto per visualizzare i corsi attivi.', handX: '30%', handY: '15%', action: 'click' },
+            { id: 1, caption: 'Monitor Occupazione', description: 'Verifica il rapporto tra iscritti e capienza massima.', handX: '50%', handY: '55%', action: 'idle' },
+            { id: 2, caption: 'Nuovo Corso', description: 'Configura una nuova fessura temporale per la sede selezionata.', handX: '90%', handY: '15%', action: 'click' }
+        ]
+    },
     'Attività': {
         title: 'Libreria Didattica',
         emulatorType: 'activities',
@@ -616,10 +662,11 @@ const Manual: React.FC = () => {
         { key: 'Finanza', label: 'Finanza', icon: '💰' },
         { key: 'CRM', label: 'CRM', icon: '📱' },
         { key: 'Clienti', label: 'Clienti', icon: '👥' },
-        { key: 'Situazione Clienti', label: 'Situazione Clienti', icon: '🆔' }, // NEW
+        { key: 'Situazione Clienti', label: 'Situazione Clienti', icon: '🆔' },
         { key: 'Fornitori', label: 'Fornitori', icon: '🏢' },
+        { key: 'Corsi', label: 'Corsi', icon: '🏫' },
         { key: 'Attività', label: 'Attività', icon: '⚽' },
-        { key: 'Pianificazione Avvisi', label: 'Pianificazione Avvisi', icon: '🔔' }, // NEW
+        { key: 'Pianificazione Avvisi', label: 'Pianificazione Avvisi', icon: '🔔' },
         { key: 'Impostazioni', label: 'Impostazioni', icon: '⚙️' }
     ];
 
