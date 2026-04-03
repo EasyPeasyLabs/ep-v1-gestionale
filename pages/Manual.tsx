@@ -38,7 +38,7 @@ const MISSION_DETAILS: Record<string, MissionDetails> = {
         objective: "Il Calendario gestisce la logica temporale dell'attività. Visualizza sia gli appuntamenti generati dai 'Cartellini' (Iscrizioni) che le lezioni extra (Manual Lessons). È interconnesso con il modulo Fornitori: se una sede viene dismessa, gli slot sul calendario vengono marcati come orfani. Permette il drag-and-drop per la riprogrammazione rapida degli slot manuali.",
         pros: [
             "La vista 'Cluster' raggruppa gli allievi per slot orario: ideale per vedere chi è in aula.",
-            "Le lezioni extra (EXT) non scalano i crediti delle iscrizioni standard.",
+            "Usa il filtro di ricerca avanzata nelle lezioni extra per trovare allievi per nome, genitore o sede.",
             "Il colore della card riflette l'identità cromatica della sede impostata in Fornitori."
         ]
     },
@@ -67,11 +67,11 @@ const MISSION_DETAILS: Record<string, MissionDetails> = {
         ]
     },
     'Presenze': {
-        objective: "Gestione chirurgica degli slot consumati. Ogni 'Presenza' marcata scala un credito dal Cartellino dell'allievo. La logica 'Register & Recover' attiva flussi di recupero automatici: se segni un assente, il sistema propone una data alternativa saltando automaticamente le festività nazionali italiane, garantendo che l'allievo non perda valore economico.",
+        objective: "Gestione chirurgica degli slot consumati. Ogni 'Presenza' marcata scala un credito dal Cartellino dell'allievo. La logica 'Register & Recover' attiva flussi di recupero automatici: se segni un assente, il sistema propone una data alternativa accodandola alla fine del pacchetto lezioni e saltando chiusure sede e festività.",
         pros: [
             "Il pulsante 'Tutti Presenti' velocizza il lavoro al termine della giornata.",
-            "I recuperi programmati estendono automaticamente la validità temporale dell'iscrizione.",
-            "Verifica sempre gli 'Slot Residui' prima di concedere recuperi extra fuori pacchetto."
+            "I recuperi programmati estendono automaticamente la validità temporale (endDate) dell'iscrizione.",
+            "Il sistema impedisce lo slittamento dei recuperi su giorni marchiati come 'Chiusura Sede'."
         ]
     },
     'Finanza': {
@@ -131,10 +131,10 @@ const MISSION_DETAILS: Record<string, MissionDetails> = {
         ]
     },
     'Situazione Clienti': {
-        objective: "La 'Cartella Clinica' finanziaria del cliente. Offre una vista a 360° che unisce anagrafica, iscrizioni e movimenti contabili in un'unica schermata divisa (Split View). È il punto di riferimento per analizzare discrepanze, saldi aperti e pagamenti non riconciliati (Orfani) senza dover saltare tra più moduli.",
+        objective: "La 'Cartella Clinica' finanziaria e didattica del cliente. Offre una vista a 360° che unisce anagrafica, iscrizioni e movimenti contabili. Include la sezione 'Cronologia Didattica' per monitorare analiticamente ogni assenza e il relativo recupero, utilizzando i nomi commerciali pubblici dei corsi per una migliore leggibilità.",
         pros: [
             "Usa la 'Ricerca Globale' nella header per atterrare direttamente qui.",
-            "Controlla la sezione 'Elementi Orfani' per trovare bonifici non collegati.",
+            "Il dettaglio recuperi mostra il legame biunivoco tra lezione persa e lezione recuperata.",
             "Verifica a colpo d'occhio se il cliente è in regola (Badge Verde)."
         ]
     }
@@ -709,7 +709,7 @@ const Manual: React.FC = () => {
                         <div className="inline-block bg-slate-900 px-6 md:px-10 py-3 md:py-5 rounded-3xl md:rounded-[32px] shadow-2xl">
                             <p className="text-[9px] md:text-[11px] text-white font-black uppercase tracking-[0.1em] md:tracking-[0.2em] flex items-center gap-3 md:gap-4">
                                 <span className="text-amber-400 text-xl md:text-2xl animate-pulse">✨</span> 
-                                Manuale Operativo Aggiornato: 18/02/2026
+                                Manuale Operativo Aggiornato: 01/04/2026
                             </p>
                         </div>
                     </div>
