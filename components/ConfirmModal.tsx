@@ -27,7 +27,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   return (
     <Modal onClose={onClose} size="md">
       <h2 className="text-xl font-bold mb-4">{title}</h2>
-      <div className="text-gray-600 mb-6">{message}</div>
+      <p className="text-gray-600 mb-6">{message}</p>
       <div className="flex justify-end space-x-3">
         <button 
             onClick={onClose} 

@@ -926,18 +926,17 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
 
     return (
         <div>
-            <div className="flex flex-wrap gap-4 justify-between items-center mb-6">
-                <div>
-                    <h1 className="text-3xl font-bold">Clienti</h1>
-                    <p className="mt-1" style={{color: 'var(--md-text-secondary)'}}>Gestisci anagrafica, valutazioni e figli.</p>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div className="min-w-0">
+                    <h1 className="text-2xl md:text-3xl font-bold truncate">Clienti</h1>
+                    <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Anagrafica, valutazioni e figli.</p>
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-2 w-full md:w-auto scrollbar-hide">
-                    <button onClick={handleExport} className="md-btn md-btn-flat flex-shrink-0" title="Esporta in Excel"><DownloadIcon /> <span className="ml-2 hidden sm:inline">Esporta</span></button>
-                    
-                    <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat flex-shrink-0"><UploadIcon /> <span className="ml-2 hidden sm:inline">Importa</span></button>
-                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2 flex-shrink-0"><TrashIcon /> Elimina Tutto</button>
-                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'} flex-shrink-0`}><TrashIcon /> <span className="ml-2 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
-                    {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green flex-shrink-0"><PlusIcon /> <span className="ml-2">Nuovo</span></button>}
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end overflow-x-auto pb-1 scrollbar-hide">
+                    <button onClick={handleExport} className="md-btn md-btn-flat flex-shrink-0 px-2 py-1.5" title="Esporta in Excel"><DownloadIcon /> <span className="ml-1 hidden sm:inline">Esporta</span></button>
+                    <button onClick={() => setIsImportModalOpen(true)} className="md-btn md-btn-flat flex-shrink-0 px-2 py-1.5"><UploadIcon /> <span className="ml-1 hidden sm:inline">Importa</span></button>
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold flex-shrink-0 px-2 py-1.5"><TrashIcon /> <span className="hidden sm:inline">Elimina Tutto</span><span className="sm:hidden ml-1">Reset</span></button>
+                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn px-2 py-1.5 flex-shrink-0 ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /> <span className="ml-1 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
+                    {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green flex-shrink-0 px-3 py-1.5"><PlusIcon /> <span className="ml-1 sm:ml-2">Nuovo</span></button>}
                 </div>
             </div>
 

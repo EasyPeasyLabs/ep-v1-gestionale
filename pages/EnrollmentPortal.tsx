@@ -2,11 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import CheckIcon from '../components/icons/CheckIcon';
 import EuroCoinIcon from '../components/icons/EuroCoinIcon';
-import MapPinIcon from '../components/icons/SuppliersIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import ProfileIcon from '../components/icons/ProfileIcon';
 import IdentificationIcon from '../components/icons/IdentificationIcon';
-import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
 import HelpIcon from '../components/icons/HelpIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
@@ -14,7 +12,7 @@ import SparklesIcon from '../components/icons/SparklesIcon';
 import ClipboardIcon from '../components/icons/ClipboardIcon';
 
 // Icon Wrappers to support className
-const IconWrap = ({ Icon, className }: { Icon: any, className?: string }) => (
+const IconWrap = ({ Icon, className }: { Icon: React.ComponentType, className?: string }) => (
   <div className={className}><Icon /></div>
 );
 
@@ -33,6 +31,7 @@ const Copy = (props: any) => <IconWrap Icon={ClipboardIcon} {...props} />;
 const Calendar = (props: any) => <IconWrap Icon={CalendarIcon} {...props} />;
 const Sparkles = (props: any) => <IconWrap Icon={SparklesIcon} {...props} />;
 import BanknotesIcon from '../components/icons/BanknotesIcon';
+const Banknotes = (props: any) => <IconWrap Icon={BanknotesIcon} {...props} />;
 import {
   SubscriptionType,
   CompanyInfo,
@@ -177,7 +176,6 @@ const EnrollmentPortal: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [successMode, setSuccessMode] = useState<'booking' | 'paid'>('booking');
-  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   const [showAllOptions, setShowAllOptions] = useState(false);
@@ -534,14 +532,14 @@ const EnrollmentPortal: React.FC = () => {
 
           <div className="bg-gray-50 rounded-2xl p-6 border border-gray-200 text-left space-y-4 mb-8">
             <div className="flex items-center gap-3">
-              <MapPin className="w-5 h-5 text-indigo-500" />
+              <MapPin className="w-5 h-5 text-ep-blue-500" />
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase">Sede</p>
                 <p className="font-bold text-gray-800">{existingEnrollment.locationName}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-indigo-500" />
+              <Clock className="w-5 h-5 text-ep-blue-500" />
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase">Orario</p>
                 <p className="font-bold text-gray-800">
@@ -552,7 +550,7 @@ const EnrollmentPortal: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Calendar className="w-5 h-5 text-indigo-500" />
+              <Calendar className="w-5 h-5 text-ep-blue-500" />
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase">Inizio Corso</p>
                 <p className="font-bold text-gray-800">
@@ -561,7 +559,7 @@ const EnrollmentPortal: React.FC = () => {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <CreditCard className="w-5 h-5 text-indigo-500" />
+              <CreditCard className="w-5 h-5 text-ep-blue-500" />
               <div>
                 <p className="text-[10px] font-bold text-gray-400 uppercase">Importo Abbonamento</p>
                 <p className="font-bold text-gray-800">€ {existingEnrollment.price}</p>
@@ -570,7 +568,7 @@ const EnrollmentPortal: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Seguici su Instagram</button>
+            <button onClick={() => window.location.href = 'https://www.instagram.com/easypeasylabs'} className="w-full bg-ep-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-ep-blue-700 transition-all">Seguici su Instagram</button>
           </div>
         </div>
       </div>
@@ -612,14 +610,14 @@ const EnrollmentPortal: React.FC = () => {
               ? 'Abbiamo ricevuto la tua richiesta. Riceverai a breve una mail di conferma.'
               : 'Grazie! Il pagamento è stato ricevuto. Riceverai a breve la mail di riepilogo.'}
           </p>
-          <p className="text-2xl font-black text-indigo-600 uppercase tracking-widest">
+          <p className="text-2xl font-black text-ep-blue-600 uppercase tracking-widest">
             Ci vediamo in sede!
           </p>
         </div>
         <div className="space-y-4">
           <button
             onClick={() => window.location.href = 'https://sites.google.com/view/easypeasylabs/home'}
-            className="w-full bg-gray-900 text-white font-black py-5 rounded-[24px] shadow-xl hover:bg-gray-800 transition-all uppercase tracking-[0.2em] text-sm"
+            className="w-full bg-btn-inactive-bg text-btn-inactive-text font-black py-5 rounded-[24px] shadow-xl hover:bg-btn-active-bg hover:text-btn-active-text transition-all uppercase tracking-[0.2em] text-sm"
           >
             Ho capito
           </button>
@@ -637,7 +635,7 @@ const EnrollmentPortal: React.FC = () => {
         <div className="max-w-2xl mx-auto relative z-10">
           <img src="/lemon_logo_150px.png" alt="Logo" className="h-16 mb-8 mx-auto" />
           <h1 className="text-4xl font-black text-center mb-2 tracking-tight">Completa Iscrizione</h1>
-          <p className="text-blue-200 text-center font-medium">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
+          <p className="text-ep-blue-200 text-center font-medium">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
         </div>
       </div>
 
@@ -697,10 +695,10 @@ const EnrollmentPortal: React.FC = () => {
                 {/* Dati Mancanti (Mandatory) */}
                 <div className="space-y-6">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-100 text-blue-900 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-ep-blue-100 text-ep-blue-900 rounded-lg flex items-center justify-center">
                       <Info className="w-5 h-5" />
                     </div>
-                    <h2 className="text-lg font-bold text-blue-900 uppercase tracking-tight">Completa i Dati Mancanti</h2>
+                    <h2 className="text-lg font-bold text-ep-blue-900 uppercase tracking-tight">Completa i Dati Mancanti</h2>
                   </div>
 
                   <div className="space-y-4">
@@ -711,7 +709,7 @@ const EnrollmentPortal: React.FC = () => {
                         value={formData.parentFiscalCode}
                         onChange={e => setFormData({ ...formData, parentFiscalCode: e.target.value.toUpperCase() })}
                         placeholder="RSSMRA80A01H501Z"
-                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentFiscalCode ? 'border-blue-300' : 'border-gray-200'}`}
+                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-ep-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentFiscalCode ? 'border-ep-blue-300' : 'border-gray-200'}`}
                       />
                     </div>
 
@@ -723,7 +721,7 @@ const EnrollmentPortal: React.FC = () => {
                           value={formData.parentAddress}
                           onChange={e => setFormData({ ...formData, parentAddress: e.target.value.toUpperCase() })}
                           placeholder="VIA ROMA 1"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentAddress ? 'border-blue-300' : 'border-gray-200'}`}
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-ep-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentAddress ? 'border-ep-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                       <div className="space-y-1">
@@ -733,7 +731,7 @@ const EnrollmentPortal: React.FC = () => {
                           value={formData.parentZip}
                           onChange={e => setFormData({ ...formData, parentZip: e.target.value })}
                           placeholder="00100"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.parentZip ? 'border-blue-300' : 'border-gray-200'}`}
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-ep-blue-100 outline-none transition-all ${!formData.parentZip ? 'border-ep-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                     </div>
@@ -746,7 +744,7 @@ const EnrollmentPortal: React.FC = () => {
                           value={formData.parentCity}
                           onChange={e => setFormData({ ...formData, parentCity: e.target.value.toUpperCase() })}
                           placeholder="ROMA"
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentCity ? 'border-blue-300' : 'border-gray-200'}`}
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-ep-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentCity ? 'border-ep-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                       <div className="space-y-1">
@@ -757,7 +755,7 @@ const EnrollmentPortal: React.FC = () => {
                           onChange={e => setFormData({ ...formData, parentProvince: e.target.value.toUpperCase().substring(0, 2) })}
                           placeholder="RM"
                           maxLength={2}
-                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentProvince ? 'border-blue-300' : 'border-gray-200'}`}
+                          className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-ep-blue-100 outline-none transition-all uppercase font-medium ${!formData.parentProvince ? 'border-ep-blue-300' : 'border-gray-200'}`}
                         />
                       </div>
                     </div>
@@ -766,10 +764,10 @@ const EnrollmentPortal: React.FC = () => {
 
                 <div className="pt-6 border-t border-gray-100 mt-8">
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                    <div className="w-8 h-8 bg-ep-blue-100 text-ep-blue-600 rounded-lg flex items-center justify-center">
                       <Baby className="w-5 h-5" />
                     </div>
-                    <h2 className="text-lg font-bold text-indigo-900 uppercase tracking-tight">Dati Allievo</h2>
+                    <h2 className="text-lg font-bold text-ep-blue-900 uppercase tracking-tight">Dati Allievo</h2>
                   </div>
 
                   {/* Child Read Only */}
@@ -795,7 +793,7 @@ const EnrollmentPortal: React.FC = () => {
                             childAge: calculatedAge || formData.childAge
                           });
                         }}
-                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-blue-100 outline-none transition-all ${!formData.childDateOfBirth ? 'border-blue-300' : 'border-gray-200'}`}
+                        className={`w-full bg-white border-2 rounded-xl px-4 py-3 focus:ring-4 focus:ring-ep-blue-100 outline-none transition-all ${!formData.childDateOfBirth ? 'border-ep-blue-300' : 'border-gray-200'}`}
                       />
                     </div>
                     <div className="space-y-1 opacity-70 pointer-events-none select-none">
@@ -872,7 +870,7 @@ const EnrollmentPortal: React.FC = () => {
                         {lead?.selectedLocation && (
                           <button
                             onClick={() => setShowAllOptions(!showAllOptions)}
-                            className="text-[10px] font-bold text-indigo-600 hover:underline uppercase"
+                            className="text-[10px] font-bold text-ep-blue-600 hover:underline uppercase"
                           >
                             {showAllOptions ? 'Mostra solo preferenza' : 'Mostra tutte le sedi'}
                           </button>
@@ -915,14 +913,14 @@ const EnrollmentPortal: React.FC = () => {
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={(e) => e.stopPropagation()}
-                                      className="inline-flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
+                                      className="inline-flex items-center gap-1 text-xs font-bold text-ep-blue-600 hover:text-ep-blue-800 hover:underline"
                                     >
                                       <MapPin className="w-3 h-3" /> Mostra sulla mappa
                                     </a>
                                   </div>
                                 )}
                                 {isPreferred && !showAllOptions && (
-                                  <span className="inline-block px-2 py-1 bg-indigo-100 text-[10px] text-indigo-600 font-bold rounded mt-1 uppercase self-start">Sede Preferita</span>
+                                  <span className="inline-block px-2 py-1 bg-ep-blue-100 text-[10px] text-ep-blue-600 font-bold rounded mt-1 uppercase self-start">Sede Preferita</span>
                                 )}
                               </button>
                             )
@@ -947,11 +945,11 @@ const EnrollmentPortal: React.FC = () => {
                           if (filteredSlots.length === 0 && !showAllOptions) return null;
 
                           const typeLabel = type === 'LAB' ? 'Laboratorio' : type === 'SG' ? 'Spazio Gioco' : 'Evento Speciale';
-                          const typeColor = type === 'LAB' ? 'bg-blue-100 text-blue-800' : type === 'SG' ? 'bg-orange-100 text-orange-800' : 'bg-purple-100 text-purple-800';
+                          const typeColor = type === 'LAB' ? 'bg-ep-blue-100 text-ep-blue-800' : type === 'SG' ? 'bg-orange-100 text-orange-800' : 'bg-purple-100 text-purple-800';
 
                           return (
                             <div key={type} className="space-y-3">
-                              <label className={`text-[10px] font-black uppercase tracking-widest ${type === 'LAB' ? 'text-blue-600' : type === 'SG' ? 'text-orange-600' : 'text-purple-600'}`}>{typeLabel}i</label>
+                              <label className={`text-[10px] font-black uppercase tracking-widest ${type === 'LAB' ? 'text-ep-blue-600' : type === 'SG' ? 'text-orange-600' : 'text-purple-600'}`}>{typeLabel}i</label>
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {(showAllOptions ? typeSlots : filteredSlots).map(slot => {
                                   const isPreferred = lead?.selectedSlot && (
@@ -962,14 +960,14 @@ const EnrollmentPortal: React.FC = () => {
                                     <button
                                       key={slot.time}
                                       onClick={() => setFormData({ ...formData, selectedSlot: slot.time })}
-                                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedSlot === slot.time ? 'border-indigo-600 bg-indigo-50 ring-4 ring-indigo-600/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
+                                      className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col gap-2 ${formData.selectedSlot === slot.time ? 'border-ep-blue-600 bg-ep-blue-50 ring-4 ring-ep-blue-600/10' : 'border-gray-100 bg-white hover:border-gray-200'}`}
                                     >
                                       <div className="flex justify-between items-start w-full">
                                         <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${typeColor}`}>
                                           {type}
                                         </span>
                                         {isPreferred && (
-                                          <CheckCircle className="w-5 h-5 text-indigo-600" />
+                                          <CheckCircle className="w-5 h-5 text-ep-blue-600" />
                                         )}
                                       </div>
                                       <div className="font-bold text-gray-800 text-sm">
@@ -1067,7 +1065,7 @@ const EnrollmentPortal: React.FC = () => {
                         <div className="flex justify-center">
                           <button
                             onClick={() => setShowOtherSubscriptions(true)}
-                            className="flex items-center gap-2 text-indigo-600 font-black text-xs uppercase tracking-widest hover:text-indigo-800 transition-colors bg-white px-8 py-4 rounded-2xl border-2 border-dashed border-indigo-100 hover:border-indigo-300 shadow-sm"
+                            className="flex items-center gap-2 text-ep-blue-600 font-black text-xs uppercase tracking-widest hover:text-ep-blue-800 transition-colors bg-white px-8 py-4 rounded-2xl border-2 border-dashed border-ep-blue-100 hover:border-ep-blue-300 shadow-sm"
                           >
                             <Sparkles className="w-5 h-5" /> Vedi altri Abbonamenti o Cambia Idea
                           </button>
@@ -1086,7 +1084,7 @@ const EnrollmentPortal: React.FC = () => {
                         {showOtherSubscriptions && preSelectedId && (
                           <button
                             onClick={() => setShowOtherSubscriptions(false)}
-                            className="text-[10px] font-bold text-indigo-600 hover:underline uppercase self-start"
+                            className="text-[10px] font-bold text-ep-blue-600 hover:underline uppercase self-start"
                           >
                             ← Torna alla selezione originale
                           </button>
@@ -1158,11 +1156,11 @@ const EnrollmentPortal: React.FC = () => {
                                   setFormData({ ...formData, selectedSubscriptionId: sub.id });
                                   setShowOtherSubscriptions(false);
                                 }}
-                                className={`relative w-full p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between group ${isSelected ? 'border-blue-900 bg-blue-50 ring-4 ring-blue-900/10' : 'border-gray-100 bg-white hover:border-blue-200 hover:shadow-lg'}`}
+                                className={`relative w-full p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between group ${isSelected ? 'border-ep-blue-900 bg-ep-blue-50 ring-4 ring-ep-blue-900/10' : 'border-gray-100 bg-white hover:border-ep-blue-200 hover:shadow-lg'}`}
                               >
                                 <div className="space-y-2">
                                   <div className="flex justify-between items-start">
-                                    <h3 className={`font-black text-xl tracking-tight leading-tight ${isSelected ? 'text-blue-900' : 'text-gray-900'}`}>
+                                    <h3 className={`font-black text-xl tracking-tight leading-tight ${isSelected ? 'text-ep-blue-900' : 'text-gray-900'}`}>
                                       {shortName}
                                     </h3>
                                     <div className="text-right">
@@ -1181,10 +1179,10 @@ const EnrollmentPortal: React.FC = () => {
                                   </p>
                                 </div>
                                 <div className="mt-6 flex justify-between items-end w-full">
-                                  <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${isSelected ? 'bg-blue-200 text-blue-800' : 'bg-gray-100 text-gray-500'}`}>
+                                  <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest ${isSelected ? 'bg-ep-blue-200 text-ep-blue-800' : 'bg-gray-100 text-gray-500'}`}>
                                     {sub.target === 'kid' ? 'Bambini' : 'Adulti'}
                                   </span>
-                                  {isSelected && <CheckCircle className="w-5 h-5 text-blue-900" />}
+                                  {isSelected && <CheckCircle className="w-5 h-5 text-ep-blue-900" />}
                                 </div>
                               </button>
                             );
@@ -1230,7 +1228,7 @@ const EnrollmentPortal: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                       <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Abbonamento Scelto</span>
-                      <p className="font-bold text-lg text-blue-900 uppercase">
+                      <p className="font-bold text-lg text-ep-blue-900 uppercase">
                         {subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId)?.name.split('.').pop() || 'Abbonamento'}
                       </p>
                       <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
@@ -1294,7 +1292,7 @@ const EnrollmentPortal: React.FC = () => {
                   <button
                     onClick={() => setShowBookingModal(true)}
                     disabled={isProcessing}
-                    className="w-full bg-indigo-600 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-indigo-700 transition-all uppercase tracking-[0.2em] text-sm flex items-center justify-center gap-3 animate-pulse-subtle"
+                    className="w-full bg-ep-blue-600 text-white font-black py-6 rounded-[32px] shadow-2xl hover:bg-ep-blue-700 transition-all uppercase tracking-[0.2em] text-sm flex items-center justify-center gap-3 animate-pulse-subtle"
                   >
                     Ok, procedo all'iscrizione <ChevronRight className="w-6 h-6" />
                   </button>
@@ -1318,7 +1316,7 @@ const EnrollmentPortal: React.FC = () => {
                     (step === 2 && (!formData.selectedLocationId || !formData.selectedSlot)) ||
                     (step === 3 && !formData.selectedSubscriptionId)
                   }
-                  className="bg-gray-900 text-white px-10 py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-gray-800 transition-all disabled:opacity-20 uppercase text-xs tracking-widest"
+                  className="bg-btn-inactive-bg text-btn-inactive-text px-10 py-4 rounded-2xl font-black flex items-center gap-2 shadow-lg hover:bg-btn-active-bg hover:text-btn-active-text transition-all disabled:opacity-20 uppercase text-xs tracking-widest"
                 >
                   Avanti <ChevronRight className="w-4 h-4" />
                 </button>
@@ -1347,7 +1345,7 @@ const EnrollmentPortal: React.FC = () => {
               >
                 <div className="flex items-center gap-6">
                   <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center group-hover:bg-amber-400 group-hover:text-white transition-colors">
-                    <BanknotesIcon className="w-8 h-8" />
+                    <Banknotes className="w-8 h-8" />
                   </div>
                   <div>
                     <h4 className="font-black text-gray-900 uppercase text-sm tracking-widest">Pago in contanti</h4>
@@ -1361,11 +1359,11 @@ const EnrollmentPortal: React.FC = () => {
               <button
                 onClick={() => setFormData({ ...formData, paymentMethod: PaymentMethod.BankTransfer })}
                 disabled={isProcessing}
-                className={`group flex flex-col p-6 bg-white border-2 rounded-[32px] transition-all text-left shadow-sm hover:shadow-md ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'border-indigo-600 bg-indigo-50' : 'border-gray-100 hover:border-indigo-200'}`}
+                className={`group flex flex-col p-6 bg-white border-2 rounded-[32px] transition-all text-left shadow-sm hover:shadow-md ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'border-ep-blue-600 bg-ep-blue-50' : 'border-gray-100 hover:border-ep-blue-200'}`}
               >
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-6">
-                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'}`}>
+                    <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${formData.paymentMethod === PaymentMethod.BankTransfer ? 'bg-ep-blue-600 text-white' : 'bg-ep-blue-50 text-ep-blue-600 group-hover:bg-ep-blue-600 group-hover:text-white'}`}>
                       <Info className="w-8 h-8" />
                     </div>
                     <div>
@@ -1373,20 +1371,20 @@ const EnrollmentPortal: React.FC = () => {
                       <p className="text-xs text-gray-500 font-medium mt-1">Esegui il bonifico ora tramite la tua app bancaria</p>
                     </div>
                   </div>
-                  {formData.paymentMethod === PaymentMethod.BankTransfer && <CheckCircle className="w-6 h-6 text-indigo-600" />}
+                  {formData.paymentMethod === PaymentMethod.BankTransfer && <CheckCircle className="w-6 h-6 text-ep-blue-600" />}
                 </div>
 
                 {formData.paymentMethod === PaymentMethod.BankTransfer && (
-                  <div className="mt-8 space-y-6 animate-fade-in border-t border-indigo-200 pt-6">
+                  <div className="mt-8 space-y-6 animate-fade-in border-t border-ep-blue-200 pt-6">
                     <div className="space-y-2">
-                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">IBAN per il bonifico</p>
-                      <div className="bg-white p-4 rounded-2xl flex justify-between items-center border border-indigo-100">
+                      <p className="text-[10px] font-black text-ep-blue-400 uppercase tracking-[0.2em]">IBAN per il bonifico</p>
+                      <div className="bg-white p-4 rounded-2xl flex justify-between items-center border border-ep-blue-100">
                         <p className="font-mono text-base md:text-lg font-bold text-gray-800 tracking-wider">
                           IT68G36772223000EM001966427
                         </p>
                         <button
                           onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText('IT68G36772223000EM001966427'); alert("IBAN copiato!"); }}
-                          className="p-2 hover:bg-indigo-50 rounded-lg text-indigo-600"
+                          className="p-2 hover:bg-ep-blue-50 rounded-lg text-ep-blue-600"
                         >
                           <Copy className="w-5 h-5" />
                         </button>
@@ -1400,7 +1398,7 @@ const EnrollmentPortal: React.FC = () => {
                     </div>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleProcessEnrollment(PaymentMethod.BankTransfer); }}
-                      className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs"
+                      className="w-full bg-ep-blue-600 text-white font-black py-4 rounded-2xl shadow-lg hover:bg-ep-blue-700 transition-all uppercase tracking-widest text-xs"
                     >
                       Ho effettuato il bonifico
                     </button>
@@ -1412,7 +1410,7 @@ const EnrollmentPortal: React.FC = () => {
               <button
                 onClick={() => handleProcessEnrollment(PaymentMethod.PayPal)}
                 disabled={isProcessing}
-                className="group flex items-center justify-between p-6 bg-white border-2 border-gray-100 rounded-[32px] hover:border-blue-500 hover:bg-blue-50 transition-all text-left shadow-sm hover:shadow-md"
+                className="group flex items-center justify-between p-6 bg-white border-2 border-gray-100 rounded-[32px] hover:border-ep-blue-500 hover:bg-ep-blue-50 transition-all text-left shadow-sm hover:shadow-md"
               >
                 <div className="flex items-center gap-6">
                   <div className="w-16 h-16 bg-[#0070BA]/10 text-[#0070BA] rounded-2xl flex items-center justify-center group-hover:bg-[#0070BA] group-hover:text-white transition-colors">
@@ -1423,7 +1421,7 @@ const EnrollmentPortal: React.FC = () => {
                     <p className="text-xs text-gray-500 font-medium mt-1">Reindirizzamento immediato al pagamento online</p>
                   </div>
                 </div>
-                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                <ChevronRight className="w-6 h-6 text-gray-300 group-hover:text-ep-blue-500 transition-colors" />
               </button>
             </div>
 

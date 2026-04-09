@@ -121,7 +121,7 @@ const QuoteForm: React.FC<{
             d.setDate(d.getDate() + 30);
             setExpiryDate(d.toISOString().split('T')[0]);
         }
-    }, [issueDate, quote]);
+    }, [issueDate, quote, expiryDate]);
 
     // --- PAYMENT WIZARD LOGIC ---
 
@@ -150,12 +150,12 @@ const QuoteForm: React.FC<{
         }
     };
 
-    const getSimulatedDateForLesson = (lessonIndex: number) => {
+    const getSimulatedDateForLesson = useCallback((lessonIndex: number) => {
         if (!simulatedStartDate || lessonIndex < 1) return '';
         const d = new Date(simulatedStartDate);
         d.setDate(d.getDate() + (lessonIndex - 1) * 7); // Assuming weekly freq
         return d.toISOString().split('T')[0];
-    };
+    }, [simulatedStartDate]);
 
     // Refs to track changes
     const prevStrategyRef = useRef(paymentStrategy);
@@ -244,10 +244,10 @@ const QuoteForm: React.FC<{
         }
         setInstallments(newInstallments);
 
-    }, [paymentStrategy, installmentsCount, paymentTerms, taxable, issueDate, hasStampDuty]); 
+    }, [paymentStrategy, installmentsCount, paymentTerms, taxable, issueDate, hasStampDuty, calculateEffectiveDate, installments.length, quote]); 
 
     // Update Installment
-    const handleInstallmentChange = (idx: number, field: keyof Installment, value: any) => {
+    const handleInstallmentChange = (idx: number, field: keyof Installment, value: string | number | boolean | undefined) => {
         const newInst = [...installments];
         const updated = { ...newInst[idx], [field]: value };
         
@@ -305,7 +305,7 @@ const QuoteForm: React.FC<{
                 setInstallments(updated);
             }
         }
-    }, [simulatedStartDate, paymentStrategy]); // Removing installments dependency to avoid loop, handled by check
+    }, [simulatedStartDate, paymentStrategy, calculateEffectiveDate, getSimulatedDateForLesson, installments]); // Removing installments dependency to avoid loop, handled by check
 
     // --- FORM HANDLERS ---
 
@@ -386,22 +386,22 @@ const QuoteForm: React.FC<{
                         {!selectedClientId ? (
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-                                <input type="text" className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+                                <input type="text" className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-ep-blue-500 focus:bg-white transition-colors" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
                                 {clientSearch && (
                                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-40 overflow-y-auto">
                                         {filteredClients.map(c => {
                                             const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
                                             return (
-                                                <div key={c.id} onClick={() => { setSelectedClientId(c.id); setClientSearch(''); }} className="p-3 hover:bg-indigo-50 cursor-pointer text-sm font-bold border-b last:border-0">{name}</div>
+                                                <div key={c.id} onClick={() => { setSelectedClientId(c.id); setClientSearch(''); }} className="p-3 hover:bg-ep-blue-50 cursor-pointer text-sm font-bold border-b last:border-0">{name}</div>
                                             );
                                         })}
                                     </div>
                                 )}
                             </div>
                         ) : (
-                            <div className="flex justify-between items-center bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                                <span className="font-bold text-indigo-900 text-base">{clients.find(c => c.id === selectedClientId)?.clientType === ClientType.Parent ? `${(clients.find(c => c.id === selectedClientId) as ParentClient).firstName} ${(clients.find(c => c.id === selectedClientId) as ParentClient).lastName}` : (clients.find(c => c.id === selectedClientId) as InstitutionalClient)?.companyName}</span>
-                                <button type="button" onClick={() => setSelectedClientId('')} className="text-xs font-black text-red-500 hover:underline uppercase">Cambia</button>
+                            <div className="flex justify-between items-center bg-ep-blue-50/50 p-4 rounded-xl border border-ep-blue-100">
+                                <span className="font-bold text-ep-blue-900 text-base">{clients.find(c => c.id === selectedClientId)?.clientType === ClientType.Parent ? `${(clients.find(c => c.id === selectedClientId) as ParentClient).firstName} ${(clients.find(c => c.id === selectedClientId) as ParentClient).lastName}` : (clients.find(c => c.id === selectedClientId) as InstitutionalClient)?.companyName}</span>
+                                <button type="button" onClick={() => setSelectedClientId('')} className="text-xs font-black uppercase btn-global px-2 py-1 rounded">Cambia</button>
                             </div>
                         )}
                     </div>
@@ -416,14 +416,14 @@ const QuoteForm: React.FC<{
                 <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                     <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
                         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Dettaglio Servizi</h4>
-                        <button type="button" onClick={addItem} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 uppercase tracking-tighter"><PlusIcon /> Aggiungi riga</button>
+                        <button type="button" onClick={addItem} className="text-xs font-bold text-ep-blue-600 hover:text-ep-blue-800 flex items-center gap-1 uppercase tracking-tighter"><PlusIcon /> Aggiungi riga</button>
                     </div>
                     <div className="overflow-x-auto">
                         <div className="min-w-[650px] p-4 space-y-2">
                             {items.map((item, idx) => (
                                 <div key={idx} className="flex gap-3 items-start group">
-                                    <div className="flex-1 min-w-0"><input type="text" placeholder="Descrizione servizio..." value={item.description} onChange={e => handleItemChange(idx, 'description', e.target.value)} className="w-full text-sm font-bold text-slate-700 border-b border-gray-200 pb-1 focus:border-indigo-500 outline-none" /><input type="text" placeholder="Note riga (opzionale)" value={item.notes} onChange={e => handleItemChange(idx, 'notes', e.target.value)} className="w-full text-[10px] text-slate-400 border-none p-0 outline-none mt-1" /></div>
-                                    <div className="w-20"><input type="number" step="0.5" value={item.quantity} onChange={e => handleItemChange(idx, 'quantity', Number(e.target.value))} className="w-full text-center text-sm border border-gray-200 rounded p-1.5 focus:ring-1 focus:ring-indigo-500" /></div>
+                                    <div className="flex-1 min-w-0"><input type="text" placeholder="Descrizione servizio..." value={item.description} onChange={e => handleItemChange(idx, 'description', e.target.value)} className="w-full text-sm font-bold text-slate-700 border-b border-gray-200 pb-1 focus:border-ep-blue-500 outline-none" /><input type="text" placeholder="Note riga (opzionale)" value={item.notes} onChange={e => handleItemChange(idx, 'notes', e.target.value)} className="w-full text-[10px] text-slate-400 border-none p-0 outline-none mt-1" /></div>
+                                    <div className="w-20"><input type="number" step="0.5" value={item.quantity} onChange={e => handleItemChange(idx, 'quantity', Number(e.target.value))} className="w-full text-center text-sm border border-gray-200 rounded p-1.5 focus:ring-1 focus:ring-ep-blue-500" /></div>
                                     <div className="w-28"><input type="number" step="0.01" value={item.price} onChange={e => handleItemChange(idx, 'price', Number(e.target.value))} className="w-full text-right text-sm border border-gray-200 rounded p-1.5 font-mono" /></div>
                                     <div className="w-24 text-right font-black text-slate-800 text-sm self-center">{(item.quantity * item.price).toFixed(2)}€</div>
                                     <button type="button" onClick={() => removeItem(idx)} className="text-slate-300 hover:text-red-500 self-center p-1"><TrashIcon /></button>
@@ -444,7 +444,7 @@ const QuoteForm: React.FC<{
                             <span className="text-xs font-bold text-slate-500 uppercase">Sconto Globale:</span>
                             <div className="flex bg-white border border-gray-300 rounded p-0.5">
                                 <input type="number" value={globalDiscount} onChange={e => setGlobalDiscount(Number(e.target.value))} className="w-16 text-right text-sm border-none p-1 focus:ring-0" placeholder="0" />
-                                <button type="button" onClick={() => setGlobalDiscountType(prev => prev === 'percent' ? 'amount' : 'percent')} className="bg-gray-100 px-2 py-1 text-xs font-bold text-slate-600 hover:bg-gray-200 rounded ml-1 min-w-[30px]">
+                                <button type="button" onClick={() => setGlobalDiscountType(prev => prev === 'percent' ? 'amount' : 'percent')} className={`px-2 py-1 text-xs font-bold rounded ml-1 min-w-[30px] btn-global ${globalDiscountType === 'percent' ? 'active' : ''}`}>
                                     {globalDiscountType === 'percent' ? '%' : '€'}
                                 </button>
                             </div>
@@ -460,7 +460,7 @@ const QuoteForm: React.FC<{
                             <div className="flex justify-end gap-4 items-center mb-4">
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <span className="text-xs font-bold text-slate-500 uppercase">Applica Bollo (2€)</span>
-                                    <input type="checkbox" checked={hasStampDuty} onChange={handleStampToggle} className="rounded text-indigo-600 focus:ring-indigo-500" />
+                                    <input type="checkbox" checked={hasStampDuty} onChange={handleStampToggle} className="rounded text-ep-blue-600 focus:ring-ep-blue-500" />
                                 </label>
                                 <span className="font-bold text-slate-700 min-w-[60px] text-right">{stampVal.toFixed(2)}€</span>
                             </div>
@@ -475,11 +475,11 @@ const QuoteForm: React.FC<{
 
                 {/* PIANO PAGAMENTI (WIZARD) */}
                 <div className="bg-slate-100 p-6 rounded-2xl border border-slate-200 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-bl-full pointer-events-none"></div>
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-ep-blue-500/5 rounded-bl-full pointer-events-none"></div>
                     
                     <div className="flex justify-between items-center mb-6">
                         <h4 className="text-sm font-black text-slate-700 uppercase tracking-widest flex items-center gap-2">
-                            <span className="bg-indigo-600 text-white w-6 h-6 rounded flex items-center justify-center text-xs"><CalculatorIcon /></span> 
+                            <span className="bg-ep-blue-600 text-white w-6 h-6 rounded flex items-center justify-center text-xs"><CalculatorIcon /></span> 
                             Condizioni Commerciali & Rate
                         </h4>
                     </div>
@@ -489,14 +489,14 @@ const QuoteForm: React.FC<{
                         {/* Strategia */}
                         <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Strategia Rateale</label>
-                            <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
-                                <button type="button" onClick={() => setPaymentStrategy('single')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${paymentStrategy === 'single' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-50'}`}>Unica</button>
-                                <button type="button" onClick={() => setPaymentStrategy('multiple')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${paymentStrategy === 'multiple' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-50'}`}>Rateale</button>
+                            <div className="flex bg-ep-blue-600 rounded-lg p-1 border border-ep-blue-700 shadow-sm">
+                                <button type="button" onClick={() => setPaymentStrategy('single')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all btn-global ${paymentStrategy === 'single' ? 'active' : ''}`}>Unica</button>
+                                <button type="button" onClick={() => setPaymentStrategy('multiple')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all btn-global ${paymentStrategy === 'multiple' ? 'active' : ''}`}>Rateale</button>
                             </div>
                             {paymentStrategy === 'multiple' && (
                                 <div className="mt-2 flex items-center gap-2 animate-fade-in">
                                     <span className="text-xs font-bold text-slate-600">N. Rate:</span>
-                                    <input type="number" min="2" max="24" value={installmentsCount} onChange={e => setInstallmentsCount(Number(e.target.value))} className="w-16 p-1 text-center font-bold border rounded text-sm focus:ring-indigo-500 border-indigo-300 bg-white" />
+                                    <input type="number" min="2" max="24" value={installmentsCount} onChange={e => setInstallmentsCount(Number(e.target.value))} className="w-16 p-1 text-center font-bold border rounded text-sm focus:ring-ep-blue-500 border-ep-blue-300 bg-white" />
                                 </div>
                             )}
                         </div>
@@ -504,7 +504,7 @@ const QuoteForm: React.FC<{
                         {/* Termini & Trigger */}
                         <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Termini Pagamento (Default)</label>
-                            <select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <select value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} className="w-full p-2 bg-ep-blue-600 border border-ep-blue-700 rounded-lg text-sm font-bold text-white focus:ring-2 focus:ring-ep-blue-400 outline-none">
                                 <option value="immed">Vista Fattura / Immediato</option>
                                 <option value="30df">30 GG Data Fattura</option>
                                 <option value="60df">60 GG Data Fattura</option>
@@ -516,7 +516,7 @@ const QuoteForm: React.FC<{
                         {/* Modalità */}
                         <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Modalità Incasso</label>
-                            <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <select value={paymentMode} onChange={e => setPaymentMode(e.target.value)} className="w-full p-2 bg-ep-blue-600 border border-ep-blue-700 rounded-lg text-sm font-bold text-white focus:ring-2 focus:ring-ep-blue-400 outline-none">
                                 <option value="bank_transfer">Bonifico Bancario</option>
                                 <option value="direct_cash">Rimessa Diretta (Contanti)</option>
                                 <option value="direct_check">Rimessa Diretta (Assegno)</option>
@@ -527,14 +527,14 @@ const QuoteForm: React.FC<{
 
                     {/* SIMULATORE CALENDARIO */}
                     {paymentStrategy === 'multiple' && (
-                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-6 animate-fade-in">
-                            <h5 className="text-[10px] font-black text-indigo-700 uppercase mb-2 flex items-center gap-1">
+                        <div className="bg-ep-blue-50 p-4 rounded-xl border border-ep-blue-100 mb-6 animate-fade-in">
+                            <h5 className="text-[10px] font-black text-ep-blue-700 uppercase mb-2 flex items-center gap-1">
                                 <CalendarIcon /> Simulatore Temporale
                             </h5>
                             <div className="flex gap-4 items-center">
                                 <div className="flex-1">
                                     <label className="text-[9px] font-bold text-slate-500 block">Data Inizio Prevista (Lezione 1)</label>
-                                    <input type="date" value={simulatedStartDate} onChange={e => setSimulatedStartDate(e.target.value)} className="mt-1 w-full text-xs font-bold p-1.5 rounded border border-indigo-200" />
+                                    <input type="date" value={simulatedStartDate} onChange={e => setSimulatedStartDate(e.target.value)} className="mt-1 w-full text-xs font-bold p-1.5 rounded border border-ep-blue-200" />
                                 </div>
                                 <div className="text-xs text-slate-500 italic flex-1">
                                     Utilizzato per calcolare le scadenze dinamiche (es. "4° Lezione"). La frequenza è settimanale.
@@ -593,10 +593,10 @@ const QuoteForm: React.FC<{
                                                 type="date" 
                                                 value={inst.dueDate ? inst.dueDate.split('T')[0] : ''} 
                                                 onChange={e => handleInstallmentChange(idx, 'dueDate', e.target.value)} 
-                                                className="w-full font-medium border border-slate-200 rounded p-1 text-slate-600 focus:border-indigo-500" 
+                                                className="w-full font-medium border border-slate-200 rounded p-1 text-slate-600 focus:border-ep-blue-500" 
                                             />
                                             {inst.triggerType === 'lesson_number' && (
-                                                <span className="text-[9px] text-indigo-400 block mt-0.5">*Stimata</span>
+                                                <span className="text-[9px] text-ep-blue-400 block mt-0.5">*Stimata</span>
                                             )}
                                         </div>
 
@@ -625,13 +625,13 @@ const QuoteForm: React.FC<{
                                                 type="checkbox" 
                                                 checked={inst.hasStampDuty || false} 
                                                 onChange={e => handleInstallmentChange(idx, 'hasStampDuty', e.target.checked)}
-                                                className="rounded text-indigo-600 focus:ring-indigo-500"
+                                                className="rounded text-ep-blue-600 focus:ring-ep-blue-500"
                                             />
                                         </div>
 
                                         {/* Importo */}
                                         <div className="col-span-2 text-right">
-                                            <input type="number" step="0.01" value={inst.amount} onChange={e => handleInstallmentChange(idx, 'amount', Number(e.target.value))} className="w-full font-black border border-slate-200 rounded p-1.5 text-right font-mono text-slate-800 focus:border-indigo-500" />
+                                            <input type="number" step="0.01" value={inst.amount} onChange={e => handleInstallmentChange(idx, 'amount', Number(e.target.value))} className="w-full font-black border border-slate-200 rounded p-1.5 text-right font-mono text-slate-800 focus:border-ep-blue-500" />
                                         </div>
                                     </div>
                                 );
@@ -644,6 +644,11 @@ const QuoteForm: React.FC<{
                             <span className={`text-sm font-black ${Math.abs(finalGrandTotal - installments.reduce((sum, i) => sum + i.amount, 0)) > 0.05 ? 'text-red-500' : 'text-green-500'}`}>
                                 {installments.reduce((sum, i) => sum + i.amount, 0).toFixed(2)}€
                             </span>
+                            {/* Dati Fissi IBAN */}
+                            <div className="text-left mt-4 text-sm text-slate-600 font-bold">
+                                <p>IBAN : <span className="font-mono text-slate-800">{companyInfo?.iban || 'N/A'}</span></p>
+                                <p>Intestato a : <span className="font-mono text-slate-800">{companyInfo?.name || 'N/A'}</span></p>
+                            </div>
                             {Math.abs(finalGrandTotal - installments.reduce((sum, i) => sum + i.amount, 0)) > 0.05 && (
                                 <p className="text-[10px] text-red-400 mt-1 font-bold animate-pulse">ATTENZIONE: Il piano rateale non copre il totale documento.</p>
                             )}

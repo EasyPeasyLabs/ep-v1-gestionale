@@ -11,7 +11,6 @@ import ConfirmModal from '../components/ConfirmModal';
 import LessonForm from '../components/calendar/LessonForm';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
-import PencilIcon from '../components/icons/PencilIcon';
 import { toLocalISOString, getItalianHolidays } from '../utils/dateUtils';
 
 // Helper per contrasto colore
@@ -348,26 +347,26 @@ const Calendar: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            <div className="flex justify-between items-center mb-4 md:mb-6 flex-shrink-0">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-bold">Calendario</h1>
-                    <p className="mt-1 text-sm md:text-base text-gray-500">Gestione lezioni extra e chiusure.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                    {closures.length > 0 && (
-                        <button 
-                            onClick={() => setIsDeleteAllClosuresModalOpen(true)}
-                            className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center font-bold"
-                            title="Elimina tutte le chiusure e ripristina lezioni"
-                        >
-                            <TrashIcon /> <span className="ml-1 hidden sm:inline">Elimina Tutte</span>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 md:mb-6 flex-shrink-0 gap-3">
+                    <div className="min-w-0">
+                        <h1 className="text-xl md:text-3xl font-bold truncate">Calendario</h1>
+                        <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Lezioni extra e chiusure.</p>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        {closures.length > 0 && (
+                            <button 
+                                onClick={() => setIsDeleteAllClosuresModalOpen(true)}
+                                className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center font-bold"
+                                title="Elimina tutte le chiusure e ripristina lezioni"
+                            >
+                                <TrashIcon /> <span className="ml-1 hidden sm:inline">Elimina Tutte</span>
+                            </button>
+                        )}
+                        <button onClick={() => { setEditingLesson(null); setIsLessonModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center px-3 py-2 md:px-4 md:py-2">
+                            <PlusIcon /><span className="ml-2 hidden md:inline">Nuova Lezione</span><span className="md:hidden ml-1">Nuova</span>
                         </button>
-                    )}
-                    <button onClick={() => { setEditingLesson(null); setIsLessonModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center">
-                        <PlusIcon /><span className="ml-2 hidden md:inline">Nuova Lezione</span><span className="md:hidden ml-1">Nuova</span>
-                    </button>
+                    </div>
                 </div>
-            </div>
 
             <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 {/* Calendar Header */}
@@ -407,7 +406,7 @@ const Calendar: React.FC = () => {
                                 <div 
                                     key={idx} 
                                     // Aumento altezza minima a 180px
-                                    className={`min-h-[80px] md:min-h-[180px] border-b border-r border-gray-100 p-1 md:p-2 flex flex-col relative transition-colors group ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'} ${isToday ? 'animate-neon-pulse z-10' : ''}`}
+                                    className={`min-h-[100px] md:min-h-[180px] border-b border-r border-gray-100 p-0.5 md:p-2 flex flex-col relative transition-colors group ${isCurrentMonth ? 'bg-white' : 'bg-gray-50 text-gray-400'} ${isToday ? 'animate-neon-pulse z-10' : ''}`}
                                     onClick={() => !closure && setManageClosureData({ date: dayItem })}
                                 >
                                     <div className="flex justify-between items-start mb-1 md:mb-2">
@@ -441,9 +440,9 @@ const Calendar: React.FC = () => {
                                             const locCode = locName.length >= 3 ? locName.substring(0, 3).toUpperCase() : locName.toUpperCase();
                                             const desktopLabel = `${locCode} ${evt.startTime}`;
                                             
-                                            // Costruzione Etichetta Mobile: Sede (3 char) + Ora (2 char)
+                                            // Costruzione Etichetta Mobile: Più compatta ma leggibile
                                             const startHour = evt.startTime.split(':')[0];
-                                            const mobileLabel = `${locCode} ${startHour}`;
+                                            const mobileLabel = `${locCode.substring(0,2)} ${startHour}h`;
                                             
                                             // Tooltip: Lista completa partecipanti
                                             const tooltip = `${evt.startTime} - ${evt.locationName}\n${evt.studentNames?.join(', ') || evt.childName || evt.description}`;
@@ -454,18 +453,18 @@ const Calendar: React.FC = () => {
                                                     onClick={(e) => handleEventClick(e, evt)}
                                                     className="
                                                         rounded shadow-sm cursor-pointer hover:opacity-80 font-bold flex items-center transition-transform hover:scale-[1.02] border border-black/5
-                                                        text-[9px] px-1 py-0.5 justify-center        
-                                                        md:text-[10px] md:px-1.5 md:py-1 md:justify-between
-                                                        mb-0.5 md:mb-0
+                                                        text-[7px] leading-[1] px-0.5 py-0.5 justify-center tracking-tighter
+                                                        md:text-[10px] md:px-1.5 md:py-1 md:justify-between md:tracking-normal
+                                                        mb-0.5 md:mb-0 overflow-hidden
                                                     "
                                                     style={{ backgroundColor: bgCol, color: textCol }}
                                                     title={tooltip}
                                                 >
-                                                    <span className="truncate w-full flex items-center gap-1 leading-tight justify-center md:justify-start">
+                                                    <span className="w-full flex items-center gap-1 leading-tight justify-center md:justify-start whitespace-nowrap overflow-hidden">
                                                         {/* Mobile View */}
-                                                        <span className="md:hidden">{mobileLabel}</span>
+                                                        <span className="md:hidden truncate">{mobileLabel}</span>
                                                         {/* Desktop View */}
-                                                        <span className="hidden md:inline">{desktopLabel}</span>
+                                                        <span className="hidden md:inline truncate">{desktopLabel}</span>
                                                         
                                                         {evt.studentNames && evt.studentNames.length > 1 && (
                                                             <>

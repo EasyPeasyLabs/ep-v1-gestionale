@@ -360,8 +360,8 @@ export const importEnrollmentsFromExcel = async (file: File): Promise<ImportResu
                         locData.loc.id,
                         locData.loc.name,
                         locData.loc.color,
-                        String(row.StartTime || activeEnrollment.appointments[0]?.startTime || '16:00'),
-                        String(row.EndTime || activeEnrollment.appointments[0]?.endTime || '18:00')
+                        String(row.StartTime || activeEnrollment.appointments?.[0]?.startTime || '16:00'),
+                        String(row.EndTime || activeEnrollment.appointments?.[0]?.endTime || '18:00')
                     );
                     result.updated++;
                     // Skip payment creation for moves usually, or check if specific payment attached

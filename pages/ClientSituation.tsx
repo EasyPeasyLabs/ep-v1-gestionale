@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo, IntegrityIssue, IntegrityIssueSuggestion, SubscriptionType } from '../types';
+import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
-import { getTransactions, getInvoices, fixIntegrityIssue } from '../services/financeService';
+import { getTransactions, getInvoices } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
-import { getCompanyInfo, getSubscriptionTypes } from '../services/settingsService';
+import { getCompanyInfo } from '../services/settingsService';
 import Spinner from '../components/Spinner';
 import SearchIcon from '../components/icons/SearchIcon';
 import IdentificationIcon from '../components/icons/IdentificationIcon';
@@ -43,7 +43,6 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
     
     // Filters
@@ -56,25 +55,17 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     
     // Selected Context
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
-    const [fixingId, setFixingId] = useState<string | null>(null);
-
-    // Helper to get public name of subscription
-    const getPublicSubscriptionName = useCallback((enr: Enrollment) => {
-        const subType = subscriptionTypes.find(s => s.id === enr.subscriptionTypeId);
-        return subType?.publicName || enr.subscriptionName;
-    }, [subscriptionTypes]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [cData, eData, tData, iData, sData, infoData, subData] = await Promise.all([
+            const [cData, eData, tData, iData, sData, infoData] = await Promise.all([
                 getClients(),
                 getAllEnrollments(),
                 getTransactions(),
                 getInvoices(),
                 getSuppliers(),
-                getCompanyInfo(),
-                getSubscriptionTypes()
+                getCompanyInfo()
             ]);
             setClients(cData || []);
             setEnrollments(eData || []);
@@ -82,7 +73,6 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             setInvoices(iData || []);
             setSuppliers(sData || []);
             setCompanyInfo(infoData);
-            setSubscriptionTypes(subData || []);
         } catch (e) {
             console.error("ClientSituation Error:", e);
         } finally {
@@ -91,38 +81,6 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     }, []);
 
     useEffect(() => { fetchData(); }, [fetchData]);
-
-    const handleQuickFix = async (enrollmentId: string, suggestion: IntegrityIssueSuggestion) => {
-        setFixingId(`${enrollmentId}-${suggestion.type}`);
-        try {
-            const issue: IntegrityIssue = {
-                id: `health-${enrollmentId}`,
-                type: 'missing_invoice',
-                date: new Date().toISOString(),
-                description: 'Riconciliazione Rapida',
-                entityName: '',
-                subscriptionName: '',
-                amount: 0,
-                suggestions: [suggestion]
-            };
-
-            await fixIntegrityIssue(
-                issue, 
-                suggestion.type as any, 
-                undefined, 
-                suggestion.payload?.invoiceId ? [suggestion.payload.invoiceId] : undefined, 
-                undefined, 
-                suggestion.payload?.transactionId
-            );
-            
-            // Refresh data
-            await fetchData();
-        } catch (e) {
-            alert("Errore nella riconciliazione: " + e);
-        } finally {
-            setFixingId(null);
-        }
-    };
 
     // Handle deep linking via initialParams
     useEffect(() => {
@@ -163,7 +121,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     };
 
     // --- AGGREGATION HELPER FOR BULK EXPORT & FILTERING ---
-    const getClientFinancialSummary = (client: Client, locFilter?: string, year?: string, month?: string) => {
+    const getClientFinancialSummary = useCallback((client: Client, locFilter?: string, year?: string, month?: string) => {
         // 1. Filter Enrollments based on Location Filter (if active)
         let clientEnrs = enrollments.filter(e => e.clientId === client.id);
         
@@ -187,7 +145,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             
             if (dueInPeriod) {
                 if (enr.status === EnrollmentStatus.Active) {
-                    activeSubscriptions.push(getPublicSubscriptionName(enr));
+                    activeSubscriptions.push(enr.subscriptionName);
                     if (enr.locationName && enr.locationName !== 'Sede Non Definita') locations.add(enr.locationName);
                 }
                 totalDue += (Number(enr.price) || 0);
@@ -203,25 +161,16 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 }
             });
 
-            // Attendance Logic: Sum based on enrollment filter
+            // Attendance Logic: Sum based on enrollment filter (simplified, attendance follows enrollment usually)
+            // If we have strict date filter for attendance, we should check appointment dates.
             if (enr.appointments) {
-                // Set per tenere traccia dei lessonId originali già recuperati
-                const uniqueRecoveries = new Set<string>();
-
                 enr.appointments.forEach(app => {
+                    // Check if appointment is in filtered period (if filters active)
+                    // If no filters (year/month), count everything.
                     if (isDateInPeriod(app.date, year, month)) {
                         if (app.status === 'Present') aggPresences++;
                         else if (app.status === 'Absent') aggAbsences++;
-                        
-                        // Logica Recuperi Pulita: Contiamo lo slot REC- solo se non abbiamo già
-                        // contato un recupero per la stessa lezione originale.
-                        if (app.lessonId?.startsWith('REC-')) {
-                            const originalId = app.recoveredLessonId || 'orphan';
-                            if (!uniqueRecoveries.has(originalId)) {
-                                aggRecoveries++;
-                                if (originalId !== 'orphan') uniqueRecoveries.add(originalId);
-                            }
-                        }
+                        if (app.lessonId && app.lessonId.startsWith('REC-')) aggRecoveries++;
                     }
                 });
             }
@@ -258,7 +207,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             aggAbsences,
             aggRecoveries
         };
-    };
+    }, [enrollments, transactions]);
 
     // Calculate counts for the filter buttons
     const statusCounts = useMemo(() => {
@@ -299,7 +248,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         });
 
         return { countBalanced, countDebt, countSurplus };
-    }, [clients, searchTerm, filterLocation, enrollments, transactions, filterYear, filterMonth]);
+    }, [clients, searchTerm, filterLocation, enrollments, filterYear, filterMonth, getClientFinancialSummary]);
 
     const filteredClients = useMemo(() => {
         return clients.filter(c => {
@@ -337,7 +286,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             const nB = getClientName(b);
             return sortOrder === 'asc' ? nA.localeCompare(nB) : nB.localeCompare(nA);
         });
-    }, [clients, searchTerm, filterLocation, sortOrder, enrollments, transactions, filterYear, filterMonth, filterBalanceStatus]);
+    }, [clients, searchTerm, filterLocation, sortOrder, enrollments, filterYear, filterMonth, filterBalanceStatus, getClientFinancialSummary]);
 
     // Derived Data for Selected Client (Visual Detail View)
     const clientFinancials = useMemo(() => {
@@ -347,89 +296,32 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             .filter(e => e.clientId === selectedClient.id)
             .sort((a,b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
         
-            // Group by Enrollment ID for structured view
+        // Group by Enrollment ID for structured view
         const rows = clientEnrollments.map(enr => {
             const linkedInvoices = invoices.filter(i => 
                 i.relatedEnrollmentId === enr.id && 
-                !i.isDeleted
+                !i.isDeleted &&
+                isDateInPeriod(i.issueDate, filterYear, filterMonth)
             );
             const linkedTrans = transactions.filter(t => 
                 t.relatedEnrollmentId === enr.id && 
-                !t.isDeleted
+                !t.isDeleted &&
+                isDateInPeriod(t.date, filterYear, filterMonth)
             );
 
-            const totalDue = Number(enr.price) || 0;
-            const totalPaid = linkedTrans.reduce((s, t) => s + Number(t.amount), 0) + (Number(enr.adjustmentAmount) || 0);
-            const balance = totalDue - totalPaid;
-
-            // --- ATTENDANCE STATS (CORRECTED & DETERMINISTIC) ---
+            // Calculate Attendance Stats for this enrollment
             let presences = 0;
             let absences = 0;
             let recoveries = 0;
 
             if (enr.appointments) {
-                const uniqueRecoveredFrom = new Set<string>();
-                let orphanRecoveries = 0;
-
                 enr.appointments.forEach(app => {
                     if (app.status === 'Present') presences++;
                     else if (app.status === 'Absent') absences++;
                     
-                    if (app.lessonId?.startsWith('REC-')) {
-                        if (app.recoveredLessonId) {
-                            if (!uniqueRecoveredFrom.has(app.recoveredLessonId)) {
-                                recoveries++;
-                                uniqueRecoveredFrom.add(app.recoveredLessonId);
-                            }
-                        } else {
-                            // Legacy/Orphan recovery slot
-                            orphanRecoveries++;
-                        }
+                    if (app.lessonId && app.lessonId.startsWith('REC-')) {
+                        recoveries++;
                     }
-                });
-
-                // Bonifica dati sporchi: i recuperi orfani vengono contati solo se abbiamo assenze scoperte
-                const documentedRecoveries = recoveries;
-                const availableAbsencesForOrphans = Math.max(0, absences - documentedRecoveries);
-                recoveries += Math.min(orphanRecoveries, availableAbsencesForOrphans);
-            }
-
-            // --- AI SUGGESTIONS FOR RECONCILIATION ---
-            const suggestions: IntegrityIssueSuggestion[] = [];
-            if (balance > 5) {
-                // Search in orphans for this client
-                const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
-                
-                // Potential Invoices (Matching amount)
-                const potInvoices = invoices.filter(i => 
-                    i.clientId === selectedClient.id && 
-                    !i.relatedEnrollmentId && 
-                    !i.isDeleted &&
-                    Math.abs(i.totalAmount - balance) < 5
-                );
-
-                potInvoices.forEach(inv => {
-                    suggestions.push({
-                        type: 'smart_link',
-                        label: `Collega Fattura ${inv.invoiceNumber} (${inv.totalAmount}€)`,
-                        payload: { invoiceId: inv.id }
-                    });
-                });
-
-                // Potential Transactions (Matching amount or name)
-                const potTrans = transactions.filter(t => 
-                    (t.clientName === getClientName(selectedClient)) &&
-                    !t.relatedEnrollmentId && 
-                    !t.isDeleted &&
-                    (Math.abs(t.amount - balance) < 5 || (childLastName && t.description.toLowerCase().includes(childLastName)))
-                );
-
-                potTrans.forEach(trs => {
-                    suggestions.push({
-                        type: 'smart_link',
-                        label: `Collega Pagamento: ${trs.description} (${trs.amount}€)`,
-                        payload: { transactionId: trs.id }
-                    });
                 });
             }
             
@@ -437,9 +329,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 enrollment: enr,
                 invoices: linkedInvoices,
                 transactions: linkedTrans,
-                stats: { presences, absences, recoveries },
-                balance,
-                suggestions
+                stats: { presences, absences, recoveries }
             };
         });
 
@@ -488,7 +378,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         });
 
         return { grandDue, grandPaid, grandGap, grandSurplus };
-    }, [filteredClients, filterLocation, filterYear, filterMonth, enrollments, transactions]);
+    }, [filteredClients, filterLocation, filterYear, filterMonth, getClientFinancialSummary]);
 
     // --- SINGLE CLIENT EXPORTS ---
     const handleSingleClientExcel = () => {
@@ -510,12 +400,12 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
         }];
 
         // 2. Dettaglio Movimenti
-        const detailRows: any[] = [];
+        const detailRows: Record<string, string | number>[] = [];
         
         clientFinancials.rows.forEach(row => {
             // Header Iscrizione
             detailRows.push({
-                "Contesto": `ISCRIZIONE: ${getPublicSubscriptionName(row.enrollment)}`,
+                "Contesto": `ISCRIZIONE: ${row.enrollment.subscriptionName}`,
                 "Data": new Date(row.enrollment.startDate).toLocaleDateString(),
                 "Dettaglio": `Prezzo: ${row.enrollment.price}€ - Allievo: ${row.enrollment.childName}`,
                 "Importo": -row.enrollment.price,
@@ -576,7 +466,9 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             if (companyInfo?.logoBase64) {
                 try {
                     doc.addImage(companyInfo.logoBase64, 'PNG', 14, 10, 25, 25);
-                } catch(e) {}
+                } catch(e) {
+                    // Ignore error
+                }
             }
             
             doc.setFontSize(18);
@@ -606,7 +498,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             // 3. Status Badges
             // Financial Badge
             const balColor = summary.balance > 0.01 ? [220, 50, 50] : [50, 150, 50]; // Red/Green
-            doc.setFillColor(balColor[0] as any, balColor[1] as any, balColor[2] as any);
+            doc.setFillColor(balColor[0], balColor[1], balColor[2]);
             doc.roundedRect(140, 45, 50, 18, 2, 2, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(8);
@@ -625,51 +517,19 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 doc.setFontSize(11);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(60, 60, 82);
-                doc.text(`${index + 1}. CORSO: ${getPublicSubscriptionName(row.enrollment)}`, 14, currentY);
-                
+                doc.text(`${index + 1}. ${row.enrollment.subscriptionName}`, 14, currentY);
                 doc.setFontSize(9);
                 doc.setFont("helvetica", "normal");
-                doc.setTextColor(0, 0, 0);
-                doc.text(`SEDE: ${row.enrollment.locationName || 'N/D'} | Allievo: ${row.enrollment.childName} | Prezzo: ${row.enrollment.price}€`, 14, currentY + 5);
+                doc.text(`Allievo: ${row.enrollment.childName} | Prezzo: ${row.enrollment.price}€`, 14, currentY + 5);
                 
                 // Attendance Mini-Stats line
                 doc.setFontSize(8);
                 doc.setTextColor(100, 100, 100);
                 doc.text(`Didattica: ${row.stats.presences} Presenze | ${row.stats.absences} Assenze | ${row.stats.recoveries} Recuperi`, 14, currentY + 10);
-                
-                currentY += 15;
 
-                // --- NEW: Detailed Absence/Recovery Table in PDF ---
-                const absenceDetailRows: any[] = (row.enrollment.appointments || [])
-                    .filter(a => a.status === 'Absent')
-                    .sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                    .map(abs => {
-                        const rec = row.enrollment.appointments?.find(a => 
-                            a.recoveredLessonId === abs.lessonId || 
-                            a.lessonId === abs.recoveryId ||
-                            (a.lessonId?.startsWith('REC-') && new Date(a.date) > new Date(abs.date) && !a.recoveredLessonId)
-                        );
-                        return [
-                            `ASSENZA: ${new Date(abs.date).toLocaleDateString()}`,
-                            rec ? `↳ RECUPERO: ${new Date(rec.date).toLocaleDateString()}` : 'Nessun recupero autorizzato (Credito perso)',
-                            rec ? rec.status : '-'
-                        ];
-                    });
+                currentY += 14;
 
-                if (absenceDetailRows.length > 0) {
-                    autoTable(doc, {
-                        startY: currentY,
-                        head: [['Data Assenza', 'Stato / Data Recupero', 'Esito']],
-                        body: absenceDetailRows,
-                        theme: 'plain',
-                        styles: { fontSize: 7, cellPadding: 1 },
-                        headStyles: { fillColor: [255, 240, 240], textColor: [200, 0, 0], fontStyle: 'bold' },
-                        margin: { left: 20, right: 14 } // Indented slightly
-                    });
-                    currentY = (doc as any).lastAutoTable.finalY + 5;
-                }
-
-                const tableData: any[] = [];
+                const tableData: (string | number)[][] = [];
                 row.invoices.forEach(inv => tableData.push(['Fattura', inv.invoiceNumber, new Date(inv.issueDate).toLocaleDateString(), `${inv.totalAmount.toFixed(2)}€`]));
                 row.transactions.forEach(trs => tableData.push(['Pagamento', trs.description, new Date(trs.date).toLocaleDateString(), `${trs.amount.toFixed(2)}€`]));
 
@@ -684,7 +544,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         columnStyles: { 3: { halign: 'right' } },
                         margin: { left: 14, right: 14 }
                     });
-                    currentY = (doc as any).lastAutoTable.finalY + 15;
+                    currentY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 15;
                 } else {
                     doc.setFontSize(8);
                     doc.setTextColor(150, 150, 150);
@@ -877,7 +737,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 }
             });
 
-            const finalY = (doc as any).lastAutoTable.finalY + 10;
+            const finalY = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
             doc.setFontSize(10);
             
             // A. Totale Dovuto
@@ -928,7 +788,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             </div>
 
             {/* HEADER FILTERS */}
-            <div className="md-card p-4 bg-white sticky top-0 z-30 shadow-md border-b border-indigo-100 transition-all">
+            <div className="md-card p-4 bg-white sticky top-0 z-30 shadow-md border-b border-ep-blue-100 transition-all">
                 {!selectedClient ? (
                     <div className="flex flex-col gap-3 animate-fade-in">
                         <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center">
@@ -946,7 +806,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                 <select 
                                     value={filterLocation} 
                                     onChange={e => setFilterLocation(e.target.value)} 
-                                    className="md-input w-40 flex-shrink-0 text-sm"
+                                    className="md-input w-40 flex-shrink-0 text-sm bg-ep-blue-600 text-white border-none font-bold"
                                 >
                                     <option value="">Tutte le Sedi</option>
                                     {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
@@ -954,7 +814,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                 <select 
                                     value={filterYear} 
                                     onChange={e => { setFilterYear(e.target.value); if(!e.target.value) setFilterMonth(''); }} 
-                                    className="md-input w-32 flex-shrink-0 text-sm font-bold text-indigo-700 bg-indigo-50 border-indigo-100"
+                                    className="md-input w-32 flex-shrink-0 text-sm font-bold bg-ep-blue-600 text-white border-none"
                                 >
                                     <option value="">Tutti gli anni</option>
                                     {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -963,7 +823,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                     value={filterMonth} 
                                     onChange={e => setFilterMonth(e.target.value)} 
                                     disabled={!filterYear}
-                                    className={`md-input w-32 flex-shrink-0 text-sm font-bold ${!filterYear ? 'bg-gray-100 text-gray-400' : 'text-indigo-700 bg-indigo-50 border-indigo-100'}`}
+                                    className={`md-input w-32 flex-shrink-0 text-sm font-bold ${!filterYear ? 'bg-gray-100 text-gray-400' : 'bg-ep-blue-600 text-white border-none'}`}
                                 >
                                     <option value="">Tutto l'anno</option>
                                     {months.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
@@ -1019,7 +879,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         <div className="flex items-center gap-3 w-full md:w-auto">
                             <button 
                                 onClick={() => setSelectedClient(null)} 
-                                className="flex items-center gap-2 text-sm font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-4 py-2 rounded-lg transition-colors"
+                                className="flex items-center gap-2 text-sm font-bold text-ep-blue-600 bg-ep-blue-50 hover:bg-ep-blue-100 px-4 py-2 rounded-lg transition-colors"
                             >
                                 <span>←</span> Torna alla lista
                             </button>
@@ -1087,10 +947,10 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                 <div 
                                     key={client.id} 
                                     onClick={() => handleSelectClient(client)}
-                                    className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md cursor-pointer hover:border-indigo-300 transition-all group flex flex-col h-full"
+                                    className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md cursor-pointer hover:border-ep-blue-300 transition-all group flex flex-col h-full"
                                 >
                                     <div className="flex justify-between items-start mb-2">
-                                        <h3 className="font-bold text-gray-800 text-lg group-hover:text-indigo-700 leading-tight">{getClientName(client)}</h3>
+                                        <h3 className="font-bold text-gray-800 text-lg group-hover:text-ep-blue-700 leading-tight">{getClientName(client)}</h3>
                                         <div className="flex flex-col items-end gap-1">
                                             <span className={`text-[10px] uppercase px-2 py-1 rounded font-bold ${client.clientType === ClientType.Parent ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'}`}>
                                                 {client.clientType === ClientType.Parent ? 'Genitore' : 'Ente'}
@@ -1143,7 +1003,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 <div className="space-y-6 animate-slide-up">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* 1. Anagrafica */}
-                        <div className="md-card p-6 bg-white border-l-4 border-indigo-500 relative">
+                        <div className="md-card p-6 bg-white border-l-4 border-ep-blue-500 relative">
                             {selectedClient.source === 'web_lead' && (
                                 <span className="absolute top-4 right-4 text-[10px] uppercase px-2 py-1 rounded font-bold bg-blue-100 text-blue-800">
                                     Lead
@@ -1158,7 +1018,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                             <div className="space-y-3 text-sm">
                                 <div><label className="text-xs text-gray-400 uppercase font-bold">Nome</label><p className="font-bold text-gray-900">{getClientName(selectedClient)}</p></div>
                                 <div><label className="text-xs text-gray-400 uppercase font-bold">CF / P.IVA</label><p className="font-mono text-gray-700">{selectedClient.clientType === ClientType.Parent ? (selectedClient as ParentClient).taxCode : (selectedClient as InstitutionalClient).vatNumber}</p></div>
-                                <div><label className="text-xs text-gray-400 uppercase font-bold">Contatti</label><p className="text-indigo-600">{selectedClient.email}</p><p>{selectedClient.phone}</p></div>
+                                <div><label className="text-xs text-gray-400 uppercase font-bold">Contatti</label><p className="text-ep-blue-600">{selectedClient.email}</p><p>{selectedClient.phone}</p></div>
                             </div>
                         </div>
 
@@ -1218,22 +1078,18 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         {clientFinancials && clientFinancials.rows.map((row, idx) => (
                             <div key={idx} className="border-b last:border-0 border-gray-100">
                                 <div className="bg-gray-50 p-3 flex justify-between items-center">
-                                    <span className="font-bold text-gray-700">{getPublicSubscriptionName(row.enrollment)}</span>
-                                    <span className="text-xs font-mono font-black">{Number(row.enrollment.price).toFixed(2)}€</span>
+                                    <span className="font-bold text-gray-700">{row.enrollment.subscriptionName}</span>
+                                    <span className="text-xs font-mono">{Number(row.enrollment.price).toFixed(2)}€</span>
                                 </div>
                                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {/* FIRST COLUMN: TRANSACTIONS */}
                                     <div>
                                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Transazioni (Cassa)</p>
-                                        <div className="space-y-1.5">
-                                            {row.transactions.map(t => (
-                                                <div key={t.id} className="text-[11px] flex justify-between p-2 bg-slate-50 rounded border border-slate-100">
-                                                    <span className="text-slate-500">{new Date(t.date).toLocaleDateString()}</span>
-                                                    <span className="font-bold text-slate-700">{t.amount.toFixed(2)}€</span>
-                                                </div>
-                                            ))}
-                                            {row.transactions.length === 0 && <p className="text-[10px] text-slate-300 italic">Nessun pagamento collegato.</p>}
-                                        </div>
+                                        {row.transactions.map(t => (
+                                            <div key={t.id} className="text-xs flex justify-between mb-1">
+                                                <span>{new Date(t.date).toLocaleDateString()}</span>
+                                                <span className="font-bold">{t.amount.toFixed(2)}€</span>
+                                            </div>
+                                        ))}
                                     </div>
                                     
                                     {/* MIDDLE COLUMN: INVOICES + MONITORING */}
@@ -1242,168 +1098,39 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                         <div className="space-y-3">
                                             {/* Invoices List */}
                                             {row.invoices.map(i => (
-                                                <div key={i.id} className="text-[11px] flex justify-between p-2 bg-indigo-50/30 rounded border border-indigo-100">
+                                                <div key={i.id} className="text-xs flex justify-between mb-1">
                                                     <div>
-                                                        <span className="font-mono font-bold mr-2 text-indigo-700">{i.invoiceNumber}</span>
-                                                        <span className="text-slate-400 text-[10px]">{new Date(i.issueDate).toLocaleDateString()}</span>
+                                                        <span className="font-mono font-bold mr-2">{i.invoiceNumber}</span>
+                                                        <span className="text-gray-400 text-[10px]">{new Date(i.issueDate).toLocaleDateString()}</span>
                                                     </div>
-                                                    <span className="font-black text-indigo-900">{i.totalAmount.toFixed(2)}€</span>
+                                                    <span className="font-bold">{i.totalAmount.toFixed(2)}€</span>
                                                 </div>
                                             ))}
-
+                                            
                                             {/* Monitoring Badge */}
-                                            <div className="flex flex-col gap-3 border-t border-dashed border-gray-200 pt-2">
-                                                <div className="flex gap-2">
-                                                    <div className="flex-1 bg-green-50 text-green-700 text-center rounded border border-green-100 p-1">
-                                                        <span className="block text-[8px] uppercase font-bold">Presenze</span>
-                                                        <span className="text-xs font-black">{row.stats.presences}</span>
-                                                    </div>
-                                                    <div className="flex-1 bg-red-50 text-red-700 text-center rounded border border-red-100 p-1">
-                                                        <span className="block text-[8px] uppercase font-bold">Assenze</span>
-                                                        <span className="text-xs font-black">{row.stats.absences}</span>
-                                                    </div>
-                                                    <div className="flex-1 bg-amber-50 text-amber-700 text-center rounded border border-amber-100 p-1">
-                                                        <span className="block text-[8px] uppercase font-bold">Recuperi</span>
-                                                        <span className="text-xs font-black">{row.stats.recoveries}</span>
-                                                    </div>
+                                            <div className="flex gap-2 border-t border-dashed border-gray-200 pt-2">
+                                                <div className="flex-1 bg-green-50 text-green-700 text-center rounded border border-green-100 p-1">
+                                                    <span className="block text-[8px] uppercase font-bold">Presenze</span>
+                                                    <span className="text-xs font-black">{row.stats.presences}</span>
                                                 </div>
-
-                                                {/* Detailed Absences & Recoveries List */}
-                                                {(row.enrollment.appointments || []).some(a => a.status === 'Absent') && (
-                                                    <div className="bg-white rounded-lg border border-slate-100 overflow-hidden">
-                                                        <div className="bg-slate-50 px-2 py-1 border-b border-slate-100">
-                                                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Cronologia Didattica (Assenze/Recuperi)</span>
-                                                        </div>
-                                                        <div className="divide-y divide-slate-50">
-                                                            {row.enrollment.appointments?.filter(a => a.status === 'Absent').sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(abs => {
-                                                                // Lookup intelligente: per ID o per cronologia (primo REC- disponibile dopo l'assenza)
-                                                                const recovery = row.enrollment.appointments?.find(a => 
-                                                                    a.recoveredLessonId === abs.lessonId || 
-                                                                    a.lessonId === abs.recoveryId ||
-                                                                    (a.lessonId?.startsWith('REC-') && new Date(a.date) > new Date(abs.date) && !a.recoveredLessonId) // Fallback per legacy
-                                                                );
-                                                                return (
-                                                                    <div key={abs.lessonId} className="p-2 flex justify-between items-center group">
-                                                                        <div className="flex flex-col">
-                                                                            <span className="text-[10px] font-bold text-red-600 uppercase">Assenza: {new Date(abs.date).toLocaleDateString()}</span>
-                                                                            {recovery ? (
-                                                                                <span className="text-[10px] font-black text-green-600 flex items-center gap-1">
-                                                                                    ↳ Recupero: {new Date(recovery.date).toLocaleDateString()}
-                                                                                    <span className="text-[8px] bg-green-100 px-1 rounded border border-green-200 uppercase font-black">{recovery.status}</span>
-                                                                                </span>
-                                                                            ) : (
-                                                                                <span className="text-[9px] font-medium text-slate-400 italic">Nessun recupero autorizzato (Credito perso)</span>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
+                                                <div className="flex-1 bg-red-50 text-red-700 text-center rounded border border-red-100 p-1">
+                                                    <span className="block text-[8px] uppercase font-bold">Assenze</span>
+                                                    <span className="text-xs font-black">{row.stats.absences}</span>
+                                                </div>
+                                                <div className="flex-1 bg-amber-50 text-amber-700 text-center rounded border border-amber-100 p-1">
+                                                    <span className="block text-[8px] uppercase font-bold">Recuperi</span>
+                                                    <span className="text-xs font-black">{row.stats.recoveries}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* THIRD COLUMN: BALANCE & AI FISCAL DOCTOR */}
-                                    <div className="bg-slate-50/50 p-4 rounded-xl border border-dashed border-slate-200 flex flex-col justify-center">
-                                        <div className="flex justify-between items-center mb-4">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase">Stato Pagamento</p>
-                                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${row.balance <= 0.01 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                {row.balance <= 0.01 ? 'SALDATA' : 'SCOPERTA'}
-                                            </span>
-                                        </div>
-
-                                        <div className="text-center mb-4">
-                                            <p className={`text-2xl font-black ${row.balance > 0.01 ? 'text-red-600' : 'text-green-600'}`}>
-                                                {row.balance > 0.01 ? `-${row.balance.toFixed(2)}€` : `${Math.abs(row.balance).toFixed(2)}€`}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Saldo Residuo</p>
-                                        </div>
-
-                                        {/* AI SUGGESTIONS SECTION */}
-                                        {row.suggestions && row.suggestions.length > 0 && (
-                                            <div className="space-y-2 animate-fade-in">
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></div>
-                                                    <p className="text-[9px] font-black text-indigo-600 uppercase tracking-tighter">Fiscal Doctor AI Suggestion</p>
-                                                </div>
-                                                {row.suggestions.map((sug, sIdx) => (
-                                                    <button
-                                                        key={sIdx}
-                                                        onClick={() => handleQuickFix(row.enrollment.id, sug)}
-                                                        disabled={fixingId === `${row.enrollment.id}-${sug.type}`}
-                                                        className="w-full text-left p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-bold shadow-lg shadow-indigo-100 transition-all flex justify-between items-center group"
-                                                    >
-                                                        <span className="line-clamp-1 mr-2 italic text-[9px]">⭐ {sug.label}</span>
-                                                        {fixingId === `${row.enrollment.id}-${sug.type}` ? (
-                                                            <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                                        ) : (
-                                                            <span className="bg-white/20 px-2 py-0.5 rounded text-[8px] uppercase tracking-widest">FIX</span>
-                                                        )}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {row.balance > 5 && row.suggestions.length === 0 && (
-                                            <div className="p-3 bg-red-50/50 rounded-xl border border-red-100 text-center">
-                                                <p className="text-[9px] text-red-600 font-bold leading-tight">Nessuna transazione orfana trovata per questo importo.</p>
-                                                <p className="text-[8px] text-slate-400 mt-1 uppercase">Verifica sezione Finanze</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                    {/* OPTIONAL THIRD COLUMN: NOTES/DETAILS IF NEEDED or SPACING */}
                                 </div>
                             </div>
                         ))}
-                        {clientFinancials && clientFinancials.rows.length === 0 && (
-                            <div className="p-20 text-center text-gray-400 italic bg-gray-50/50">
-                                Nessun dato finanziario trovato per questo periodo.
-                            </div>
-                        )}
+                        {clientFinancials?.rows.length === 0 && <p className="p-6 text-center text-gray-400 italic">Nessuna iscrizione o movimento nel periodo selezionato.</p>}
                     </div>
-
-                    {/* ORPHANS LISTING: Visual confirmation of what's unlinked */}
-                    {clientFinancials && (clientFinancials.orphanInvoices.length > 0 || clientFinancials.orphanTrans.length > 0) && (
-                        <div className="bg-amber-50/50 p-6 rounded-2xl border-2 border-dashed border-amber-200 shadow-sm animate-fade-in">
-                            <h4 className="text-[11px] font-black text-amber-800 uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
-                                <span className="w-6 h-6 bg-amber-500 text-white rounded-lg flex items-center justify-center text-xs shadow-md shadow-amber-200">!</span>
-                                Documenti Orfani (Non assegnati ad iscrizioni)
-                            </h4>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <p className="text-[10px] font-bold text-amber-600 uppercase mb-3 ml-1">Fatture Orfane</p>
-                                    <div className="space-y-2">
-                                        {clientFinancials.orphanInvoices.map(i => (
-                                            <div key={i.id} className="bg-white p-3 rounded-xl border border-amber-100 text-xs flex justify-between items-center shadow-sm">
-                                                <div>
-                                                    <p className="font-bold text-amber-900">{i.invoiceNumber}</p>
-                                                    <p className="text-gray-400 text-[10px]">{new Date(i.issueDate).toLocaleDateString()}</p>
-                                                </div>
-                                                <span className="font-black text-amber-700">{i.totalAmount.toFixed(2)}€</span>
-                                            </div>
-                                        ))}
-                                        {clientFinancials.orphanInvoices.length === 0 && <p className="text-[10px] text-amber-400 italic ml-1">Nessuna fattura orfana.</p>}
-                                    </div>
-                                </div>
-                                <div>
-                                    <p className="text-[10px] font-bold text-amber-600 uppercase mb-3 ml-1">Pagamenti Orfani</p>
-                                    <div className="space-y-2">
-                                        {clientFinancials.orphanTrans.map(t => (
-                                            <div key={t.id} className="bg-white p-3 rounded-xl border border-amber-100 text-xs flex justify-between items-center shadow-sm">
-                                                <div>
-                                                    <p className="font-bold text-amber-900 line-clamp-1">{t.description}</p>
-                                                    <p className="text-gray-400 text-[10px]">{new Date(t.date).toLocaleDateString()}</p>
-                                                </div>
-                                                <span className="font-black text-amber-700">{t.amount.toFixed(2)}€</span>
-                                            </div>
-                                        ))}
-                                        {clientFinancials.orphanTrans.length === 0 && <p className="text-[10px] text-amber-400 italic ml-1">Nessun pagamento orfano.</p>}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
         </div>

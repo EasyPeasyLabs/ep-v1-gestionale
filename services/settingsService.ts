@@ -10,10 +10,58 @@ const getContractTemplateCollectionRef = () => collection(db, 'contract_template
 const getChecksCollectionRef = () => collection(db, 'periodicChecks');
 const getRecoveryPolicyRef = () => doc(db, 'settings', 'recoveryPolicies');
 const getNotificationRulesCollectionRef = () => collection(db, 'notification_rules');
+const getPortalTextsCollectionRef = () => collection(db, 'portal_texts');
 
 const DEFAULT_LOGO_BASE64 = ''; // Base64 placeholder or logic
 
-// --- COMPANY INFO ---
+// --- PORTAL TEXTS ---
+export const getPortalTexts = async (): Promise<PortalText[]> => {
+    try {
+        const querySnapshot = await getDocs(getPortalTextsCollectionRef());
+        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PortalText));
+    } catch (e) {
+        console.error("Error getting portal texts: ", e);
+        return [];
+    }
+};
+
+export const addPortalText = async (text: Omit<PortalText, 'id'>): Promise<PortalText> => {
+    try {
+        const docRef = await addDoc(getPortalTextsCollectionRef(), text);
+        return { id: docRef.id, ...text };
+    } catch (e) {
+        console.error("Error adding portal text: ", e);
+        throw e;
+    }
+};
+
+export const updatePortalText = async (id: string, text: Partial<PortalText>): Promise<void> => {
+    try {
+        const docRef = doc(db, 'portal_texts', id);
+        await updateDoc(docRef, text);
+    } catch (e) {
+        console.error("Error updating portal text: ", e);
+        throw e;
+    }
+};
+
+export const deletePortalText = async (id: string): Promise<void> => {
+    try {
+        const docRef = doc(db, 'portal_texts', id);
+        await deleteDoc(docRef);
+    } catch (e) {
+        console.error("Error deleting portal text: ", e);
+        throw e;
+    }
+};
+
+export const savePortalText = async (text: PortalText): Promise<void> => {
+    if (text.id) {
+        await updatePortalText(text.id, text);
+    } else {
+        await addPortalText(text);
+    }
+};
 const defaultCompanyInfo: CompanyInfo = {
     id: 'companyInfo',
     denomination: 'Easy Peasy Lab',
@@ -304,60 +352,4 @@ export const saveNotificationRule = async (rule: NotificationRule): Promise<void
 export const deleteNotificationRule = async (id: string): Promise<void> => {
     const docRef = doc(db, 'notification_rules', id);
     await deleteDoc(docRef);
-};
-
-// --- PORTAL TEXTS ---
-const getPortalTextsCollectionRef = () => collection(db, 'portalTexts');
-
-export const getPortalTexts = async (): Promise<PortalText[]> => {
-    try {
-        const querySnapshot = await getDocs(getPortalTextsCollectionRef());
-        return querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        } as PortalText));
-    } catch (error) {
-        console.error('Error fetching portal texts:', error);
-        return [];
-    }
-};
-
-export const savePortalText = async (text: PortalText): Promise<void> => {
-    try {
-        const docRef = doc(db, 'portalTexts', text.id);
-        await setDoc(docRef, text, { merge: true });
-    } catch (error) {
-        console.error('Error saving portal text:', error);
-        throw error;
-    }
-};
-
-export const addPortalText = async (text: Omit<PortalText, 'id'>): Promise<string> => {
-    try {
-        const docRef = await addDoc(getPortalTextsCollectionRef(), text);
-        return docRef.id;
-    } catch (error) {
-        console.error('Error adding portal text:', error);
-        throw error;
-    }
-};
-
-export const updatePortalText = async (id: string, updates: Partial<PortalText>): Promise<void> => {
-    try {
-        const docRef = doc(db, 'portalTexts', id);
-        await updateDoc(docRef, updates);
-    } catch (error) {
-        console.error('Error updating portal text:', error);
-        throw error;
-    }
-};
-
-export const deletePortalText = async (id: string): Promise<void> => {
-    try {
-        const docRef = doc(db, 'portalTexts', id);
-        await deleteDoc(docRef);
-    } catch (error) {
-        console.error('Error deleting portal text:', error);
-        throw error;
-    }
 };

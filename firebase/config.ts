@@ -7,11 +7,11 @@ import { getMessaging, Messaging, isSupported } from "firebase/messaging";
 import { getFunctions, Functions } from "firebase/functions";
 
 // Helper for boot monitor
-const logToScreen = (window as any).logToScreen || console.log;
+const logToScreen = (window as unknown as { logToScreen?: (msg: string, level: string) => void }).logToScreen || console.log;
 
 logToScreen("Configuring Firebase...", "info");
 
-const env = (import.meta as any).env || {};
+const env = (import.meta as unknown as { env?: Record<string, string> }).env || {};
 
 const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyDON9vmJzNvYH7Eqw3c2KlpgOjr3ToIJhM",
@@ -46,8 +46,9 @@ try {
                 ignoreUndefinedProperties: true
             });
             logToScreen("Firestore Initialized.", "success");
-        } catch (err: any) {
-            if (err.code === 'failed-precondition') {
+        } catch (err: unknown) {
+            const error = err as { code?: string };
+            if (error.code === 'failed-precondition') {
                 console.warn("Firestore persistence failed. Clearing cache and retrying...");
                 db = initializeFirestore(app, {
                    ignoreUndefinedProperties: true
@@ -73,8 +74,9 @@ try {
         }
     }).catch(console.error);
 
-} catch (e: any) {
-    logToScreen("FIREBASE INIT ERROR: " + e.message, "error");
+} catch (e: unknown) {
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    logToScreen("FIREBASE INIT ERROR: " + errorMessage, "error");
     console.error("Firebase Init Error:", e);
 }
 

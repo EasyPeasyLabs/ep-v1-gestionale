@@ -1,16 +1,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier, SchoolClosure } from '../types';
-import { getAllEnrollments, registerAbsence, registerPresence, resetAppointmentStatus, toggleAppointmentStatus, deleteAppointment } from '../services/enrollmentService';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier } from '../types';
+import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
-import { getSchoolClosures } from '../services/calendarService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import CalendarIcon from '../components/icons/CalendarIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import ChevronDownIcon from '../components/icons/ChevronDownIcon';
-import CheckIcon from '../components/icons/CheckIcon'; 
+
 
 // Icona X per "Tutti Assenti" (inline SVG per sicurezza)
 const XIcon = () => (
@@ -25,6 +24,7 @@ interface AttendanceItem extends Appointment {
     childName: string;
     subscriptionName: string;
     lessonsRemaining: number;
+    isNewArchitecture?: boolean;
 }
 
 interface AttendanceProps {
@@ -40,21 +40,26 @@ const getStartOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const getEndOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 
 // --- ABSENCE WIZARD MODAL (MULTI-ITEM SUPPORT) ---
+interface RecoveryDetails {
+    date: string;
+    startTime: string;
+    endTime: string;
+    locationId: string;
+    locationName: string;
+    locationColor: string;
+}
+
 const AbsenceWizardModal: React.FC<{
     items: AttendanceItem[];
     suppliers: Supplier[];
     onClose: () => void;
-    onConfirm: (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: any) => Promise<void>;
+    onConfirm: (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: RecoveryDetails) => Promise<void>;
 }> = ({ items, suppliers, onClose, onConfirm }) => {
-    // Use first item as reference for defaults (since they are in same slot)
-    const refItem = items[0];
-    if (!refItem) return null;
-
     const [step, setStep] = useState<'choice' | 'manual'>('choice');
     const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
-    const [manualTimeStart, setManualTimeStart] = useState(refItem.startTime);
-    const [manualTimeEnd, setManualTimeEnd] = useState(refItem.endTime);
-    const [manualLocationId, setManualLocationId] = useState(refItem.locationId);
+    const [manualTimeStart, setManualTimeStart] = useState(items[0]?.startTime || '');
+    const [manualTimeEnd, setManualTimeEnd] = useState(items[0]?.endTime || '');
+    const [manualLocationId, setManualLocationId] = useState(items[0]?.locationId || '');
     const [loading, setLoading] = useState(false);
 
     // Flatten locations for selector
@@ -64,9 +69,11 @@ const AbsenceWizardModal: React.FC<{
         return locs.sort((a,b) => a.name.localeCompare(b.name));
     }, [suppliers]);
 
+    // Use first item as reference for defaults (since they are in same slot)
+    const refItem = items[0];
+    if (!refItem) return null;
+
     const handleAction = async (strategy: 'lost' | 'recover_auto' | 'recover_manual') => {
-        if (loading) return; // Prevent double clicks
-        
         if (strategy === 'recover_manual') {
             const loc = allLocations.find(l => l.id === manualLocationId);
             if (!loc) return alert("Seleziona una sede valida.");
@@ -165,7 +172,6 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const [loading, setLoading] = useState(true);
     const [attendanceItems, setAttendanceItems] = useState<AttendanceItem[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-    const [schoolClosures, setSchoolClosures] = useState<SchoolClosure[]>([]);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
     
@@ -177,6 +183,13 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
     // Wizard State (Array for bulk)
     const [wizardItems, setWizardItems] = useState<AttendanceItem[]>([]);
+
+    const isDateToday = useMemo(() => {
+        const today = new Date();
+        return currentDate.getDate() === today.getDate() &&
+               currentDate.getMonth() === today.getMonth() &&
+               currentDate.getFullYear() === today.getFullYear();
+    }, [currentDate]);
 
     // Initial Params Effect
     useEffect(() => {
@@ -199,8 +212,6 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             
             setSuppliers(suppliersData);
 
-            const items: AttendanceItem[] = [];
-            
             // Calcola Range Date
             let start = new Date(currentDate);
             let end = new Date(currentDate);
@@ -219,20 +230,30 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 end.setHours(23,59,59,999);
             }
 
+            // Mappa delle iscrizioni per arricchire i dati delle lezioni
+            const enrollmentMap = new Map<string, Enrollment>();
+            enrollments.forEach(enr => enrollmentMap.set(enr.id, enr));
+
+            // Utilizziamo una Map per deduplicare: chiave = enrollmentId + date + startTime
+            const itemsMap = new Map<string, AttendanceItem>();
+            
+            // 1. VECCHIA ARCHITETTURA: Estrai appuntamenti dalle iscrizioni (fallback)
             enrollments.forEach((enr: Enrollment) => {
-                // Consideriamo solo iscrizioni attive o in attesa (che occupano il posto)
+                // Consideriamo solo iscrizioni attive o in attesa
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
-                    if (enr.appointments) {
+                    if (enr.appointments && enr.appointments.length > 0) {
                         enr.appointments.forEach((app: Appointment) => {
                             const appDate = new Date(app.date);
                             // Filtra per range
                             if (appDate >= start && appDate <= end) {
-                                items.push({
+                                const key = `${enr.id}_${app.date}_${app.startTime}`;
+                                itemsMap.set(key, {
                                     ...app,
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
                                     subscriptionName: enr.subscriptionName,
-                                    lessonsRemaining: enr.lessonsRemaining
+                                    lessonsRemaining: enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0),
+                                    isNewArchitecture: false
                                 });
                             }
                         });
@@ -240,7 +261,48 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 }
             });
 
-            setAttendanceItems(items);
+            // 2. NUOVA ARCHITETTURA: Estrai lezioni dalla collezione 'lessons'
+            const { collection, query, where, getDocs } = await import('firebase/firestore');
+            const { db } = await import('../firebase/config');
+            
+            const lessonsRef = collection(db, 'lessons');
+            const q = query(
+                lessonsRef,
+                where('date', '>=', start.toISOString()),
+                where('date', '<=', end.toISOString())
+            );
+            const lessonsSnap = await getDocs(q);
+            
+            lessonsSnap.forEach(doc => {
+                const lesson = doc.data();
+                if (lesson.attendees && lesson.attendees.length > 0) {
+                    lesson.attendees.forEach((attendee: any) => {
+                        const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
+                        const key = `${attendee.enrollmentId}_${lesson.date}_${lesson.startTime}`;
+                        
+                        // La nuova architettura sovrascrive la vecchia se c'è collisione (deduplicazione)
+                        itemsMap.set(key, {
+                            lessonId: doc.id,
+                            date: lesson.date,
+                            startTime: lesson.startTime,
+                            endTime: lesson.endTime,
+                            locationId: lesson.locationId || 'unassigned',
+                            locationName: lesson.locationName || 'Sede Sconosciuta',
+                            locationColor: lesson.locationColor || '#ccc',
+                            childName: attendee.childName,
+                            status: attendee.status || 'Scheduled',
+                            type: lesson.slotType || 'LAB',
+                            recoveryId: attendee.recoveryId,
+                            enrollmentId: attendee.enrollmentId || '',
+                            subscriptionName: enr ? enr.subscriptionName : 'Corso',
+                            lessonsRemaining: enr ? (enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0)) : 0,
+                            isNewArchitecture: true
+                        });
+                    });
+                }
+            });
+
+            setAttendanceItems(Array.from(itemsMap.values()));
         } catch (err) {
             console.error("Errore caricamento presenze:", err);
         } finally {
@@ -305,7 +367,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const handleMarkPresence = async (item: AttendanceItem) => {
         try {
             setLoading(true);
-            await registerPresence(item.enrollmentId, item.lessonId);
+            await registerPresence(item.enrollmentId, item.lessonId, item.isNewArchitecture);
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (err) {
@@ -328,7 +390,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         try {
             setLoading(true);
             for(const item of targets) {
-                await registerPresence(item.enrollmentId, item.lessonId);
+                await registerPresence(item.enrollmentId, item.lessonId, item.isNewArchitecture);
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
@@ -348,14 +410,10 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const handleWizardConfirm = async (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: any) => {
         if (wizardItems.length === 0) return;
         try {
-            setLoading(true);
-            const closures = schoolClosures.length > 0 ? schoolClosures : await getSchoolClosures();
-            if (schoolClosures.length === 0) setSchoolClosures(closures);
-
             // Se recover_manual, usiamo i dettagli per TUTTI gli item (es. spostamento classe intera)
             // Se recover_auto, ognuno calcola il suo prossimo slot.
             for (const item of wizardItems) {
-                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details, closures);
+                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details, undefined, item.isNewArchitecture);
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
@@ -363,8 +421,6 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         } catch (e) {
             console.error(e);
             alert("Errore durante l'elaborazione dell'assenza.");
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -384,7 +440,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         
         try {
             setLoading(true);
-            await deleteAppointment(item.enrollmentId, item.lessonId);
+            await deleteAppointment(item.enrollmentId, item.lessonId, item.isNewArchitecture);
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
@@ -400,7 +456,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         try {
             const targets = attendanceItems.filter(i => i.status !== 'Present');
             for (const item of targets) {
-                await registerPresence(item.enrollmentId, item.lessonId);
+                await registerPresence(item.enrollmentId, item.lessonId, item.isNewArchitecture);
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
@@ -415,17 +471,30 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         if (!confirm("Segnare TUTTI gli studenti visualizzati come ASSENTI con RECUPERO automatico?")) return;
         setLoading(true);
         try {
-            const closures = schoolClosures.length > 0 ? schoolClosures : await getSchoolClosures();
-            if (schoolClosures.length === 0) setSchoolClosures(closures);
-
             const targets = attendanceItems.filter(i => i.status !== 'Absent');
             for (const item of targets) {
-                await registerAbsence(item.enrollmentId, item.lessonId, 'recover_auto', undefined, closures); 
+                await registerAbsence(item.enrollmentId, item.lessonId, 'recover_auto', undefined, undefined, item.isNewArchitecture); 
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch(e) {
             alert("Errore durante l'aggiornamento massivo.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleBonifica = async () => {
+        if (!confirm("ATTENZIONE: Stai per svuotare il vecchio calendario delle iscrizioni collegate ai nuovi corsi. Questa operazione rimuoverà i duplicati dal registro. Procedere?")) return;
+        setLoading(true);
+        try {
+            const count = await bonificaAppointments();
+            alert(`Bonifica completata con successo. Aggiornate ${count} iscrizioni.`);
+            await fetchAttendanceData();
+            window.dispatchEvent(new Event('EP_DataUpdated'));
+        } catch(e) {
+            console.error(e);
+            alert("Errore durante la bonifica.");
         } finally {
             setLoading(false);
         }
@@ -459,18 +528,21 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                     <button onClick={handleGlobalBulkMarkAbsent} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 whitespace-nowrap flex-shrink-0">
                         ✕ Tutti Assenti
                     </button>
+                    <button onClick={handleBonifica} className="md-btn md-btn-sm bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 whitespace-nowrap flex-shrink-0" title="Rimuove i duplicati svuotando il vecchio calendario per i nuovi corsi">
+                        🛠 Bonifica Dati
+                    </button>
 
                     {/* View Toggles */}
                     <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm ml-2 flex-shrink-0">
-                        <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
-                        <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
-                        <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
+                        <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
+                        <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
+                        <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
                     </div>
                 </div>
             </div>
 
             {/* Navigazione Calendario + Filtro Sede */}
-            <div className="md-card p-4 mb-6 bg-white border-l-4 border-indigo-500 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="md-card p-4 mb-6 bg-white border-l-4 border-amber-400 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
                 
                 <div className="w-full md:w-auto md:flex-1 flex items-center justify-between md:justify-center gap-4 order-1">
                     <button onClick={() => handleNavigate(-1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors flex-shrink-0">&lt;</button>
@@ -480,7 +552,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             <CalendarIcon />
                             <span className="block text-lg font-bold text-gray-800 capitalize text-center leading-tight">{getRangeLabel()}</span>
                         </div>
-                        {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium mt-1">Oggi</span>}
+                        {viewMode === 'day' && isDateToday && <span className="text-xs text-gray-400 font-medium mt-1">Oggi</span>}
                     </div>
 
                     <button onClick={() => handleNavigate(1)} className="md-icon-btn h-10 w-10 bg-gray-50 hover:bg-gray-100 rounded-full font-bold text-gray-600 transition-colors flex-shrink-0">&gt;</button>
@@ -490,7 +562,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                     <select 
                         value={filterLocation} 
                         onChange={(e) => setFilterLocation(e.target.value)} 
-                        className="w-full md:w-64 bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl px-4 py-2 border border-indigo-200 outline-none focus:ring-2 focus:ring-indigo-300 cursor-pointer"
+                        className="w-full md:w-64 bg-ep-blue-600 text-white font-bold text-sm rounded-xl px-4 py-2 border border-ep-blue-700 outline-none focus:ring-2 focus:ring-ep-blue-300 cursor-pointer"
                     >
                         <option value="">Tutte le Sedi</option>
                         {availableLocations.map(loc => (
@@ -565,17 +637,17 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                                                             <div className="flex gap-2">
                                                                 <button 
                                                                     onClick={() => handleBulkSlotPresence(slotItems)}
-                                                                    className="flex items-center gap-1 bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors border border-green-200"
+                                                                    className="flex items-center gap-1 bg-green-100 hover:bg-green-200 text-green-700 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase transition-colors border border-green-200"
                                                                     title="Segna tutti presenti in questo slot"
                                                                 >
-                                                                    <span className="text-sm">✓</span> Tutti Pres.
+                                                                    <span className="text-sm">✓</span> <span className="hidden sm:inline">Tutti Pres.</span><span className="sm:hidden">Tutti</span>
                                                                 </button>
                                                                 <button 
                                                                     onClick={() => handleBulkSlotAbsence(slotItems)}
-                                                                    className="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded-lg text-[10px] font-bold uppercase transition-colors border border-red-200"
+                                                                    className="flex items-center gap-1 bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded-lg text-[9px] sm:text-[10px] font-bold uppercase transition-colors border border-red-200"
                                                                     title="Segna tutti assenti in questo slot"
                                                                 >
-                                                                    <XIcon /> Tutti Ass.
+                                                                    <XIcon /> <span className="hidden sm:inline">Tutti Ass.</span><span className="sm:hidden">Tutti</span>
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -595,7 +667,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                                                                                 <h3 className="font-bold text-gray-900 text-sm">{item.childName}</h3>
                                                                                 {(isPresent || isAbsent) && (
                                                                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isPresent ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                                                                        {isPresent ? 'Presente' : 'Assente'}
+                                                                                        <span className="hidden sm:inline">{isPresent ? 'Presente' : 'Assente'}</span>
+                                                                                        <span className="sm:hidden">{isPresent ? 'Pres.' : 'Ass.'}</span>
                                                                                     </span>
                                                                                 )}
                                                                             </div>

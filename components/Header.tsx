@@ -146,24 +146,32 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
     const hasNotifications = !loadingNotifications && notifications.length > 0;
 
   return (
-    <header className="h-16 bg-white shadow-sm flex-shrink-0 flex items-center justify-between px-4 md:px-6 lg:px-8 border-b relative z-30" style={{ backgroundColor: 'var(--md-bg-card)', borderColor: 'var(--md-divider)'}}>
+    <header className="h-20 bg-white shadow-md flex-shrink-0 flex items-center justify-between px-4 md:px-6 lg:px-8 border-b relative z-30" style={{ backgroundColor: 'var(--md-bg-card)', borderColor: 'var(--md-divider)'}}>
       <div className="flex items-center flex-1 mr-4">
-        <button onClick={onMenuClick} className="md:hidden mr-4 md-icon-btn" aria-label="Apri menu">
-          <MenuIcon />
+        {/* Hamburger Menu - Mobile Only */}
+        <button 
+            onClick={onMenuClick} 
+            className="md:hidden mr-4 p-2 rounded-xl bg-gray-50 text-gray-600 hover:bg-gray-100 transition-colors" 
+            aria-label="Apri menu"
+        >
+          <MenuIcon className="w-6 h-6" />
         </button>
         
-        {/* Mobile Logo */}
-        <div className="md:hidden flex items-center mr-4">
+        {/* Logo - Always Visible */}
+        <div className="flex items-center mr-6 cursor-pointer" onClick={() => setCurrentPage('Dashboard')}>
              {logoSrc ? (
-                 <img src={logoSrc} alt="Logo" className="w-8 h-8 object-contain" />
+                 <img src={logoSrc} alt="Logo Aziendale" className="w-10 h-10 md:w-12 md:h-12 object-contain" />
              ) : (
-                 <div className="w-8 h-8 bg-gray-200 rounded-full animate-pulse"></div>
+                 <div className="w-10 h-10 md:w-12 md:h-12 bg-indigo-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg shadow-indigo-100">ep</div>
              )}
-             <span className="ml-2 font-bold text-gray-700 text-sm">EP v1</span>
+             <div className="ml-3 hidden sm:block">
+                <span className="block font-black text-gray-900 leading-none tracking-tight text-lg">easypeasy</span>
+                <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">Labs v1</span>
+             </div>
         </div>
 
-        {/* Global Search Input */}
-        <div className="relative hidden md:block w-full max-w-md" ref={searchRef}>
+        {/* Global Search Input - Desktop Only */}
+        <div className="relative hidden lg:block w-full max-w-md" ref={searchRef}>
           <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
             {isSearching ? <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div> : <SearchIcon />}
           </div>

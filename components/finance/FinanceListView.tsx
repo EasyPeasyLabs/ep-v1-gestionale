@@ -8,7 +8,6 @@ import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
 import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType, Enrollment, TransactionCategory } from '../../types';
 import { updateInvoice, markInvoicesAsPaid } from '../../services/financeService';
-import Spinner from '../Spinner';
 
 // --- Icona WhatsApp ---
 const WhatsAppIcon = () => (
@@ -32,7 +31,7 @@ const BoltIcon = () => (
 );
 
 const SortIcon: React.FC<{ active: boolean; direction: 'asc' | 'desc' }> = ({ active, direction }) => (
-    <span className={`ml-1 text-[10px] ${active ? 'text-indigo-600 font-bold' : 'text-slate-300'}`}>
+    <span className={`ml-1 text-[10px] ${active ? 'text-ep-blue-600 font-bold' : 'text-slate-300'}`}>
         {active ? (direction === 'asc' ? '▲' : '▼') : '↕'}
     </span>
 );
@@ -52,7 +51,7 @@ const getStatusColor = (status: string) => {
         case 'cancelled':
             return 'bg-red-50 text-red-700 border-red-200';
         case 'SealedSDI':
-            return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+            return 'bg-ep-blue-50 text-ep-blue-700 border-ep-blue-200';
         default:
             return 'bg-gray-50 text-gray-700 border-gray-200';
     }
@@ -67,20 +66,18 @@ interface FinanceListViewProps {
     enrollments?: Enrollment[]; // Added for resolving child name
     filters: { search: string };
     setFilters: React.Dispatch<React.SetStateAction<{ search: string }>>;
-    onExportTransactions?: () => void;
-    onExportInvoices?: () => void;
-    onEdit: (item: any) => void;
+    onEdit: (item: Transaction | Invoice | Quote) => void;
     onDelete: (id: string) => void;
-    onPrint?: (item: any) => void;
+    onPrint?: (item: Transaction | Invoice | Quote) => void;
     onSeal?: (item: Invoice) => void;
-    onWhatsApp: (item: any) => void;
+    onWhatsApp: (item: Transaction | Invoice | Quote) => void;
     onConvert?: (item: Quote) => void;
     onActivate?: (item: Quote) => void; 
 }
 
 const FinanceListView: React.FC<FinanceListViewProps> = ({ 
     activeTab, transactions, invoices, quotes, suppliers, enrollments, filters, setFilters, 
-    onExportTransactions, onExportInvoices, onEdit, onDelete, onPrint, onSeal, onWhatsApp, onConvert, onActivate
+    onEdit, onDelete, onPrint, onSeal, onWhatsApp, onConvert, onActivate
 }) => {
     const [selectedItems, setSelectedItems] = useState<string[]>([]);
     const [statusFilter, setStatusFilter] = useState('');
@@ -88,7 +85,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
     // --- NUOVI FILTRI TEMPORALI ---
-    const now = new Date();
+    const now = useMemo(() => new Date(), []);
     const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
     const [filterMonth, setFilterMonth] = useState<string>(String(now.getMonth() + 1)); // 1-12 o "all"
     const years = useMemo(() => {
@@ -106,26 +103,27 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     };
 
     const filteredList = useMemo(() => {
-        let list: any[] = [];
+        let list: (Transaction | Invoice | Quote)[] = [];
         // Se c'è una ricerca testuale attiva (lunga almeno 2 caratteri), bypassiamo i filtri data
         const isSearching = filters.search.trim().length > 1;
 
         if (activeTab === 'transactions') {
-            list = transactions.filter(t => !t.isDeleted);
+            let tList = transactions.filter(t => !t.isDeleted);
             // Applica Filtro Temporale per Transazioni SOLO se non sto cercando
             if (!isSearching) {
-                list = list.filter(t => {
+                tList = tList.filter(t => {
                     const d = new Date(t.date);
                     const yearMatch = d.getFullYear() === filterYear;
                     const monthMatch = filterMonth === 'all' || (d.getMonth() + 1) === parseInt(filterMonth);
                     return yearMatch && monthMatch;
                 });
             }
+            list = tList;
         }
         else if (activeTab === 'invoices' || activeTab === 'archive') {
             const baseList = invoices.filter(i => !i.isDeleted);
             
-            list = baseList.filter(i => {
+            let iList = baseList.filter(i => {
                 // Filtro Anagrafico/Tab - Allow ghost when filter is active
                 const isGhostFilter = statusFilter === 'ghost';
                 const matchesTab = activeTab === 'invoices' 
@@ -147,27 +145,29 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 
             if (statusFilter && activeTab === 'invoices') {
                 if (statusFilter === 'ghost') {
-                    list = list.filter(i => i.isGhost === true);
+                    iList = iList.filter(i => i.isGhost === true);
                 } else {
-                    list = list.filter(i => i.status === statusFilter);
+                    iList = iList.filter(i => i.status === statusFilter);
                 }
             }
+            list = iList;
         }
         else if (activeTab === 'quotes') list = quotes.filter(q => !q.isDeleted);
         
         // SAFE SEARCH: Handle missing clientName for suppliers/rents
         const result = list.filter(item => {
+            const t = item as Record<string, any>;
             const searchFields = [
-                item.clientName,
-                item.description,
-                item.invoiceNumber,
-                item.quoteNumber,
-                item.allocationName
+                t.clientName,
+                t.description,
+                t.invoiceNumber,
+                t.quoteNumber,
+                t.allocationName
             ];
 
             // 1. Resolve Child Badge for Search
-            if (activeTab === 'transactions' && enrollments && (item as Transaction).relatedEnrollmentId) {
-                const enr = enrollments.find(e => e.id === (item as Transaction).relatedEnrollmentId);
+            if (activeTab === 'transactions' && enrollments && t.relatedEnrollmentId) {
+                const enr = enrollments.find(e => e.id === t.relatedEnrollmentId);
                 if (enr && enr.childName) {
                     searchFields.push(enr.childName);
                 }
@@ -175,8 +175,8 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 
             // 2. Resolve NOLO Badge for Search
             if (activeTab === 'transactions' && 
-                (item as Transaction).type === TransactionType.Expense && 
-                (item as Transaction).category === TransactionCategory.Nolo) {
+                t.type === TransactionType.Expense && 
+                t.category === TransactionCategory.Nolo) {
                 searchFields.push("NOLO");
             }
 
@@ -186,23 +186,25 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         });
 
         result.sort((a, b) => {
-            let valA: any = '';
-            let valB: any = '';
+            const ta = a as Record<string, any>;
+            const tb = b as Record<string, any>;
+            let valA: string | number = '';
+            let valB: string | number = '';
             if (sortConfig.key === 'date') {
-                valA = new Date(a.date || a.issueDate).getTime();
-                valB = new Date(b.date || b.issueDate).getTime();
+                valA = new Date(ta.date || ta.issueDate || '').getTime();
+                valB = new Date(tb.date || tb.issueDate || '').getTime();
                 
                 // Fallback to document number if dates are identical
                 if (valA === valB) {
-                    const numA = a.invoiceNumber || a.quoteNumber || ('id' in a ? a.id : '');
-                    const numB = b.invoiceNumber || b.quoteNumber || ('id' in b ? b.id : '');
+                    const numA = ta.invoiceNumber || ta.quoteNumber || ('id' in a ? a.id : '');
+                    const numB = tb.invoiceNumber || tb.quoteNumber || ('id' in b ? b.id : '');
                     if (numA < numB) return sortConfig.direction === 'asc' ? -1 : 1;
                     if (numA > numB) return sortConfig.direction === 'asc' ? 1 : -1;
                     return 0;
                 }
             } else if (sortConfig.key === 'number') {
-                valA = a.invoiceNumber || a.quoteNumber || ('id' in a ? a.id : '');
-                valB = b.invoiceNumber || b.quoteNumber || ('id' in b ? b.id : '');
+                valA = ta.invoiceNumber || ta.quoteNumber || ('id' in a ? a.id : '');
+                valB = tb.invoiceNumber || tb.quoteNumber || ('id' in b ? b.id : '');
             }
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
@@ -215,13 +217,14 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     const totals = useMemo(() => {
         if (activeTab === 'transactions') {
             return filteredList.reduce((acc, t) => {
-                if (t.type === TransactionType.Income) acc.income += Number(t.amount);
-                else if (t.type === TransactionType.Expense) acc.expense += Number(t.amount);
+                const trx = t as Transaction;
+                if (trx.type === TransactionType.Income) acc.income += Number(trx.amount);
+                else if (trx.type === TransactionType.Expense) acc.expense += Number(trx.amount);
                 return acc;
             }, { income: 0, expense: 0 });
         } else if (activeTab === 'invoices' || activeTab === 'archive') {
             // Solo fatture reali per calcolo fiscale
-            const realInvoices = filteredList.filter(i => !i.isGhost);
+            const realInvoices = filteredList.filter(i => !(i as Invoice).isGhost) as Invoice[];
             const gross = realInvoices.reduce((acc, i) => acc + (Number(i.totalAmount) || 0), 0);
             const taxable = gross * 0.78;
             const stamps = realInvoices.reduce((acc, i) => acc + (Number(i.totalAmount) > 77.47 ? 2 : 0), 0);
@@ -230,12 +233,13 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         return null;
     }, [filteredList, activeTab]);
 
-    const getDocumentNumber = (item: any) => {
-        if ('invoiceNumber' in item) return item.invoiceNumber;
-        if ('quoteNumber' in item) return item.quoteNumber;
-        if (item.relatedDocumentId && item.relatedDocumentId.startsWith('FT-')) return item.relatedDocumentId;
-        if (item.transactionNumber) return item.transactionNumber.toString();
-        return 'TRX-' + item.id.substring(0, 5).toUpperCase();
+    const getDocumentNumber = (item: Transaction | Invoice | Quote) => {
+        const t = item as Record<string, any>;
+        if (t.invoiceNumber) return t.invoiceNumber;
+        if (t.quoteNumber) return t.quoteNumber;
+        if (t.relatedDocumentId && t.relatedDocumentId.startsWith('FT-')) return t.relatedDocumentId;
+        if (t.transactionNumber) return t.transactionNumber.toString();
+        return 'TRX-' + t.id.substring(0, 5).toUpperCase();
     };
 
     const handleSendReportToSimona = () => {
@@ -251,7 +255,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
         }
         
         // Usa filteredList invece di invoices per mantenere l'ordinamento visivo
-        const selectedInvoices = filteredList.filter(i => selectedItems.includes(i.id));
+        const selectedInvoices = filteredList.filter(i => selectedItems.includes(i.id)) as Invoice[];
         let message = `*REPORT FATTURE SDI*\n------------------\n`;
         selectedInvoices.forEach(inv => {
             const dateStr = new Date(inv.issueDate).toLocaleDateString('it-IT');
@@ -265,7 +269,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
 
     const handleBulkPrint = () => {
         if (!onPrint) return;
-        let sourceList: any[] = [];
+        let sourceList: (Transaction | Invoice | Quote)[] = [];
         if (activeTab === 'invoices' || activeTab === 'archive') sourceList = invoices;
         else if (activeTab === 'quotes') sourceList = quotes;
         const itemsToPrint = sourceList.filter(item => selectedItems.includes(item.id));
@@ -281,8 +285,9 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
             await markInvoicesAsPaid(selectedItems);
             window.dispatchEvent(new Event('EP_DataUpdated'));
             setSelectedItems([]);
-        } catch (e) {
-            alert("Errore aggiornamento.");
+        } catch (e: unknown) {
+            const error = e as Error;
+            alert("Errore aggiornamento: " + error.message);
         } finally {
             setIsBulkUpdating(false);
         }
@@ -334,33 +339,39 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                     <div className="flex flex-col md:flex-row gap-4 flex-1 w-full md:w-auto">
                         <div className="relative flex-1 w-full md:w-auto md:max-w-md">
                             <div className="absolute left-3 top-3"><SearchIcon /></div>
-                            <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-indigo-500 w-full" />
+                            <input type="text" placeholder="Cerca nel database..." value={filters.search} onChange={e => setFilters({...filters, search: e.target.value})} className="md-input pl-10 border bg-white rounded-xl focus:ring-2 ring-ep-blue-500 w-full" />
                         </div>
                         
                         {/* FILTRI TEMPORALI UNIVERSALI (Cassa + Fatture) */}
                         {(activeTab === 'transactions' || activeTab === 'invoices' || activeTab === 'archive') && (
                             <div className={`flex gap-2 transition-opacity ${filters.search.length > 1 ? 'opacity-50 pointer-events-none' : ''}`}>
-                                <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="md-input !py-2 !px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold w-28">
-                                    {years.map(y => <option key={y} value={y}>{y}</option>)}
-                                </select>
-                                <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="md-input !py-2 !px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold w-32">
-                                    <option value="all">Tutto l'anno</option>
-                                    {months.map((m, i) => <option key={i} value={String(i+1)}>{m}</option>)}
-                                </select>
+                                <div className="flex items-center gap-2 bg-ep-blue-600 rounded-xl px-3 py-2 border border-ep-blue-500 shadow-sm text-white">
+                                    <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="text-xs font-bold text-white bg-transparent border-none outline-none cursor-pointer w-20">
+                                        {years.map(y => <option key={y} value={y} className="text-slate-900">{y}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 bg-ep-blue-600 rounded-xl px-3 py-2 border border-ep-blue-500 shadow-sm text-white">
+                                    <select value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="text-xs font-bold text-white bg-transparent border-none outline-none cursor-pointer w-28">
+                                        <option value="all" className="text-slate-900">Tutto l'anno</option>
+                                        {months.map((m, i) => <option key={i} value={String(i+1)} className="text-slate-900">{m}</option>)}
+                                    </select>
+                                </div>
                             </div>
                         )}
 
                         {activeTab === 'invoices' && (
-                            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
-                                <option value="">Tutti gli stati</option>
-                                <option value="ghost">Pro-Forma (Ghost)</option>
-                                <option value={DocumentStatus.Draft}>Bozza</option>
-                                <option value={DocumentStatus.Sent}>Inviata</option>
-                                <option value={DocumentStatus.Paid}>Pagata</option>
-                                <option value={DocumentStatus.PendingSDI}>In Attesa SDI</option>
-                                <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
-                                <option value={DocumentStatus.Overdue}>Scaduta</option>
-                            </select>
+                            <div className="flex items-center gap-2 bg-ep-blue-600 rounded-xl px-3 py-2 border border-ep-blue-500 shadow-sm text-white">
+                                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="text-xs font-bold text-white bg-transparent border-none outline-none cursor-pointer w-40">
+                                    <option value="" className="text-slate-900">Tutti gli stati</option>
+                                    <option value="ghost" className="text-slate-900">Pro-Forma (Ghost)</option>
+                                    <option value={DocumentStatus.Draft} className="text-slate-900">Bozza</option>
+                                    <option value={DocumentStatus.Sent} className="text-slate-900">Inviata</option>
+                                    <option value={DocumentStatus.Paid} className="text-slate-900">Pagata</option>
+                                    <option value={DocumentStatus.PendingSDI} className="text-slate-900">In Attesa SDI</option>
+                                    <option value={DocumentStatus.SealedSDI} className="text-slate-900">Sigillata SDI</option>
+                                    <option value={DocumentStatus.Overdue} className="text-slate-900">Scaduta</option>
+                                </select>
+                            </div>
                         )}
                     </div>
 
@@ -381,9 +392,9 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                     {/* FISCAL COUNTERS FATTURAZIONE */}
                     {(activeTab === 'invoices' || activeTab === 'archive') && totals && 'gross' in totals && (
                         <div className="flex gap-2 flex-shrink-0 animate-fade-in flex-wrap justify-end">
-                            <div className="bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl flex flex-col items-end shadow-sm min-w-[90px]">
-                                <span className="text-[8px] font-black text-indigo-600 uppercase tracking-tighter">Lordo Fatturato</span>
-                                <span className="text-xs font-black text-indigo-700 font-mono">{totals.gross.toFixed(2)}€</span>
+                            <div className="bg-ep-blue-50 border border-ep-blue-200 px-3 py-1.5 rounded-xl flex flex-col items-end shadow-sm min-w-[90px]">
+                                <span className="text-[8px] font-black text-ep-blue-600 uppercase tracking-tighter">Lordo Fatturato</span>
+                                <span className="text-xs font-black text-ep-blue-700 font-mono">{totals.gross.toFixed(2)}€</span>
                             </div>
                             <div className="bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl flex flex-col items-end shadow-sm min-w-[90px]">
                                 <span className="text-[8px] font-black text-amber-600 uppercase tracking-tighter">Imponibile 78%</span>
@@ -415,7 +426,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                     <WhatsAppIcon /> Report Simona ({selectedItems.length})
                                 </button>
                             )}
-                            <button onClick={handleBulkPrint} className="md-btn md-btn-sm bg-indigo-600 text-white font-bold"><PrinterIcon /> Stampa ({selectedItems.length})</button>
+                            <button onClick={handleBulkPrint} className="md-btn md-btn-sm bg-ep-blue-600 text-white font-bold"><PrinterIcon /> Stampa ({selectedItems.length})</button>
                             <button className="md-btn md-btn-sm bg-slate-800 text-white font-bold"><TrashIcon /> Elimina</button>
                         </div>
                     )}
@@ -443,15 +454,15 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {filteredList.map(item => {
+                            const t = item as Record<string, any>;
                             // CRITICAL FIX: Handle potential null/undefined amount correctly to prevent crash
                             // For transactions: use item.amount. For invoices: use item.totalAmount.
                             // If undefined, fallback to 0.
-                            const displayAmount = 'amount' in item ? item.amount : ('totalAmount' in item ? item.totalAmount : 0);
+                            const displayAmount = 'amount' in item ? (item as Transaction).amount : ('totalAmount' in item ? (item as Invoice).totalAmount : 0);
                             const safeAmount = Number(displayAmount) || 0;
 
                             const isTransaction = activeTab === 'transactions';
-                            const isIncome = isTransaction && item.type === TransactionType.Income;
-                            const isExpense = isTransaction && item.type === TransactionType.Expense;
+                            const isIncome = isTransaction && t.type === TransactionType.Income;
 
                             const amountColor = isTransaction 
                                 ? (isIncome ? 'text-emerald-700' : 'text-red-700') 
@@ -462,20 +473,20 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                 : '';
 
                             return (
-                            <tr key={item.id} className={`hover:bg-indigo-50/30 transition-colors group ${selectedItems.includes(item.id) ? 'bg-indigo-50' : ''}`}>
+                            <tr key={t.id} className={`hover:bg-ep-blue-50/30 transition-colors group ${selectedItems.includes(t.id) ? 'bg-ep-blue-50' : ''}`}>
                                 <td className="px-6 py-4">
-                                    <input type="checkbox" checked={selectedItems.includes(item.id)} onChange={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(x => x !== item.id) : [...prev, item.id])} />
+                                    <input type="checkbox" checked={selectedItems.includes(t.id)} onChange={() => setSelectedItems(prev => prev.includes(t.id) ? prev.filter(x => x !== t.id) : [...prev, t.id])} />
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(item.date || item.issueDate).toLocaleDateString()}</td>
-                                <td className="px-6 py-4 font-mono font-bold text-indigo-600 text-xs">{getDocumentNumber(item)}</td>
+                                <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-500">{new Date(t.date || t.issueDate).toLocaleDateString()}</td>
+                                <td className="px-6 py-4 font-mono font-bold text-ep-blue-600 text-xs">{getDocumentNumber(item)}</td>
                                 {/* SAFE RENDER: Fallback to description or allocationName if clientName is missing (e.g. Rent transactions) */}
                                 <td className="px-6 py-4">
                                     <div className="font-bold text-slate-900 truncate max-w-[250px]">
-                                        {item.clientName || item.allocationName || item.description}
+                                        {t.clientName || t.allocationName || t.description}
                                     </div>
-                                    {activeTab === 'transactions' && enrollments && (item as Transaction).relatedEnrollmentId && (
+                                    {activeTab === 'transactions' && enrollments && t.relatedEnrollmentId && (
                                         (() => {
-                                            const enr = enrollments.find(e => e.id === (item as Transaction).relatedEnrollmentId);
+                                            const enr = enrollments.find(e => e.id === t.relatedEnrollmentId);
                                             if (enr) {
                                                 return (
                                                     <div className="mt-1">
@@ -488,7 +499,7 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                             return null;
                                         })()
                                     )}
-                                    {activeTab === 'transactions' && (item as Transaction).type === TransactionType.Expense && (item as Transaction).category === TransactionCategory.Nolo && (
+                                    {activeTab === 'transactions' && t.type === TransactionType.Expense && t.category === TransactionCategory.Nolo && (
                                         <div className="mt-1">
                                             <span className="inline-flex items-center gap-1 bg-gray-100 text-black text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-gray-200 tracking-tight">
                                                 NOLO
@@ -500,29 +511,29 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                                     {amountPrefix}{safeAmount.toFixed(2)}€
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>{item.status}</span>
+                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(t.status)}`}>{t.status || 'N/D'}</span>
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-1">
                                         {/* NEW: Institutional Activation Button */}
                                         {activeTab === 'quotes' && onActivate && (
-                                            <button onClick={() => onActivate(item)} className="md-icon-btn text-indigo-600 bg-indigo-50 hover:bg-indigo-100" title="Attiva Progetto Ente"><BoltIcon /></button>
+                                            <button onClick={() => onActivate(item as Quote)} className="md-icon-btn text-ep-blue-600 bg-ep-blue-50 hover:bg-ep-blue-100" title="Attiva Progetto Ente"><BoltIcon /></button>
                                         )}
                                         {onConvert && (
-                                            <button onClick={() => onConvert(item)} className="md-icon-btn text-purple-600" title="Converti in Fattura"><MagicWandIcon /></button>
+                                            <button onClick={() => onConvert(item as Quote)} className="md-icon-btn text-purple-600" title="Converti in Fattura"><MagicWandIcon /></button>
                                         )}
-                                        {activeTab === 'invoices' && item.status !== DocumentStatus.Paid && item.status !== DocumentStatus.PendingSDI && item.status !== DocumentStatus.SealedSDI && (
-                                            <button onClick={() => handleMarkAsPaid(item)} className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" title="Segna come Pagata">€</button>
+                                        {activeTab === 'invoices' && t.status !== DocumentStatus.Paid && t.status !== DocumentStatus.PendingSDI && t.status !== DocumentStatus.SealedSDI && (
+                                            <button onClick={() => handleMarkAsPaid(item as Invoice)} className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" title="Segna come Pagata">€</button>
                                         )}
-                                        {onSeal && (item.status === DocumentStatus.PendingSDI || (item.sdiId && item.status !== DocumentStatus.SealedSDI)) && (
-                                            <button onClick={() => onSeal(item)} className="md-icon-btn text-indigo-600 hover:bg-indigo-50" title="Sigilla SDI"><DocumentCheckIcon /></button>
+                                        {onSeal && (t.status === DocumentStatus.PendingSDI || (t.sdiId && t.status !== DocumentStatus.SealedSDI)) && (
+                                            <button onClick={() => onSeal(item as Invoice)} className="md-icon-btn text-ep-blue-600 hover:bg-ep-blue-50" title="Sigilla SDI"><DocumentCheckIcon /></button>
                                         )}
                                         <button onClick={() => onWhatsApp(item)} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
                                         {(activeTab === 'invoices' || activeTab === 'quotes' || activeTab === 'archive') && onPrint && (
                                             <button onClick={() => onPrint(item)} className="md-icon-btn text-slate-600" title="PDF"><PrinterIcon /></button>
                                         )}
                                         <button onClick={() => onEdit(item)} className="md-icon-btn edit"><PencilIcon /></button>
-                                        <button onClick={() => onDelete(item.id)} className="md-icon-btn delete"><TrashIcon /></button>
+                                        <button onClick={() => onDelete(t.id)} className="md-icon-btn delete"><TrashIcon /></button>
                                     </div>
                                 </td>
                             </tr>

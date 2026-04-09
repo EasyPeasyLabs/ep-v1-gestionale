@@ -180,16 +180,28 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
     // Helper: Locations Flattened
     const allLocations = useMemo(() => {
-        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string}[] = [];
+        const locs: {id: string, name: string, color: string, supplierId: string, supplierName: string, city?: string}[] = [];
         suppliers.forEach(s => {
             s.locations.forEach(l => {
                 locs.push({
-                    id: l.id, name: l.name, color: l.color,
+                    id: l.id, name: l.name, color: l.color, city: (l as any).city,
                     supplierId: s.id, supplierName: s.companyName
                 });
             });
         });
-        return locs.sort((a,b) => a.name.localeCompare(b.name));
+
+        // Deduplicate by name and city to avoid visual duplicates in dropdowns
+        const uniqueMap = new Map<string, any>();
+        locs.forEach(l => {
+            const nameKey = (l.name || '').trim().toLowerCase();
+            const cityKey = (l.city || '').trim().toLowerCase();
+            const key = `${nameKey}_${cityKey}`;
+            if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, l);
+            }
+        });
+
+        return Array.from(uniqueMap.values()).sort((a,b) => a.name.localeCompare(b.name));
     }, [suppliers]);
 
     // Auto-select last plan and timeslot based on history and child age

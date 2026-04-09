@@ -1316,20 +1316,23 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     return (
         <div className="pb-20">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                <div><h1 className="text-3xl font-bold">Finanza</h1><p className="text-gray-500">Controllo di gestione e fatturazione.</p></div>
-                <div className="flex gap-2">
-                    {/* BUTTON SYNC NOLI: Always Visible (or conditional to controlling tab if preferred, but user asked for logic restore) */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div className="min-w-0">
+                    <h1 className="text-2xl md:text-3xl font-bold truncate">Finanza</h1>
+                    <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Controllo di gestione e fatturazione.</p>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end overflow-x-auto pb-1 scrollbar-hide">
+                    {/* BUTTON SYNC NOLI: Always Visible */}
                     {(activeTab === 'controlling' || activeTab === 'transactions') && (
-                        <button onClick={() => setIsSyncModalOpen(true)} className="md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 flex items-center gap-2 font-bold shadow-sm">
-                            <SparklesIcon /> Calcola Noli Mensili
+                        <button onClick={() => setIsSyncModalOpen(true)} className="md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 flex items-center gap-2 font-bold shadow-sm flex-shrink-0">
+                            <SparklesIcon /> <span className="hidden sm:inline">Calcola Noli</span><span className="sm:hidden">Noli</span>
                         </button>
                     )}
                     
-                    {activeTab === 'transactions' && <button onClick={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center"><PlusIcon /> <span className="ml-2">Nuova Voce</span></button>}
-                    {activeTab === 'invoices' && <button onClick={() => { setEditingInvoice({} as Invoice); setIsInvoiceModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary flex items-center"><PlusIcon /> <span className="ml-2">Nuova Fattura</span></button>}
-                    {activeTab === 'quotes' && <button onClick={() => { setEditingQuote(null); setIsQuoteModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary flex items-center"><PlusIcon /> <span className="ml-2">Nuovo Preventivo</span></button>}
-                    {integrityIssues.length > 0 && <button onClick={() => setIsFixWizardOpen(true)} className="md-btn md-btn-sm bg-red-100 text-red-600 border border-red-200 hover:bg-red-200 animate-pulse">🩺 {integrityIssues.length} Anomalie</button>}
+                    {activeTab === 'transactions' && <button onClick={() => { setEditingTransaction(null); setIsTransactionModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center px-3 py-1.5 flex-shrink-0"><PlusIcon /> <span className="ml-1 sm:ml-2">Nuova</span></button>}
+                    {activeTab === 'invoices' && <button onClick={() => { setEditingInvoice({} as Invoice); setIsInvoiceModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary flex items-center px-3 py-1.5 flex-shrink-0"><PlusIcon /> <span className="ml-1 sm:ml-2">Fattura</span></button>}
+                    {activeTab === 'quotes' && <button onClick={() => { setEditingQuote(null); setIsQuoteModalOpen(true); }} className="md-btn md-btn-raised md-btn-primary flex items-center px-3 py-1.5 flex-shrink-0"><PlusIcon /> <span className="ml-1 sm:ml-2">Preventivo</span></button>}
+                    {integrityIssues.length > 0 && <button onClick={() => setIsFixWizardOpen(true)} className="md-btn md-btn-sm bg-red-100 text-red-600 border border-red-200 hover:bg-red-200 animate-pulse flex-shrink-0">🩺 {integrityIssues.length} <span className="hidden sm:inline">Anomalie</span></button>}
                 </div>
             </div>
             

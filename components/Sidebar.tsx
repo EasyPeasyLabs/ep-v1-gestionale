@@ -254,7 +254,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage, user, is
                                                 onClick={() => handleNavClick(sub.page)}
                                                 className={`w-full text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative flex items-center
                                                     ${isSubActive 
-                                                        ? 'text-gray-900 font-bold bg-amber-50' 
+                                                        ? 'text-gray-900 font-bold bg-amber-400 shadow-sm' 
                                                         : 'text-gray-400 hover:text-gray-900'
                                                     }`}
                                             >

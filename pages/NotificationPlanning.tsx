@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { NotificationRule, NotificationType } from '../types';
+import { NotificationRule } from '../types';
 import { getNotificationRules, saveNotificationRule, deleteNotificationRule } from '../services/settingsService';
 import Spinner from '../components/Spinner';
 import BellIcon from '../components/icons/BellIcon';

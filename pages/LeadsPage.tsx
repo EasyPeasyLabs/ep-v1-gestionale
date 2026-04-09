@@ -303,7 +303,7 @@ export const LeadsPage: React.FC = () => {
           <label className="flex items-center gap-2 cursor-pointer p-1">
             <input 
               type="checkbox" 
-              className="w-4 h-4 rounded text-indigo-600 border-gray-300 focus:ring-indigo-500"
+              className="w-4 h-4 rounded text-ep-blue-600 border-gray-300 focus:ring-ep-blue-500"
               checked={conversionOptions.generateInvoice}
               onChange={(e) => setConversionOptions(prev => ({ ...prev, generateInvoice: e.target.checked }))}
             />
@@ -626,7 +626,7 @@ export const LeadsPage: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'contacted': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'contacted': return 'bg-ep-blue-100 text-ep-blue-800 border-ep-blue-200';
       case 'converted': return 'bg-green-100 text-green-800 border-green-200';
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800';
@@ -683,7 +683,7 @@ export const LeadsPage: React.FC = () => {
             placeholder="Cerca..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-cyan-600 focus:border-transparent shadow-sm"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-ep-blue-600 focus:border-transparent shadow-sm"
           />
         </div>
 
@@ -693,25 +693,25 @@ export const LeadsPage: React.FC = () => {
           <div className="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200 overflow-x-auto max-w-full scrollbar-hide">
             <button 
               onClick={() => setDateFilterType('all')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'all' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'all' ? 'bg-white text-ep-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Tutti
             </button>
             <button 
               onClick={() => setDateFilterType('today')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'today' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'today' ? 'bg-white text-ep-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Oggi
             </button>
             <button 
               onClick={() => setDateFilterType('week')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'week' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'week' ? 'bg-white text-ep-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Settimana
             </button>
              <button 
               onClick={() => setDateFilterType('month')}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'month' ? 'bg-white text-cyan-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dateFilterType === 'month' ? 'bg-white text-ep-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
             >
               Mese
             </button>
@@ -721,7 +721,7 @@ export const LeadsPage: React.FC = () => {
             <select 
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="text-sm border-gray-300 rounded-lg focus:ring-cyan-600 focus:border-cyan-600"
+              className="text-sm border-gray-300 rounded-lg focus:ring-ep-blue-600 focus:border-ep-blue-600"
             >
               {Array.from({ length: 12 }, (_, i) => (
                 <option key={i} value={i}>{format(new Date(2000, i, 1), 'MMMM')}</option>
@@ -736,7 +736,7 @@ export const LeadsPage: React.FC = () => {
             <select 
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full md:w-auto text-sm border-gray-300 rounded-lg focus:ring-cyan-600 focus:border-cyan-600 bg-white"
+              className="w-full md:w-auto text-sm border-gray-300 rounded-lg focus:ring-ep-blue-600 focus:border-ep-blue-600 bg-white"
             >
               <option value="all">Tutti gli stati</option>
               <option value="pending">Nuovi</option>
@@ -842,7 +842,7 @@ export const LeadsPage: React.FC = () => {
                     <>
                       <button 
                         onClick={() => handleConvertToStudent(lead)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm font-medium shadow-sm w-full"
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-ep-blue-600 text-white rounded-lg hover:bg-ep-blue-700 transition-colors text-sm font-medium shadow-sm w-full"
                       >
                         <UserPlus className="w-4 h-4" />
                         Iscrivi
@@ -851,7 +851,7 @@ export const LeadsPage: React.FC = () => {
                         onClick={() => handleStatusChange(lead.id, 'contacted')}
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium w-full"
                       >
-                        <CheckCircle className="w-4 h-4 text-blue-500" />
+                        <CheckCircle className="w-4 h-4 text-ep-blue-500" />
                         Contattato
                       </button>
                     </>

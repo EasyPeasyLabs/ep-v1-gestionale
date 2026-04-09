@@ -699,12 +699,17 @@ const Suppliers: React.FC = () => {
 
     return (
         <div>
-            <div className="flex flex-wrap gap-4 justify-between items-center">
-                <div><h1 className="text-3xl font-bold">Fornitori</h1><p className="mt-1 text-gray-500">Gestione sedi e anagrafiche.</p></div>
-                <div className="flex gap-2">
-                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold mr-2"><TrashIcon /> Elimina Tutto</button>
-                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /></button>
-                    {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green"><PlusIcon /><span className="ml-2">Nuovo</span></button>}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div className="min-w-0">
+                    <h1 className="text-2xl md:text-3xl font-bold truncate">Fornitori</h1>
+                    <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Gestione sedi e anagrafiche.</p>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end overflow-x-auto pb-1 scrollbar-hide">
+                    <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold flex-shrink-0 px-2 py-1.5">
+                        <TrashIcon /> <span className="ml-1 hidden sm:inline">Elimina Tutto</span><span className="sm:hidden ml-1">Reset</span>
+                    </button>
+                    <button onClick={() => setShowTrash(!showTrash)} className={`md-btn px-2 py-1.5 flex-shrink-0 ${showTrash ? 'bg-gray-200' : 'md-btn-flat'}`}><TrashIcon /> <span className="ml-1 hidden sm:inline">{showTrash ? 'Attivi' : 'Cestino'}</span></button>
+                    {!showTrash && <button onClick={() => handleOpenModal()} className="md-btn md-btn-raised md-btn-green flex-shrink-0 px-3 py-1.5"><PlusIcon /><span className="ml-1 sm:ml-2">Nuovo</span></button>}
                 </div>
             </div>
             

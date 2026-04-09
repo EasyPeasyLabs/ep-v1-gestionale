@@ -42,7 +42,7 @@ const StatCard: React.FC<{
     headerAction?: React.ReactNode; 
 }> = ({ title, value, valueLabel, subtext, onClick, icon, isAlert, headerAction }) => (
   <div 
-    className={`bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
+    className={`bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4 h-full relative overflow-hidden group ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`} 
     onClick={onClick}
   >
     <div className="flex items-center gap-3">
@@ -50,7 +50,7 @@ const StatCard: React.FC<{
             ${isAlert ? 'bg-amber-400 text-gray-900' : 'bg-indigo-500 text-white'}`}>
             {icon}
         </div>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight flex-1">
+        <p className="text-[10px] font-black text-gray-400 uppercase tracking-wider leading-tight flex-1">
             {title}
         </p>
         {headerAction && (
@@ -63,10 +63,10 @@ const StatCard: React.FC<{
     <div className="flex-1 min-w-0 z-10 flex flex-col justify-center">
         <div className="flex items-baseline gap-2 mb-1">
             <span className="text-3xl font-black text-gray-900 leading-none">{value}</span>
-            {valueLabel && <span className="text-[10px] font-bold text-gray-400 italic">{valueLabel}</span>}
+            {valueLabel && <span className="text-xs font-bold text-gray-500 italic">{valueLabel}</span>}
         </div>
         {subtext && (
-            <div className={`text-[11px] mt-2 font-bold leading-snug border-t border-gray-50 pt-2 ${isAlert ? 'text-amber-600' : 'text-gray-500'}`}>
+            <div className={`text-xs mt-2 font-bold leading-snug border-t border-gray-50 pt-2 ${isAlert ? 'text-amber-600' : 'text-gray-600'}`}>
                 {subtext}
             </div>
         )}
@@ -82,10 +82,10 @@ const RatingCard: React.FC<{
     details: { label: string; value: number }[];
     summary?: string;
 }> = ({ title, average, count, icon, details, summary }) => (
-    <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full">
+    <div className="bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col h-full">
         <div className="flex justify-between items-start mb-4">
-            <div>
-                <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+            <div className="min-w-0">
+                <h3 className="text-base md:text-lg font-bold text-gray-900 truncate">{title}</h3>
                 <p className="text-xs text-gray-400">{count} valutazioni</p>
             </div>
             <div className={`p-3 rounded-xl bg-gray-100 text-gray-600`}>

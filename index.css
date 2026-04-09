@@ -6,15 +6,15 @@
 
 body {
   font-family: 'Inter', sans-serif;
-  background-color: #F6F8FA;
-  color: #1F2937;
+  background-color: #F8FAFC;
+  color: #1E293B;
   -webkit-font-smoothing: antialiased;
 }
 
 #boot-monitor {
   position: fixed;
   inset: 0;
-  background: #f6f8fa;
+  background: #F8FAFC;
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -24,8 +24,8 @@ body {
 #boot-monitor div {
   width: 40px;
   height: 40px;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3C3C52;
+  border: 4px solid #E2E8F0;
+  border-top-color: #323244;
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -37,13 +37,46 @@ body {
 /* --- CARD SYSTEM --- */
 .md-card {
   background-color: white;
-  border-radius: 1rem;
-  border: 1px solid #E5E7EB;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border-radius: 1.5rem;
+  border: 1px solid #F1F5F9;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
   transition: all 0.2s;
 }
 
 /* --- BUTTON SYSTEM --- */
+.btn-global {
+  @apply transition-all duration-200;
+}
+
+/* Sidebar */
+.btn-sidebar {
+  @apply bg-white-inactive text-blue-dark;
+}
+.btn-sidebar.active {
+  @apply bg-yellow-active text-blue-dark;
+}
+
+/* Dashboard Switch */
+.btn-dashboard-switch {
+  @apply bg-white-inactive text-blue-dark;
+}
+.btn-dashboard-switch.active {
+  @apply bg-yellow-active text-blue-dark;
+}
+
+/* Calendar Selector */
+.btn-calendar-selector {
+  @apply bg-gray-inactive text-blue-dark;
+}
+
+/* Finance Selectors */
+.btn-finance-selector {
+  @apply bg-white-inactive text-blue-dark;
+}
+.btn-finance-selector.active {
+  @apply bg-yellow-active text-blue-dark;
+}
+
 .md-btn {
   display: inline-flex;
   align-items: center;
@@ -87,11 +120,11 @@ body {
 }
 
 .md-btn-primary {
-  background-color: #3C3C52;
+  background-color: #323244;
   color: white;
 }
 .md-btn-primary:hover {
-  background-color: #323244;
+  background-color: #282836;
 }
 
 .md-btn-green {
@@ -124,7 +157,7 @@ body {
   background-color: #F1F5F9;
 }
 .md-icon-btn.edit:hover { 
-  color: #3C3C52; 
+  color: #323244; 
   background-color: #F2F2F5; 
 }
 .md-icon-btn.delete:hover { 
@@ -153,8 +186,8 @@ body {
   outline: none;
 }
 .md-input:focus {
-  border-color: #3C3C52;
-  box-shadow: 0 0 0 2px #CDCDD6;
+  border-color: #323244;
+  box-shadow: 0 0 0 2px #E2E8F0;
 }
 
 /* Floating Label Logic via CSS Puro */
@@ -166,7 +199,7 @@ body {
   padding: 0 0.25rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #3C3C52;
+  color: #323244;
   transition: all 0.2s;
   pointer-events: none;
 }
@@ -183,7 +216,7 @@ body {
   top: -0.6rem;
   font-size: 0.75rem;
   font-weight: 700;
-  color: #3C3C52;
+  color: #323244;
   background-color: white;
 }
 

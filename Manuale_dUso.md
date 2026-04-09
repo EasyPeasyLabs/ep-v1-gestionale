@@ -44,9 +44,7 @@ Il cuore pulsante della gestione allievi.
 
 Sana ogni posizione in sospeso e genera report di alto livello.
 - **Timeline di Copertura:** Verifica graficamente se un allievo è coperto finanziariamente per tutto l'anno.
-- **Situazione Clienti & Cronologia Didattica:** La scheda cliente non mostra solo dati finanziari, ma include una sezione **"Cronologia Didattica"** che elenca puntualmente ogni assenza e la data esatta del relativo recupero autorizzato (automatico o manuale).
-- **Public Reporting:** I report generati (PDF, Excel e UI) utilizzano il **Nome Commerciale** del corso (impostato in "Impostazioni -> Abbonamenti") invece del codice tecnico, garantendo una comunicazione professionale verso il genitore.
-- **Advanced Excel Export:** Genera report completi incrociando dati anagrafici, didattici e contabili. Include il dettaglio dei recuperi per ogni iscrizione.
+- **Advanced Excel Export:** Genera report completi incrociando dati anagrafici, didattici e contabili.
 - **Storico Recinti:** La colonna "Sede / Recinto" nel report Excel non è statica: analizza gli appuntamenti e mostra il percorso dell'allievo (es. "Sede Centrale -> Sede Estiva") se ha frequentato più sedi nel periodo.
 - **Financial Wizard (Bottone €):** 
     - **Riconciliazione:** Collega incassi orfani (senza fattura) a documenti esistenti.
@@ -59,7 +57,6 @@ Sana ogni posizione in sospeso e genera report di alto livello.
 
 Tracciabilità dell'esperienza in aula.
 - **Log Attività:** Collega le lezioni svolte alla libreria delle attività (Activities). Utile per report ai genitori e coordinamento tra insegnanti.
-- **Calendario - Eventi Extra:** Per creare lezioni di recupero o extra-curriculari, usa il filtro di ricerca avanzata nel form. Puoi individuare i partecipanti scrivendo parte del nome del genitore, del figlio, del corso o della sede abituale.
 - **Homeworks:** Crea compiti multimediali (link YouTube/PDF) e inviali massivamente a tutto il "recinto" (gruppo di classe) via WhatsApp.
 
 ---
@@ -68,8 +65,7 @@ Tracciabilità dell'esperienza in aula.
 
 Gestione chirurgica degli slot.
 - **Register & Recover:** Se segni un allievo come assente, il sistema ti propone il recupero automatico.
-- **Recupero Intelligente:** Il sistema calcola la data di recupero accodandola **alla fine del pacchetto lezioni** corrente. Questo evita sovrapposizioni orarie e garantisce l'estensione reale della validità dell'iscrizione.
-- **Chiusure & Festività:** La logica di slittamento consulta automaticamente le festività nazionali e le **Chiusure Sede** impostate nel sistema, saltando i giorni non operativi e aggiornando istantaneamente la data di fine validità dell'allievo.
+- **Slittamento Festività:** I recuperi programmati saltano automaticamente le festività nazionali italiane (Natale, Pasqua, etc.), estendendo la validità del cartellino.
 
 ---
 

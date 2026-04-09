@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Homework, HomeworkInput, Client, Supplier, ClientType, ParentClient, EnrollmentStatus, Location } from '../types';
+import { Homework, HomeworkInput, Client, Supplier, ClientType, ParentClient, EnrollmentStatus } from '../types';
 import { getHomeworks, addHomework, updateHomework, deleteHomework } from '../services/homeworkService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';

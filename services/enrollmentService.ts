@@ -1,12 +1,73 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, deleteDoc, doc, updateDoc, getDoc, getDocFromServer, writeBatch, orderBy } from 'firebase/firestore';
+import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, doc, updateDoc, getDoc, getDocFromServer, writeBatch, orderBy, arrayUnion } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
-import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure } from '../types';
-import { isItalianHoliday, toLocalISOString } from '../utils/dateUtils';
+import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee } from '../types';
+import { isItalianHoliday } from '../utils/dateUtils';
 import { getSchoolClosures } from './calendarService';
 
 const getEnrollmentCollectionRef = () => collection(db, 'enrollments');
+
+// --- NUOVA ARCHITETTURA: PRENOTAZIONE NELLE LEZIONI ---
+export const bookStudentIntoCourseLessons = async (
+    enrollmentId: string,
+    courseId: string,
+    clientId: string,
+    childId: string,
+    childName: string,
+    startDate: string,
+    totalLessons: number
+) => {
+    const lessonsRef = collection(db, 'lessons');
+    const q = query(
+        lessonsRef,
+        where('courseId', '==', courseId),
+        where('date', '>=', startDate),
+        orderBy('date', 'asc')
+    );
+    const snap = await getDocs(q);
+    const lessons = snap.docs.map(d => ({ id: d.id, ...d.data() } as Lesson));
+
+    const batch = writeBatch(db);
+    let bookedCount = 0;
+    let labUsed = 0;
+    let sgUsed = 0;
+    let finalEndDate = startDate;
+
+    const attendee: LessonAttendee = {
+        clientId,
+        childId,
+        childName,
+        enrollmentId,
+        status: 'Scheduled'
+    };
+
+    for (const lesson of lessons) {
+        if (bookedCount >= totalLessons) break;
+
+        const lessonDocRef = doc(db, 'lessons', lesson.id);
+        
+        // Controlla se l'allievo è già prenotato
+        const isAlreadyBooked = (lesson.attendees || []).some(a => a.enrollmentId === enrollmentId);
+        
+        if (!isAlreadyBooked) {
+            batch.update(lessonDocRef, {
+                attendees: arrayUnion(attendee)
+            });
+        }
+
+        if (lesson.slotType === 'LAB') labUsed++;
+        if (lesson.slotType === 'SG') sgUsed++;
+        bookedCount++;
+        finalEndDate = lesson.date;
+    }
+
+    if (bookedCount > 0) {
+        await batch.commit();
+    }
+
+    return { bookedCount, labUsed, sgUsed, finalEndDate };
+};
 
 const docToEnrollment = (doc: QueryDocumentSnapshot<DocumentData>): Enrollment => {
     return { id: doc.id, ...doc.data() } as Enrollment;
@@ -267,26 +328,88 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
 export const deleteEnrollment = async (id: string): Promise<void> => {
     const batch = writeBatch(db);
     
-    // 1. Delete Enrollment document
+    // 1. Get Enrollment to know its courseId
     const enrollmentRef = doc(db, 'enrollments', id);
+    const enrollmentSnap = await getDoc(enrollmentRef);
+    let courseId = null;
+    if (enrollmentSnap.exists()) {
+        const enrData = enrollmentSnap.data() as Enrollment;
+        courseId = enrData.courseId;
+    }
+
+    // 2. Delete Enrollment document
     batch.delete(enrollmentRef);
     
-    // 2. Search and delete related Physical Lessons
+    // 3. Search and delete related Physical Lessons (Old Architecture)
     try {
-        const lessonsQuery = query(collection(db, 'lessons'), where('enrollmentId', '==', id));
-        const lessonsSnap = await getDocs(lessonsQuery);
+        const oldLessonsQuery = query(collection(db, 'lessons'), where('enrollmentId', '==', id));
+        const oldLessonsSnap = await getDocs(oldLessonsQuery);
         
-        lessonsSnap.forEach((lessonDoc) => {
+        oldLessonsSnap.forEach((lessonDoc) => {
             batch.delete(lessonDoc.ref);
         });
         
-        console.log(`Deep Delete: Cleaning up ${lessonsSnap.size} lessons for enrollment ${id}`);
+        console.log(`Deep Delete: Cleaning up ${oldLessonsSnap.size} old lessons for enrollment ${id}`);
     } catch (error) {
-        console.error("Error during deep delete of lessons:", error);
+        console.error("Error during deep delete of old lessons:", error);
+    }
+
+    // 4. Remove attendee from Course Lessons (New Architecture)
+    if (courseId) {
+        try {
+            const courseLessonsQuery = query(collection(db, 'lessons'), where('courseId', '==', courseId));
+            const courseLessonsSnap = await getDocs(courseLessonsQuery);
+            let updatedCount = 0;
+
+            courseLessonsSnap.forEach((lessonDoc) => {
+                const lessonData = lessonDoc.data() as Lesson;
+                if (lessonData.attendees && lessonData.attendees.some(a => a.enrollmentId === id)) {
+                    const newAttendees = lessonData.attendees.filter(a => a.enrollmentId !== id);
+                    batch.update(lessonDoc.ref, { attendees: newAttendees });
+                    updatedCount++;
+                }
+            });
+            console.log(`Deep Delete: Removed attendee from ${updatedCount} course lessons for enrollment ${id}`);
+        } catch (error) {
+            console.error("Error during cleanup of course lessons:", error);
+        }
     }
     
-    // 3. Commit all deletions atomically
+    // 5. Commit all deletions atomically
     await batch.commit();
+};
+
+// --- SCRIPT DI BONIFICA (TRANSIZIONE ARCHITETTURA) ---
+export const bonificaAppointments = async (): Promise<number> => {
+    console.log("Inizio bonifica appointments...");
+    const enrollmentsSnap = await getDocs(collection(db, 'enrollments'));
+    let updatedCount = 0;
+    
+    // Non usiamo un singolo batch perché potremmo superare il limite di 500 scritture
+    const batch = writeBatch(db);
+    let operationsInBatch = 0;
+
+    for (const docSnap of enrollmentsSnap.docs) {
+        const data = docSnap.data() as Enrollment;
+        // Se l'iscrizione è legata a un corso (nuova architettura) e ha ancora l'array appointments pieno
+        if (data.courseId && data.courseId !== 'manual' && data.appointments && data.appointments.length > 0) {
+            batch.update(docSnap.ref, { appointments: [] });
+            updatedCount++;
+            operationsInBatch++;
+            
+            if (operationsInBatch >= 450) {
+                await batch.commit();
+                operationsInBatch = 0;
+            }
+        }
+    }
+    
+    if (operationsInBatch > 0) {
+        await batch.commit();
+    }
+    
+    console.log(`Bonifica completata. ${updatedCount} iscrizioni aggiornate.`);
+    return updatedCount;
 };
 
 // --- SYNC ENGINE: Manual Lesson Update -> Enrollment Appointment Update ---
@@ -306,7 +429,7 @@ export const syncEnrollmentFromLessonUpdate = async (lessonId: string, lessonUpd
                     const enrData = enrSnap.data() as Enrollment;
                     // Find matching appointment by lessonId
                     let modified = false;
-                    const newApps = enrData.appointments.map(app => {
+                    const newApps = (enrData.appointments || []).map(app => {
                         if (app.lessonId === lessonId) {
                             modified = true;
                             return {
@@ -462,8 +585,40 @@ export const registerAbsence = async (
     appointmentLessonId: string, 
     strategy: 'lost' | 'recover_auto' | 'recover_manual',
     manualDetails?: { date: string, startTime: string, endTime: string, locationId: string, locationName: string, locationColor: string },
-    cachedClosures?: SchoolClosure[]
+    cachedClosures?: SchoolClosure[],
+    isNewArchitecture?: boolean
 ): Promise<void> => {
+    if (isNewArchitecture) {
+        // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
+        const lessonRef = doc(db, 'lessons', appointmentLessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
+        
+        const lessonData = lessonSnap.data() as Lesson;
+        const attendees = lessonData.attendees || [];
+        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        
+        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        
+        // PREVENZIONE DUPLICATI
+        if ((strategy === 'recover_auto' || strategy === 'recover_manual') && attendees[attendeeIndex].recoveryId) {
+            console.warn("[EnrollmentService] Tentativo di recupero duplicato ignorato per lessonId:", appointmentLessonId);
+            return;
+        }
+
+        attendees[attendeeIndex].status = 'Absent';
+        
+        // TODO: Implementare logica di recupero (creazione nuova Lesson o inserimento in Lesson esistente)
+        // Per ora ci limitiamo a segnare l'assenza
+        if (strategy === 'recover_auto' || strategy === 'recover_manual') {
+            console.warn("Recupero non ancora implementato per la nuova architettura");
+        }
+
+        await updateDoc(lessonRef, { attendees });
+        return;
+    }
+
+    // VECCHIA ARCHITETTURA (Fallback)
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
@@ -604,7 +759,27 @@ const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appoin
     };
 };
 
-export const registerPresence = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+export const registerPresence = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (isNewArchitecture) {
+        // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
+        const lessonRef = doc(db, 'lessons', appointmentLessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
+        
+        const lessonData = lessonSnap.data() as Lesson;
+        const attendees = lessonData.attendees || [];
+        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        
+        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        if (attendees[attendeeIndex].status === 'Present') return;
+        
+        attendees[attendeeIndex].status = 'Present';
+        
+        await updateDoc(lessonRef, { attendees });
+        return;
+    }
+
+    // VECCHIA ARCHITETTURA (Fallback)
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
@@ -623,7 +798,26 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
     await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
-export const resetAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+export const resetAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (isNewArchitecture) {
+        // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
+        const lessonRef = doc(db, 'lessons', appointmentLessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
+        
+        const lessonData = lessonSnap.data() as Lesson;
+        const attendees = lessonData.attendees || [];
+        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        
+        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        
+        attendees[attendeeIndex].status = 'Scheduled';
+        
+        await updateDoc(lessonRef, { attendees });
+        return;
+    }
+
+    // VECCHIA ARCHITETTURA (Fallback)
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
@@ -637,7 +831,22 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
     await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
-export const deleteAppointment = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+export const deleteAppointment = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (isNewArchitecture) {
+        // NUOVA ARCHITETTURA: Rimuovi l'allievo dall'array attendees della Lesson
+        const lessonRef = doc(db, 'lessons', appointmentLessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
+        
+        const lessonData = lessonSnap.data() as Lesson;
+        const attendees = lessonData.attendees || [];
+        const newAttendees = attendees.filter(a => a.enrollmentId !== enrollmentId);
+        
+        await updateDoc(lessonRef, { attendees: newAttendees });
+        return;
+    }
+
+    // VECCHIA ARCHITETTURA (Fallback)
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
@@ -651,7 +860,33 @@ export const deleteAppointment = async (enrollmentId: string, appointmentLessonI
     await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
-export const toggleAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string): Promise<void> => {
+export const toggleAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (isNewArchitecture) {
+        // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
+        const lessonRef = doc(db, 'lessons', appointmentLessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
+        
+        const lessonData = lessonSnap.data() as Lesson;
+        const attendees = lessonData.attendees || [];
+        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        
+        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        
+        const currentStatus = attendees[attendeeIndex].status;
+        if (currentStatus === 'Present') {
+            attendees[attendeeIndex].status = 'Absent';
+        } else if (currentStatus === 'Absent') {
+            attendees[attendeeIndex].status = 'Present';
+        } else if (currentStatus === 'Scheduled') {
+            attendees[attendeeIndex].status = 'Present';
+        }
+        
+        await updateDoc(lessonRef, { attendees });
+        return;
+    }
+
+    // VECCHIA ARCHITETTURA (Fallback)
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
@@ -849,26 +1084,49 @@ export const activateEnrollmentWithLocation = async (
         currentDate.setDate(currentDate.getDate() + 1);
     }
     
-    const appointments = generateTheoreticalAppointments(
-        currentDate.toISOString(),
-        enrollment.lessonsTotal,
-        locationId,
-        locationName,
-        locationColor,
-        startTime,
-        endTime,
-        enrollment.childName,
-        comboConfigs,
-        weeklyPlan
-    );
+    let labUsed = 0;
+    let sgUsed = 0;
+    let finalEndDate = enrollment.endDate;
+    let appointments: Appointment[] = [];
 
-    // Calculate specific counts if it was a combo
-    let labCount = enrollment.labCount || 0;
-    let sgCount = enrollment.sgCount || 0;
-    
-    if (comboConfigs) {
-        labCount = appointments.filter(a => a.type === 'LAB').length;
-        sgCount = appointments.filter(a => a.type === 'SG').length;
+    if (enrollment.courseId) {
+        // NUOVA ARCHITETTURA: Prenotazione nelle LessonSession esistenti
+        const bookingResult = await bookStudentIntoCourseLessons(
+            enrollmentId,
+            enrollment.courseId,
+            enrollment.clientId,
+            enrollment.childId,
+            enrollment.childName,
+            currentDate.toISOString(),
+            enrollment.lessonsTotal
+        );
+        
+        labUsed = bookingResult.labUsed;
+        sgUsed = bookingResult.sgUsed;
+        finalEndDate = bookingResult.finalEndDate;
+    } else {
+        // FALLBACK VECCHIA ARCHITETTURA (per iscrizioni custom senza corso)
+        appointments = generateTheoreticalAppointments(
+            currentDate.toISOString(),
+            enrollment.lessonsTotal,
+            locationId,
+            locationName,
+            locationColor,
+            startTime,
+            endTime,
+            enrollment.childName,
+            comboConfigs,
+            weeklyPlan
+        );
+        
+        if (comboConfigs) {
+            labUsed = appointments.filter(a => a.type === 'LAB').length;
+            sgUsed = appointments.filter(a => a.type === 'SG').length;
+        }
+        
+        if (appointments.length > 0) {
+            finalEndDate = appointments[appointments.length - 1].date;
+        }
     }
 
     await updateDoc(enrollmentDocRef, {
@@ -877,13 +1135,13 @@ export const activateEnrollmentWithLocation = async (
         locationId,
         locationName,
         locationColor,
-        appointments: appointments,
-        labCount: labCount > 0 ? labCount : (enrollment.labCount || 0),
-        sgCount: sgCount > 0 ? sgCount : (enrollment.sgCount || 0),
-        labRemaining: labCount > 0 ? labCount : (enrollment.labRemaining || 0),
-        sgRemaining: sgCount > 0 ? sgCount : (enrollment.sgRemaining || 0),
-        startDate: appointments[0]?.date || enrollment.startDate, 
-        endDate: appointments.length > 0 ? appointments[appointments.length - 1].date : enrollment.endDate
+        appointments: appointments, // Sarà vuoto per i corsi, pieno per i custom
+        labUsed: labUsed,
+        sgUsed: sgUsed,
+        labRemaining: (enrollment.labCount || 0) - labUsed,
+        sgRemaining: (enrollment.sgCount || 0) - sgUsed,
+        startDate: currentDate.toISOString(), 
+        endDate: finalEndDate
     });
 };
 

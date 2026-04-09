@@ -1,4 +1,12 @@
 
+export interface AdvancedEnrollmentExportData {
+    enrollment: Enrollment;
+    client?: Client;
+    supplier?: Supplier;
+    invoices: Invoice[];
+    transactions: Transaction[];
+}
+
 export type Page = 'Dashboard' | 'Clients' | 'Suppliers' | 'Finance' | 'Settings' | 'NotificationPlanning' | 'Profile' | 'Calendar' | 'CRM' | 'Enrollments' | 'EnrollmentArchive' | 'Attendance' | 'AttendanceArchive' | 'Activities' | 'ActivityLog' | 'Homeworks' | 'Initiatives' | 'Manual' | 'ClientSituation' | 'Leads' | 'Courses';
 
 export enum ClientType {
@@ -125,6 +133,8 @@ export interface Course {
     capacity: number;
     activeEnrollmentsCount: number;
     status: 'open' | 'closed';
+    startDate?: string; // Data inizio validità corso
+    endDate?: string; // Data fine validità corso
     updatedAt?: any;
     comboConfigs?: Partial<Record<SlotType, {
         startTime: string;
@@ -134,11 +144,21 @@ export interface Course {
         capacity: number;
     }>>;
     weeklyPlan?: Record<number, SlotType>;
+    recurrenceConfig?: RecurrenceConfig;
+}
+
+export interface RecurrenceConfig {
+    type: 'monthly_pattern' | 'custom_intervals';
+    activeMonths?: number[]; // 1-12
+    blackoutPeriods?: { start: string; end: string }[];
 }
 
 export type LocationInput = Omit<Location, 'id'>;
 export type CourseInput = Omit<Course, 'id' | 'activeEnrollmentsCount'> & { 
     activeEnrollmentsCount?: number;
+    startDate?: string;
+    endDate?: string;
+    recurrenceConfig?: RecurrenceConfig;
     comboConfigs?: Partial<Record<SlotType, {
         startTime: string;
         endTime: string;
@@ -490,7 +510,7 @@ export interface Enrollment {
     locationName: string;
     locationColor: string;
     courseId?: string; // New: link to Course document
-    appointments: Appointment[];
+    appointments?: Appointment[]; // Deprecato/Opzionale: il calendario è ora gestito da LessonSession
     lessonsTotal: number;
     lessonsRemaining: number;
     labCount?: number;
@@ -501,6 +521,10 @@ export interface Enrollment {
     sgRemaining?: number;
     evtRemaining?: number;
     readRemaining?: number;
+    labUsed?: number;
+    sgUsed?: number;
+    evtUsed?: number;
+    readUsed?: number;
     startDate: string;
     endDate: string;
     status: EnrollmentStatus;
@@ -519,10 +543,13 @@ export interface LessonAttendee {
     childId: string;
     childName: string;
     enrollmentId?: string;
+    status?: AppointmentStatus | string;
+    recoveryId?: string;
 }
 
 export interface Lesson {
     id: string;
+    courseId?: string;
     date: string;
     startTime: string;
     endTime: string;
@@ -533,6 +560,8 @@ export interface Lesson {
     childName?: string; // Legacy
     clientId?: string; // Legacy
     attendees?: LessonAttendee[];
+    slotType?: SlotType;
+    maxCapacity?: number;
 }
 
 export type LessonInput = Omit<Lesson, 'id'>;

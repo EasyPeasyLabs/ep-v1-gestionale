@@ -1,26 +1,46 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db } from '../firebase/config';
-import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
-import { getAllEnrollments, updateEnrollment, deleteEnrollment } from '../services/enrollmentService';
-import { cleanupEnrollmentFinancials, getInvoices, getTransactions, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment, getQuotes } from '../services/financeService';
-import { processPayment } from '../services/paymentService';
+import { 
+    Enrollment, 
+    Client, 
+    ClientType, 
+    ParentClient, 
+    InstitutionalClient, 
+    EnrollmentStatus, 
+    Invoice, 
+    Transaction, 
+    PaymentMethod,
+    EnrollmentInput,
+    Supplier,
+    DocumentStatus,
+    AdvancedEnrollmentExportData
+} from '../types';
+import { 
+    getAllEnrollments, 
+    updateEnrollment, 
+    deleteEnrollment 
+} from '../services/enrollmentService';
+import { getInvoices, getTransactions } from '../services/financeService';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { Enrollment, Client, Supplier, ClientType, ParentClient, InstitutionalClient, EnrollmentStatus, EnrollmentInput, Invoice, Transaction, PaymentMethod, DocumentStatus, Quote } from '../types';
+import { cleanupEnrollmentFinancials } from '../services/financeService';
+import { processPayment } from '../services/paymentService';
+import { exportAdvancedEnrollmentReport } from '../services/exportService';
+import { db } from '../firebase/config';
+import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { 
+    Pencil, 
+    Trash2, 
+    Calendar, 
+    List, 
+    StopCircle,
+    Download as DownloadIcon,
+    Search as SearchIcon
+} from 'lucide-react';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import EnrollmentForm from '../components/EnrollmentForm';
-import SearchIcon from '../components/icons/SearchIcon';
-import CalendarIcon from '../components/icons/CalendarIcon';
-import ChecklistIcon from '../components/icons/ChecklistIcon';
-import PencilIcon from '../components/icons/PencilIcon';
-import TrashIcon from '../components/icons/TrashIcon';
-import StopIcon from '../components/icons/StopIcon';
-import SparklesIcon from '../components/icons/SparklesIcon';
-import BanknotesIcon from '../components/icons/BanknotesIcon';
-import DownloadIcon from '../components/icons/DownloadIcon';
-import { exportAdvancedEnrollmentReport, AdvancedEnrollmentExportData } from '../utils/financeExport';
+import EnrollmentFinancialWizard from '../components/EnrollmentFinancialWizard';
 
 // Helpers
 const getClientName = (c?: Client) => {
@@ -81,272 +101,6 @@ const computePaymentStatus = (enr: Enrollment, invoices: Invoice[], transactions
     const remaining = Math.max(0, price - totalPaid - adjustment - ghostTotal);
     const isFullyPaid = remaining < 0.5 && price > 0;
     return { totalPaid, remaining, isFullyPaid, adjustment, ghostTotal };
-};
-
-// --- FINANCIAL WIZARD COMPONENT ---
-const EnrollmentFinancialWizard: React.FC<{
-    enrollment: Enrollment;
-    totalPaid: number;
-    onClose: () => void;
-    onOpenPayment: (prefillAmount?: number) => void;
-    onRefresh: () => void;
-}> = ({ enrollment, totalPaid, onClose, onOpenPayment, onRefresh }) => {
-    const [path, setPath] = useState<'landing' | 'reconcile' | 'installments'>('landing');
-    const [orphans, setOrphans] = useState<{ orphanInvoices: Invoice[], orphanTransactions: Transaction[], orphanGhosts: Invoice[] }>({ orphanInvoices: [], orphanTransactions: [], orphanGhosts: [] });
-    const [loading, setLoading] = useState(false);
-    const [relatedQuote, setRelatedQuote] = useState<Quote | null>(null);
-    
-    // Reconcile Form State
-    const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
-    const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
-    const [adjustmentAmount, setAdjustmentAmount] = useState(enrollment.adjustmentAmount || 0);
-    const [adjustmentNotes, setAdjustmentNotes] = useState(enrollment.adjustmentNotes || '');
-
-    useEffect(() => {
-        if (path === 'reconcile') {
-            setLoading(true);
-            getOrphanedFinancialsForClient(enrollment.clientId).then(data => {
-                setOrphans(data);
-                setLoading(false);
-            });
-        }
-        if (enrollment.isQuoteBased && enrollment.relatedQuoteId && path === 'installments') {
-            setLoading(true);
-            getQuotes().then(list => {
-                const found = list.find(q => q.id === enrollment.relatedQuoteId);
-                if (found) setRelatedQuote(found);
-                setLoading(false);
-            });
-        }
-    }, [path, enrollment.clientId, enrollment.isQuoteBased, enrollment.relatedQuoteId]);
-
-    const packagePrice = Number(enrollment.price) || 0;
-    
-    // Find already linked ghosts for this enrollment
-    const [linkedGhosts, setLinkedGhosts] = useState<Invoice[]>([]);
-    useEffect(() => {
-        getInvoices().then(list => {
-            const linked = list.filter(i => i.relatedEnrollmentId === enrollment.id && i.isGhost && !i.isDeleted);
-            setLinkedGhosts(linked);
-        });
-    }, [enrollment.id]);
-
-    const selectedOrphansTotal = useMemo(() => {
-        const invSum = orphans.orphanInvoices.filter(i => selectedInvoiceIds.includes(i.id)).reduce((s, i) => s + Number(i.totalAmount), 0);
-        const trnSum = orphans.orphanTransactions.filter(t => selectedTransactionIds.includes(t.id)).reduce((s, t) => s + Number(t.amount), 0);
-        const ghostSum = orphans.orphanGhosts.filter(g => selectedInvoiceIds.includes(g.id)).reduce((s, g) => s + Number(g.totalAmount), 0);
-        return invSum + trnSum + ghostSum;
-    }, [orphans, selectedInvoiceIds, selectedTransactionIds]);
-
-    const alreadyLinkedGhostsTotal = linkedGhosts.reduce((sum, g) => sum + Number(g.totalAmount), 0);
-    
-    // Critical Fix: Force Number casting on totalPaid to ensure correct math
-    const projectedCoverage = Number(totalPaid) + selectedOrphansTotal + alreadyLinkedGhostsTotal + Number(adjustmentAmount);
-    const remainingGap = Number((packagePrice - projectedCoverage).toFixed(2));
-    const isBalanced = Math.abs(remainingGap) < 0.1;
-
-    const handleConfirmReconcile = async () => {
-        setLoading(true);
-        try {
-            await linkFinancialsToEnrollment(
-                enrollment.id,
-                selectedInvoiceIds,
-                selectedTransactionIds,
-                { amount: Number(adjustmentAmount), notes: adjustmentNotes }
-            );
-            onRefresh();
-            onClose();
-        } catch (e) {
-            alert("Errore riconciliazione: " + e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleGenerateSaldoGhost = async () => {
-        if (remainingGap <= 0) return;
-        setLoading(true);
-        try {
-            const clientName = enrollment.childName; // Per gli enti il childName è il nome progetto
-            await createGhostInvoiceForEnrollment(enrollment, clientName, remainingGap);
-            onRefresh();
-            const list = await getInvoices();
-            setLinkedGhosts(list.filter(i => i.relatedEnrollmentId === enrollment.id && i.isGhost && !i.isDeleted));
-            alert("Pro-forma di saldo generata con successo!");
-        } catch (e) {
-            alert("Errore generazione saldo: " + e);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    if (path === 'landing') {
-        return (
-            <div className="p-8">
-                <h3 className="text-2xl font-black text-slate-800 mb-2">Gestione Finanziaria</h3>
-                <p className="text-sm text-slate-500 mb-8 uppercase tracking-widest font-bold">Progetto: {enrollment.childName}</p>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {enrollment.isQuoteBased ? (
-                        <button onClick={() => setPath('installments')} className="md-card p-6 border-2 border-indigo-50 hover:border-indigo-500 transition-all text-left flex flex-col items-center justify-center group">
-                            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">🗓️</div>
-                            <h4 className="font-black text-slate-800 text-lg">Piano Rateale</h4>
-                            <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Gestisci le scadenze concordate nel preventivo per questo ente.</p>
-                        </button>
-                    ) : (
-                        <button onClick={() => onOpenPayment()} className="md-card p-6 border-2 border-indigo-50 hover:border-indigo-500 transition-all text-left flex flex-col items-center justify-center group">
-                            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">💸</div>
-                            <h4 className="font-black text-slate-800 text-lg">Nuovo Incasso</h4>
-                            <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Registra un nuovo versamento e genera i documenti fiscali necessari.</p>
-                        </button>
-                    )}
-
-                    <button onClick={() => setPath('reconcile')} className="md-card p-6 border-2 border-amber-50 hover:border-amber-500 transition-all text-left flex flex-col items-center justify-center group">
-                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center text-3xl mb-4 group-hover:scale-110 transition-transform">⚖️</div>
-                        <h4 className="font-black text-slate-800 text-lg">Riconciliazione</h4>
-                        <p className="text-xs text-slate-400 text-center mt-2 leading-relaxed px-4">Collega pagamenti orfani o applica abbuoni per pareggio contabile.</p>
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    if (path === 'installments') {
-        return (
-            <div className="flex flex-col h-[85vh]">
-                <div className="p-6 border-b bg-indigo-50 flex-shrink-0">
-                    <h3 className="text-xl font-bold text-indigo-900">Monitoraggio Rate Progetto</h3>
-                    <p className="text-xs text-indigo-700">Situazione debitoria basata sul preventivo.</p>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                    {loading ? <Spinner /> : (
-                        <>
-                            {!relatedQuote ? <p className="text-sm text-red-500">Preventivo originale non trovato.</p> : (
-                                <div className="space-y-3">
-                                    {relatedQuote.installments.map((inst, i) => {
-                                        const isPaid = inst.amount <= (totalPaid / relatedQuote.installments.length); // Semplificazione per UI
-                                        return (
-                                            <div key={i} className={`p-4 border rounded-xl flex justify-between items-center ${isPaid ? 'bg-green-50 border-green-200 opacity-60' : 'bg-white border-slate-200'}`}>
-                                                <div>
-                                                    <p className="font-bold text-slate-800">{inst.description}</p>
-                                                    <p className="text-xs text-slate-500">Scadenza: {new Date(inst.dueDate).toLocaleDateString()}</p>
-                                                </div>
-                                                <div className="text-right flex items-center gap-4">
-                                                    <span className="font-black text-lg">{inst.amount.toFixed(2)}€</span>
-                                                    {!isPaid && (
-                                                        <button onClick={() => onOpenPayment(inst.amount)} className="md-btn md-btn-sm bg-indigo-600 text-white font-bold">Fattura Ora</button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
-                <div className="p-4 border-t bg-white flex justify-start flex-shrink-0">
-                    <button onClick={() => setPath('landing')} className="md-btn md-btn-flat">Indietro</button>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex flex-col h-[85vh]">
-            <div className="p-6 border-b bg-amber-50 flex-shrink-0">
-                <div className="flex justify-between items-center">
-                    <div>
-                        <h3 className="text-xl font-bold text-amber-900">Medical Financial Check</h3>
-                        <p className="text-xs text-amber-700">Pareggio contabile e collegamento orfani.</p>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-tighter">Budget Totale</p>
-                        <p className="text-2xl font-black text-slate-800">{packagePrice.toFixed(2)}€</p>
-                    </div>
-                </div>
-                <div className="mt-4">
-                    <div className="flex justify-between text-[10px] font-black uppercase text-slate-400 mb-1">
-                        <span>Copertura Rilevata</span>
-                        <span className={remainingGap > 0 ? 'text-red-500' : 'text-green-600'}>
-                            {isBalanced ? 'Posizione Sanata ✨' : (remainingGap > 0 ? `Scoperto: ${remainingGap}€` : `Surplus: ${Math.abs(remainingGap)}€`)}
-                        </span>
-                    </div>
-                    <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden flex">
-                        <div className="h-full bg-indigo-500" style={{ width: `${Math.min((totalPaid / packagePrice) * 100, 100)}%` }}></div>
-                        <div className="h-full bg-indigo-300" style={{ width: `${Math.min((alreadyLinkedGhostsTotal / packagePrice) * 100, 100)}%` }}></div>
-                        <div className="h-full bg-indigo-200 animate-pulse" style={{ width: `${Math.min((selectedOrphansTotal / packagePrice) * 100, 100)}%` }}></div>
-                        <div className="h-full bg-amber-400" style={{ width: `${Math.min((Number(adjustmentAmount) / packagePrice) * 100, 100)}%` }}></div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                {loading ? <div className="py-20 flex justify-center"><Spinner /></div> : (
-                    <>
-                        <section>
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">📄 Documenti Orfani del Cliente</h4>
-                            <div className="space-y-2">
-                                {[...orphans.orphanInvoices, ...orphans.orphanGhosts].length === 0 && orphans.orphanTransactions.length === 0 && <p className="text-xs text-slate-400 italic">Nessun record orfano trovato.</p>}
-                                {[...orphans.orphanInvoices, ...orphans.orphanGhosts].map(inv => (
-                                    <label key={inv.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${selectedInvoiceIds.includes(inv.id) ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'bg-white hover:bg-slate-50'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <input type="checkbox" checked={selectedInvoiceIds.includes(inv.id)} onChange={() => setSelectedInvoiceIds(prev => prev.includes(inv.id) ? prev.filter(x => x !== inv.id) : [...prev, inv.id])} className="rounded text-indigo-600" />
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-800">{inv.invoiceNumber}</p>
-                                                <p className="text-[10px] text-slate-500 font-bold uppercase">{inv.isGhost ? 'Ghost (Pro-forma)' : 'Fattura Reale'}</p>
-                                            </div>
-                                        </div>
-                                        <span className="font-black text-slate-700">{Number(inv.totalAmount).toFixed(2)}€</span>
-                                    </label>
-                                ))}
-                                {orphans.orphanTransactions.map(trn => (
-                                    <label key={trn.id} className={`flex items-center justify-between p-3 border rounded-xl transition-all cursor-pointer ${selectedTransactionIds.includes(trn.id) ? 'bg-indigo-50 border-indigo-300 ring-1 ring-indigo-300' : 'bg-white hover:bg-slate-50'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <input type="checkbox" checked={selectedTransactionIds.includes(trn.id)} onChange={() => setSelectedTransactionIds(prev => prev.includes(trn.id) ? prev.filter(x => x !== trn.id) : [...prev, trn.id])} className="rounded text-indigo-600" />
-                                            <div><p className="text-sm font-bold text-slate-800">Cassa: {new Date(trn.date).toLocaleDateString()}</p><p className="text-[10px] text-slate-500 italic">"{trn.description}"</p></div>
-                                        </div>
-                                        <span className="font-black text-slate-700">{Number(trn.amount).toFixed(2)}€</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </section>
-
-                        {!enrollment.isQuoteBased && remainingGap > 0 && (
-                            <section className="bg-indigo-900 text-white p-6 rounded-2xl border border-indigo-700 shadow-xl animate-slide-up">
-                                <h4 className="text-lg font-black uppercase mb-1">Pareggio Automatico</h4>
-                                <p className="text-sm mb-6 leading-relaxed opacity-90">Genera una **Pro-forma di Saldo** di <strong className="text-amber-400">{remainingGap.toFixed(2)}€</strong> per coprire il debito residuo.</p>
-                                <button onClick={handleGenerateSaldoGhost} className="w-full bg-amber-400 hover:bg-amber-500 text-gray-900 font-black py-3 rounded-xl shadow-lg transition-all uppercase tracking-widest text-xs">Genera Pro-forma</button>
-                            </section>
-                        )}
-
-                        <section className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-                            <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4">Regolazione Finale (Abbuono)</h4>
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                                <div className="md-col-span-4">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Importo Sconto</label>
-                                    <input type="number" value={adjustmentAmount} onChange={e => setAdjustmentAmount(Number(e.target.value))} className="md-input font-black text-indigo-700" placeholder="0.00" />
-                                    <button type="button" onClick={() => setAdjustmentAmount(Number((packagePrice - (totalPaid + selectedOrphansTotal + alreadyLinkedGhostsTotal)).toFixed(2)))} className="text-[10px] font-black text-indigo-600 mt-2 hover:underline uppercase">Auto-Pareggio</button>
-                                </div>
-                                <div className="md-col-span-8">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Motivazione</label>
-                                    <textarea value={adjustmentNotes} onChange={e => setAdjustmentNotes(e.target.value)} className="md-input text-xs" rows={3} placeholder="Es: Sconto Ente, Abbuono arrotondamento..." />
-                                </div>
-                            </div>
-                        </section>
-                    </>
-                )}
-            </div>
-
-            <div className="p-4 border-t bg-white flex justify-between items-center flex-shrink-0">
-                <button onClick={() => setPath('landing')} className="md-btn md-btn-flat">Indietro</button>
-                <div className="flex gap-3">
-                    <button onClick={onClose} className="md-btn md-btn-flat">Chiudi</button>
-                    <button onClick={handleConfirmReconcile} disabled={loading} className="md-btn md-btn-raised md-btn-primary px-8">{loading ? <Spinner /> : 'Conferma Regolarizzazione'}</button>
-                </div>
-            </div>
-        </div>
-    );
 };
 
 
@@ -547,13 +301,13 @@ const EnrollmentArchive: React.FC = () => {
                 ))}
             </div>
         );
-    }, [viewMode, groupedData, filterYear]);
+    }, [viewMode, groupedData, filterYear, getPaymentStatus]);
 
     const handleEditRequest = (enr: Enrollment) => { setEditingEnrollment(enr); setIsEditModalOpen(true); };
     const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => {
         setLoading(true);
         try {
-            for (const enrollmentData of enrollmentsData) { if ('id' in enrollmentData) { await updateEnrollment((enrollmentData as any).id, enrollmentData); } }
+            for (const enrollmentData of enrollmentsData as (EnrollmentInput & { id?: string })[]) { if (enrollmentData.id) { await updateEnrollment(enrollmentData.id, enrollmentData); } }
             setIsEditModalOpen(false); setEditingEnrollment(undefined); await fetchData();
         } catch (err) { alert("Errore salvataggio."); } finally { setLoading(false); }
     };
@@ -659,62 +413,16 @@ const EnrollmentArchive: React.FC = () => {
         // 2. Prepare Data Structure
         const exportData: AdvancedEnrollmentExportData[] = targets.map(enr => {
             const client = clients.find(c => c.id === enr.clientId);
-            const parentName = getClientName(client);
-            
-            // Financial Status
-            const status = getPaymentStatus(enr); // Calculate paid amount
-            
-            // Financial Refs String
-            const linkedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted && !i.isGhost);
-            const linkedTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted && (!t.relatedDocumentId || t.relatedDocumentId.startsWith('ENR-')));
-            
-            const refsParts: string[] = []; // FIXED: Added explicit string[] type to prevent TS7034/TS7005
-            linkedInvoices.forEach(i => refsParts.push(`${new Date(i.issueDate).toLocaleDateString()} (${i.invoiceNumber})`));
-            linkedTrans.forEach(t => refsParts.push(`${new Date(t.date).toLocaleDateString()} (Cassa)`));
-            const paymentRefs = refsParts.join(' | ');
-
-            // Attendance Count
-            let presentCount = 0;
-            let absentCount = 0;
-            if (enr.appointments) {
-                presentCount = enr.appointments.filter(a => a.status === 'Present').length;
-                absentCount = enr.appointments.filter(a => a.status === 'Absent').length;
-            }
-
-            // --- LOGICA SEDI (STORICO RECINTI) ---
-            let locationString = enr.locationName || 'Sede Non Definita';
-            if (enr.appointments && enr.appointments.length > 0) {
-                const chronologicalLocs: string[] = [];
-                let lastLoc = "";
-                
-                // Ordina appuntamenti per data
-                const sortedApps = [...enr.appointments].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                
-                sortedApps.forEach(app => {
-                    const currentLoc = app.locationName || enr.locationName;
-                    if (currentLoc && currentLoc !== lastLoc) {
-                        chronologicalLocs.push(currentLoc);
-                        lastLoc = currentLoc;
-                    }
-                });
-
-                if (chronologicalLocs.length > 0) {
-                    locationString = chronologicalLocs.join(' -> ');
-                }
-            }
+            const supplier = suppliers.find(s => s.id === enr.supplierId);
+            const linkedInvoices = invoices.filter(i => i.relatedEnrollmentId === enr.id && !i.isDeleted);
+            const linkedTrans = transactions.filter(t => t.relatedEnrollmentId === enr.id && !t.isDeleted);
 
             return {
-                studentName: enr.childName,
-                parentName: parentName,
-                locationNames: locationString,
-                startDate: enr.startDate,
-                endDate: enr.endDate,
-                price: Number(enr.price) || 0,
-                totalSlots: enr.lessonsTotal,
-                presentCount,
-                absentCount,
-                paidAmount: status.totalPaid + Number(enr.adjustmentAmount || 0),
-                paymentRefs
+                enrollment: enr,
+                client,
+                supplier,
+                invoices: linkedInvoices,
+                transactions: linkedTrans
             };
         });
 
@@ -730,20 +438,20 @@ const EnrollmentArchive: React.FC = () => {
                     {/* EXPORT BUTTON */}
                     <button onClick={handleExportExcel} className="p-1.5 rounded-md transition-all text-gray-600 hover:text-indigo-600 hover:bg-gray-100 border border-transparent hover:border-gray-200 flex items-center gap-1" title="Esporta Excel">
                         <DownloadIcon />
-                        {selectedEnrollmentIds.length > 0 && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-1.5 rounded-full">{selectedEnrollmentIds.length}</span>}
+                        {selectedEnrollmentIds.length > 0 && <span className="text-[10px] font-bold bg-ep-blue-600 text-white px-1.5 rounded-full">{selectedEnrollmentIds.length}</span>}
                     </button>
                     <div className="w-px h-6 bg-gray-200 mx-1"></div>
 
                     <div className="relative w-40"><div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="w-full pl-8 pr-2 py-1.5 text-sm border-none bg-transparent focus:ring-0 placeholder:text-gray-400" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
                     
-                    <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="text-sm font-bold text-indigo-700 bg-indigo-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-indigo-200">{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
+                    <select value={filterYear} onChange={e => setFilterYear(Number(e.target.value))} className="text-sm font-bold text-white bg-ep-blue-600 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-ep-blue-300">{availableYears.map(y => <option key={y} value={y}>{y}</option>)}</select>
                     
                     <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} className="text-sm text-gray-600 bg-gray-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-gray-200 max-w-[150px]"><option value="">Tutte le Sedi</option>{availableLocations.map(l => <option key={l} value={l}>{l}</option>)}</select>
                     
                     {/* NEW PAYMENT STATUS FILTER */}
                     <select
                         value={filterPaymentStatus}
-                        onChange={e => setFilterPaymentStatus(e.target.value as any)}
+                        onChange={e => setFilterPaymentStatus(e.target.value as 'all' | 'paid' | 'unpaid')}
                         className="text-sm text-gray-600 bg-gray-50 border-none rounded-lg py-1.5 pl-2 pr-8 cursor-pointer focus:ring-2 focus:ring-gray-200"
                     >
                         <option value="all">Tutti gli stati</option>
@@ -751,7 +459,7 @@ const EnrollmentArchive: React.FC = () => {
                         <option value="unpaid">⚠️ Scoperti</option>
                     </select>
 
-                    <div className="flex bg-gray-100 p-1 rounded-lg"><button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Lista"><ChecklistIcon /></button><button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Calendario Copertura"><CalendarIcon /></button></div>
+                    <div className="flex bg-gray-100 p-1 rounded-lg"><button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Lista"><List /></button><button onClick={() => setViewMode('calendar')} className={`p-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="Calendario Copertura"><Calendar /></button></div>
                 </div>
             </div>
 
@@ -815,9 +523,9 @@ const EnrollmentArchive: React.FC = () => {
                                                 </div>
                                                 <div className="flex gap-1 md:flex-col justify-center border-t md:border-t-0 md:border-l border-gray-100 pt-2 md:pt-0 md:pl-4 mt-2 md-mt-0">
                                                     <button onClick={() => setFinancialWizardTarget(enr)} className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`} title="Gestione Finanziaria / Wizard"><span className="font-bold text-xs">€</span></button>
-                                                    <button onClick={() => handleEditRequest(enr)} className="md-icon-btn edit bg-white shadow-sm" title="Modifica"><PencilIcon /></button>
-                                                    <button onClick={() => handleTerminateRequest(enr)} className="md-icon-btn text-amber-600 hover:bg-amber-50 bg-white shadow-sm" title="Termina/Annulla"><StopIcon /></button>
-                                                    <button onClick={() => handleDeleteRequest(enr)} className="md-icon-btn delete bg-white shadow-sm" title="Elimina"><TrashIcon /></button>
+                                                    <button onClick={() => handleEditRequest(enr)} className="md-icon-btn edit bg-white shadow-sm" title="Modifica"><Pencil /></button>
+                                                    <button onClick={() => handleTerminateRequest(enr)} className="md-icon-btn text-amber-600 hover:bg-amber-50 bg-white shadow-sm" title="Termina/Annulla"><StopCircle /></button>
+                                                    <button onClick={() => handleDeleteRequest(enr)} className="md-icon-btn delete bg-white shadow-sm" title="Elimina"><Trash2 /></button>
                                                 </div>
                                             </div>
                                         )})}

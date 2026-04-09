@@ -665,9 +665,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     return (
         <div className="pb-20">
             {/* Header and filters */}
-            <div className="flex justify-between items-center mb-6">
-                <div><h1 className="text-3xl font-bold">Iscrizioni</h1><p className="text-gray-500">Gestione dei recinti operativi.</p></div>
-                <button onClick={() => { setEditingEnrollment(undefined); setIsModalOpen(true); }} className="md-btn md-btn-raised md-btn-green"><PlusIcon /> Nuova</button>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                <div className="min-w-0">
+                    <h1 className="text-2xl md:text-3xl font-bold truncate">Iscrizioni</h1>
+                    <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Gestione dei recinti operativi.</p>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    <button onClick={() => { setEditingEnrollment(undefined); setIsModalOpen(true); }} className="md-btn md-btn-raised md-btn-green px-4 py-2">
+                        <PlusIcon /> <span className="ml-2">Nuova</span>
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white p-3 rounded-xl border mb-6 flex flex-wrap gap-4 items-center">

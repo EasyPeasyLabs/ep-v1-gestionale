@@ -395,8 +395,8 @@ export const generateDocumentPDF = async (
     
     // 1. PAYMENT METHOD
     if ('paymentMethod' in doc && doc.paymentMethod) {
-        // Est: Header 5mm + Text 5mm + Padding 5mm
-        const paymentBlockHeight = 15;
+        // Est: Header 5mm + Text 5mm + Padding 5mm + IBAN 10mm
+        const paymentBlockHeight = 25; 
         checkPageBreak(paymentBlockHeight);
         
         drawBlockHeader("MODALITÀ E TERMINI DI PAGAMENTO");
@@ -406,7 +406,20 @@ export const generateDocumentPDF = async (
         docPdf.setFontSize(9);
         docPdf.text(doc.paymentMethod, marginX, currentY + 4);
         
-        currentY += 8; // Spacing
+        // Add IBAN and Intestatario
+        if (companyInfo && doc.paymentMethod.includes('Bonifico Bancario')) {
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text(`IBAN:`, marginX, currentY + 9);
+            docPdf.text(`Intestato a:`, marginX, currentY + 13);
+            
+            docPdf.setFont("helvetica", "normal");
+            docPdf.text(`${companyInfo.iban || 'N/A'}`, marginX + 12, currentY + 9);
+            docPdf.text(`${companyInfo.name || 'N/A'}`, marginX + 22, currentY + 13);
+            
+            currentY += 15; // Increased spacing
+        } else {
+            currentY += 8; // Spacing
+        }
     }
 
     // 2. INSTALLMENTS

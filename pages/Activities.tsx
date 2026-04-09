@@ -119,7 +119,7 @@ const ActivityForm: React.FC<{
                     <textarea rows={2} value={links} onChange={e => setLinks(e.target.value)} className="md-input" placeholder="Link utili (Youtube, Pinterest...)" />
                 </div>
                 {detectedLink && (
-                    <div className="text-xs text-indigo-600 truncate">
+                    <div className="text-xs text-ep-blue truncate">
                         <a href={detectedLink} target="_blank" rel="noreferrer" className="hover:underline">Link rilevato: {detectedLink}</a>
                     </div>
                 )}
@@ -239,7 +239,7 @@ const Activities: React.FC = () => {
                     <input 
                         type="text" 
                         placeholder="Cerca per titolo, categoria o tema..." 
-                        className="block w-full bg-gray-50 border border-gray-300 rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-indigo-500"
+                        className="block w-full bg-gray-50 border border-gray-300 rounded-md py-2 pl-10 pr-3 text-sm focus:ring-1 focus:ring-ep-blue"
                         value={searchTerm}
                         onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                     />
@@ -262,12 +262,12 @@ const Activities: React.FC = () => {
                                         )}
                                     </div>
                                 ) : (
-                                    <div className="h-4 bg-indigo-50 border-b border-indigo-100"></div> // Color strip if no image
+                                    <div className="h-4 bg-ep-blue-50 border-b border-ep-blue-100"></div> // Color strip if no image
                                 )}
 
                                 <div className="p-5 flex-1 flex flex-col">
                                     <div className="flex justify-between items-start mb-2">
-                                        <span className="text-[10px] uppercase font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">{act.category}</span>
+                                        <span className="text-[10px] uppercase font-bold text-ep-blue bg-ep-blue-50 px-2 py-1 rounded">{act.category}</span>
                                         {act.theme && <span className="text-[10px] text-gray-500 italic">"{act.theme}"</span>}
                                     </div>
                                     <h3 className="text-lg font-bold text-gray-800 mb-2">{act.title}</h3>

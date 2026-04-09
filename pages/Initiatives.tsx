@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Initiative, InitiativeInput, Book, BookInput, BookLoan, Supplier, Enrollment, EnrollmentStatus } from '../types';
-import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook, updateBooksLocation } from '../services/initiativeService';
+import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook } from '../services/initiativeService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
@@ -12,9 +12,6 @@ import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import SearchIcon from '../components/icons/SearchIcon';
 import Pagination from '../components/Pagination';
-import { httpsCallable } from 'firebase/functions';
-import { functions } from '../firebase/config';
-import SparklesIcon from '../components/icons/SparklesIcon';
 
 // --- SUB-COMPONENTS ---
 
@@ -94,15 +91,6 @@ const BookForm: React.FC<{
     onSave: (data: BookInput | Book) => void;
     onCancel: () => void;
 }> = ({ book, locations, allBooks, onSave, onCancel }) => {
-    // 1. AUTO-NUMBERING LOGIC (3 digits)
-    const getNextBookNumber = () => {
-        if (allBooks.length === 0) return '001';
-        const numbers = allBooks.map(b => parseInt(b.bookNumber || '0')).filter(n => !isNaN(n));
-        const max = (numbers.length > 0) ? Math.max(...numbers) : 0;
-        return String(max + 1).padStart(3, '0');
-    };
-
-    const [bookNumber, setBookNumber] = useState(book?.bookNumber || getNextBookNumber());
     const [title, setTitle] = useState(book?.title || '');
     const [authors, setAuthors] = useState(book?.authors || '');
     const [publisher, setPublisher] = useState(book?.publisher || '');
@@ -110,46 +98,6 @@ const BookForm: React.FC<{
     const [targetTags, setTargetTags] = useState<string[]>(book?.targetTags || []);
     const [categoryTags, setCategoryTags] = useState<string[]>(book?.categoryTags || []);
     const [themeTags, setThemeTags] = useState<string[]>(book?.themeTags || []);
-
-    const [isAILoading, setIsAILoading] = useState(false);
-
-    // AI LOGIC ENGINE
-    const handleAISuggest = async () => {
-        if (!title) return alert("Inserisci almeno il titolo per ricevere suggerimenti.");
-        setIsAILoading(true);
-        try {
-            const suggestTags = httpsCallable(functions, 'suggestBookTags');
-            const result = await suggestTags({ title, authors, publisher });
-            const data = result.data as any;
-            
-            if (data.target) setTargetTags(Array.from(new Set([...targetTags, ...data.target])));
-            if (data.category) setCategoryTags(Array.from(new Set([...categoryTags, ...data.category])));
-            if (data.theme) setThemeTags(Array.from(new Set([...themeTags, ...data.theme])));
-        } catch (e) {
-            console.error(e);
-            alert("Errore durante il suggerimento AI.");
-        } finally {
-            setIsAILoading(false);
-        }
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const data: BookInput = {
-            bookNumber,
-            title,
-            authors,
-            publisher,
-            homeLocationId,
-            targetTags,
-            categoryTags,
-            themeTags,
-            isAvailable: book ? book.isAvailable : true,
-            createdAt: book?.createdAt || new Date().toISOString()
-        };
-        if (book?.id) onSave({ ...data, id: book.id } as Book);
-        else onSave(data);
-    };
 
     // Extract unique tags from allBooks to use as suggestions
     const defaultTargetTags = ['piccolissimi', 'piccoli', 'grandi'];
@@ -160,42 +108,32 @@ const BookForm: React.FC<{
     const existingCategoryTags = Array.from(new Set([...defaultCategoryTags, ...allBooks.flatMap(b => b.categoryTags || [])]));
     const existingThemeTags = Array.from(new Set([...defaultThemeTags, ...allBooks.flatMap(b => b.themeTags || [])]));
 
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const data: BookInput = {
+            bookNumber: book?.bookNumber || '',
+            title,
+            authors,
+            publisher,
+            homeLocationId,
+            targetTags,
+            categoryTags,
+            themeTags,
+            isAvailable: book ? book.isAvailable : true
+        };
+        if (book?.id) onSave({ ...data, id: book.id });
+        else onSave(data);
+    };
+
     return (
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 bg-gray-50/50">
-            <div className="p-4 md:p-6 border-b bg-white flex justify-between items-center">
-                <h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3>
-                <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-lg font-black text-sm border border-amber-200">
-                    ID #{bookNumber}
-                </div>
-            </div>
+            <div className="p-4 md:p-6 border-b bg-white"><h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3></div>
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                     {/* Colonna Sinistra: Dati Principali */}
                     <div className="space-y-4 md:space-y-6">
-                        <div className="flex justify-between items-center border-b pb-2">
-                            <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Dati Principali</h4>
-                            <button 
-                                type="button" 
-                                onClick={handleAISuggest} 
-                                disabled={isAILoading || !title}
-                                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 disabled:opacity-30 transition-all"
-                            >
-                                <SparklesIcon className={`w-4 h-4 ${isAILoading ? 'animate-spin' : ''}`} />
-                                {isAILoading ? 'Analisi AI...' : 'AI Magic Suggest'}
-                            </button>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-3">
-                            <div className="md-input-group col-span-1">
-                                <input type="text" value={bookNumber} onChange={e => setBookNumber(e.target.value)} required className="md-input bg-white text-center font-black" placeholder=" " />
-                                <label className="md-input-label">N°</label>
-                            </div>
-                            <div className="md-input-group col-span-3">
-                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " />
-                                <label className="md-input-label">Titolo</label>
-                            </div>
-                        </div>
-
+                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Dati Principali</h4>
+                        <div className="md-input-group"><input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " /><label className="md-input-label">Titolo</label></div>
                         <div className="md-input-group"><input type="text" value={authors} onChange={e => setAuthors(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Autori</label></div>
                         <div className="md-input-group"><input type="text" value={publisher} onChange={e => setPublisher(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Casa Editrice</label></div>
                         
@@ -259,7 +197,7 @@ const InitiativeForm: React.FC<{
             targetLocationIds: selectedLocIds,
             targetLocationNames: locNames
         };
-        if(initiative?.id) onSave({...data, id: initiative.id} as Initiative); else onSave(data);
+        if(initiative?.id) onSave({...data, id: initiative.id}); else onSave(data);
     };
 
     return (
@@ -307,10 +245,6 @@ const BookManager: React.FC = () => {
     const [filterCategory, setFilterCategory] = useState('');
     const [filterTheme, setFilterTheme] = useState('');
     const [filterLocation, setFilterLocation] = useState('');
-    const [sortBy, setSortBy] = useState<'bookNumber' | 'title' | 'authors' | 'publisher'>('title');
-    const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-    const [selectedBooks, setSelectedBooks] = useState<string[]>([]);
-    const [bulkMoveLocation, setBulkMoveLocation] = useState('');
 
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -347,15 +281,14 @@ const BookManager: React.FC = () => {
     const allThemeTags = useMemo(() => Array.from(new Set(books.flatMap(b => b.themeTags || []))).sort(), [books]);
 
     const filteredBooks = useMemo(() => {
-        const filtered = books.filter(b => {
+        return books.filter(b => {
             // Text search
             if (invSearch) {
                 const term = invSearch.toLowerCase();
                 const matchTitle = b.title.toLowerCase().includes(term);
                 const matchAuthors = b.authors?.toLowerCase().includes(term);
                 const matchPublisher = b.publisher?.toLowerCase().includes(term);
-                const matchNumber = b.bookNumber?.toLowerCase().includes(term);
-                if (!matchTitle && !matchAuthors && !matchPublisher && !matchNumber) return false;
+                if (!matchTitle && !matchAuthors && !matchPublisher) return false;
             }
             
             // Tags
@@ -373,38 +306,7 @@ const BookManager: React.FC = () => {
             
             return true;
         });
-        
-        // Sort
-        const sorted = [...filtered].sort((a, b) => {
-            let aVal: any, bVal: any;
-            switch (sortBy) {
-                case 'bookNumber':
-                    aVal = (a.bookNumber || '').toLowerCase();
-                    bVal = (b.bookNumber || '').toLowerCase();
-                    break;
-                case 'title':
-                    aVal = a.title.toLowerCase();
-                    bVal = b.title.toLowerCase();
-                    break;
-                case 'authors':
-                    aVal = (a.authors || '').toLowerCase();
-                    bVal = (b.authors || '').toLowerCase();
-                    break;
-                case 'publisher':
-                    aVal = (a.publisher || '').toLowerCase();
-                    bVal = (b.publisher || '').toLowerCase();
-                    break;
-                default:
-                    aVal = a.title.toLowerCase();
-                    bVal = b.title.toLowerCase();
-            }
-            if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
-            if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
-            return 0;
-        });
-        
-        return sorted;
-    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation, sortBy, sortDir]);
+    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation]);
 
     // Actions
     const handleCheckout = async () => {
@@ -464,48 +366,6 @@ const BookManager: React.FC = () => {
                 setLoading(false);
             }
         }
-    };
-
-    const toggleBookSelection = (bookId: string) => {
-        setSelectedBooks(prev => 
-            prev.includes(bookId) ? prev.filter(id => id !== bookId) : [...prev, bookId]
-        );
-    };
-
-    const selectAllFilteredBooks = () => {
-        const availableIds = filteredBooks.map(b => b.id);
-        setSelectedBooks(availableIds);
-    };
-
-    const clearSelection = () => {
-        setSelectedBooks([]);
-        setBulkMoveLocation('');
-    };
-
-    const handleBulkMove = async () => {
-        if (selectedBooks.length === 0 || !bulkMoveLocation) {
-            alert("Seleziona almeno un libro e una sede di destinazione.");
-            return;
-        }
-        if (!confirm(`Spostare ${selectedBooks.length} libri nella sede selezionata?`)) return;
-        
-        setLoading(true);
-        try {
-            const count = await updateBooksLocation(selectedBooks, bulkMoveLocation);
-            alert(`${count} libri spostati con successo!`);
-            setSelectedBooks([]);
-            setBulkMoveLocation('');
-            await fetchData();
-        } catch (error) {
-            console.error("Errore durante lo spostamento:", error);
-            alert("Si è verificato un errore durante lo spostamento.");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const hasInTransitBooks = (bookIds: string[]) => {
-        return bookIds.some(id => loans.some(l => l.bookId === id));
     };
 
     return (
@@ -596,7 +456,7 @@ const BookManager: React.FC = () => {
                             </div>
                             
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                                <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, numero, autore..." className="md-input text-sm" />
+                                <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)} placeholder="Cerca titolo, autore..." className="md-input text-sm" />
                                 <select value={filterTarget} onChange={e => setFilterTarget(e.target.value)} className="md-input text-sm">
                                     <option value="">Tutti i Destinatari</option>
                                     {allTargetTags.map(t => <option key={t} value={t}>{t}</option>)}
@@ -614,25 +474,6 @@ const BookManager: React.FC = () => {
                                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                 </select>
                             </div>
-                            
-                            {/* Ordinamento */}
-                            <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
-                                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ordina per:</span>
-                                <div className="flex gap-2">
-                                    <select value={sortBy} onChange={e => setSortBy(e.target.value as any)} className="md-input text-xs py-1.5">
-                                        <option value="bookNumber">Numero</option>
-                                        <option value="title">Titolo</option>
-                                        <option value="authors">Autore</option>
-                                        <option value="publisher">Editore</option>
-                                    </select>
-                                    <button 
-                                        onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
-                                        className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 transition-colors ${sortDir === 'asc' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-orange-50 border-orange-200 text-orange-700'}`}
-                                    >
-                                        {sortDir === 'asc' ? 'A-Z ↑' : 'Z-A ↓'}
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                         
                         {/* Box Elenco Libri */}
@@ -640,37 +481,6 @@ const BookManager: React.FC = () => {
                             <div className="px-4 py-3 border-b bg-gray-50/50 flex justify-between items-center">
                                 <h4 className="font-bold text-gray-700 text-sm">Risultati ({filteredBooks.length})</h4>
                             </div>
-                            
-                            {/* Bulk Actions Bar */}
-                            {filteredBooks.length > 0 && (
-                                <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex flex-wrap items-center gap-3">
-                                    <span className="text-xs font-bold text-indigo-700">{selectedBooks.length} selezionati</span>
-                                    <button onClick={selectAllFilteredBooks} className="text-xs text-indigo-600 hover:underline">Seleziona tutti</button>
-                                    {selectedBooks.length > 0 && (
-                                        <>
-                                            <span className="text-indigo-300">|</span>
-                                            <select 
-                                                value={bulkMoveLocation} 
-                                                onChange={e => setBulkMoveLocation(e.target.value)}
-                                                className="md-input text-xs py-1"
-                                            >
-                                                <option value="">Sposta in...</option>
-                                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                            </select>
-                                            <button 
-                                                onClick={handleBulkMove}
-                                                disabled={!bulkMoveLocation || hasInTransitBooks(selectedBooks)}
-                                                className="md-btn md-btn-xs md-btn-raised bg-indigo-600 text-white disabled:opacity-50"
-                                            >
-                                                🚀 Sposta
-                                            </button>
-                                            <button onClick={clearSelection} className="text-xs text-indigo-600 hover:underline">Annulla</button>
-                                            {hasInTransitBooks(selectedBooks) && <span className="text-xs text-amber-600">⚠️ Alcuni libri sono in prestito</span>}
-                                        </>
-                                    )}
-                                </div>
-                            )}
-                            
                             <div className="divide-y divide-gray-100">
                                 {filteredBooks.map(b => {
                                     const activeLoan = loans.find(l => l.bookId === b.id);
@@ -679,23 +489,14 @@ const BookManager: React.FC = () => {
                                     return (
                                     <div key={b.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
                                         <div className="flex justify-between items-start gap-4">
-                                            <div className="flex items-start gap-3">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedBooks.includes(b.id)}
-                                                    onChange={() => toggleBookSelection(b.id)}
-                                                    className="w-4 h-4 mt-2 accent-indigo-600"
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
-                                                        <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-black text-xs">#{b.bookNumber || '---'}</span>
-                                                        <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
-                                                    </div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
+                                                    <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
+                                                </div>
                                                 <div className="text-sm text-gray-500 mt-2 flex flex-wrap gap-x-4 gap-y-1">
                                                     {b.authors && <span><span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider mr-1">Autori:</span> {b.authors}</span>}
                                                     {b.publisher && <span><span className="font-semibold text-gray-400 uppercase text-[10px] tracking-wider mr-1">Ed:</span> {b.publisher}</span>}
-                                                </div>
                                                 </div>
                                             </div>
                                             <div className="flex gap-1 shrink-0">
@@ -738,6 +539,7 @@ const BookManager: React.FC = () => {
     );
 };
 
+
 const Initiatives: React.FC = () => {
     const [initiatives, setInitiatives] = useState<Initiative[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -752,7 +554,11 @@ const Initiatives: React.FC = () => {
         setLoading(true);
         try {
             const [inits, sups] = await Promise.all([getInitiatives(), getSuppliers()]);
-            setInitiatives(inits.filter(i => i.type !== 'peek-a-book'));
+            // Ensure Peek-a-Boo exists locally for display if not in DB (though it should be treated as special)
+            // Strategy: We will render Peek-a-Boo separately at top, and others below.
+            // If Peek-a-Boo is stored in DB for config, we merge. 
+            // For now, Peek-a-Boo is hardcoded as a UI block, while custom initiatives are DB driven.
+            setInitiatives(inits.filter(i => i.type !== 'peek-a-book')); // Filter out if existing to avoid dupes in list
             setSuppliers(sups);
         } catch(e) { console.error(e); } finally { setLoading(false); }
     }, []);

@@ -25,9 +25,9 @@ const InvoiceEditForm: React.FC<{
     const [clientSearchTerm, setClientSearchTerm] = useState('');
     const [showClientDropdown, setShowClientDropdown] = useState(false);
     const [items, setItems] = useState<DocumentItem[]>(invoice.items || []);
-    const [globalDiscount, setGlobalDiscount] = useState<number>(invoice.globalDiscount || 0);
-    const [globalDiscountType, setGlobalDiscountType] = useState<'percent' | 'amount'>(invoice.globalDiscountType || 'amount');
-    const [manualStampDuty, setManualStampDuty] = useState(invoice.hasStampDuty);
+    const [globalDiscount] = useState<number>(invoice.globalDiscount || 0);
+    const [globalDiscountType] = useState<'percent' | 'amount'>(invoice.globalDiscountType || 'amount');
+    const [manualStampDuty] = useState(invoice.hasStampDuty);
 
     useEffect(() => {
         if (!invoice.id && !notes && companyInfo) {
@@ -36,7 +36,7 @@ const InvoiceEditForm: React.FC<{
                 : "";
             setNotes(bankDetails);
         }
-    }, [invoice.id, companyInfo]);
+    }, [invoice.id, companyInfo, notes]);
 
     const filteredClients = useMemo(() => {
         if (!clientSearchTerm) return clients.slice(0, 10);
@@ -94,7 +94,7 @@ const InvoiceEditForm: React.FC<{
         setShowClientDropdown(false);
     };
 
-    const handleItemChange = (index: number, field: keyof DocumentItem, value: any) => {
+    const handleItemChange = (index: number, field: keyof DocumentItem, value: DocumentItem[keyof DocumentItem]) => {
         const newItems = [...items];
         newItems[index] = { ...newItems[index], [field]: value };
         setItems(newItems);
@@ -168,13 +168,15 @@ const InvoiceEditForm: React.FC<{
                     <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">{invoiceNumber || 'Assegnazione automatica'}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                    <select value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded py-1.5 px-3 focus:ring-2 focus:ring-indigo-200 outline-none">
-                        <option value={DocumentStatus.Draft}>Bozza</option>
-                        <option value={DocumentStatus.Sent}>Inviata</option>
-                        <option value={DocumentStatus.Paid}>Pagata</option>
-                        <option value={DocumentStatus.PendingSDI}>In Attesa SDI</option>
-                        <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
-                    </select>
+                    <div className="flex items-center gap-2 bg-ep-blue-600 rounded-lg px-3 py-1.5 border border-ep-blue-500 shadow-sm text-white">
+                        <select value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="text-xs font-bold text-white bg-transparent border-none outline-none cursor-pointer">
+                            <option value={DocumentStatus.Draft} className="text-slate-900">Bozza</option>
+                            <option value={DocumentStatus.Sent} className="text-slate-900">Inviata</option>
+                            <option value={DocumentStatus.Paid} className="text-slate-900">Pagata</option>
+                            <option value={DocumentStatus.PendingSDI} className="text-slate-900">In Attesa SDI</option>
+                            <option value={DocumentStatus.SealedSDI} className="text-slate-900">Sigillata SDI</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -185,13 +187,13 @@ const InvoiceEditForm: React.FC<{
                         {!clientId ? (
                             <div className="relative">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
-                                <input type="text" className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-colors" placeholder="Cerca cliente..." value={clientName || clientSearchTerm} onChange={(e) => { setClientName(e.target.value); setClientSearchTerm(e.target.value); setShowClientDropdown(true); }} onFocus={() => setShowClientDropdown(true)} />
+                                <input type="text" className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-ep-blue-500 focus:bg-white transition-colors" placeholder="Cerca cliente..." value={clientName || clientSearchTerm} onChange={(e) => { setClientName(e.target.value); setClientSearchTerm(e.target.value); setShowClientDropdown(true); }} onFocus={() => setShowClientDropdown(true)} />
                                 {showClientDropdown && clientSearchTerm && (
                                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
                                         {filteredClients.map(c => {
                                             const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName;
                                             return (
-                                                <button key={c.id} type="button" onClick={() => handleClientSelect(c)} className="w-full text-left px-4 py-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 transition-colors">
+                                                <button key={c.id} type="button" onClick={() => handleClientSelect(c)} className="w-full text-left px-4 py-3 hover:bg-ep-blue-50 border-b border-gray-50 last:border-0 transition-colors">
                                                     <span className="block text-sm font-bold text-slate-700">{name}</span>
                                                     <span className="block text-xs text-slate-400">{c.email}</span>
                                                 </button>
@@ -201,9 +203,9 @@ const InvoiceEditForm: React.FC<{
                                 )}
                             </div>
                         ) : (
-                            <div className="flex justify-between items-center bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                                <div><h4 className="text-base font-bold text-indigo-900">{clientName}</h4><p className="text-xs text-slate-500 mt-1">{selectedClientObj?.email}</p></div>
-                                <button type="button" onClick={() => { setClientId(''); setClientName(''); }} className="text-xs font-bold text-indigo-600 hover:underline">CAMBIA</button>
+                            <div className="flex justify-between items-center bg-ep-blue-50/50 p-4 rounded-xl border border-ep-blue-100">
+                                <div><h4 className="text-base font-bold text-ep-blue-900">{clientName}</h4><p className="text-xs text-slate-500 mt-1">{selectedClientObj?.email}</p></div>
+                                <button type="button" onClick={() => { setClientId(''); setClientName(''); }} className="text-xs font-bold text-ep-blue-600 hover:underline">CAMBIA</button>
                             </div>
                         )}
                     </div>
@@ -269,7 +271,7 @@ const InvoiceEditForm: React.FC<{
                         </div>
                     </div>
                     <div className="p-3 bg-gray-50 border-t border-gray-200">
-                        <button type="button" onClick={handleAddItem} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"><PlusIcon /> Aggiungi riga</button>
+                        <button type="button" onClick={handleAddItem} className="text-xs font-bold text-ep-blue-600 hover:text-ep-blue-800 flex items-center gap-1"><PlusIcon /> Aggiungi riga</button>
                     </div>
                 </div>
 
@@ -278,10 +280,10 @@ const InvoiceEditForm: React.FC<{
                         <div className="md-input-group !mb-0"><textarea value={notes} onChange={e => setNotes(e.target.value)} className="md-input !h-32 text-sm" placeholder=" "/><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Note & Coordinate</label></div>
                         <div className="bg-slate-100 p-4 rounded-xl border border-slate-200">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Sigillo Fiscale SDI</label>
-                            <input type="text" value={sdiId} onChange={e => setSdiId(e.target.value)} placeholder="Inserisci Codice SDI o PEC" className="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-mono font-bold text-indigo-700 shadow-inner" />
+                            <input type="text" value={sdiId} onChange={e => setSdiId(e.target.value)} placeholder="Inserisci Codice SDI o PEC" className="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-mono font-bold text-ep-blue-700 shadow-inner" />
                         </div>
                     </div>
-                    <div className="bg-indigo-900 text-white p-6 rounded-2xl shadow-xl space-y-4">
+                    <div className="bg-ep-blue-900 text-white p-6 rounded-2xl shadow-xl space-y-4">
                         <div className="flex justify-between items-center text-xs opacity-70"><span>Imponibile Netto</span><span className="font-mono text-base font-bold">{taxable.toFixed(2)}€</span></div>
                         <div className="flex justify-between items-center text-xs opacity-70"><span>Bollo Virtuale</span><span className="font-mono text-base font-bold">{stampDuty.toFixed(2)}€</span></div>
                         <div className="border-t border-white/10 pt-4 flex justify-between items-baseline">
@@ -295,7 +297,7 @@ const InvoiceEditForm: React.FC<{
             <div className="px-6 py-4 bg-white border-t border-gray-200 flex justify-between items-center flex-shrink-0 z-20">
                 <button type="button" onClick={onCancel} className="md-btn md-btn-flat text-sm font-bold">Annulla</button>
                 <div className="flex gap-2">
-                    <button type="button" onClick={handlePreview} className="md-btn md-btn-flat border border-indigo-100 text-indigo-600 text-xs font-bold uppercase">Anteprima PDF</button>
+                    <button type="button" onClick={handlePreview} className="md-btn md-btn-flat border border-ep-blue-100 text-ep-blue-600 text-xs font-bold uppercase">Anteprima PDF</button>
                     <button type="submit" className="md-btn md-btn-raised md-btn-primary px-10 text-xs font-black uppercase tracking-widest">Salva Fattura</button>
                 </div>
             </div>

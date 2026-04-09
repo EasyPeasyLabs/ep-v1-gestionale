@@ -1,10 +1,9 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Activity, Appointment, LessonActivity, EnrollmentStatus, Homework, Supplier, Course } from '../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Activity, LessonActivity, EnrollmentStatus, Homework, Course } from '../types';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getActivities, getLessonActivities, saveLessonActivities } from '../services/activityService';
 import { getHomeworks } from '../services/homeworkService';
-import { getSuppliers } from '../services/supplierService';
 import { getOpenCourses } from '../services/courseService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
@@ -115,6 +114,13 @@ const ActivityLog: React.FC = () => {
     
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const isDateToday = useMemo(() => {
+        const today = new Date();
+        return currentDate.getDate() === today.getDate() &&
+               currentDate.getMonth() === today.getMonth() &&
+               currentDate.getFullYear() === today.getFullYear();
+    }, [currentDate]);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -350,9 +356,9 @@ const ActivityLog: React.FC = () => {
                 <div className="flex gap-2 items-center">
                     {/* View Toggles */}
                     <div className="flex bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
-                        <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
-                        <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
-                        <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-100 text-indigo-700 shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
+                        <button onClick={() => setViewMode('day')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'day' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Giorno</button>
+                        <button onClick={() => setViewMode('week')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'week' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Settimana</button>
+                        <button onClick={() => setViewMode('month')} className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'month' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-50'}`}>Mese</button>
                     </div>
 
                     {selectedGroupIds.length > 0 && (
@@ -374,7 +380,7 @@ const ActivityLog: React.FC = () => {
                     <CalendarIcon />
                     <div className="text-center">
                         <span className="block text-lg font-bold text-gray-800 capitalize">{getRangeLabel()}</span>
-                        {viewMode === 'day' && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
+                        {viewMode === 'day' && isDateToday && <span className="text-xs text-gray-400 font-medium">Oggi</span>}
                     </div>
                 </div>
 

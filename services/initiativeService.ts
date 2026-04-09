@@ -64,19 +64,6 @@ export const updateBook = async (id: string, book: Partial<BookInput>): Promise<
     await updateDoc(docRef, book);
 };
 
-export const updateBooksLocation = async (bookIds: string[], newLocationId: string): Promise<number> => {
-    if (bookIds.length === 0) return 0;
-    const batch = writeBatch(db);
-    let count = 0;
-    for (const bookId of bookIds) {
-        const docRef = doc(db, 'books', bookId);
-        batch.update(docRef, { homeLocationId: newLocationId });
-        count++;
-    }
-    await batch.commit();
-    return count;
-};
-
 export const deleteBook = async (id: string): Promise<void> => {
     const docRef = doc(db, 'books', id);
     await deleteDoc(docRef);

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Notification } from '../types';
+import { Notification, Page } from '../types';
 import ClockIcon from './icons/ClockIcon';
 import ExclamationIcon from './icons/ExclamationIcon';
 import ChecklistIcon from './icons/ChecklistIcon';
@@ -8,7 +8,7 @@ import ChecklistIcon from './icons/ChecklistIcon';
 interface FocusModePopupProps {
     notifications: Notification[];
     onDismiss: () => void;
-    onNavigate: (page: any, params?: any) => void;
+    onNavigate: (page: Page, params?: Record<string, unknown>) => void;
 }
 
 const FocusModePopup: React.FC<FocusModePopupProps> = ({ notifications, onDismiss, onNavigate }) => {
@@ -54,7 +54,7 @@ const FocusModePopup: React.FC<FocusModePopupProps> = ({ notifications, onDismis
                             {notifications.map((notif, idx) => (
                                 <div 
                                     key={idx} 
-                                    onClick={() => { onNavigate(notif.linkPage as any, notif.filterContext); onDismiss(); }}
+                                    onClick={() => { onNavigate(notif.linkPage as Page, notif.filterContext as Record<string, unknown>); onDismiss(); }}
                                     className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer flex items-start gap-4 group"
                                 >
                                     <div className="p-3 bg-gray-50 rounded-xl group-hover:scale-110 transition-transform shadow-inner">

@@ -1,6 +1,7 @@
 
 import { storage } from '../firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { FirebaseError } from 'firebase/app';
 
 export const uploadCampaignFile = async (file: File): Promise<string> => {
     console.log(`[Storage] Starting upload for campaign: ${file.name} (${file.size} bytes)`);
@@ -54,15 +55,16 @@ export const uploadCommunicationAttachment = async (file: File): Promise<string>
         const url = await getDownloadURL(snapshot.ref);
         console.log('[Storage] Download URL generated.');
         return url;
-    } catch (error: any) {
-        console.error('[Storage] Communication Upload Failed:', error);
-        if (error.code === 'storage/unauthorized') {
+    } catch (error: unknown) {
+        const err = error as FirebaseError;
+        console.error('[Storage] Communication Upload Failed:', err);
+        if (err.code === 'storage/unauthorized') {
             console.error('PERMISSION DENIED: Check Firebase Storage Rules.');
-        } else if (error.code === 'storage/canceled') {
+        } else if (err.code === 'storage/canceled') {
             console.error('UPLOAD CANCELED');
-        } else if (error.code === 'storage/unknown') {
+        } else if (err.code === 'storage/unknown') {
             console.error('UNKNOWN ERROR: Check CORS configuration.');
         }
-        throw error;
+        throw err;
     }
 };

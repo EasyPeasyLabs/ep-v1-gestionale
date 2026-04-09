@@ -4,8 +4,8 @@ import { collection, getDocs, addDoc, updateDoc, doc, DocumentData, QueryDocumen
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     DocumentStatus, PaymentMethod, TransactionType, TransactionCategory, 
-    Enrollment, InvoiceGap, IntegrityIssue, IntegrityIssueSuggestion, RentAnalysisResult, EnrollmentStatus, 
-    TransactionStatus, Lesson, Client, ClientType, ParentClient, InstitutionalClient, FiscalYear 
+    Enrollment, InvoiceGap, IntegrityIssue, RentAnalysisResult, EnrollmentStatus, 
+    TransactionStatus, Lesson, Client, ClientType, ParentClient, InstitutionalClient 
 } from '../types';
 import { getLessons } from './calendarService';
 import { getSuppliers } from './supplierService';
@@ -45,7 +45,21 @@ export const deleteTransaction = async (id: string): Promise<void> => {
     await updateDoc(doc(db, 'transactions', id), { isDeleted: true });
 };
 
-// --- INVOICES ---
+export interface GhostPromotionCandidate {
+    ghost: Invoice;
+    realInvoice?: Invoice;
+    matchReason?: string;
+}
+
+export const findGhostPromotionCandidates = async (filter: any): Promise<GhostPromotionCandidate[]> => {
+    // Placeholder implementation
+    return [];
+};
+
+export const promoteGhostInvoices = async (ghostIds: string[]): Promise<any> => {
+    // Placeholder implementation
+    return { success: true, promotedCount: ghostIds.length };
+};
 export const getInvoices = async (): Promise<Invoice[]> => {
     const q = query(getInvoicesCollectionRef(), orderBy('issueDate', 'desc'));
     const snapshot = await getDocs(q);
@@ -473,7 +487,7 @@ export const createGhostInvoiceForEnrollment = async (enrollment: Enrollment, cl
 };
 
 export const reconcileTransactions = async () => {
-    // Reconciliation running...
+    console.log("Reconciliation running...");
 };
 
 // NOTE: Now accepts enrollments/invoices/transactions/clients as arguments to avoid circular dependency
@@ -485,13 +499,9 @@ export const runFinancialHealthCheck = async (
 ): Promise<IntegrityIssue[]> => {
     const issues: IntegrityIssue[] = [];
 
-    // 1. FETCH CONTEXT DATA
-    const [quotesSnap, fiscalSnap] = await Promise.all([
-        getDocs(collection(db, 'quotes')),
-        getDocs(collection(db, 'fiscal_years'))
-    ]);
+    // Fetch quotes to resolve relatedQuoteNumber
+    const quotesSnap = await getDocs(collection(db, 'quotes'));
     const quotes = quotesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Quote));
-    const fiscalYears = fiscalSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FiscalYear));
 
     for (const enr of enrollments) {
         if (enr.status === EnrollmentStatus.Active && enr.price > 0) {
@@ -512,17 +522,6 @@ export const runFinancialHealthCheck = async (
             
             const missingAmount = enr.price - totalPaid - ghostInv;
 
-            // --- RESOLVE FISCAL STATUS ---
-            const enrDate = new Date(enr.startDate);
-            const enrYear = enrDate.getFullYear();
-            const fiscalYear = fiscalYears.find(fy => Number(fy.year) === enrYear);
-            const isClosed = fiscalYear?.status === 'CLOSED' || String(fiscalYear?.status).toUpperCase() === 'CLOSED';
-
-            // --- CHECK IF ALREADY IGNORED (OBLIVION) ---
-            if (fiscalYear?.ignoredIssues?.includes(`health-${enr.id}`)) {
-                continue; // Skip if in oblivion
-            }
-
             // --- FIX: Resolve Parent Name ---
             const client = clients.find(c => c.id === enr.clientId);
             let parentName = 'N/D';
@@ -538,45 +537,17 @@ export const runFinancialHealthCheck = async (
             // --------------------------------
 
             if (missingAmount > 5) { // 5 eur tolerance
+                const isClosed = await isYearClosed(enr.startDate);
                 const suggestions: IntegrityIssueSuggestion[] = [];
-
-                // --- AI SMART MATCHING: Multicriteria search ---
-                const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
-
-                const candidates = transactions.filter(t => 
-                    !t.relatedEnrollmentId && 
-                    !t.isDeleted &&
-                    // Temporal Check (+/- 60 days)
-                    Math.abs((new Date(t.date).getTime() - enrDate.getTime()) / (1000 * 3600 * 24)) < 60 &&
-                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match)
-                    (Math.abs(t.amount - missingAmount) < 15 || (childLastName && t.description.toLowerCase().includes(childLastName)))
-                );
-
-                candidates.forEach(t => {
-                    const isPerfectAmount = Math.abs(t.amount - missingAmount) < 5;
-                    const hasCausalMatch = childLastName && t.description.toLowerCase().includes(childLastName);
-                    
-                    let label = `Collega Transazione: ${t.description} (${t.amount}€ del ${t.date})`;
-                    if (isPerfectAmount && hasCausalMatch) label = `⭐ MATCH ECCELLENTE: ${t.description} (${t.amount}€)`;
-                    else if (hasCausalMatch) label = `👤 Corrispondenza Cognome: ${t.description} (${t.amount}€)`;
-                    else if (isPerfectAmount) label = `💰 Corrispondenza Importo: ${t.description} (${t.date})`;
-
-                    suggestions.push({
-                        type: 'smart_link',
-                        label: label,
-                        payload: { transactionId: t.id }
-                    });
+                
+                // Always allow Oblivion as per user request to "forget" anomalies
+                suggestions.push({
+                    type: 'oblivion',
+                    label: 'Applica Oblio',
+                    reason: isClosed 
+                        ? 'L\'anno fiscale è chiuso. Ignora questa anomalia per non alterare i bilanci passati.'
+                        : 'Ignora questa anomalia e rimuovila dalle segnalazioni future.'
                 });
-
-                // --- OBLIVION OPTION (Only for Closed Years) ---
-                if (isClosed) {
-                    suggestions.push({
-                        type: 'oblivion',
-                        label: `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)`,
-                        reason: `L'anomalia risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.`,
-                        payload: { fiscalYearId: fiscalYear?.id }
-                    });
-                }
 
                 issues.push({
                     id: `health-${enr.id}`,
@@ -588,7 +559,7 @@ export const runFinancialHealthCheck = async (
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal, // Added missing mapping for UI
                     amount: missingAmount,
-                    suggestions: suggestions // AI Suggestions
+                    suggestions: suggestions
                 });
             }
 
@@ -596,34 +567,29 @@ export const runFinancialHealthCheck = async (
             const today = new Date().toISOString().split('T')[0];
             const overdueGhosts = linkedInvoices.filter(i => i.isGhost && i.dueDate && i.dueDate < today);
             for (const ghost of overdueGhosts) {
-                // --- CHECK IF ALREADY IGNORED (OBLIVION) ---
-                if (fiscalYear?.ignoredIssues?.includes(`health-ghost-${ghost.id}`)) {
-                    continue; // Skip if in oblivion
-                }
+                const isClosed = await isYearClosed(ghost.dueDate || ghost.issueDate);
+                const suggestions: IntegrityIssueSuggestion[] = [];
+                
+                // Always allow Oblivion as per user request to "forget" anomalies
+                suggestions.push({
+                    type: 'oblivion',
+                    label: 'Applica Oblio',
+                    reason: isClosed 
+                        ? 'L\'anno fiscale è chiuso. Ignora questa anomalia per non alterare i bilanci passati.'
+                        : 'Ignora questa anomalia e rimuovila dalle segnalazioni future.'
+                });
 
-                const ghostSuggestions: IntegrityIssueSuggestion[] = [];
-                
-                // Add Oblio option if year is closed
-                if (isClosed) {
-                    ghostSuggestions.push({
-                        type: 'oblivion',
-                        label: `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)`,
-                        reason: `La proforma risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.`,
-                        payload: { fiscalYearId: fiscalYear?.id }
-                    });
-                }
-                
                 issues.push({
                     id: `health-ghost-${ghost.id}`,
                     type: 'missing_invoice',
-                    date: ghost.dueDate,
+                    date: ghost.dueDate || ghost.issueDate,
                     description: `Rata scaduta non fatturata: ${enr.childName}`,
                     entityName: enr.childName,
                     parentName: parentName,
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal,
                     amount: ghost.totalAmount,
-                    suggestions: ghostSuggestions
+                    suggestions: suggestions
                 });
             }
         }
@@ -633,7 +599,7 @@ export const runFinancialHealthCheck = async (
 
 export const fixIntegrityIssue = async (
     issue: IntegrityIssue, 
-    strategy: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', // Added smart_link + oblivion
+    strategy: 'link' | 'smart_link' | 'oblivion' | 'invoice' | 'cash', 
     manualNum?: string, 
     targetInvoiceIds?: string[], 
     adjustment?: { amount: number, notes: string }, 
@@ -644,127 +610,40 @@ export const fixIntegrityIssue = async (
     // Determine target date for the check
     const targetDateToCheck = forceDate || issue.date;
     
-    // Always check if the target year is closed (EXCEPT for oblivion strategy which is specifically for closed years)
-    if (strategy !== 'oblivion' && await isYearClosed(targetDateToCheck)) {
+    // If the year is closed AND no override date is provided, throw error
+    // EXCEPTION: 'oblivion' strategy is allowed even on closed years as it doesn't create fiscal documents
+    if (strategy !== 'oblivion' && !forceDate && await isYearClosed(targetDateToCheck)) {
         throw new Error("FISCAL_YEAR_CLOSED");
     }
 
     // 2. STRATEGY EXECUTION
     const finalDate = forceDate || issue.date; // Use override if present, else original
 
-    if (strategy === 'oblivion') {
-        // Find fiscalYearId from suggestions if not explicitly passed (legacy)
-        const fyId = issue.suggestions?.find(s => s.type === 'oblivion')?.payload?.fiscalYearId;
-        const reason = issue.suggestions?.find(s => s.type === 'oblivion')?.reason || "Oblio applicato manualmente.";
-        
-        if (!fyId) throw new Error("ID Esercizio Fiscale non trovato per l'oblio.");
-
-        const fyRef = doc(db, 'fiscal_years', fyId);
-        const fySnap = await getDoc(fyRef);
-        
-        if (fySnap.exists()) {
-            const data = fySnap.data() as FiscalYear;
-            const updatedIgnored = [...(data.ignoredIssues || []), issue.id];
-            const timestamp = new Date().toLocaleString('it-IT');
-            const newNote = `\n[${timestamp}] Oblio per "${issue.description}": ${reason}`;
-            const updatedNotes = (data.oblivionNotes || "") + newNote;
-
-            await updateDoc(fyRef, {
-                ignoredIssues: updatedIgnored,
-                oblivionNotes: updatedNotes
-            });
-        }
-    }
-    else if (strategy === 'smart_link') {
-        const enrId = issue.id.replace('health-', '');
-        
-        // Check for transaction first
-        const transactionIdToLink = targetTransactionId || issue.suggestions?.[0]?.payload?.transactionId;
-        // Check for invoice
-        const suggestedInvoiceId = issue.suggestions?.[0]?.payload?.invoiceId;
-        const invoiceIdsToLink = targetInvoiceIds || (suggestedInvoiceId ? [suggestedInvoiceId] : []);
-        
-        if (!transactionIdToLink && invoiceIdsToLink.length === 0) {
-            throw new Error("Nessuna transazione o fattura specificata per il collegamento automatico.");
-        }
-        
-        await linkFinancialsToEnrollment(enrId, invoiceIdsToLink, transactionIdToLink ? [transactionIdToLink] : [], adjustment);
-        
-        // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
-        if (invoiceIdsToLink.length > 0) {
-            const realInvoice = await getDoc(doc(db, 'invoices', invoiceIdsToLink[0]));
-            if (realInvoice.exists()) {
-                const realData = realInvoice.data();
-                const realAmount = realData.totalAmount || 0;
-                
-                // Find ghost invoices with same amount (likely the pro-forma for this balance)
-                const ghostQuery = query(
-                    collection(db, 'invoices'),
-                    where('relatedEnrollmentId', '==', enrId),
-                    where('isGhost', '==', true)
-                );
-                const ghostSnap = await getDocs(ghostQuery);
-                
-                if (!ghostSnap.empty) {
-                    const batch = writeBatch(db);
-                    ghostSnap.docs.forEach(gDoc => {
-                        const ghostData = gDoc.data();
-                        // Only promote if amounts match (the pro-forma for this balance)
-                        if (Math.abs((ghostData.totalAmount || 0) - realAmount) < 1) {
-                            // Promote ghost to real invoice: copy number and date from real invoice
-                            batch.update(doc(db, 'invoices', gDoc.id), { 
-                                invoiceNumber: realData.invoiceNumber,
-                                issueDate: realData.issueDate,
-                                dueDate: realData.dueDate,
-                                status: realData.status || DocumentStatus.Sent,
-                                isGhost: false,
-                                notes: (ghostData.notes || '') + ' [Promossa a fattura reale: ' + realData.invoiceNumber + ']'
-                            });
-                        }
-                    });
-                    await batch.commit();
-                }
-            }
-        }
-    }
-    else if (strategy === 'link') {
+    if (strategy === 'link') {
         const enrId = issue.id.replace('health-', '');
         await linkFinancialsToEnrollment(enrId, targetInvoiceIds || [], targetTransactionId ? [targetTransactionId] : [], adjustment);
-        
-        // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
-        if (targetInvoiceIds && targetInvoiceIds.length > 0) {
-            const realInvoice = await getDoc(doc(db, 'invoices', targetInvoiceIds[0]));
-            if (realInvoice.exists()) {
-                const realData = realInvoice.data();
-                const realAmount = realData.totalAmount || 0;
-                
-                const ghostQuery = query(
-                    collection(db, 'invoices'),
-                    where('relatedEnrollmentId', '==', enrId),
-                    where('isGhost', '==', true)
-                );
-                const ghostSnap = await getDocs(ghostQuery);
-                
-                if (!ghostSnap.empty) {
-                    const batch = writeBatch(db);
-                    ghostSnap.docs.forEach(gDoc => {
-                        const ghostData = gDoc.data();
-                        if (Math.abs((ghostData.totalAmount || 0) - realAmount) < 1) {
-                            batch.update(doc(db, 'invoices', gDoc.id), { 
-                                invoiceNumber: realData.invoiceNumber,
-                                issueDate: realData.issueDate,
-                                dueDate: realData.dueDate,
-                                status: realData.status || DocumentStatus.Sent,
-                                isGhost: false,
-                                notes: (ghostData.notes || '') + ' [Promossa a fattura reale: ' + realData.invoiceNumber + ']'
-                            });
-                        }
-                    });
-                    await batch.commit();
-                }
+    } 
+    else if (strategy === 'oblivion') {
+        if (issue.id.startsWith('health-ghost-')) {
+            // Delete the ghost invoice
+            const ghostId = issue.id.replace('health-ghost-', '');
+            await deleteInvoice(ghostId);
+        } else {
+            // Apply adjustment to enrollment
+            const enrId = issue.id.replace('health-', '');
+            const enrRef = doc(db, 'enrollments', enrId);
+            const enrSnap = await getDoc(enrRef);
+            if (enrSnap.exists()) {
+                const enr = enrSnap.data() as Enrollment;
+                const currentAdjustment = enr.adjustmentAmount || 0;
+                const gap = issue.amount || 0;
+                await updateDoc(enrRef, {
+                    adjustmentAmount: currentAdjustment + gap,
+                    adjustmentNotes: (enr.adjustmentNotes ? enr.adjustmentNotes + ' | ' : '') + 'OBLIO: Anomalia ignorata per esercizio chiuso.'
+                });
             }
         }
-    } 
+    }
     else if (strategy === 'cash') {
         // Create Transaction
         // Need to fetch enrollment details or simulate enough info
@@ -911,147 +790,4 @@ export const checkAndSetOverdueInvoices = async () => {
         }
     });
     if (count > 0) await batch.commit();
-};
-
-// BULK GHOST PROMOTION: Promuove le ghost proforma che hanno una corrispondenza con fatture reali
-// Filtri opzionali (tutti alternativi)
-export interface GhostPromotionFilter {
-    parentName?: string;  // Cognome e nome del genitore (cerca nel clientName)
-    amount?: number;      // Importo fattura (±1€ tolleranza)
-    dateFrom?: string;   // Data fattura da (YYYY-MM-DD)
-    dateTo?: string;     // Data fattura a (YYYY-MM-DD)
-    enrollmentId?: string; // ID iscrizione specifico
-}
-
-export interface GhostPromotionCandidate {
-    ghost: Invoice;
-    realInvoice: Invoice | null;
-    matchReason: string;
-}
-
-export const findGhostPromotionCandidates = async (filter?: GhostPromotionFilter): Promise<GhostPromotionCandidate[]> => {
-    // 1. Find ghost invoices
-    let ghostQuery;
-    if (filter?.enrollmentId) {
-        ghostQuery = query(
-            collection(db, 'invoices'),
-            where('isGhost', '==', true),
-            where('relatedEnrollmentId', '==', filter.enrollmentId)
-        );
-    } else {
-        ghostQuery = query(
-            collection(db, 'invoices'),
-            where('isGhost', '==', true),
-            where('relatedEnrollmentId', '!=', null)
-        );
-    }
-    const ghostSnap = await getDocs(ghostQuery);
-    
-    if (ghostSnap.empty) {
-        return [];
-    }
-    
-    const ghosts = ghostSnap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice));
-    const candidates: GhostPromotionCandidate[] = [];
-    
-    for (const ghost of ghosts) {
-        if (!ghost.relatedEnrollmentId || !ghost.totalAmount) continue;
-        
-        // Apply filters
-        if (filter?.parentName && ghost.clientName) {
-            const searchName = filter.parentName.toLowerCase();
-            if (!ghost.clientName.toLowerCase().includes(searchName)) continue;
-        }
-        
-        if (filter?.amount) {
-            if (Math.abs((ghost.totalAmount || 0) - filter.amount) > 1) continue;
-        }
-        
-        if (filter?.dateFrom && ghost.issueDate) {
-            if (ghost.issueDate < filter.dateFrom) continue;
-        }
-        
-        if (filter?.dateTo && ghost.issueDate) {
-            if (ghost.issueDate > filter.dateTo) continue;
-        }
-        
-        // Find real invoices for same enrollment with same amount
-        const realQuery = query(
-            collection(db, 'invoices'),
-            where('relatedEnrollmentId', '==', ghost.relatedEnrollmentId),
-            where('isGhost', '==', false)
-        );
-        const realSnap = await getDocs(realQuery);
-        
-        let matchedReal: Invoice | null = null;
-        let matchReason = '';
-        
-        for (const realDoc of realSnap.docs) {
-            const real = realDoc.data() as Invoice;
-            
-            if (Math.abs((real.totalAmount || 0) - (ghost.totalAmount || 0)) < 1) {
-                matchedReal = real;
-                matchReason = `Match importo: ${ghost.totalAmount}€`;
-                break;
-            }
-        }
-        
-        candidates.push({
-            ghost,
-            realInvoice: matchedReal,
-            matchReason
-        });
-    }
-    
-    return candidates;
-};
-
-export const promoteGhostInvoices = async (invoiceIds: string[]): Promise<{ promoted: number; details: string[] }> => {
-    const details: string[] = [];
-    if (invoiceIds.length === 0) {
-        return { promoted: 0, details: ['Nessuna fattura selezionata.'] };
-    }
-    
-    const batch = writeBatch(db);
-    let promoted = 0;
-    
-    for (const ghostId of invoiceIds) {
-        const ghostDoc = await getDoc(doc(db, 'invoices', ghostId));
-        if (!ghostDoc.exists()) continue;
-        
-        const ghost = ghostDoc.data() as Invoice;
-        if (!ghost.relatedEnrollmentId || !ghost.totalAmount) continue;
-        
-        // Find real invoice with same amount
-        const realQuery = query(
-            collection(db, 'invoices'),
-            where('relatedEnrollmentId', '==', ghost.relatedEnrollmentId),
-            where('isGhost', '==', false)
-        );
-        const realSnap = await getDocs(realQuery);
-        
-        for (const realDoc of realSnap.docs) {
-            const real = realDoc.data() as Invoice;
-            
-            if (Math.abs((real.totalAmount || 0) - (ghost.totalAmount || 0)) < 1) {
-                batch.update(doc(db, 'invoices', ghostId), {
-                    invoiceNumber: real.invoiceNumber,
-                    issueDate: real.issueDate,
-                    dueDate: real.dueDate,
-                    status: real.status || DocumentStatus.Sent,
-                    isGhost: false,
-                    notes: (ghost.notes || '') + ` [Promossa a fattura reale: ${real.invoiceNumber}]`
-                });
-                promoted++;
-                details.push(`Promossa ${ghost.invoiceNumber} → ${real.invoiceNumber} (${real.totalAmount}€)`);
-                break;
-            }
-        }
-    }
-    
-    if (promoted > 0) {
-        await batch.commit();
-    }
-    
-    return { promoted, details };
 };

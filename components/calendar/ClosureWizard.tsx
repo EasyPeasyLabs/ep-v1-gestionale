@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Enrollment, Lesson, Appointment } from '../../types';
+
 import { getAllEnrollments, rescheduleSuspendedLesson } from '../../services/enrollmentService';
 import { getLessons } from '../../services/calendarService';
 import Spinner from '../Spinner';

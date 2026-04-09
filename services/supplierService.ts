@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Supplier, SupplierInput, Location } from '../types';
 
 const getSupplierCollectionRef = () => collection(db, 'suppliers');
@@ -45,43 +45,12 @@ export const getSuppliers = async (): Promise<Supplier[]> => {
 
 export const addSupplier = async (supplier: SupplierInput): Promise<string> => {
     const docRef = await addDoc(getSupplierCollectionRef(), { ...supplier, isDeleted: false });
-    
-    // Sync locations to top-level collection
-    if (supplier.locations && supplier.locations.length > 0) {
-        for (const loc of supplier.locations) {
-            const locId = loc.id || doc(collection(db, 'locations')).id;
-            await setDoc(doc(db, 'locations', locId), {
-                ...loc,
-                id: locId,
-                supplierId: docRef.id,
-                status: loc.closedAt ? 'closed' : 'active',
-                updatedAt: serverTimestamp()
-            });
-        }
-    }
-    
     return docRef.id;
 };
 
 export const updateSupplier = async (id: string, supplier: Partial<SupplierInput>): Promise<void> => {
     const supplierDoc = doc(db, 'suppliers', id);
-    // Sync locations to top-level collection
-    if (supplier.locations) {
-        for (const loc of supplier.locations) {
-            const locId = loc.id && !String(loc.id).startsWith('temp-') ? loc.id : doc(collection(db, 'locations')).id;
-            // Update the ID in the supplier document too if it was temporary
-            if (loc.id !== locId) loc.id = locId; 
-
-            await setDoc(doc(db, 'locations', locId), {
-                ...loc,
-                id: locId,
-                supplierId: id,
-                status: loc.closedAt ? 'closed' : 'active',
-                updatedAt: serverTimestamp()
-            });
-        }
-    }
-
+    // Assicurati che i dati inviati siano un oggetto "pulito"
     await updateDoc(supplierDoc, { ...supplier });
 };
 

@@ -133,10 +133,10 @@ const SubscriptionStatusModal: React.FC<{
                                 </div>
                                 <div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label !top-0">Valido dal:</label></div>
                                 <div className="border-t pt-4">
-                                    <label className="text-xs font-bold text-indigo-600 uppercase mb-2 block">A) Target Sedi (Recinti)</label>
-                                    <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto mb-4">{allLocations.map(l => (<button key={l.id} type="button" onClick={() => toggleLocation(l.id)} className={`px-2 py-1 rounded border text-xs ${targetLocationIds.includes(l.id) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>{l.name}</button>))}</div>
-                                    <label className="text-xs font-bold text-indigo-600 uppercase mb-2 block">B) Target Clienti</label>
-                                    {loadingClients ? <Spinner /> : (<div className="border rounded-lg p-2"><input type="text" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="w-full text-xs border-b pb-1 mb-2 outline-none"/><div className="max-h-32 overflow-y-auto space-y-1">{filteredClients.map(c => { const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName; return (<label key={c.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={targetClientIds.includes(c.id)} onChange={() => toggleClient(c.id)} className="rounded text-indigo-600"/><span className="truncate">{name}</span></label>); })}</div></div>)}
+                                    <label className="text-xs font-bold text-ep-blue-600 uppercase mb-2 block">A) Target Sedi (Recinti)</label>
+                                    <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto mb-4">{allLocations.map(l => (<button key={l.id} type="button" onClick={() => toggleLocation(l.id)} className={`px-2 py-1 rounded border text-xs ${targetLocationIds.includes(l.id) ? 'bg-ep-blue-600 text-white border-ep-blue-600' : 'bg-white text-gray-600 border-gray-300'}`}>{l.name}</button>))}</div>
+                                    <label className="text-xs font-bold text-ep-blue-600 uppercase mb-2 block">B) Target Clienti</label>
+                                    {loadingClients ? <Spinner /> : (<div className="border rounded-lg p-2"><input type="text" placeholder="Cerca cliente..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} className="w-full text-xs border-b pb-1 mb-2 outline-none"/><div className="max-h-32 overflow-y-auto space-y-1">{filteredClients.map(c => { const name = c.clientType === ClientType.Parent ? `${(c as ParentClient).firstName} ${(c as ParentClient).lastName}` : (c as InstitutionalClient).companyName; return (<label key={c.id} className="flex items-center gap-2 text-xs p-1 hover:bg-gray-50 cursor-pointer"><input type="checkbox" checked={targetClientIds.includes(c.id)} onChange={() => toggleClient(c.id)} className="rounded text-ep-blue-600"/><span className="truncate">{name}</span></label>); })}</div></div>)}
                                 </div>
                             </div>
                         )}
@@ -283,11 +283,11 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             </div>
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
                 <div className="flex gap-4 mb-4">
-                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'kid' ? 'bg-ep-blue-50 border-ep-blue-500 text-ep-blue-700 font-bold' : 'bg-white text-gray-600'}`}>
                         <input type="radio" name="target" value="kid" checked={target === 'kid'} onChange={() => setTarget('kid')} className="hidden" />
                         👶 Bambini (K)
                     </label>
-                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-indigo-50 border-indigo-500 text-indigo-700 font-bold' : 'bg-white text-gray-600'}`}>
+                    <label className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${target === 'adult' ? 'bg-ep-blue-50 border-ep-blue-500 text-ep-blue-700 font-bold' : 'bg-white text-gray-600'}`}>
                         <input type="radio" name="target" value="adult" checked={target === 'adult'} onChange={() => setTarget('adult')} className="hidden" />
                         🧑 Adulti (A)
                     </label>
@@ -339,11 +339,11 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                     <label htmlFor="subDuration" className="md-input-label">Durata (giorni)</label>
                 </div>
 
-                <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
+                <div className="p-4 bg-ep-blue-50/50 rounded-2xl border border-ep-blue-100/50">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-[10px] font-black text-indigo-700 uppercase tracking-[0.2em]">Composizione Carnet (Lezioni)</h3>
-                        <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">
-                            Totale: <span className="text-indigo-700">{Number(labCount) + Number(sgCount) + Number(evtCount) + Number(readCount)}</span> lezioni
+                        <h3 className="text-[10px] font-black text-ep-blue-700 uppercase tracking-[0.2em]">Composizione Carnet (Lezioni)</h3>
+                        <div className="text-[10px] font-black text-ep-blue-400 uppercase tracking-widest">
+                            Totale: <span className="text-ep-blue-700">{Number(labCount) + Number(sgCount) + Number(evtCount) + Number(readCount)}</span> lezioni
                         </div>
                     </div>
 
@@ -369,29 +369,29 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                         </div>
 
                         {/* Summary Circles */}
-                        <div className="flex md:flex-col justify-center gap-3 px-4 border-l border-indigo-100/30">
+                        <div className="flex md:flex-col justify-center gap-3 px-4 border-l border-ep-blue-100/30">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="flex flex-col items-center">
-                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">Lab</span>
-                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                    <span className="text-[8px] font-black text-ep-blue-400 uppercase mb-1">Lab</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-ep-blue-100 flex items-center justify-center text-xs font-black text-ep-blue-700 shadow-sm">
                                         {labCount}
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-center">
-                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">SG</span>
-                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                    <span className="text-[8px] font-black text-ep-blue-400 uppercase mb-1">SG</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-ep-blue-100 flex items-center justify-center text-xs font-black text-ep-blue-700 shadow-sm">
                                         {sgCount}
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-center">
-                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">Read</span>
-                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                    <span className="text-[8px] font-black text-ep-blue-400 uppercase mb-1">Read</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-ep-blue-100 flex items-center justify-center text-xs font-black text-ep-blue-700 shadow-sm">
                                         {readCount}
                                     </div>
                                 </div>
                                 <div className="flex flex-col items-center">
-                                    <span className="text-[8px] font-black text-indigo-400 uppercase mb-1">Evt</span>
-                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-indigo-100 flex items-center justify-center text-xs font-black text-indigo-700 shadow-sm">
+                                    <span className="text-[8px] font-black text-ep-blue-400 uppercase mb-1">Evt</span>
+                                    <div className="w-10 h-10 rounded-full bg-white border-2 border-ep-blue-100 flex items-center justify-center text-xs font-black text-ep-blue-700 shadow-sm">
                                         {evtCount}
                                     </div>
                                 </div>
@@ -412,7 +412,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
                                 onClick={() => toggleAllowedDay(index)}
                                 className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
                                     allowedDays.includes(index)
-                                        ? 'bg-indigo-600 text-white border-indigo-600'
+                                        ? 'bg-ep-blue-600 text-white border-ep-blue-600'
                                         : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'
                                 }`}
                             >
@@ -424,7 +424,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
 
                 <div className="flex items-center gap-2 mt-2">
                     <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={isPubliclyVisible} onChange={e => setIsPubliclyVisible(e.target.checked)} className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                        <input type="checkbox" checked={isPubliclyVisible} onChange={e => setIsPubliclyVisible(e.target.checked)} className="h-4 w-4 text-ep-blue-600 rounded border-gray-300 focus:ring-ep-blue-500" />
                         <span className="text-sm text-gray-700">Visibile pubblicamente nel portale iscrizioni</span>
                     </label>
                 </div>
@@ -468,7 +468,7 @@ const TemplateForm: React.FC<{ template: CommunicationTemplate; onSave: (t: Comm
                 <h2 className="text-xl font-bold text-gray-800">{template.id ? `Modifica Template: ${template.label}` : 'Nuovo Template'}</h2> 
             </div> 
             <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4"> 
-                <div className="bg-indigo-50 p-3 rounded text-xs text-indigo-800"> 
+                <div className="bg-ep-blue-50 p-3 rounded text-xs text-ep-blue-800"> 
                     <strong>Variabili disponibili:</strong> {placeholders.join(', ')} 
                 </div> 
                 <div className="md-input-group"> 
@@ -553,15 +553,15 @@ const ContractTemplateForm: React.FC<{ template: ContractTemplate; onSave: (t: C
                 </div>
 
                 {/* Colonna Legenda Placeholder */}
-                <div className="w-full lg:w-64 bg-indigo-50 border border-indigo-100 rounded-lg p-4 h-fit">
-                    <h4 className="font-bold text-xs text-indigo-800 uppercase mb-3 border-b border-indigo-200 pb-2">Placeholder Disponibili</h4>
-                    <p className="text-[10px] text-indigo-600 mb-4">
+                <div className="w-full lg:w-64 bg-ep-blue-50 border border-ep-blue-100 rounded-lg p-4 h-fit">
+                    <h4 className="font-bold text-xs text-ep-blue-800 uppercase mb-3 border-b border-ep-blue-200 pb-2">Placeholder Disponibili</h4>
+                    <p className="text-[10px] text-ep-blue-600 mb-4">
                         Copia e incolla questi codici nel testo. Verranno sostituiti automaticamente con i dati reali in fase di stampa.
                     </p>
                     <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-1">
                         {PLACEHOLDERS_LEGEND.map((ph, i) => (
                             <div key={i} className="group cursor-pointer hover:bg-white p-1 rounded transition-colors" onClick={() => navigator.clipboard.writeText(ph.code)}>
-                                <code className="block text-[10px] font-bold text-slate-700 bg-white border border-slate-200 px-1 py-0.5 rounded w-fit mb-0.5 group-hover:border-indigo-300 group-hover:text-indigo-700">
+                                <code className="block text-[10px] font-bold text-slate-700 bg-white border border-slate-200 px-1 py-0.5 rounded w-fit mb-0.5 group-hover:border-ep-blue-300 group-hover:text-ep-blue-700">
                                     {ph.code}
                                 </code>
                                 <span className="text-[10px] text-slate-500 leading-tight block">{ph.desc}</span>
@@ -697,7 +697,7 @@ const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCh
                     <label className="block text-xs text-gray-500 mb-2">Giorni della Settimana</label> 
                     <div className="flex flex-wrap gap-2"> 
                         {daysMap.map((d, i) => ( 
-                            <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > 
+                            <button key={i} type="button" onClick={() => toggleDay(i)} className={`px-3 py-1 rounded text-xs font-bold border transition-colors ${daysOfWeek.includes(i) ? 'bg-ep-blue-600 text-white border-ep-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`} > 
                                 {d} 
                             </button> 
                         ))} 
@@ -708,7 +708,7 @@ const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCh
                     <label className="md-input-label !top-0">Orario Notifica</label> 
                 </div> 
                 <div className="flex items-center gap-2 mt-2"> 
-                    <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-indigo-600" /> 
+                    <input type="checkbox" checked={pushEnabled} onChange={e => setPushEnabled(e.target.checked)} className="h-4 w-4 text-ep-blue-600" /> 
                     <label className="text-sm text-gray-700">Abilita Notifica Push</label> 
                 </div> 
                 <div className="md-input-group"> 
@@ -847,8 +847,8 @@ const Settings: React.FC = () => {
         if (t.id) {
             await updatePortalText(t.id, t);
         } else {
-            const newId = await addPortalText(t);
-            t.id = newId;
+            const newPortalText = await addPortalText(t);
+            t.id = newPortalText.id;
         }
         setIsPortalTextModalOpen(false);
         setEditingPortalText(null);
@@ -1077,7 +1077,7 @@ const Settings: React.FC = () => {
                                             {sub.lessons} lezioni - {sub.durationInDays} giorni
                                         </p>
                                         {((sub.labCount || 0) > 0 || (sub.sgCount || 0) > 0 || (sub.evtCount || 0) > 0) && (
-                                            <p className="text-[10px] text-indigo-600 font-bold mt-1">
+                                            <p className="text-[10px] text-ep-blue-600 font-bold mt-1">
                                                 Composizione: {[
                                                     (sub.labCount || 0) > 0 ? `${sub.labCount} Lab` : null,
                                                     (sub.sgCount || 0) > 0 ? `${sub.sgCount} SG` : null,
@@ -1103,7 +1103,7 @@ const Settings: React.FC = () => {
                                                 : <EyeOffIcon className="w-5 h-5 text-gray-400" />
                                             }
                                         </button>
-                                        <button onClick={() => handleOpenSubModal(sub)} className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><PencilIcon /></button>
+                                        <button onClick={() => handleOpenSubModal(sub)} className="p-2 text-gray-400 hover:text-ep-blue-600 hover:bg-ep-blue-50 rounded-lg transition-colors"><PencilIcon /></button>
                                         <button onClick={() => handleDeleteClick(sub.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"><TrashIcon /></button>
                                     </div>
                                 </div>
@@ -1196,7 +1196,7 @@ const Settings: React.FC = () => {
                 </div>
 
                 {/* 6. Planner & Controlli */}
-                <div className="md-card p-6 bg-white border-l-4 border-indigo-500">
+                <div className="md-card p-6 bg-white border-l-4 border-ep-blue-500">
                     <div className="flex justify-between items-center border-b pb-3 mb-3">
                         <div>
                             <h2 className="text-lg font-bold text-gray-800">Planner & Controlli</h2>
@@ -1207,7 +1207,7 @@ const Settings: React.FC = () => {
                     
                     <div className="space-y-3 max-h-60 overflow-y-auto mb-4">
                         {checks.map(check => (
-                            <div key={check.id} className={`p-3 rounded border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${check.pushEnabled ? 'bg-indigo-50 border-indigo-200' : 'bg-gray-50 border-gray-200 opacity-70'}`}>
+                            <div key={check.id} className={`p-3 rounded border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${check.pushEnabled ? 'bg-ep-blue-50 border-ep-blue-200' : 'bg-gray-50 border-gray-200 opacity-70'}`}>
                                 <div>
                                     <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-xs font-bold uppercase tracking-wider">{check.category}</span>
@@ -1231,7 +1231,7 @@ const Settings: React.FC = () => {
                         </h3>
                         <div className="flex justify-between items-center mb-2">
                             <div>
-                                <p className="text-sm text-gray-800 font-medium">Target: <span className="font-mono text-indigo-700">Admin</span></p>
+                                <p className="text-sm text-gray-800 font-medium">Target: <span className="font-mono text-ep-blue-700">Admin</span></p>
                                 <p className="text-xs text-gray-500 mt-0.5">Stato Browser: {notifPermission}</p>
                             </div>
                             <div className="flex flex-col items-end">
@@ -1328,7 +1328,7 @@ const Settings: React.FC = () => {
                                     className={`flex items-center gap-2 px-4 py-2 rounded font-bold text-xs transition-all ${
                                         isMigrating 
                                         ? 'bg-slate-100 text-slate-400 cursor-not-allowed' 
-                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-md'
+                                        : 'bg-ep-blue-600 text-white hover:bg-ep-blue-700 shadow-md'
                                     }`}
                                 >
                                     {isMigrating ? (
