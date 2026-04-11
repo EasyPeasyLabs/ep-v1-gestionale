@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, addDoc, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase/config';
+import { Lead } from '../types';
 
 // Native Date Helpers to replace date-fns
 const parseISO = (str: string) => new Date(str);
@@ -60,7 +61,7 @@ const parseAddress = (raw: string | undefined | null): ParsedAddress => {
     // address is everything before the matched postal block
     const idx = normalized.lastIndexOf(zipCityProvMatch[0]);
     if (idx > 0) {
-      let base = normalized.slice(0, idx).trim();
+      const base = normalized.slice(0, idx).trim();
       // keep only first two chunks before ZIP block (es. VIA CHIANCARO, 2)
       const chunks = base.split(',').map(c => c.trim()).filter(Boolean);
       if (chunks.length >= 2) {
@@ -105,28 +106,27 @@ import SearchIcon from '../components/icons/SearchIcon';
 import CRMIcon from '../components/icons/CRMIcon';
 import UserPlusIcon from '../components/icons/UserPlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
-import SparklesIcon from '../components/icons/SparklesIcon';
 
 // Icon Wrappers to support className
-const IconWrap = ({ Icon, className }: { Icon: any, className?: string }) => (
+const IconWrap = ({ Icon, className }: { Icon: React.ComponentType, className?: string }) => (
   <div className={className}><Icon /></div>
 );
 
-const Users = (props: any) => <IconWrap Icon={ClientsIcon} {...props} />;
-const Calendar = (props: any) => <IconWrap Icon={CalendarIcon} {...props} />;
-const CheckCircle = (props: any) => <IconWrap Icon={CheckIcon} {...props} />;
-const XCircle = (props: any) => <IconWrap Icon={StopIcon} {...props} />;
-const Clock = (props: any) => <IconWrap Icon={ClockIcon} {...props} />;
-const Search = (props: any) => <IconWrap Icon={SearchIcon} {...props} />;
-const Filter = (props: any) => <IconWrap Icon={CRMIcon} {...props} />;
-const Phone = ({ className }: any) => <span className={className}>📞</span>;
-const Mail = ({ className }: any) => <span className={className}>📧</span>;
-const MapPin = ({ className }: any) => <span className={className}>📍</span>;
-const UserPlus = (props: any) => <IconWrap Icon={UserPlusIcon} {...props} />;
-const MessageCircle = ({ className }: any) => <span className={className}>💬</span>;
-const Link = ({ className }: any) => <span className={className}>🔗</span>;
-const Send = ({ className }: any) => <span className={className}>✈️</span>;
-const Trash2 = (props: any) => <IconWrap Icon={TrashIcon} {...props} />;
+const Users = (props: { className?: string }) => <IconWrap Icon={ClientsIcon} {...props} />;
+const Calendar = (props: { className?: string }) => <IconWrap Icon={CalendarIcon} {...props} />;
+const CheckCircle = (props: { className?: string }) => <IconWrap Icon={CheckIcon} {...props} />;
+const XCircle = (props: { className?: string }) => <IconWrap Icon={StopIcon} {...props} />;
+const Clock = (props: { className?: string }) => <IconWrap Icon={ClockIcon} {...props} />;
+const Search = (props: { className?: string }) => <IconWrap Icon={SearchIcon} {...props} />;
+const Filter = (props: { className?: string }) => <IconWrap Icon={CRMIcon} {...props} />;
+const Phone = ({ className }: { className?: string }) => <span className={className}>📞</span>;
+const Mail = ({ className }: { className?: string }) => <span className={className}>📧</span>;
+const MapPin = ({ className }: { className?: string }) => <span className={className}>📍</span>;
+const UserPlus = (props: { className?: string }) => <IconWrap Icon={UserPlusIcon} {...props} />;
+const MessageCircle = ({ className }: { className?: string }) => <span className={className}>💬</span>;
+const Link = ({ className }: { className?: string }) => <span className={className}>🔗</span>;
+const Send = ({ className }: { className?: string }) => <span className={className}>✈️</span>;
+const Trash2 = (props: { className?: string }) => <IconWrap Icon={TrashIcon} {...props} />;
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import { deleteEnrollment } from '../services/enrollmentService';
@@ -136,27 +136,6 @@ import { getSuppliers } from '../services/supplierService';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { addTransaction } from '../services/financeService';
 import { Enrollment, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, TransactionStatus } from '../types';
-
-interface Lead {
-  id: string;
-  nome: string;
-  cognome: string;
-  email: string;
-  telefono: string;
-  childName: string;
-  childAge: string;
-  selectedLocation: string;
-  selectedSubscription?: string; // Nome abbonamento scelto dal lead
-  selectedSlot: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-  address?: string; // Indirizzo completo formato Google Maps
-  notes?: string;
-  status: 'pending' | 'contacted' | 'converted' | 'rejected';
-  createdAt: string;
-  source: string;
-  convertedAt?: string; // Data di conversione
-  convertedEnrollmentId?: string; // ID dell'iscrizione creata
-  convertedStudentId?: string; // ID dello studente creato (legacy)
-}
 
 export const LeadsPage: React.FC = () => {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -348,10 +327,11 @@ export const LeadsPage: React.FC = () => {
 
           if (lead.selectedSlot && typeof lead.selectedSlot === 'object') {
             const slot = lead.selectedSlot;
+            const s = slot as Record<string, unknown>;
             const match = openCourses.find(c => 
-              c.dayOfWeek === slot.dayOfWeek &&
-              c.startTime === slot.startTime &&
-              (c.locationId === slot.locationId || locationMap[c.locationId] === lead.selectedLocation)
+              c.dayOfWeek === s.dayOfWeek &&
+              c.startTime === s.startTime &&
+              (c.locationId === s.locationId || locationMap[c.locationId] === lead.selectedLocation)
             );
             if (match) {
               matchedCourseId = match.id;
@@ -359,8 +339,8 @@ export const LeadsPage: React.FC = () => {
               finalStartTime = match.startTime;
               finalEndTime = match.endTime;
             } else {
-              finalStartTime = slot.startTime || '16:00';
-              finalEndTime = slot.endTime || '18:00';
+              finalStartTime = (s.startTime as string) || '16:00';
+              finalEndTime = (s.endTime as string) || '18:00';
             }
           }
 
@@ -799,9 +779,9 @@ export const LeadsPage: React.FC = () => {
                     <div className="flex items-center gap-2 text-gray-700">
                       <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
                       <span>
-                        {typeof lead.selectedSlot === 'object' 
-                          ? `${lead.selectedSlot.bundleName || ''} (${lead.selectedSlot.startTime || ''})` 
-                          : (lead.selectedSlot || 'Orario non specificato')}
+                        {typeof lead.selectedSlot === 'object' && lead.selectedSlot !== null
+                          ? `${(lead.selectedSlot as Record<string, unknown>).bundleName || ''} (${(lead.selectedSlot as Record<string, unknown>).startTime || ''})` 
+                          : (lead.selectedSlot as string || 'Orario non specificato')}
                       </span>
                     </div>
                     

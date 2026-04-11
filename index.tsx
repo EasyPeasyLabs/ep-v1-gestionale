@@ -9,8 +9,8 @@ import { applyTheme, getSavedTheme } from './utils/theme';
 try {
   const savedTheme = getSavedTheme();
   applyTheme(savedTheme.primary, savedTheme.bg);
-} catch (e: any) {
-  console.error("Theme Init Error: " + e.message);
+} catch (e: unknown) {
+  console.error("Theme Init Error: " + (e instanceof Error ? e.message : String(e)));
 }
 
 const rootElement = document.getElementById('root');

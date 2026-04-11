@@ -172,9 +172,9 @@ const TransactionForm: React.FC<{
                     <button 
                         type="button"
                         onClick={() => setIsCategorySelectorOpen(true)}
-                        className="w-full text-left border border-ep-blue-500 rounded-xl px-4 py-3 bg-ep-blue-600 hover:bg-ep-blue-700 focus:ring-2 focus:ring-ep-blue-400 transition-all flex justify-between items-center text-white shadow-sm"
+                        className="w-full text-left border border-gray-300 rounded-xl px-4 py-3 bg-white hover:bg-gray-50 focus:ring-2 focus:ring-indigo-500 transition-all flex justify-between items-center"
                     >
-                        <span className="font-bold">{category}</span>
+                        <span className="font-bold text-slate-700">{category}</span>
                         <ChevronDownIcon />
                     </button>
                 </div>

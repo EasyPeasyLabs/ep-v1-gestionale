@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, TransactionStatus, IntegrityIssueSuggestion, ClientType, EnrollmentStatus, InvoiceGap, RentAnalysisResult, SubscriptionType } from '../types';
-import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, reconcileTransactions, runFinancialHealthCheck, fixIntegrityIssue, getInvoiceNumberGaps, isInvoiceNumberTaken, findGhostPromotionCandidates, promoteGhostInvoices, GhostPromotionCandidate } from '../services/financeService';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, RentAnalysisResult, SubscriptionType, EnrollmentStatus } from '../types';
+import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, runFinancialHealthCheck, fixIntegrityIssue, findGhostPromotionCandidates, promoteGhostInvoices, GhostPromotionCandidate } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo, getSubscriptionTypes, updateCompanyInfo } from '../services/settingsService';
 import { getClients } from '../services/parentService';
@@ -11,7 +11,6 @@ import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
-import RefreshIcon from '../components/icons/RestoreIcon';
 import SparklesIcon from '../components/icons/SparklesIcon';
 import CheckIcon from '../components/icons/CheckIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
@@ -39,7 +38,7 @@ interface FinanceProps {
         tab?: 'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure';
         searchTerm?: string;
     };
-    onNavigate?: (page: Page, params?: any) => void;
+    onNavigate?: (page: Page, params?: Record<string, unknown>) => void;
 }
 
 // Separate component to handle the async analysis logic cleanly
@@ -48,7 +47,7 @@ const RentSyncModal: React.FC<{
     onComplete: () => void;
     enrollments: Enrollment[]; // Pass Enrollments down
 }> = ({ onClose, onComplete, enrollments }) => {
-    const now = new Date();
+    const now = useMemo(() => new Date(), []);
     const [step, setStep] = useState<'select' | 'preview'>('select');
     const [month, setMonth] = useState(now.getMonth());
     const [year, setYear] = useState(now.getFullYear());
@@ -238,7 +237,7 @@ const FixWizard: React.FC<{
     const handleSearchGhosts = async () => {
         setGhostSearching(true);
         try {
-            const filter: any = {};
+            const filter: Record<string, string | number> = {};
             if (ghostFilter.parentName) filter.parentName = ghostFilter.parentName;
             if (ghostFilter.amount) filter.amount = parseFloat(ghostFilter.amount);
             if (ghostFilter.dateFrom) filter.dateFrom = ghostFilter.dateFrom;
@@ -293,7 +292,7 @@ const FixWizard: React.FC<{
         }
     }, [activeIssue]);
 
-    const handleResolve = async (strat: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', payload?: any) => {
+    const handleResolve = async (strat: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', payload?: Record<string, unknown>) => {
         if (!activeIssue) return;
         setLoading(true);
         try {
@@ -304,7 +303,7 @@ const FixWizard: React.FC<{
                 undefined, 
                 undefined, 
                 undefined, 
-                payload?.transactionId, 
+                payload?.transactionId as string, 
                 date 
             );
             
@@ -469,7 +468,7 @@ const FixWizard: React.FC<{
                                                             {suggestion.reason && <div className="text-xs text-slate-500 leading-relaxed font-medium mt-1">{suggestion.reason}</div>}
                                                         </div>
                                                         <button
-                                                            onClick={() => handleResolve(suggestion.type as any, suggestion.payload)}
+                                                            onClick={() => handleResolve(suggestion.type as 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', suggestion.payload)}
                                                             disabled={loading}
                                                             className={`md-btn md-btn-raised rounded-2xl px-8 py-4 font-black uppercase text-[10px] tracking-widest transition-transform active:scale-95 flex items-center gap-2 whitespace-nowrap ${suggestion.type === 'oblivion' ? 'bg-rose-600 text-white shadow-rose-200' : 'bg-indigo-600 text-white shadow-indigo-200'}`}
                                                         >
@@ -732,7 +731,7 @@ const TAB_LABELS = {
     fiscal_closure: 'Chiusura Fiscale'
 };
 
-const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
+const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure'>('overview');
     const [overviewYear, setOverviewYear] = useState<number>(new Date().getFullYear());
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -749,7 +748,16 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [controllingYear, setControllingYear] = useState<number>(Math.max(2025, new Date().getFullYear()));
     const [controllingMonth, setControllingMonth] = useState<string>('all'); // 'all' or '0'-'11'
     const [filters, setFilters] = useState({ search: '' });
-    const [selectedLocationROI, setSelectedLocationROI] = useState<any | null>(null);
+    const [selectedLocationROI, setSelectedLocationROI] = useState<{
+        name: string,
+        color: string,
+        revenue: number,
+        costs: number,
+        costPerLesson?: { value: number, min: number, max: number, avg: number },
+        costPerStudentPerLesson?: number,
+        costPerStudent?: number,
+        breakdown?: { rent: { total: number, current: number }, operational: number, logistics: number, overhead: number }
+    } | null>(null);
     const [integrityIssues, setIntegrityIssues] = useState<IntegrityIssue[]>([]);
     const [isFixWizardOpen, setIsFixWizardOpen] = useState(false);
     const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
@@ -766,21 +774,6 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const [quoteToActivate, setQuoteToActivate] = useState<Quote | null>(null);
 
     // End of Month Check for Alert
-    const isLateMonth = new Date().getDate() > 27;
-    
-    const isRentPaidForThisMonth = useMemo(() => {
-        const now = new Date();
-        return transactions.some(t => 
-            !t.isDeleted &&
-            t.category === TransactionCategory.Nolo &&
-            t.relatedDocumentId?.startsWith('AUTO-RENT') &&
-            new Date(t.date).getMonth() === now.getMonth() &&
-            new Date(t.date).getFullYear() === now.getFullYear()
-        );
-    }, [transactions]);
-
-    const showRentAlert = isLateMonth && !isRentPaidForThisMonth;
-
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
@@ -1015,6 +1008,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
         }
 
         return { 
+            targetMonthlyNet,
             grossNeeded: grossRevenueNeeded, 
             gap, 
             advice, 
@@ -1035,15 +1029,20 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
     const handleSaveQuote = async (q: QuoteInput | Quote) => { try { if ('id' in q) await updateQuote(q.id, q); else await addQuote(q as QuoteInput); setIsQuoteModalOpen(false); fetchData(); } catch (e) { alert("Errore salvataggio."); } };
     const handleDeleteQuote = async () => { if (quoteToDelete) { await deleteQuote(quoteToDelete); setQuoteToDelete(null); fetchData(); } };
     const handleConvertQuote = async () => { if (quoteToConvert) { try { await convertQuoteToInvoice(quoteToConvert.id); alert("Convertito!"); setQuoteToConvert(null); fetchData(); } catch (e) { alert(e); } } };
-    const handlePrint = async (item: Invoice | Quote) => { const type = 'invoiceNumber' in item ? 'Fattura' : 'Preventivo'; const client = clients.find(c => c.id === item.clientId); await generateDocumentPDF(item, type, companyInfo, client); };
-    const handleWhatsApp = (item: any) => { window.open(`https://wa.me/?text=${encodeURIComponent('Documento: ' + (item.invoiceNumber || item.quoteNumber))}`, '_blank'); };
+    const handlePrint = async (item: Invoice | Quote | Transaction) => { 
+        if ('amount' in item && !('invoiceNumber' in item) && !('quoteNumber' in item)) return; // Skip transactions
+        const type = 'invoiceNumber' in item ? 'Fattura' : 'Preventivo'; 
+        const client = clients.find(c => c.id === (item as Invoice | Quote).clientId); 
+        await generateDocumentPDF(item as Invoice | Quote, type, companyInfo, client); 
+    };
+    const handleWhatsApp = (item: Invoice | Quote) => { window.open(`https://wa.me/?text=${encodeURIComponent('Documento: ' + ('invoiceNumber' in item ? item.invoiceNumber : item.quoteNumber))}`, '_blank'); };
     const handleSealSDI = async (item: Invoice) => { const c = prompt("Codice SDI:", item.sdiId || ''); if(c) { await updateInvoice(item.id, {status: DocumentStatus.SealedSDI, sdiId: c}); fetchData(); } };
-    const handleEditTransaction = (t: any) => { setEditingTransaction(t); setIsTransactionModalOpen(true); };
-    const handleEditInvoice = (i: any) => { setEditingInvoice(i); setIsInvoiceModalOpen(true); };
-    const handleEditQuote = (q: any) => { setEditingQuote(q); setIsQuoteModalOpen(true); };
+    const handleEditTransaction = (t: Transaction) => { setEditingTransaction(t); setIsTransactionModalOpen(true); };
+    const handleEditInvoice = (i: Invoice) => { setEditingInvoice(i); setIsInvoiceModalOpen(true); };
+    const handleEditQuote = (q: Quote) => { setEditingQuote(q); setIsQuoteModalOpen(true); };
     const handleGapFill = (year: number, number: number) => { 
         const forcedNumber = `FT-${year}-${String(number).padStart(3, '0')}`;
-        setEditingInvoice({ invoiceNumber: forcedNumber, issueDate: new Date().toISOString(), status: DocumentStatus.Draft, paymentMethod: PaymentMethod.BankTransfer, isGhost: false, isDeleted: false, items: [], totalAmount: 0 } as any);
+        setEditingInvoice({ invoiceNumber: forcedNumber, issueDate: new Date().toISOString(), status: DocumentStatus.Draft, paymentMethod: PaymentMethod.BankTransfer, isGhost: false, isDeleted: false, items: [], totalAmount: 0 } as unknown as Invoice);
         setIsInvoiceModalOpen(true);
     };
     
@@ -1314,6 +1313,8 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
 
     }, [suppliers, enrollments, transactions, manualLessons, controllingYear, controllingMonth, companyInfo]); 
 
+    if (loading) return <Spinner />;
+
     return (
         <div className="pb-20">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
@@ -1336,7 +1337,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                 </div>
             </div>
             
-            <div className="border-b border-gray-200 mb-6 -mx-4 md:mx-0"><nav className="flex space-x-2 overflow-x-auto scrollbar-hide px-4 md:px-0 pb-1">{Object.entries(TAB_LABELS).map(([key, label]) => (<button key={key} onClick={() => setActiveTab(key as any)} className={`flex-shrink-0 py-2 px-4 rounded-full text-sm font-bold transition-all whitespace-nowrap mb-2 ${activeTab === key ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'}`}>{label}</button>))}</nav></div>
+            <div className="border-b border-gray-200 mb-6 -mx-4 md:mx-0"><nav className="flex space-x-2 overflow-x-auto scrollbar-hide px-4 md:px-0 pb-1">{Object.entries(TAB_LABELS).map(([key, label]) => (<button key={key} onClick={() => setActiveTab(key as 'overview' | 'cfo' | 'controlling' | 'transactions' | 'invoices' | 'archive' | 'quotes' | 'fiscal_closure')} className={`flex-shrink-0 py-2 px-4 rounded-full text-sm font-bold transition-all whitespace-nowrap mb-2 ${activeTab === key ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-gray-500 hover:bg-gray-50 border border-gray-200'}`}>{label}</button>))}</nav></div>
 
             {activeTab === 'overview' && <FinanceOverview stats={stats} transactions={transactions} invoices={invoices} overviewYear={overviewYear} setOverviewYear={setOverviewYear} />}
             {/* Added currentBankBalance and update handler to FinanceCFO */}
@@ -1371,13 +1372,21 @@ const Finance: React.FC<FinanceProps> = ({ initialParams, onNavigate }) => {
                     enrollments={enrollments} 
                     filters={filters} 
                     setFilters={setFilters}
-                    onEdit={activeTab === 'transactions' ? handleEditTransaction : activeTab === 'quotes' ? handleEditQuote : handleEditInvoice}
-                    onDelete={activeTab === 'transactions' ? setTransactionToDelete : activeTab === 'quotes' ? setQuoteToDelete : setInvoiceToDelete}
+                    onEdit={(item) => {
+                        if (activeTab === 'transactions') handleEditTransaction(item as Transaction);
+                        else if (activeTab === 'quotes') handleEditQuote(item as Quote);
+                        else handleEditInvoice(item as Invoice);
+                    }}
+                    onDelete={(id) => {
+                        if (activeTab === 'transactions') setTransactionToDelete(id);
+                        else if (activeTab === 'quotes') setQuoteToDelete(id);
+                        else setInvoiceToDelete(id);
+                    }}
                     onPrint={handlePrint}
                     onSeal={handleSealSDI}
-                    onWhatsApp={handleWhatsApp}
-                    onConvert={activeTab === 'quotes' ? setQuoteToConvert : undefined}
-                    onActivate={activeTab === 'quotes' ? setQuoteToActivate : undefined}
+                    onWhatsApp={(item) => handleWhatsApp(item as Invoice | Quote)}
+                    onConvert={activeTab === 'quotes' ? (item) => setQuoteToConvert(item as Quote) : undefined}
+                    onActivate={activeTab === 'quotes' ? (item) => setQuoteToActivate(item as Quote) : undefined}
                 />
             )}
             {activeTab === 'fiscal_closure' && <FiscalYearManager transactions={transactions} invoices={invoices} onRequestInvoiceCreation={handleGapFill} />}

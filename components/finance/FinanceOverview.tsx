@@ -1,6 +1,6 @@
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import Chart, { ChartConfiguration } from 'chart.js/auto';
+import Chart from 'chart.js/auto';
 import CalculatorIcon from '../icons/CalculatorIcon';
 import SparklesIcon from '../icons/SparklesIcon';
 import Modal from '../Modal';
@@ -33,15 +33,16 @@ const KpiDetailChart: React.FC<{ type: string; stats: FinanceStats; transactions
         const ctx = canvasRef.current.getContext('2d');
         if (!ctx) return;
 
-        let config: any = {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let config: any = null;
         if (type === 'Incassato') {
             config = { 
                 type: 'bar', 
                 data: { 
                     labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic'], 
                     datasets: [
-                        { label: 'Incassi (Cassa)', data: (stats.monthlyData || []).map(d => d.cash), backgroundColor: '#1e293b', borderRadius: 6 },
-                        { label: 'Fatturato (Doc)', data: (stats.monthlyData || []).map(d => d.invoiced), backgroundColor: '#10b981', borderRadius: 6, hidden: true }
+                        { label: 'Incassi (Cassa)', data: (stats.monthlyData || []).map((d: { cash: number }) => d.cash), backgroundColor: '#4f46e5', borderRadius: 6 },
+                        { label: 'Fatturato (Doc)', data: (stats.monthlyData || []).map((d: { invoiced: number }) => d.invoiced), backgroundColor: '#10b981', borderRadius: 6, hidden: true }
                     ] 
                 }, 
                 options: { responsive: true, maintainAspectRatio: false } 
@@ -54,12 +55,12 @@ const KpiDetailChart: React.FC<{ type: string; stats: FinanceStats; transactions
             const data = labels.map(k => macros[k]);
             config = { type: 'doughnut', data: { labels, datasets: [{ data, backgroundColor: ['#f59e0b', '#6366f1', '#10b981', '#ef4444', '#9ca3af'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '65%' } };
         } else if (type === 'Margine') {
-            config = { type: 'pie', data: { labels: ['Utile Operativo', 'Costi Totali'], datasets: [{ data: [Math.max(0, stats.profit || 0), stats.expenses || 0], backgroundColor: ['#1e293b', '#cbd5e1'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false } };
+            config = { type: 'pie', data: { labels: ['Utile Operativo', 'Costi Totali'], datasets: [{ data: [Math.max(0, stats.profit || 0), stats.expenses || 0], backgroundColor: ['#4f46e5', '#cbd5e1'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false } };
         } else if (type === 'Accantonamento') {
             config = { type: 'bar', data: { labels: ['Tasse', 'INPS', 'Bolli'], datasets: [{ data: [stats.tax || 0, stats.inps || 0, stats.stampDutyTotal || 0], backgroundColor: ['#ef4444', '#f59e0b', '#64748b'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } };
         }
 
-        if (config.type) chartInstanceRef.current = new Chart(ctx, config);
+        if (config) chartInstanceRef.current = new Chart(ctx, config);
         return () => { if (chartInstanceRef.current) chartInstanceRef.current.destroy(); };
     }, [type, stats, transactions]);
 
@@ -68,16 +69,16 @@ const KpiDetailChart: React.FC<{ type: string; stats: FinanceStats; transactions
 
 interface KpiCardProps {
     title: string;
-    value: string;
-    color: 'emerald' | 'red' | 'ep-blue' | 'amber';
+    value: string | number;
+    color: 'emerald' | 'red' | 'indigo' | 'orange';
     progress?: number;
     label?: string;
     sub?: string;
     onClick?: () => void;
 }
 
-const KpiCard = ({ title, value, color, progress, label, sub, onClick }: KpiCardProps) => (
-    <div onClick={onClick} className={`md-card p-6 bg-white shadow-xl border-l-4 cursor-pointer transition-transform transform hover:scale-105 active:scale-95 group relative overflow-hidden`} style={{ borderLeftColor: color === 'emerald' ? '#10b981' : color === 'red' ? '#ef4444' : color === 'ep-blue' ? '#1e293b' : '#f59e0b' }}>
+const KpiCard: React.FC<KpiCardProps> = ({ title, value, color, progress, label, sub, onClick }) => (
+    <div onClick={onClick} className={`md-card p-6 bg-white shadow-xl border-l-4 cursor-pointer transition-transform transform hover:scale-105 active:scale-95 group relative overflow-hidden`} style={{ borderLeftColor: color === 'emerald' ? '#10b981' : color === 'red' ? '#ef4444' : color === 'indigo' ? '#3C3C52' : '#f59e0b' }}>
         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</h3>
         <p className="text-2xl font-black text-slate-900">{value}</p>
         {sub && <p className="text-[10px] text-slate-400 mt-1 font-bold truncate">{sub}</p>}
@@ -85,7 +86,7 @@ const KpiCard = ({ title, value, color, progress, label, sub, onClick }: KpiCard
             <div className="mt-4">
                 <div className="flex justify-between text-[9px] font-black uppercase text-slate-400 mb-1"><span>{label}</span><span>{(Number(progress) || 0).toFixed(0)}%</span></div>
                 <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                    <div className={`h-full transition-all duration-1000 ${progress > 80 ? 'bg-red-500' : 'bg-ep-blue-600'}`} style={{ width: `${Math.min(Number(progress) || 0, 100)}%` }}></div>
+                    <div className={`h-full transition-all duration-1000 ${progress > 80 ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${Math.min(Number(progress) || 0, 100)}%` }}></div>
                 </div>
             </div>
         )}
@@ -116,15 +117,15 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
                         datasets: [
                             { 
                                 label: 'Incassi (Cassa)', 
-                                data: (stats.monthlyData || []).map(d => d.cash), 
-                                borderColor: '#1e293b', 
-                                backgroundColor: 'rgba(30, 41, 59, 0.1)', 
+                                data: (stats.monthlyData || []).map((d: { cash: number }) => d.cash), 
+                                borderColor: '#4f46e5', 
+                                backgroundColor: 'rgba(79, 70, 229, 0.1)', 
                                 fill: true, 
                                 tension: 0.4 
                             },
                             { 
                                 label: 'Fatturato (Doc)', 
-                                data: (stats.monthlyData || []).map(d => d.invoiced), 
+                                data: (stats.monthlyData || []).map((d: { invoiced: number }) => d.invoiced), 
                                 borderColor: '#10b981', 
                                 backgroundColor: 'transparent',
                                 borderDash: [5, 5],
@@ -178,20 +179,20 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
                     onClick={() => setSelectedKpi('Incassato')} 
                 />
                 <KpiCard title="Costi" value={`${(stats.expenses ?? 0).toFixed(2)}€`} color="red" onClick={() => setSelectedKpi('Costi')} />
-                <KpiCard title="Margine" value={`${(stats.margin ?? 0).toFixed(1)}%`} color="ep-blue" onClick={() => setSelectedKpi('Margine')} />
-                <KpiCard title="Accantonamento" value={`${(stats.savingsSuggestion ?? 0).toFixed(2)}€`} color="amber" sub="Suggerito Tasse (su Fatturato)" onClick={() => setSelectedKpi('Accantonamento')} />
+                <KpiCard title="Margine" value={`${(stats.margin ?? 0).toFixed(1)}%`} color="indigo" onClick={() => setSelectedKpi('Margine')} />
+                <KpiCard title="Accantonamento" value={`${(stats.savingsSuggestion ?? 0).toFixed(2)}€`} color="orange" sub="Suggerito Tasse (su Fatturato)" onClick={() => setSelectedKpi('Accantonamento')} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2 md-card p-8 bg-white h-[450px]">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
                         <h3 className="text-xl font-black flex items-center gap-2"><CalculatorIcon /> Flussi di Cassa Annuali</h3>
-                        <div className="flex items-center gap-2 bg-ep-blue-600 px-3 py-1.5 rounded-xl shadow-inner text-white">
-                            <span className="text-[10px] font-black text-ep-blue-100 uppercase tracking-widest">Anno Fiscale</span>
+                        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl shadow-inner">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Anno Fiscale</span>
                             <select 
                                 value={overviewYear} 
                                 onChange={e => setOverviewYear(Number(e.target.value))} 
-                                className="bg-transparent border-none text-sm font-bold text-white outline-none cursor-pointer p-0"
+                                className="bg-transparent border-none text-sm font-bold text-indigo-700 outline-none cursor-pointer p-0"
                             >
                                 {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                             </select>
@@ -202,7 +203,7 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
                 
                 <div className="space-y-6">
                     <div className="md-card p-6 bg-white border border-slate-200 shadow-xl">
-                        <h4 className="font-bold text-xs uppercase text-ep-blue-600 mb-2">Utile Netto Stimato ({overviewYear})</h4>
+                        <h4 className="font-bold text-xs uppercase text-indigo-600 mb-2">Utile Netto Stimato ({overviewYear})</h4>
                         <p className="text-3xl font-black text-slate-900">{(Number(stats.profit || 0) - Number(stats.totalAll || 0)).toFixed(2)}€</p>
                         <p className="text-[10px] text-slate-500 mt-2 italic">Cash Flow al netto di tasse e bolli stimati.</p>
                     </div>
@@ -213,7 +214,7 @@ const FinanceOverview: React.FC<FinanceOverviewProps> = ({ stats, transactions, 
                         </h4>
                         <div className="space-y-4">
                             <div>
-                                <p className="text-[10px] font-bold text-ep-blue-600 uppercase mb-1">Breve Termine (Operatività)</p>
+                                <p className="text-[10px] font-bold text-indigo-600 uppercase mb-1">Breve Termine (Operatività)</p>
                                 <ul className="text-xs text-slate-600 space-y-1">
                                     {advice.short.map((a, i) => <li key={i} className="flex gap-2"><span>•</span> {a}</li>)}
                                     {advice.short.length === 0 && <li className="italic text-slate-400">Nessuna azione urgente richiesta.</li>}

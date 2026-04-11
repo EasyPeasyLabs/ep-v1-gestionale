@@ -1,14 +1,14 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child } from '../types';
 
 const getClientCollectionRef = () => collection(db, 'clients');
 
 const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
     const data = doc.data();
     // Inizializza l'oggetto base. Cast a 'any' temporaneo per flessibilità nel mapping.
-    const client = { id: doc.id, ...data } as any;
+    const client = { id: doc.id, ...data } as any; // eslint-disable-line @typescript-eslint/no-explicit-any
     
     // 1. NORMALIZZAZIONE TIPO CLIENTE (Inferenza)
     // Se clientType manca, proviamo a dedurlo dai dati presenti
@@ -45,7 +45,7 @@ const docToClient = (doc: QueryDocumentSnapshot<DocumentData>): Client => {
             parent.children = [];
         } else {
             // Mappa e pulisce ogni figlio
-            parent.children = parent.children.map((c: any) => ({
+            parent.children = parent.children.map((c: Child) => ({
                 id: c.id || Date.now().toString() + Math.random(),
                 name: c.name || 'Senza Nome',
                 age: c.age || '',

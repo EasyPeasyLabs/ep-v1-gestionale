@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { AdvancedEnrollmentExportData, ClientType, ParentClient, InstitutionalClient } from '../types';
+import { AdvancedEnrollmentExportData, ClientType, ParentClient, InstitutionalClient, Invoice, Transaction } from '../types';
 
 export const exportAdvancedEnrollmentReport = (data: AdvancedEnrollmentExportData[]) => {
     const wsData = data.map(item => {
@@ -18,8 +18,8 @@ export const exportAdvancedEnrollmentReport = (data: AdvancedEnrollmentExportDat
             'Fine': item.enrollment.endDate,
             'Prezzo': item.enrollment.price,
             'Stato': item.enrollment.status,
-            'Fatture': item.invoices.map((i: any) => i.invoiceNumber).join(', '),
-            'Transazioni': item.transactions.map((t: any) => t.id).join(', ')
+            'Fatture': item.invoices.map((i: Invoice) => i.invoiceNumber).join(', '),
+            'Transazioni': item.transactions.map((t: Transaction) => t.id).join(', ')
         };
     });
 

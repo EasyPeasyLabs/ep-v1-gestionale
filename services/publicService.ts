@@ -1,10 +1,10 @@
-import { Supplier, Location, AvailabilitySlot } from '../types';
+import { Location, SupplierRating } from '../types';
 import { getSuppliers } from './supplierService';
 
 export interface PublicLocation extends Location {
     supplierId: string;
     supplierName: string;
-    supplierRating: any;
+    supplierRating: SupplierRating;
 }
 
 export const getPublicLocations = async (): Promise<PublicLocation[]> => {

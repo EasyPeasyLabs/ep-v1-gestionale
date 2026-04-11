@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Supplier, SupplierInput, Location, LocationInput, AvailabilitySlot, SupplierRating, LocationRating, Note, ContractTemplate, CompanyInfo, SlotType, Course } from '../types';
-import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier, permanentDeleteSupplier } from '../services/supplierService';
+import { Supplier, SupplierInput, Location, LocationInput, SupplierRating, Note, ContractTemplate, CompanyInfo, Course } from '../types';
+import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier } from '../services/supplierService';
 import { getOpenCourses } from '../services/courseService';
 import { getContractTemplates, getCompanyInfo } from '../services/settingsService';
 import { compileContractTemplate } from '../utils/contractUtils';
@@ -13,12 +13,7 @@ import PrinterIcon from '../components/icons/PrinterIcon';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
-import UploadIcon from '../components/icons/UploadIcon';
-import ImportModal from '../components/ImportModal';
-import { importSuppliersFromExcel } from '../services/importService';
-import NotesManager from '../components/NotesManager';
 import Pagination from '../components/Pagination';
-import EyeIcon from '../components/icons/EyeIcon';
 import EyeOffIcon from '../components/icons/EyeOffIcon';
 
 // Helpers & Icons
@@ -510,9 +505,9 @@ const SupplierForm: React.FC<{
     const [province, setProvince] = useState(supplier?.province || '');
     const [zipCode, setZipCode] = useState(supplier?.zipCode || '');
     const [locations, setLocations] = useState<Location[]>(supplier?.locations || []);
-    const [rating, setRating] = useState<SupplierRating>(supplier?.rating || { responsiveness: 0, partnership: 0, negotiation: 0 });
-    const [notesHistory, setNotesHistory] = useState<Note[]>(supplier?.notesHistory || []);
-    const [editingLocation, setEditingLocation] = useState<Partial<Location> | null>(null);
+    const [rating] = useState<SupplierRating>(supplier?.rating || { responsiveness: 0, partnership: 0, negotiation: 0 });
+    const [notesHistory] = useState<Note[]>(supplier?.notesHistory || []);
+    const [editingLocation, setEditingLocation] = useState<Location | null>(null);
     const [isEditingLoc, setIsEditingLoc] = useState(false);
 
     const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -559,8 +554,8 @@ const SupplierForm: React.FC<{
         // Clean phone number before saving (remove spaces)
         const cleanPhone = phone.replace(/\s/g, '');
 
-        const data: any = { companyName, vatNumber, email, phone: cleanPhone, address, city, province, zipCode, locations, rating, notesHistory };
-        if (supplier?.id) onSave({ ...data, id: supplier.id }); else onSave(data);
+        const data: SupplierInput = { companyName, vatNumber, email, phone: cleanPhone, address, city, province, zipCode, locations, rating, notesHistory, tags: [], isDeleted: false, notes: '' };
+        if (supplier?.id) onSave({ ...data, id: supplier.id } as Supplier); else onSave(data);
     };
     const handleSaveLocation = (loc: LocationInput | Location) => {
         if ('id' in loc && loc.id && !String(loc.id).startsWith('temp')) {
@@ -589,7 +584,7 @@ const SupplierForm: React.FC<{
                     <div className="md-input-group"><input type="text" value={zipCode} onChange={e => setZipCode(e.target.value)} className="md-input" placeholder=" "/><label className="md-input-label">CAP</label></div>
                 </div>
                 <div>
-                    <div className="flex justify-between items-center mb-2 border-b pb-1"><h3 className="font-bold text-gray-700">Sedi & Disponibilità</h3>{!isEditingLoc && <button type="button" onClick={() => { setEditingLocation({}); setIsEditingLoc(true); }} className="text-xs text-indigo-600 font-bold hover:underline">+ Aggiungi Sede</button>}</div>
+                    <div className="flex justify-between items-center mb-2 border-b pb-1"><h3 className="font-bold text-gray-700">Sedi & Disponibilità</h3>{!isEditingLoc && <button type="button" onClick={() => { setEditingLocation({} as Location); setIsEditingLoc(true); }} className="text-xs text-indigo-600 font-bold hover:underline">+ Aggiungi Sede</button>}</div>
                     {isEditingLoc && editingLocation && (<LocationForm location={editingLocation as Location} onSave={handleSaveLocation} onCancel={() => setIsEditingLoc(false)} />)}
                     <div className="space-y-2 mt-2">{locations.map(loc => (
                         <div key={loc.id} className={`bg-white border rounded p-3 flex justify-between items-center hover:shadow-sm transition-shadow ${loc.closedAt ? 'border-l-4 border-l-red-400 bg-red-50/20' : ''}`}>
@@ -669,7 +664,7 @@ const Suppliers: React.FC = () => {
         } catch (e) { alert("Errore durante il salvataggio"); }
     };
 
-    const getEarliestDay = (supplier: Supplier): number => {
+    const getEarliestDay = useCallback((supplier: Supplier): number => {
         let minDay = 7;
         supplier.locations.forEach(loc => { 
             const locCourses = courses.filter(c => c.locationId === loc.id);
@@ -679,7 +674,7 @@ const Suppliers: React.FC = () => {
             }); 
         });
         return minDay;
-    };
+    }, [courses]);
 
     const filteredSuppliers = useMemo(() => {
         const result = suppliers.filter(s => showTrash ? s.isDeleted : !s.isDeleted);
@@ -690,7 +685,7 @@ const Suppliers: React.FC = () => {
             return sortOrder === 'name_asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
         });
         return result;
-    }, [suppliers, showTrash, sortOrder]);
+    }, [suppliers, showTrash, sortOrder, getEarliestDay]);
 
     const paginatedSuppliers = useMemo(() => {
         const start = (currentPage - 1) * itemsPerPage;
@@ -713,7 +708,7 @@ const Suppliers: React.FC = () => {
                 </div>
             </div>
             
-            <div className="mt-6 flex justify-end mb-4"><select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as any)} className="block w-48 bg-white border rounded-md py-2 px-3 text-sm"><option value="day_asc">Giorno Disp. (Lun-Dom)</option><option value="name_asc">Nome (A-Z)</option><option value="name_desc">Nome (Z-A)</option></select></div>
+            <div className="mt-6 flex justify-end mb-4"><select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'name_asc' | 'name_desc' | 'day_asc')} className="block w-48 bg-white border rounded-md py-2 px-3 text-sm"><option value="day_asc">Giorno Disp. (Lun-Dom)</option><option value="name_asc">Nome (A-Z)</option><option value="name_desc">Nome (Z-A)</option></select></div>
 
             {loading ? <div className="flex justify-center py-12"><Spinner /></div> : (
              <>

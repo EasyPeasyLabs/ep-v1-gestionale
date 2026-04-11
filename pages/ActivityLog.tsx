@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Activity, LessonActivity, EnrollmentStatus, Homework, Course } from '../types';
+import { Activity, EnrollmentStatus, Homework, Course } from '../types';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getActivities, getLessonActivities, saveLessonActivities } from '../services/activityService';
 import { getHomeworks } from '../services/homeworkService';

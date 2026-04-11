@@ -24,13 +24,14 @@ const registerServiceWorker = async (): Promise<ServiceWorkerRegistration | null
       
       const registration = await navigator.serviceWorker.register(swUrl);
       return registration;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as Error;
       // Gestione silenziosa se l'errore è "invalid state" (può capitare in fase di unmount/reload rapido)
-      if (err.name === 'InvalidStateError' || err.message?.includes('invalid state')) {
+      if (error.name === 'InvalidStateError' || error.message?.includes('invalid state')) {
           console.warn('[FCM Service] Registrazione SW saltata: stato documento non valido.');
           return null;
       }
-      console.error('[FCM Service] Errore CRITICO registrazione SW:', err);
+      console.error('[FCM Service] Errore CRITICO registrazione SW:', error);
       return null;
     }
   }
@@ -85,9 +86,9 @@ export const requestNotificationPermission = async (userId: string): Promise<{ s
       } else {
         return { success: false, error: "Firebase non ha restituito nessun token (Token Null)." };
       }
-  } catch (error: any) {
+  } catch (error: unknown) {
       console.error('[FCM Service] Error:', error);
-      let errMsg = error.message || "Errore sconosciuto";
+      let errMsg = error instanceof Error ? error.message : "Errore sconosciuto";
       
       if (errMsg.includes("Subscription failed")) errMsg = "Sottoscrizione fallita (VAPID Key errata o Push Service bloccato).";
       if (errMsg.includes("communication with the push service")) errMsg = "Impossibile contattare i server di notifica (Blocco di rete/AdBlock?).";
@@ -129,7 +130,7 @@ export const setupForegroundMessaging = () => {
                 if ('serviceWorker' in navigator) {
                     navigator.serviceWorker.ready.then(registration => {
                         registration.showNotification(title, options);
-                    }).catch(err => {
+                    }).catch(() => {
                         new Notification(title, options);
                     });
                 } else {

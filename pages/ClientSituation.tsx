@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, TransactionType, CompanyInfo } from '../types';
+import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, CompanyInfo } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions, getInvoices } from '../services/financeService';
@@ -51,7 +51,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     const [filterYear, setFilterYear] = useState('');
     const [filterMonth, setFilterMonth] = useState('');
     const [filterBalanceStatus, setFilterBalanceStatus] = useState<'all' | 'balanced' | 'debt' | 'surplus'>('all');
-    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+    const [sortOrder] = useState<'asc' | 'desc'>('asc');
     
     // Selected Context
     const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -713,7 +713,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                     7: { halign: 'right' },
                     8: { halign: 'right', fontStyle: 'bold' }
                 },
-                didParseCell: (data: any) => {
+                didParseCell: (data) => {
                     if (data.section === 'body') {
                         // Dovuto (Green)
                         if (data.column.index === 6) data.cell.styles.textColor = [50, 150, 50];
@@ -721,15 +721,15 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         if (data.column.index === 7) data.cell.styles.textColor = [50, 150, 50];
                         // Saldo
                         if (data.column.index === 8) {
-                            const val = parseFloat(data.cell.raw);
+                            const val = parseFloat(String(data.cell.raw));
                             if (val > 0.01) {
-                                data.cell.text = `- ${val.toFixed(2)}€`;
+                                data.cell.text = [`- ${val.toFixed(2)}€`];
                                 data.cell.styles.textColor = [220, 50, 50]; // Red
                             } else if (val < -0.01) {
-                                data.cell.text = `+ ${Math.abs(val).toFixed(2)}€`;
+                                data.cell.text = [`+ ${Math.abs(val).toFixed(2)}€`];
                                 data.cell.styles.textColor = [0, 180, 200]; // Cyan
                             } else {
-                                data.cell.text = "OK";
+                                data.cell.text = ["OK"];
                                 data.cell.styles.textColor = [150, 150, 150]; // Gray
                             }
                         }

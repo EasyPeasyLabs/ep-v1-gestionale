@@ -8,7 +8,7 @@ import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
 import { getUserPreferences, markFocusAsSeen } from '../services/profileService';
 import { auth } from '../firebase/config';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment, SchoolClosure } from '../types';
+import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment, SchoolClosure, Client, Supplier, Lesson, Location } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';
@@ -149,17 +149,19 @@ interface LocationOccupancy {
 }
 
 interface DashboardProps {
-    setCurrentPage?: (page: Page, params?: any) => void;
+    setCurrentPage?: (page: Page, params?: Record<string, unknown>) => void;
 }
+
+const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
 
 const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'ratings'>('overview');
   const [loading, setLoading] = useState(true);
   
-  const [clientsData, setClientsData] = useState<any[]>([]);
-  const [suppliersData, setSuppliersData] = useState<any[]>([]);
+  const [clientsData, setClientsData] = useState<Client[]>([]);
+  const [suppliersData, setSuppliersData] = useState<Supplier[]>([]);
   const [allEnrollments, setAllEnrollments] = useState<Enrollment[]>([]);
-  const [manualLessonsData, setManualLessonsData] = useState<any[]>([]);
+  const [manualLessonsData, setManualLessonsData] = useState<Lesson[]>([]);
   const [schoolClosures, setSchoolClosures] = useState<SchoolClosure[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
@@ -170,8 +172,6 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const [isFocusConfigOpen, setIsFocusConfigOpen] = useState(false);
   const [showFocusPopup, setShowFocusPopup] = useState(false);
 
-  const daysMap = ['DOM', 'LUN', 'MAR', 'MER', 'GIO', 'VEN', 'SAB'];
-
   // Compute holidays for the current year once
   const holidaysMap = useMemo(() => getItalianHolidays(new Date().getFullYear()), []);
 
@@ -179,7 +179,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [clients, suppliers, enrollments, manualLessons, transactions, notifs, closures] = await Promise.all([
+        const [clients, suppliers, enrollments, manualLessons, , notifs, closures] = await Promise.all([
           getClients(),
           getSuppliers(),
           getAllEnrollments(),
@@ -209,8 +209,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         // --- COSTRUZIONE MAPPE PER FILTRO VALIDITÀ (Replicata dal Calendario) ---
         const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
         suppliers.forEach(s => {
-            s.locations.forEach((l: any) => {
-                const days = new Set<number>(l.availability?.map((a: any) => a.dayOfWeek) || []);
+            s.locations.forEach((l: Location) => {
+                const days = new Set<number>(l.availability?.map((a: { dayOfWeek: number }) => a.dayOfWeek) || []);
                 if (l.name) locationConfigMap.set(l.name.trim(), { days, closedAt: l.closedAt });
             });
         });
@@ -359,7 +359,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       
       const locationClosureMap = new Map<string, Date | null>();
       suppliersData.forEach(s => {
-          s.locations.forEach((l: any) => {
+          s.locations.forEach((l: Location) => {
               if (l.closedAt) {
                   const closedDate = new Date(l.closedAt);
                   locationClosureMap.set(l.id, isNaN(closedDate.getTime()) ? null : closedDate);
@@ -421,8 +421,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
       // --- 1. PREPARE LOOKUP MAPS FOR VALIDITY CHECK ---
       const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
       suppliersData.forEach(s => {
-          s.locations.forEach((l: any) => {
-              const days = new Set<number>(l.availability?.map((a: any) => a.dayOfWeek) || []);
+          s.locations.forEach((l: Location) => {
+              const days = new Set<number>(l.availability?.map((a: { dayOfWeek: number }) => a.dayOfWeek) || []);
               if (l.name) locationConfigMap.set(l.name.trim().toLowerCase(), { days, closedAt: l.closedAt });
           });
       });
@@ -567,7 +567,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
               closedCount++;
               return;
           }
-          const hasActiveLocation = s.locations.some((l: any) => {
+          const hasActiveLocation = s.locations.some((l: Location) => {
               if (!l.closedAt) return true; 
               const closeDate = new Date(l.closedAt);
               if (isNaN(closeDate.getTime())) return true; // If invalid, consider active
@@ -582,9 +582,9 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
   const locationOccupancy = useMemo(() => {
       const slotsMap: Record<string, LocationOccupancy> = {};
       suppliersData.forEach(s => {
-          s.locations.forEach((l: any) => {
+          s.locations.forEach((l: Location) => {
               if(l.availability && l.availability.length > 0) {
-                  l.availability.forEach((slot: any) => {
+                  l.availability.forEach((slot: { dayOfWeek: number; startTime: string; endTime: string }) => {
                       const key = `${l.id}-${slot.dayOfWeek}-${slot.startTime}`;
                       slotsMap[key] = {
                           key,
@@ -703,7 +703,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
               sSums.negotiation += supplier.rating.negotiation;
           }
           if (supplier.locations) {
-              supplier.locations.forEach((loc: any) => {
+              supplier.locations.forEach((loc: Location) => {
                   if (loc.rating && (loc.rating.cost + loc.rating.safety > 0)) {
                       lCount++;
                       lSums.cost += loc.rating.cost;
@@ -735,7 +735,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
   const topFiveData = useMemo(() => {
       const parents = clientsData.filter(c => c.clientType === ClientType.Parent).map(c => { const p = c as ParentClient; const r = p.rating || { availability: 0, complaints: 0, churnRate: 0, distance: 0 }; const avg = (r.availability + r.complaints + r.churnRate + r.distance) / 4; return { id: p.id, name: `${p.firstName} ${p.lastName}`, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
-      const suppliers = suppliersData.map(s => { const r = s.rating || { responsiveness: 0, partnership: 0, negotiation: 0 }; let fuelRatingSum = 0; let locCount = 0; if (s.locations && s.locations.length > 0) { s.locations.forEach((l: any) => { fuelRatingSum += calculateFuelRating(l.distance || 0); locCount++; }); } const avgFuelRating = locCount > 0 ? fuelRatingSum / locCount : 0; const divisor = locCount > 0 ? 4 : 3; const sum = r.responsiveness + r.partnership + r.negotiation + avgFuelRating; const avg = sum / divisor; return { id: s.id, name: s.companyName, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
+      const suppliers = suppliersData.map(s => { const r = s.rating || { responsiveness: 0, partnership: 0, negotiation: 0 }; let fuelRatingSum = 0; let locCount = 0; if (s.locations && s.locations.length > 0) { s.locations.forEach((l: Location) => { fuelRatingSum += calculateFuelRating(l.distance || 0); locCount++; }); } const avgFuelRating = locCount > 0 ? fuelRatingSum / locCount : 0; const divisor = locCount > 0 ? 4 : 3; const sum = r.responsiveness + r.partnership + r.negotiation + avgFuelRating; const avg = sum / divisor; return { id: s.id, name: s.companyName, score: avg }; }).sort((a, b) => b.score - a.score).slice(0, 5);
       return { parents, suppliers };
   }, [clientsData, suppliersData]);
 

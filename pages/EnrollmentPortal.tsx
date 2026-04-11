@@ -16,22 +16,22 @@ const IconWrap = ({ Icon, className }: { Icon: React.ComponentType, className?: 
   <div className={className}><Icon /></div>
 );
 
-const CheckCircle = (props: any) => <IconWrap Icon={CheckIcon} {...props} />;
-const CreditCard = (props: any) => <IconWrap Icon={EuroCoinIcon} {...props} />;
-const MapPin = ({ className }: any) => <span className={className}>📍</span>;
-const Clock = (props: any) => <IconWrap Icon={ClockIcon} {...props} />;
-const User = (props: any) => <IconWrap Icon={ProfileIcon} {...props} />;
-const Baby = (props: any) => <IconWrap Icon={IdentificationIcon} {...props} />;
-const ChevronRight = ({ className }: any) => <span className={className}>→</span>;
-const ChevronLeft = ({ className }: any) => <span className={className}>←</span>;
-const AlertCircle = (props: any) => <IconWrap Icon={ExclamationIcon} {...props} />;
-const Info = (props: any) => <IconWrap Icon={HelpIcon} {...props} />;
-const ExternalLink = ({ className }: any) => <span className={className}>🔗</span>;
-const Copy = (props: any) => <IconWrap Icon={ClipboardIcon} {...props} />;
-const Calendar = (props: any) => <IconWrap Icon={CalendarIcon} {...props} />;
-const Sparkles = (props: any) => <IconWrap Icon={SparklesIcon} {...props} />;
+const CheckCircle = (props: { className?: string }) => <IconWrap Icon={CheckIcon} {...props} />;
+const CreditCard = (props: { className?: string }) => <IconWrap Icon={EuroCoinIcon} {...props} />;
+const MapPin = ({ className }: { className?: string }) => <span className={className}>📍</span>;
+const Clock = (props: { className?: string }) => <IconWrap Icon={ClockIcon} {...props} />;
+const User = (props: { className?: string }) => <IconWrap Icon={ProfileIcon} {...props} />;
+const Baby = (props: { className?: string }) => <IconWrap Icon={IdentificationIcon} {...props} />;
+const ChevronRight = ({ className }: { className?: string }) => <span className={className}>→</span>;
+const ChevronLeft = ({ className }: { className?: string }) => <span className={className}>←</span>;
+const AlertCircle = (props: { className?: string }) => <IconWrap Icon={ExclamationIcon} {...props} />;
+const Info = (props: { className?: string }) => <IconWrap Icon={HelpIcon} {...props} />;
+const ExternalLink = ({ className }: { className?: string }) => <span className={className}>🔗</span>;
+const Copy = (props: { className?: string }) => <IconWrap Icon={ClipboardIcon} {...props} />;
+const Calendar = (props: { className?: string }) => <IconWrap Icon={CalendarIcon} {...props} />;
+const Sparkles = (props: { className?: string }) => <IconWrap Icon={SparklesIcon} {...props} />;
 import BanknotesIcon from '../components/icons/BanknotesIcon';
-const Banknotes = (props: any) => <IconWrap Icon={BanknotesIcon} {...props} />;
+const Banknotes = (props: { className?: string }) => <IconWrap Icon={BanknotesIcon} {...props} />;
 import {
   SubscriptionType,
   CompanyInfo,
@@ -42,6 +42,11 @@ import {
   TransactionStatus,
   ClientType,
   EnrollmentStatus,
+  Enrollment,
+  Lead,
+  Supplier,
+  Location,
+  AvailabilitySlot,
   SlotType
 } from '../types';
 import Spinner from '../components/Spinner';
@@ -67,20 +72,7 @@ const normalizeString = (val: any) => {
   return str.toLowerCase().replace(/\s+/g, '').trim();
 };
 
-interface Lead {
-  id: string;
-  nome: string;
-  cognome: string;
-  email: string;
-  telefono: string;
-  childName: string;
-  childAge: string;
-  selectedLocation: string;
-  selectedSlot: string;
-  notes?: string;
-  status: string;
-  relatedEnrollmentId?: string;
-}
+// Lead interface is imported from types.ts
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const formatSlotToString = (slot: any): string => {
@@ -210,13 +202,13 @@ const EnrollmentPortal: React.FC = () => {
     }
 
     // Initialize lead state with the ID from URL to ensure it's available for functions
-    setLead({ id: leadId } as any);
+    setLead({ id: leadId } as Lead);
 
     const fetchData = async () => {
       try {
         const getEnrollmentData = httpsCallable(functions, 'getEnrollmentData');
         const result = await getEnrollmentData({ leadId });
-        const data = result.data as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+        const data = result.data as { existingEnrollment?: Enrollment, lead: Lead, company: CompanyInfo, subscriptions: SubscriptionType[], suppliers: Supplier[] };
 
         if (data.existingEnrollment) {
           setExistingEnrollment(data.existingEnrollment);
@@ -236,8 +228,8 @@ const EnrollmentPortal: React.FC = () => {
         // Extract locations from suppliers
         const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
         const locs: { id: string, name: string, address: string, city: string, color: string, slots: { time: string, type: SlotType }[] }[] = [];
-        suppliers.forEach((s: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-          s.locations.forEach((l: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+        suppliers.forEach((s: Supplier) => {
+          s.locations.forEach((l: Location) => {
             // Filter out closed or hidden locations
             if (!l.closedAt && l.isPubliclyVisible !== false) {
               locs.push({
@@ -248,8 +240,8 @@ const EnrollmentPortal: React.FC = () => {
                 color: l.color,
                 // Filter out hidden slots
                 slots: (l.availability || [])
-                  .filter((a: any) => a.isPubliclyVisible !== false) // eslint-disable-line @typescript-eslint/no-explicit-any
-                  .map((a: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+                  .filter((a: AvailabilitySlot) => a.isPubliclyVisible !== false)
+                  .map((a: AvailabilitySlot) => ({
                     time: `${daysMap[a.dayOfWeek || 0]}, ${a.startTime} - ${a.endTime}`,
                     type: a.type || 'LAB'
                   }))
@@ -307,16 +299,14 @@ const EnrollmentPortal: React.FC = () => {
 
         // 3. Match Bundle (Subscription) - ID Prioritized (Infallible ID from Project B)
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
-          preselectedSubId = (leadData.selectedSlot as any).bundleId || (leadData.selectedSlot as any).subscriptionId || '';
+          preselectedSubId = (leadData.selectedSlot as Record<string, unknown>).bundleId as string || (leadData.selectedSlot as Record<string, unknown>).subscriptionId as string || '';
         }
 
         // Validation & Name Fallback
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const subExists = preselectedSubId ? subs.find((s: any) => s.id === preselectedSubId) : null;
+        const subExists = preselectedSubId ? subs.find((s: SubscriptionType) => s.id === preselectedSubId) : null;
 
         if (!subExists && normalizedSlotString) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const matchedSub = subs.find((s: any) =>
+          const matchedSub = subs.find((s: SubscriptionType) =>
             s.statusConfig?.status === 'active' && (
               normalizeString(s.name).includes(normalizeString(normalizedSlotString)) ||
               normalizeString(normalizedSlotString).includes(normalizeString(s.name)) ||
@@ -330,9 +320,9 @@ const EnrollmentPortal: React.FC = () => {
 
         // Estrai gli slot inclusi nel bundle (es. LAB + SG) se disponibili
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
-          const bundleSlots = (leadData.selectedSlot as any).includedSlots;
+          const bundleSlots = (leadData.selectedSlot as Record<string, unknown>).includedSlots;
           if (Array.isArray(bundleSlots) && bundleSlots.length > 0) {
-            setSelectedBundleSlots(bundleSlots);
+            setSelectedBundleSlots(bundleSlots as { type: string; startTime: string; endTime: string; }[]);
           }
         }
 
@@ -504,9 +494,10 @@ const EnrollmentPortal: React.FC = () => {
       setSuccessMode(isCash ? 'booking' : 'paid');
       setIsSuccess(true);
       setShowBookingModal(false);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      alert(`Errore durante l'iscrizione: ${err.message || "Sconosciuto"}`);
+      const errorMessage = err instanceof Error ? err.message : "Sconosciuto";
+      alert(`Errore durante l'iscrizione: ${errorMessage}`);
     } finally {
       setIsProcessing(false);
     }
@@ -938,7 +929,7 @@ const EnrollmentPortal: React.FC = () => {
                           const filteredSlots = typeSlots.filter(slot => {
                             if (showAllOptions || !lead?.selectedSlot) return true;
                             const slotNorm = normalizeString(slot.time);
-                            const leadSlotNorm = normalizeString(lead.selectedSlot);
+                            const leadSlotNorm = normalizeString(formatSlotToString(lead.selectedSlot));
                             return leadSlotNorm.includes(slotNorm) || slotNorm.includes(leadSlotNorm);
                           });
 
@@ -953,8 +944,8 @@ const EnrollmentPortal: React.FC = () => {
                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {(showAllOptions ? typeSlots : filteredSlots).map(slot => {
                                   const isPreferred = lead?.selectedSlot && (
-                                    normalizeString(lead.selectedSlot).includes(normalizeString(slot.time)) ||
-                                    normalizeString(slot.time).includes(normalizeString(lead.selectedSlot))
+                                    normalizeString(formatSlotToString(lead.selectedSlot)).includes(normalizeString(slot.time)) ||
+                                    normalizeString(slot.time).includes(normalizeString(formatSlotToString(lead.selectedSlot)))
                                   );
                                   return (
                                     <button
@@ -966,7 +957,7 @@ const EnrollmentPortal: React.FC = () => {
                                         <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${typeColor}`}>
                                           {type}
                                         </span>
-                                        {isPreferred && (
+                                        {Boolean(isPreferred) && (
                                           <CheckCircle className="w-5 h-5 text-ep-blue-600" />
                                         )}
                                       </div>

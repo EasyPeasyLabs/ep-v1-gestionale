@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { doc, getDoc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, setDoc, arrayUnion } from 'firebase/firestore';
 import { UserPreferences, FocusConfig } from '../types';
 
 const COLLECTION_NAME = 'user_preferences';
@@ -13,9 +13,10 @@ export const getUserPreferences = async (userId: string): Promise<UserPreference
             return docSnap.data() as UserPreferences;
         }
         return {};
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Gestione graceful per modalità offline
-        if (error.code === 'unavailable' || error.message?.includes('offline')) {
+        const err = error as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (err.code === 'unavailable' || err.message?.includes('offline')) {
              console.warn("Firestore offline: Loaded default user preferences.");
              return {};
         }

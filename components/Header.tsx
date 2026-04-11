@@ -24,7 +24,7 @@ import IdentificationIcon from './icons/IdentificationIcon'; // For Client Situa
 interface HeaderProps {
     user: User;
     setCurrentPage: (page: Page) => void;
-    onNavigate?: (page: Page, params?: any) => void;
+    onNavigate?: (page: Page, params?: Record<string, unknown>) => void;
     onMenuClick: () => void;
 }
 
@@ -96,7 +96,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
         return () => clearTimeout(timer);
     }, [searchTerm]);
 
-    const handleSearchResultClick = (page: Page, params: any) => {
+    const handleSearchResultClick = (page: Page, params?: Record<string, unknown>) => {
         if (onNavigate) {
             onNavigate(page, params);
         } else {
@@ -192,7 +192,7 @@ const Header: React.FC<HeaderProps> = ({ user, setCurrentPage, onNavigate, onMen
               <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden animate-fade-in-down z-50 max-h-[80vh] overflow-y-auto">
                   
                   {/* Empty State */}
-                  {Object.values(searchResults).every((arr: any) => arr.length === 0) && (
+                  {Object.values(searchResults).every((arr) => (arr as unknown[]).length === 0) && (
                       <div className="p-4 text-center text-gray-400 text-sm italic">
                           Nessun risultato trovato per "{searchTerm}".
                       </div>

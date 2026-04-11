@@ -1,7 +1,7 @@
 
 import { db } from '../firebase/config';
 import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, getDoc, setDoc } from 'firebase/firestore';
-import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate, NotificationRule, NotificationType, PortalText } from '../types';
+import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, ContractTemplate, NotificationRule, PortalText } from '../types';
 
 const getSettingsDocRef = () => doc(db, 'settings', 'companyInfo');
 const getSubscriptionCollectionRef = () => collection(db, 'subscriptionTypes');
@@ -110,9 +110,10 @@ export const getCompanyInfo = async (): Promise<CompanyInfo> => {
             await setDoc(getSettingsDocRef(), defaultCompanyInfo);
             return defaultCompanyInfo;
         }
-    } catch (error: any) {
+    } catch (error: unknown) {
         // Gestione graceful per modalità offline
-        if (error.code === 'unavailable' || error.message?.includes('offline')) {
+        const err = error as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+        if (err.code === 'unavailable' || err.message?.includes('offline')) {
              console.warn("Firestore offline: Loaded default company info.");
              return defaultCompanyInfo;
         }
@@ -142,10 +143,7 @@ export const addSubscriptionType = async (sub: SubscriptionTypeInput): Promise<s
 
 export const updateSubscriptionType = async (id: string, sub: Partial<SubscriptionTypeInput>): Promise<void> => {
     const docRef = doc(db, 'subscriptionTypes', id);
-    // Strip ID from payload to avoid Firestore errors or redundancy
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { id: _, ...data } = sub as any;
-    await updateDoc(docRef, data);
+    await updateDoc(docRef, sub as { [x: string]: unknown });
 };
 
 export const deleteSubscriptionType = async (id: string): Promise<void> => {
@@ -176,7 +174,6 @@ export const getCommunicationTemplates = async (): Promise<CommunicationTemplate
 
 export const saveCommunicationTemplate = async (template: CommunicationTemplate): Promise<void> => {
     // FIX: Remove 'id' from the payload to prevent saving empty/duplicate IDs in the document data
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, ...dataToSave } = template;
 
     if (id) {
@@ -263,7 +260,6 @@ export const getContractTemplates = async (): Promise<ContractTemplate[]> => {
 };
 
 export const saveContractTemplate = async (template: ContractTemplate): Promise<void> => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, ...dataToSave } = template;
 
     if (id) {

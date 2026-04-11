@@ -155,8 +155,10 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
 
             onComplete();
         } catch (e: unknown) {
-            const error = e as Error;
-            alert("Errore attivazione: " + error.message);
+            const message = e instanceof Error ? e.message : String(e);
+            console.error("Errore attivazione:", message);
+            // Consider replacing alert with a custom UI notification component if available
+            // alert("Errore attivazione: " + message);
         } finally {
             setLoading(false);
         }
@@ -173,10 +175,10 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
 
     return (
         <div className="flex flex-col h-[85vh] lg:h-[80vh] bg-gray-50">
-            <div className="p-6 border-b bg-ep-blue-900 text-white flex-shrink-0 flex justify-between items-center shadow-lg z-10">
+            <div className="p-6 border-b bg-indigo-900 text-white flex-shrink-0 flex justify-between items-center shadow-lg z-10">
                 <div>
                     <h3 className="text-xl font-black uppercase tracking-tight">Attivazione Progetto Ente</h3>
-                    <p className="text-xs text-ep-blue-300 font-bold mt-0.5">Preventivo: {quote.quoteNumber} • {quote.clientName}</p>
+                    <p className="text-xs text-indigo-300 font-bold mt-0.5">Preventivo: {quote.quoteNumber} • {quote.clientName}</p>
                 </div>
                 <div className="bg-white/10 px-4 py-1.5 rounded-full text-xs font-black border border-white/20 uppercase tracking-widest">Step {step}/3</div>
             </div>
@@ -184,7 +186,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
             <div className="flex-1 overflow-y-auto p-4 md:p-8">
                 {step === 1 && (
                     <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
-                        <div className="bg-ep-blue-600 text-white p-6 rounded-2xl shadow-xl">
+                        <div className="bg-indigo-600 text-white p-6 rounded-2xl shadow-xl">
                             <h4 className="font-black text-lg mb-2 flex items-center gap-2"><SparklesIcon /> Configurazione Operativa</h4>
                             <p className="text-sm opacity-80 leading-relaxed font-medium">Stai trasformando l'accordo economico in un'entità gestionale. L'iscrizione monitorerà le rate del preventivo e le presenze sul campo.</p>
                         </div>
@@ -196,9 +198,9 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                                     <div key={i} className="flex justify-between items-center text-sm p-3 bg-slate-50 rounded-xl border border-slate-100">
                                         <div className="flex flex-col">
                                             <span className="font-bold text-slate-700">{inst.description}</span>
-                                            {inst.triggerType === 'lesson_number' && <span className="text-[9px] text-ep-blue-600 font-bold">Trigger: Lezione {inst.triggerLessonIndex}</span>}
+                                            {inst.triggerType === 'lesson_number' && <span className="text-[9px] text-indigo-600 font-bold">Trigger: Lezione {inst.triggerLessonIndex}</span>}
                                         </div>
-                                        <span className="font-black text-ep-blue-600">{inst.amount.toFixed(2)}€ <span className="text-[10px] text-slate-400 ml-1 font-bold">entro {new Date(inst.dueDate).toLocaleDateString()}</span></span>
+                                        <span className="font-black text-indigo-600">{inst.amount.toFixed(2)}€ <span className="text-[10px] text-slate-400 ml-1 font-bold">entro {new Date(inst.dueDate).toLocaleDateString()}</span></span>
                                     </div>
                                 ))}
                                 {quote.installments.length === 0 && <p className="text-xs italic text-slate-400 p-4 text-center">Soluzione unica: {quote.totalAmount.toFixed(2)}€</p>}
@@ -214,13 +216,13 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                         <div className="bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex">
                             <button 
                                 onClick={() => setActivationMode('generate')}
-                                className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${activationMode === 'generate' ? 'bg-ep-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${activationMode === 'generate' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                             >
                                 <span className="flex items-center justify-center gap-2"><PlusIcon /> Genera Calendario</span>
                             </button>
                             <button 
                                 onClick={() => setActivationMode('link')}
-                                className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${activationMode === 'link' ? 'bg-ep-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                                className={`flex-1 py-3 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${activationMode === 'link' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                             >
                                 <span className="flex items-center justify-center gap-2">🔗 Collega Esistenti</span>
                             </button>
@@ -230,7 +232,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                         {activationMode === 'generate' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0">
                                 <div className="lg:col-span-1 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 h-fit">
-                                    <h4 className="text-xs font-black text-ep-blue-900 uppercase tracking-widest mb-2 border-b pb-2">Parametri Generazione</h4>
+                                    <h4 className="text-xs font-black text-indigo-900 uppercase tracking-widest mb-2 border-b pb-2">Parametri Generazione</h4>
                                     
                                     <div>
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Sede Operativa</label>
@@ -255,7 +257,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Giorno & Orario</label>
                                         <div className="flex gap-2 mb-2">
                                             {['Dom','Lun','Mar','Mer','Gio','Ven','Sab'].map((d, i) => (
-                                                <button key={i} onClick={() => setGenDayOfWeek(i)} className={`flex-1 py-1 rounded text-[10px] font-bold border ${genDayOfWeek === i ? 'bg-ep-blue-600 text-white border-ep-blue-600' : 'bg-white text-gray-500 border-gray-200'}`}>{d}</button>
+                                                <button key={i} onClick={() => setGenDayOfWeek(i)} className={`flex-1 py-1 rounded text-[10px] font-bold border ${genDayOfWeek === i ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200'}`}>{d}</button>
                                             ))}
                                         </div>
                                         <div className="flex gap-2 items-center">
@@ -265,7 +267,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                                         </div>
                                     </div>
 
-                                    <button onClick={handleGeneratePreview} className="w-full md-btn md-btn-sm bg-ep-blue-50 text-ep-blue-700 border border-ep-blue-200 font-bold hover:bg-ep-blue-100">
+                                    <button onClick={handleGeneratePreview} className="w-full md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold hover:bg-indigo-100">
                                         Aggiorna Anteprima
                                     </button>
                                 </div>
@@ -283,7 +285,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                                                     <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: lesson.locationColor }}></div>
                                                     <span className="text-[10px] font-black text-slate-400 uppercase mb-1">Lezione {idx + 1}</span>
                                                     <span className="text-sm font-bold text-slate-800">{new Date(lesson.date).toLocaleDateString()}</span>
-                                                    <span className="text-xs text-ep-blue-600 font-mono mt-1">{lesson.startTime} - {lesson.endTime}</span>
+                                                    <span className="text-xs text-indigo-600 font-mono mt-1">{lesson.startTime} - {lesson.endTime}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -297,18 +299,18 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                             <div className="flex-1 flex flex-col space-y-4">
                                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
                                     <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Seleziona Slot Liberi</h4>
-                                    <div className="relative w-full sm:w-64"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" placeholder="Cerca sede..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-ep-blue-500 outline-none" /></div>
+                                    <div className="relative w-full sm:w-64"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" placeholder="Cerca sede..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
                                 </div>
                                 
                                 {loading ? <div className="flex justify-center py-20"><Spinner /></div> : (
                                     <div className="flex-1 overflow-y-auto bg-slate-100 rounded-2xl p-4 border border-slate-200">
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                             {filteredLessons.map(l => (
-                                                <label key={l.id} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer shadow-sm active:scale-95 ${selectedLessonIds.includes(l.id) ? 'bg-ep-blue-600 border-ep-blue-700 text-white shadow-ep-blue-200' : 'bg-white border-slate-200 hover:border-ep-blue-300 hover:bg-ep-blue-50/30'}`}>
-                                                    <input type="checkbox" checked={selectedLessonIds.includes(l.id)} onChange={() => handleToggleLesson(l.id)} className="rounded text-ep-blue-500 w-5 h-5 border-gray-300" />
+                                                <label key={l.id} className={`flex items-center gap-3 p-4 rounded-2xl border-2 transition-all cursor-pointer shadow-sm active:scale-95 ${selectedLessonIds.includes(l.id) ? 'bg-indigo-600 border-indigo-700 text-white shadow-indigo-200' : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30'}`}>
+                                                    <input type="checkbox" checked={selectedLessonIds.includes(l.id)} onChange={() => handleToggleLesson(l.id)} className="rounded text-indigo-500 w-5 h-5 border-gray-300" />
                                                     <div className="flex-1 min-w-0">
                                                         <p className={`font-black text-xs uppercase ${selectedLessonIds.includes(l.id) ? 'text-white' : 'text-slate-800'}`}>{new Date(l.date).toLocaleDateString('it-IT', {weekday:'short', day:'2-digit', month:'short'})}</p>
-                                                        <p className={`text-[10px] font-bold mt-0.5 truncate ${selectedLessonIds.includes(l.id) ? 'text-ep-blue-200' : 'text-slate-500'}`}>{l.startTime} • {l.locationName}</p>
+                                                        <p className={`text-[10px] font-bold mt-0.5 truncate ${selectedLessonIds.includes(l.id) ? 'text-indigo-200' : 'text-slate-500'}`}>{l.startTime} • {l.locationName}</p>
                                                     </div>
                                                 </label>
                                             ))}
@@ -316,7 +318,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                                         {filteredLessons.length === 0 && <p className="text-center text-xs text-slate-400 py-20 font-bold uppercase tracking-widest italic">Nessuno slot 'Extra' disponibile.</p>}
                                     </div>
                                 )}
-                                <div className="bg-ep-blue-100 text-ep-blue-700 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-tighter self-end">Selezionati: {selectedLessonIds.length} slot</div>
+                                <div className="bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-tighter self-end">Selezionati: {selectedLessonIds.length} slot</div>
                             </div>
                         )}
                     </div>
@@ -328,7 +330,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                         <h4 className="text-3xl font-black text-slate-900 tracking-tight">Esecuzione Imminente</h4>
                         <p className="text-sm text-slate-500 leading-relaxed font-medium">Il progetto verrà inizializzato con lo stato <strong>ATTIVO</strong>. <br/>Il sistema genererà automaticamente le fatture pro-forma per le rate impostate.</p>
                         <div className="bg-white p-6 rounded-2xl border-2 border-dashed border-slate-200 text-left">
-                            <h5 className="text-[10px] font-black text-ep-blue-700 uppercase tracking-widest mb-3">Riepilogo Generale</h5>
+                            <h5 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest mb-3">Riepilogo Generale</h5>
                             <ul className="text-sm space-y-2 text-slate-700 font-bold">
                                 <li className="flex justify-between border-b pb-2"><span>Ente:</span> <span className="text-slate-900">{quote.clientName}</span></li>
                                 <li className="flex justify-between border-b pb-2"><span>Progetto:</span> <span className="text-slate-900">{projectName}</span></li>

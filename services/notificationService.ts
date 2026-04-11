@@ -5,7 +5,7 @@ import { getInvoices, getQuotes, getTransactions, checkAndSetOverdueInvoices } f
 import { getFiscalYears } from './fiscalYearService';
 import { getUserPreferences } from './profileService';
 import { auth } from '../firebase/config';
-import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient, DocumentStatus, TransactionStatus, Quote } from '../types';
+import { Notification, EnrollmentStatus, ClientType, ParentClient, InstitutionalClient, DocumentStatus } from '../types';
 
 // Helper per calcolare data meno 30 giorni lavorativi (circa 42 giorni solari)
 const getBillingDeadlineThreshold = () => {
@@ -38,7 +38,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
     const fiscalYears = await getFiscalYears();
     const closedYears = new Set(fiscalYears.filter(fy => fy.status === 'CLOSED').map(fy => fy.year));
 
-    const [enrollments, clients, invoices, quotes, transactions] = await Promise.all([
+    const [enrollments, clients, invoices, , transactions] = await Promise.all([
         getAllEnrollments(),
         getClients(),
         getInvoices(),
@@ -60,7 +60,7 @@ export const getNotifications = async (): Promise<Notification[]> => {
     today.setHours(0, 0, 0, 0);
     const sevenDaysFromNow = new Date(today);
     sevenDaysFromNow.setDate(today.getDate() + 7);
-    const billingThreshold = getBillingDeadlineThreshold();
+    getBillingDeadlineThreshold();
 
     // Helper: Controlla se una data appartiene a un anno fiscale chiuso
     const isClosed = (dateStr: string) => {

@@ -17,7 +17,7 @@ const docToSupplier = (doc: QueryDocumentSnapshot<DocumentData>): Supplier => {
         province: data.province || '',
         email: data.email || '',
         phone: data.phone || '',
-        locations: (data.locations || []).map((loc: any) => ({
+        locations: (data.locations || []).map((loc: Location) => ({
             ...loc,
             name: loc.name || 'Sede senza nome',
             // Ensure new fields have defaults for existing data

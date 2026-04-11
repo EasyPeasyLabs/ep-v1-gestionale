@@ -135,7 +135,7 @@ export interface Course {
     status: 'open' | 'closed';
     startDate?: string; // Data inizio validità corso
     endDate?: string; // Data fine validità corso
-    updatedAt?: any;
+    updatedAt?: string;
     comboConfigs?: Partial<Record<SlotType, {
         startTime: string;
         endTime: string;
@@ -462,7 +462,7 @@ export interface Notification {
     clientId: string;
     date: string;
     linkPage?: string;
-    filterContext?: any;
+    filterContext?: Record<string, unknown>;
 }
 
 export enum EnrollmentStatus {
@@ -492,6 +492,27 @@ export interface Appointment {
     type?: string;
     recoveryId?: string; // ID of the recovery lesson generated for this absence
     recoveredLessonId?: string; // ID of the original lesson that this one is recovering
+}
+
+export interface Lead {
+  id: string;
+  nome: string;
+  cognome: string;
+  email: string;
+  telefono: string;
+  childName: string;
+  childAge: string;
+  selectedLocation: string;
+  selectedSubscription?: string;
+  selectedSlot: unknown;
+  address?: string;
+  notes?: string;
+  status: 'pending' | 'contacted' | 'converted' | 'rejected';
+  createdAt: string;
+  source: string;
+  convertedAt?: string;
+  convertedEnrollmentId?: string;
+  convertedStudentId?: string;
 }
 
 export interface Enrollment {
@@ -756,6 +777,63 @@ export interface IntegrityIssueSuggestion {
     invoices?: Invoice[];
     isPerfect?: boolean;
     gap?: number;
+}
+
+export interface FinanceStats {
+    cashRevenue: number;
+    invoicedRevenue: number;
+    expenses: number;
+    monthlyData: { cash: number; invoiced: number; month: number }[];
+    revenue: number;
+    profit: number;
+    margin: number;
+    taxable: number;
+    taxableNet: number;
+    inps: number;
+    tax: number;
+    stampDutyTotal: number;
+    totalLiability: number;
+    totalInpsTax: number;
+    totalAll: number;
+    savingsSuggestion: number;
+    progress: number;
+}
+
+export interface FinanceSimulatorData {
+    totalTarget: number;
+    tranche1: number;
+    tranche2: number;
+    savingsPlan: { amount: number }[];
+}
+
+export interface ReverseEngineering {
+    targetMonthlyNet: number;
+    currentNetSalary: number;
+    grossNeeded: number;
+    currentAvgPrice: number;
+    recommendedPrice: number;
+    studentsNeededTotal: number;
+    studentsNeeded: number;
+    bestSubscription: { name: string; roi: number } | null;
+}
+
+export interface LocationROI {
+    name: string;
+    color: string;
+    revenue: number;
+    costs: number;
+    breakdown: {
+        rent: { total: number; current: number };
+        operational: number;
+        logistics: number;
+        overhead: number;
+    };
+    costPerLesson: { value: number; min: number; max: number; avg: number };
+    costPerStudentPerLesson: number;
+    costPerStudent: number;
+    studentBasedCosts: number;
+    isAccountant?: boolean;
+    globalRevenue?: number;
 }
 
 export interface IntegrityIssue {

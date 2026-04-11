@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, doc, updateDoc, getDoc, getDocFromServer, writeBatch, orderBy, arrayUnion } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
-import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee } from '../types';
+import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee, Course } from '../types';
 import { isItalianHoliday } from '../utils/dateUtils';
 import { getSchoolClosures } from './calendarService';
 
@@ -190,7 +190,7 @@ const generateTheoreticalAppointments = (
     startTime: string,
     endTime: string,
     childName: string,
-    comboConfigs?: any,
+    comboConfigs?: Course['comboConfigs'],
     weeklyPlan?: Record<number, string>
 ): Appointment[] => {
     const appointments: Appointment[] = [];
@@ -1014,7 +1014,7 @@ export const migrateHistoricalEnrollments = async (): Promise<{ updated: number,
             const needsUpdate = modified || enr.labCount === undefined || enr.sgCount === undefined || enr.evtCount === undefined || enr.readCount === undefined;
 
             if (needsUpdate) {
-                const updateData: Record<string, any> = {
+                const updateData: Record<string, unknown> = {
                     appointments: newApps,
                     labCount,
                     sgCount,
@@ -1070,7 +1070,7 @@ export const activateEnrollmentWithLocation = async (
     if (enrollment.courseId) {
         const courseSnap = await getDoc(doc(db, 'courses', enrollment.courseId));
         if (courseSnap.exists()) {
-            const courseData = courseSnap.data() as any;
+            const courseData = courseSnap.data() as Course;
             if (courseData.slotType === 'LAB+SG') {
                 comboConfigs = courseData.comboConfigs;
                 weeklyPlan = courseData.weeklyPlan;

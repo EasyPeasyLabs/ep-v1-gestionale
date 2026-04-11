@@ -10,8 +10,6 @@ import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
-import SearchIcon from '../components/icons/SearchIcon';
-import Pagination from '../components/Pagination';
 
 // --- SUB-COMPONENTS ---
 

@@ -1,5 +1,5 @@
 
-import { SlotType } from './types.ts';
+// SlotType removed
 
 // Mock Lead con dati "sporchi"
 export const mockLead = {
@@ -22,14 +22,15 @@ export const mockLead = {
 };
 
 // Funzione estratta da EnrollmentPortal.tsx per test unitario
-export const formatSlotToString = (slot: any): string => {
+export const formatSlotToString = (slot: unknown): string => {
   if (!slot) return '';
   if (typeof slot === 'string') return slot;
+  const s = slot as Record<string, unknown>;
   const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-  const day = daysMap[slot.dayOfWeek || 0] || '';
-  const time = (slot.startTime && slot.endTime) ? `${slot.startTime} - ${slot.endTime}` : '';
+  const day = daysMap[(s.dayOfWeek as number) || 0] || '';
+  const time = (s.startTime && s.endTime) ? `${s.startTime} - ${s.endTime}` : '';
   if (day && time) return `${day}, ${time}`;
-  if (slot.bundleName) return slot.bundleName;
+  if (s.bundleName) return s.bundleName as string;
   return JSON.stringify(slot);
 };
 

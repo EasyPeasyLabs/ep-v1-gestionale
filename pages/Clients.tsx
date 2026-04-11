@@ -4,9 +4,9 @@ import * as XLSX from 'xlsx';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
-import { getClients, addClient, updateClient, deleteClient, restoreClient, permanentDeleteClient } from '../services/parentService';
+import { getClients, addClient, updateClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments, deleteEnrollment, getEnrollmentsForClient } from '../services/enrollmentService';
-import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, anonymizeClientFinancials } from '../services/financeService';
+import { cleanupEnrollmentFinancials, anonymizeClientFinancials, deleteAutoRentTransactions } from '../services/financeService';
 import { importClientsFromExcel } from '../services/importService';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -243,7 +243,7 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
         // Clean phone number before saving (remove spaces)
         const cleanPhone = phone.replace(/\s/g, '');
 
-        const common: any = { 
+        const common: Record<string, unknown> = { 
             email, phone: cleanPhone, address, zipCode, city, province, clientType, notesHistory,
             preferredLocation: client?.preferredLocation,
             preferredSlot: client?.preferredSlot
@@ -256,17 +256,17 @@ const ClientForm: React.FC<{ client?: Client | null; onSave: (c: ClientInput | C
         }
         
         if (clientType === ClientType.Parent) {
-            const parentData: any = {
+            const parentData: ClientInput = {
                 ...common,
                 firstName, lastName, taxCode, children,
                 rating: parentRating
-            };
+            } as ClientInput;
             if (client?.id) { onSave({ ...parentData, id: client.id }); } else { onSave(parentData); }
         } else {
-            const instData: any = {
+            const instData: ClientInput = {
                 ...common,
                 companyName, vatNumber, numberOfChildren, ageRange
-            };
+            } as ClientInput;
             if (client?.id) { onSave({ ...instData, id: client.id }); } else { onSave(instData); }
         }
     };
@@ -979,7 +979,7 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
                         onChange={(e) => setFilterTime(e.target.value)}
                         className="flex-1 lg:w-28 block bg-white border rounded-md py-2 px-2 text-sm min-w-[80px]"
                     />
-                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as any)} className="flex-1 lg:w-40 block bg-white border rounded-md py-2 px-3 text-sm min-w-[130px]">
+                    <select value={sortOrder} onChange={e => setSortOrder(e.target.value as 'surname_asc' | 'surname_desc' | 'name_asc' | 'name_desc')} className="flex-1 lg:w-40 block bg-white border rounded-md py-2 px-3 text-sm min-w-[130px]">
                         <option value="surname_asc">Cognome (A-Z)</option>
                         <option value="surname_desc">Cognome (Z-A)</option>
                         <option value="name_asc">Nome (A-Z)</option>

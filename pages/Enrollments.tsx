@@ -1,13 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, EnrollmentStatus, TransactionType, TransactionCategory, PaymentMethod, ClientType, TransactionStatus, DocumentStatus, InvoiceInput, Supplier, Invoice, Client, InstitutionalClient, Transaction, Quote } from '../types';
+import { ParentClient, Enrollment, EnrollmentInput, PaymentMethod, ClientType, DocumentStatus, Supplier, Invoice, Client, Transaction, Quote } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, addRecoveryLessons, bulkUpdateLocation, activateEnrollmentWithLocation, getEnrollmentsForClient, resyncInstitutionalEnrollment } from '../services/enrollmentService';
-import { cleanupEnrollmentFinancials, deleteAutoRentTransactions, getInvoices, updateQuote, getOrphanedFinancialsForClient, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment, getTransactions, getQuotes } from '../services/financeService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment } from '../services/enrollmentService';
+import { cleanupEnrollmentFinancials, getInvoices, updateQuote, getTransactions, getOrphanedFinancialsForClient, getQuotes, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
-import { importEnrollmentsFromExcel } from '../services/importService';
-import { exportEnrollmentsToExcel } from '../utils/financeExport';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -18,8 +16,6 @@ import SearchIcon from '../components/icons/SearchIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import RefreshIcon from '../components/icons/RestoreIcon';
 import UserPlusIcon from '../components/icons/UserPlusIcon';
-import UploadIcon from '../components/icons/UploadIcon';
-import ImportModal from '../components/ImportModal';
 import ClockIcon from '../components/icons/ClockIcon';
 
 const daysOfWeekMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
@@ -31,27 +27,6 @@ const getTextColorForBg = (bgColor: string) => {
     const g = parseInt(color.substring(2, 4), 16);
     const b = parseInt(color.substring(4, 6), 16);
     return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#1f2937' : '#ffffff';
-};
-
-const getClientName = (c?: Client) => {
-    if (!c) return 'Sconosciuto';
-    if (c.clientType === ClientType.Parent) {
-        const p = c as ParentClient;
-        return `${p.firstName || ''} ${p.lastName || ''}`.trim();
-    } else {
-        const i = c as InstitutionalClient;
-        return i.companyName || 'Ente Sconosciuto';
-    }
-};
-
-const getStatusColor = (status: EnrollmentStatus) => {
-    switch (status) {
-        case EnrollmentStatus.Active: return 'bg-green-500 border-green-600';
-        case EnrollmentStatus.Completed: return 'bg-blue-500 border-blue-600';
-        case EnrollmentStatus.Expired: return 'bg-gray-400 border-gray-500';
-        case EnrollmentStatus.Pending: return 'bg-amber-400 border-amber-500';
-        default: return 'bg-gray-300';
-    }
 };
 
 // --- FINANCIAL WIZARD COMPONENT ---
@@ -76,15 +51,15 @@ const EnrollmentFinancialWizard: React.FC<{
     useEffect(() => {
         if (path === 'reconcile') {
             setLoading(true);
-            getOrphanedFinancialsForClient(enrollment.clientId).then(data => {
+            getOrphanedFinancialsForClient(enrollment.clientId).then((data: { orphanInvoices: Invoice[], orphanTransactions: Transaction[], orphanGhosts: Invoice[] }) => {
                 setOrphans(data);
                 setLoading(false);
             });
         }
         if (enrollment.isQuoteBased && enrollment.relatedQuoteId && path === 'installments') {
             setLoading(true);
-            getQuotes().then(list => {
-                const found = list.find(q => q.id === enrollment.relatedQuoteId);
+            getQuotes().then((list: Quote[]) => {
+                const found = list.find((q: Quote) => q.id === enrollment.relatedQuoteId);
                 if (found) setRelatedQuote(found);
                 setLoading(false);
             });
@@ -416,8 +391,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         setLoading(true); 
         try { 
             for (const d of enrollmentsData) { 
-                if ('id' in d) {
-                    await updateEnrollment((d as any).id, d, options?.regenerateCalendar);
+                if ('id' in d && typeof (d as { id?: string }).id === 'string') {
+                    await updateEnrollment((d as { id: string }).id, d, options?.regenerateCalendar);
                 } else {
                     const newId = await addEnrollment(d);
                     if (d.locationId && d.locationId !== 'unassigned') {
@@ -475,8 +450,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 alert("ATTENZIONE: Nessuna lezione trovata collegata a questo progetto. \n\nSuggerimento: Se hai creato le lezioni manualmente, assicurati che il nome del progetto sia presente nella descrizione/titolo della lezione per permettere l'auto-riparazione.");
             }
             await fetchData();
-        } catch (e: any) {
-            alert("Errore durante la sincronizzazione: " + e.message);
+        } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : "Sconosciuto";
+            alert("Errore durante la sincronizzazione: " + errorMessage);
         } finally {
             setLoading(false);
         }
@@ -500,7 +476,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     }, [suppliers, enrollments]);
 
     const groupedEnrollments = useMemo(() => {
-        const groups: Record<string, any> = {};
+        interface Group {
+            locationId: string;
+            locationName: string;
+            locationColor: string;
+            days: Record<number, { dayName: string, items: Enrollment[] }>;
+        }
+        const groups: Record<string, Group> = {};
         suppliers.forEach(s => { 
             s.locations.forEach(l => { 
                 if (!l.closedAt) {
@@ -576,8 +558,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         });
         
         let result = Object.values(groups);
-        if (filterLocation) { result = result.filter((g: any) => g.locationName === filterLocation); }
-        return result.sort((a: any, b: any) => { if (a.locationId === 'unassigned') return -1; if (b.locationId === 'unassigned') return 1; return a.locationName.localeCompare(b.locationName); });
+        if (filterLocation) { result = result.filter((g: Group) => g.locationName === filterLocation); }
+        return result.sort((a: Group, b: Group) => { if (a.locationId === 'unassigned') return -1; if (b.locationId === 'unassigned') return 1; return a.locationName.localeCompare(b.locationName); });
     }, [enrollments, suppliers, searchTerm, filterLocation, filterYear, filterMonth]);
 
     const unassignedEnrollments = useMemo(() => {
@@ -715,7 +697,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 {Object.keys(loc.days).length === 0 && (
                                     <div className="text-center py-8 border-2 border-dashed border-slate-100 rounded-xl"><p className="text-sm font-bold text-slate-400">Nessun allievo in questo recinto.</p><p className="text-xs text-slate-300 mt-1">Trascina qui o usa il tasto + per aggiungere.</p></div>
                                 )}
-                                {Object.values(loc.days).map((day: any, j) => {
+                                {Object.values(loc.days).map((day: { dayName: string, items: Enrollment[] }, j) => {
                                     const timeGroups: Record<string, Enrollment[]> = {};
                                     day.items.forEach((enr: Enrollment) => {
                                         const start = enr.appointments?.[0]?.startTime || 'N/D';

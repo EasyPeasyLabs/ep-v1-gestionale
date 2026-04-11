@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Lesson, SchoolClosure, Supplier, Client, LessonInput, EnrollmentStatus, ClientType } from '../types';
-import { getLessons, getSchoolClosures, deleteSchoolClosure, addSchoolClosure, deleteLesson, addLesson, updateLesson, bulkDeleteAllClosures } from '../services/calendarService';
+import { Lesson, SchoolClosure, Supplier, Client, LessonInput, EnrollmentStatus, Enrollment, Appointment } from '../types';
+import { getLessons, getSchoolClosures, deleteSchoolClosure, addSchoolClosure, addLesson, updateLesson, bulkDeleteAllClosures, deleteLesson } from '../services/calendarService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments, restoreSuspendedLessons, suspendLessonsForClosure } from '../services/enrollmentService';
+import { getOpenCourses } from '../services/courseService';
+import { Course } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -23,14 +25,34 @@ const getTextColorForBg = (bgColor: string) => {
     return (((r * 0.299) + (g * 0.587) + (b * 0.114)) > 186) ? '#1f2937' : '#ffffff';
 };
 
+interface CalendarEvent {
+    id?: string;
+    displayId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    locationName: string;
+    locationColor: string;
+    isMaster: boolean;
+    type: 'manual' | 'enrollment';
+    studentNames: string[];
+    isGroup: boolean;
+    description?: string;
+    childName?: string;
+    enrollmentId?: string;
+    originalApp?: Appointment;
+    [key: string]: unknown;
+}
+
 const Calendar: React.FC = () => {
     const [currentDate, setCurrentDate] = useState(new Date());
-    // Usiamo any[] per ospitare sia Lesson che Appointment delle iscrizioni
-    const [events, setEvents] = useState<any[]>([]);
+    // Usiamo CalendarEvent[] per ospitare sia Lesson che Appointment delle iscrizioni
+    const [events, setEvents] = useState<CalendarEvent[]>([]);
     const [closures, setClosures] = useState<SchoolClosure[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
-    const [enrollments, setEnrollments] = useState<any[]>([]);
+    const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+    const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Modals State
@@ -45,15 +67,17 @@ const Calendar: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [manualLessons, allEnrs, c, s, cli] = await Promise.all([
+            const [manualLessons, allEnrs, c, s, cli, allCourses] = await Promise.all([
                 getLessons(),
                 getAllEnrollments(),
                 getSchoolClosures(),
                 getSuppliers(),
-                getClients()
+                getClients(),
+                getOpenCourses()
             ]);
 
             setEnrollments(allEnrs);
+            setCourses(allCourses);
 
             // --- 0. PRE-PROCESSING: REGISTRO SEDI UFFICIALI (MASTER) ---
             const officialLocations = new Map<string, { name: string, color: string }>();
@@ -84,7 +108,7 @@ const Calendar: React.FC = () => {
 
             // --- FASE 1: RAGGRUPPAMENTO SPAZIALE (1 Slot = 1 Chip per Sede) ---
             // Chiave Univoca: YYYY-MM-DD_HH:MM_NormalizedLocationName
-            const uniqueSlotsMap = new Map<string, any>();
+            const uniqueSlotsMap = new Map<string, CalendarEvent>();
 
             const generateKey = (dateStr: string, timeStr: string, locName: string) => {
                 const cleanDate = dateStr.split('T')[0]; 
@@ -106,7 +130,7 @@ const Calendar: React.FC = () => {
                     displayId: l.id,
                     studentNames: l.childName ? [l.childName] : [],
                     isGroup: false
-                });
+                } as CalendarEvent);
             });
 
             // Processa Appuntamenti Iscrizioni
@@ -124,12 +148,14 @@ const Calendar: React.FC = () => {
 
                             if (uniqueSlotsMap.has(key)) {
                                 const slot = uniqueSlotsMap.get(key);
-                                if (!slot.studentNames.includes(enr.childName)) {
+                                if (slot && Array.isArray(slot.studentNames) && !slot.studentNames.includes(enr.childName)) {
                                     slot.studentNames.push(enr.childName);
                                 }
-                                slot.isGroup = true;
-                                // Se questo evento è "Master" (riconosciuto), assicuriamoci che il flag rimanga true
-                                if (isMaster) slot.isMaster = true; 
+                                if (slot) {
+                                    slot.isGroup = true;
+                                    // Se questo evento è "Master" (riconosciuto), assicuriamoci che il flag rimanga true
+                                    if (isMaster) slot.isMaster = true; 
+                                }
                             } else {
                                 uniqueSlotsMap.set(key, {
                                     id: `${enr.id}_${app.lessonId}`,
@@ -147,7 +173,7 @@ const Calendar: React.FC = () => {
                                     enrollmentId: enr.id,
                                     studentNames: [enr.childName],
                                     isGroup: false
-                                });
+                                } as CalendarEvent);
                             }
                         });
                     }
@@ -156,7 +182,7 @@ const Calendar: React.FC = () => {
 
             // --- FASE 2: FUSIONE TEMPORALE (Assorbimento Progetti) ---
             // Raggruppa gli slot per Data_Ora per trovare conflitti Master vs Slave
-            const slotsByTime = new Map<string, any[]>();
+            const slotsByTime = new Map<string, CalendarEvent[]>();
             
             uniqueSlotsMap.forEach(slot => {
                 const dateKey = slot.date.split('T')[0];
@@ -167,7 +193,7 @@ const Calendar: React.FC = () => {
                 slotsByTime.get(timeKey)!.push(slot);
             });
 
-            const finalEvents: any[] = [];
+            const finalEvents: CalendarEvent[] = [];
 
             slotsByTime.forEach((slotsInTime) => {
                 // Separa Master (Sedi Fisiche) da Slave (Progetti/Astratte)
@@ -179,16 +205,19 @@ const Calendar: React.FC = () => {
                     // Assorbiamo TUTTI gli eventi slave nel PRIMO master disponibile.
                     const targetMaster = masters[0];
                     
-                    slaves.forEach(slave => {
+                    slaves.forEach(slaveObj => {
+                        const slave = slaveObj as { studentNames: string[] };
                         // Unisci i nomi degli studenti
                         slave.studentNames.forEach((name: string) => {
-                            if (!targetMaster.studentNames.includes(name)) {
-                                targetMaster.studentNames.push(name);
+                            const master = targetMaster as { studentNames: string[] };
+                            if (!master.studentNames.includes(name)) {
+                                master.studentNames.push(name);
                             }
                         });
                         // Segnaliamo visivamente che c'è un merge?
-                        targetMaster.isGroup = true;
-                        targetMaster.hasMergedProjects = true;
+                        const master = targetMaster as CalendarEvent & { hasMergedProjects: boolean };
+                        master.isGroup = true;
+                        master.hasMergedProjects = true;
                     });
 
                     // Aggiungiamo i master (che ora contengono i dati degli slave assorbiti)
@@ -326,16 +355,17 @@ const Calendar: React.FC = () => {
     const holidays = useMemo(() => getItalianHolidays(currentDate.getFullYear()), [currentDate]);
 
     // Handler per click su evento
-    const handleEventClick = (e: React.MouseEvent, evt: any) => {
+    const handleEventClick = (e: React.MouseEvent, evt: Record<string, unknown>) => {
         e.stopPropagation();
         if (evt.type === 'manual') {
-            setEditingLesson(evt);
+            setEditingLesson(evt as unknown as Lesson);
             setIsLessonModalOpen(true);
         } else {
             // Mostra dettagli gruppo se ci sono più studenti
-            const participants = evt.studentNames && evt.studentNames.length > 0 
-                ? evt.studentNames.join('\n- ')
-                : evt.childName;
+            const studentNames = evt.studentNames as string[];
+            const participants = (studentNames && studentNames.length > 0) 
+                ? studentNames.join('\n- ')
+                : (evt.childName as string);
                 
             let msg = `Lezione Iscrizione (${evt.startTime} - ${evt.endTime})\nSede: ${evt.locationName}`;
             if (evt.hasMergedProjects) msg += "\n(Include Progetti Istituzionali)";
@@ -431,7 +461,7 @@ const Calendar: React.FC = () => {
 
                                     {/* Events Container */}
                                     <div className="flex-1 space-y-1 md:space-y-0.5 overflow-y-auto custom-scrollbar pr-0 md:pr-1">
-                                        {dayEvents.map(evt => {
+                                        {dayEvents.map((evt: CalendarEvent) => {
                                             const bgCol = evt.locationColor || '#94a3b8';
                                             const textCol = getTextColorForBg(bgCol);
                                             
@@ -466,15 +496,14 @@ const Calendar: React.FC = () => {
                                                         {/* Desktop View */}
                                                         <span className="hidden md:inline truncate">{desktopLabel}</span>
                                                         
-                                                        {evt.studentNames && evt.studentNames.length > 1 && (
+                                                        {Boolean(evt.studentNames && evt.studentNames.length > 1) && (
                                                             <>
                                                                 <span className="text-[8px] bg-black/20 px-1 rounded-full min-w-[16px] text-center hidden md:inline-block">
                                                                     {evt.studentNames.length}
                                                                 </span>
-                                                                {/* Mobile Indicator for Group REMOVED */}
                                                             </>
                                                         )}
-                                                        {evt.hasMergedProjects && (
+                                                        {Boolean(evt.hasMergedProjects) && (
                                                             <span className="text-[8px] opacity-70 ml-0.5">
                                                                 ★
                                                             </span>
@@ -506,6 +535,7 @@ const Calendar: React.FC = () => {
                         suppliers={suppliers}
                         clients={clients}
                         enrollments={enrollments}
+                        courses={courses}
                         onSave={handleSaveLesson}
                         onDelete={handleDeleteLesson}
                         onCancel={() => setIsLessonModalOpen(false)}

@@ -36,7 +36,7 @@ import { Page } from './types';
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
-  const [pageParams, setPageParams] = useState<any>(null); 
+  const [pageParams, setPageParams] = useState<Record<string, unknown> | undefined>(undefined); 
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -66,9 +66,10 @@ const App: React.FC = () => {
             setLoadingAuth(false);
         });
         return () => unsubscribe();
-    } catch (e: any) {
-        console.error("Critical Auth Setup Error: " + e.message);
-        setAuthError(e.message);
+    } catch (e: unknown) {
+        const error = e as Error;
+        console.error("Critical Auth Setup Error: " + error.message);
+        setAuthError(error.message);
         setLoadingAuth(false);
     }
   }, []);
@@ -99,9 +100,9 @@ const App: React.FC = () => {
       return () => window.removeEventListener('EP_DataUpdated', updateAppIdentity);
   }, [user]);
 
-  const handleNavigation = (page: Page, params?: any) => {
+  const handleNavigation = (page: Page, params?: Record<string, unknown>) => {
       setCurrentPage(page);
-      setPageParams(params || null);
+      setPageParams(params);
   };
 
   const renderContent = () => {
@@ -150,7 +151,7 @@ const App: React.FC = () => {
     window.location.pathname === '/iscrizione' || 
     window.location.hash.startsWith('#/iscrizione') || 
     window.location.pathname.startsWith('/i/') || 
-    (window as any).__IS_ENROLLMENT_PORTAL__;
+    (window as Window & typeof globalThis & { __IS_ENROLLMENT_PORTAL__?: boolean }).__IS_ENROLLMENT_PORTAL__;
 
   if (isEnrollmentRoute) {
     return <EnrollmentPortal />;

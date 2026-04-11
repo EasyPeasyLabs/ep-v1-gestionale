@@ -1,6 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
-import fetch from "node-fetch";
 import cors from "cors";
 
 async function startServer() {
@@ -73,6 +71,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -81,7 +80,7 @@ async function startServer() {
   } else {
     // In production, serve static files from dist
     app.use(express.static("dist"));
-    app.get("*", (req: express.Request, res: express.Response) => {
+    app.get("*all", (req: express.Request, res: express.Response) => {
       res.sendFile("dist/index.html", { root: "." });
     });
   }

@@ -63,37 +63,37 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                 
                 <div className="flex gap-2 flex-wrap">
                     {/* Location Filter */}
-                    <div className="flex items-center gap-2 bg-ep-blue-600 rounded-lg px-3 py-2 border border-ep-blue-500 shadow-sm text-white">
-                        <span className="text-xs font-bold text-ep-blue-100 uppercase">Sede:</span>
+                    <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Sede:</span>
                         <select 
                             value={locationFilter} 
                             onChange={(e) => setLocationFilter(e.target.value)} 
-                            className="text-sm font-bold text-white bg-transparent border-none outline-none cursor-pointer max-w-[150px]"
+                            className="text-sm font-bold text-indigo-700 bg-transparent border-none outline-none cursor-pointer max-w-[150px]"
                         >
-                            <option value="" className="text-slate-900">Tutte le Sedi</option>
-                            {availableLocations.map(loc => <option key={loc} value={loc} className="text-slate-900">{loc}</option>)}
+                            <option value="">Tutte le Sedi</option>
+                            {availableLocations.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                         </select>
                     </div>
 
                     {/* Year Selector */}
-                    <div className="flex items-center gap-2 bg-ep-blue-600 rounded-lg px-3 py-2 border border-ep-blue-500 shadow-sm text-white">
-                        <span className="text-xs font-bold text-ep-blue-100 uppercase">Anno:</span>
-                        <select value={year} onChange={(e) => onYearChange(Number(e.target.value))} className="text-sm font-bold text-white bg-transparent border-none outline-none cursor-pointer">
-                            {availableYears.map(y => <option key={y} value={y} className="text-slate-900">{y}</option>)}
+                    <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                        <span className="text-xs font-bold text-gray-500 uppercase">Anno:</span>
+                        <select value={year} onChange={(e) => onYearChange(Number(e.target.value))} className="text-sm font-bold text-indigo-700 bg-transparent border-none outline-none cursor-pointer">
+                            {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
                     </div>
 
                     {/* Month Selector */}
                     {month !== undefined && onMonthChange && (
-                        <div className="flex items-center gap-2 bg-ep-blue-600 rounded-lg px-3 py-2 border border-ep-blue-500 shadow-sm text-white">
-                            <span className="text-xs font-bold text-ep-blue-100 uppercase">Mese:</span>
+                        <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200 shadow-sm">
+                            <span className="text-xs font-bold text-gray-500 uppercase">Mese:</span>
                             <select 
                                 value={month} 
                                 onChange={(e) => onMonthChange(e.target.value)} 
-                                className="text-sm font-bold text-white bg-transparent border-none outline-none cursor-pointer"
+                                className="text-sm font-bold text-indigo-700 bg-transparent border-none outline-none cursor-pointer"
                             >
-                                <option value="all" className="text-slate-900">Tutto l'anno</option>
-                                {months.map((m, i) => <option key={i} value={i} className="text-slate-900">{m}</option>)}
+                                <option value="all">Tutto l'anno</option>
+                                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
                             </select>
                         </div>
                     )}
@@ -106,7 +106,7 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                     return (
                         <div key={idx} className="md-card p-6 bg-white border-t-4 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 cursor-pointer group" style={{ borderColor: sede.color }} onClick={() => onSelectLocation(sede)}>
                             <div className="flex justify-between items-start mb-4">
-                                <h4 className="font-black uppercase tracking-tighter group-hover:text-ep-blue-600 transition-colors text-slate-800">{sede.name}</h4>
+                                <h4 className="font-black uppercase tracking-tighter group-hover:text-indigo-600 transition-colors text-slate-800">{sede.name}</h4>
                                 <span className={`px-2 py-1 rounded text-[10px] font-black ${sede.revenue > sede.costs ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>ROI {roiPercent.toFixed(0)}%</span>
                             </div>
                             <div className="space-y-2">
@@ -126,7 +126,7 @@ const FinanceControlling: React.FC<FinanceControllingProps> = ({ roiSedi, onSele
                                 </div>
                                 <div className="pt-3 border-t flex justify-between items-end mt-2">
                                     <span className="text-sm font-black text-slate-800 uppercase tracking-tighter">Utile Netto</span>
-                                    <span className={`text-xl font-black ${(sede.revenue - sede.costs >= 0) ? 'text-ep-blue-700' : 'text-red-600'}`}>{(sede.revenue - sede.costs).toFixed(2)}€</span>
+                                    <span className={`text-xl font-black ${(sede.revenue - sede.costs >= 0) ? 'text-indigo-700' : 'text-red-600'}`}>{(sede.revenue - sede.costs).toFixed(2)}€</span>
                                 </div>
                             </div>
                             <div className="mt-4 text-center text-[9px] text-gray-400 font-bold uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">Clicca per Analisi Dettagliata</div>

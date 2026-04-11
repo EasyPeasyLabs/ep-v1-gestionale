@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier } from '../types';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import CalendarIcon from '../components/icons/CalendarIcon';
+import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
-import ChevronDownIcon from '../components/icons/ChevronDownIcon';
 
 
 // Icona X per "Tutti Assenti" (inline SVG per sicurezza)
@@ -276,7 +276,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             lessonsSnap.forEach(doc => {
                 const lesson = doc.data();
                 if (lesson.attendees && lesson.attendees.length > 0) {
-                    lesson.attendees.forEach((attendee: any) => {
+                    lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
                         const key = `${attendee.enrollmentId}_${lesson.date}_${lesson.startTime}`;
                         
@@ -407,13 +407,13 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         setWizardItems(slotItems);
     };
 
-    const handleWizardConfirm = async (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: any) => {
+    const handleWizardConfirm = async (strategy: 'lost' | 'recover_auto' | 'recover_manual', details?: RecoveryDetails) => {
         if (wizardItems.length === 0) return;
         try {
             // Se recover_manual, usiamo i dettagli per TUTTI gli item (es. spostamento classe intera)
             // Se recover_auto, ognuno calcola il suo prossimo slot.
             for (const item of wizardItems) {
-                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details, undefined, item.isNewArchitecture);
+                await registerAbsence(item.enrollmentId, item.lessonId, strategy, details as RecoveryDetails, undefined, item.isNewArchitecture);
             }
             await fetchAttendanceData();
             window.dispatchEvent(new Event('EP_DataUpdated'));

@@ -40,8 +40,8 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
         try {
             const data = await getFiscalYears();
             setYears(data);
-        } catch (e) {
-            console.error(e);
+        } finally {
+            // done
         }
     };
 
@@ -210,6 +210,8 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                 } catch (e) {
                     console.error(e);
                     alert("Errore durante la creazione della fattura tecnica.");
+                } finally {
+                    // done
                 }
             }
         }
@@ -231,7 +233,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                         <select 
                             value={selectedYear} 
                             onChange={e => setSelectedYear(Number(e.target.value))} 
-                            className="bg-ep-blue-600 border border-ep-blue-700 rounded px-3 py-1 font-bold w-32 text-white outline-none focus:ring-2 focus:ring-ep-blue-400"
+                            className="md-input border rounded px-3 py-1 font-bold w-32"
                         >
                             {availableFiscalYears.map(y => (
                                 <option key={y} value={y}>{y}</option>
@@ -246,7 +248,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                         {isClosed ? (
                             <div className="mt-2">
                                 <span className="text-red-600 font-black text-lg flex items-center gap-2">🔒 CHIUSO</span>
-                                <p className="text-xs text-slate-500 mt-1">da {existingYearRecord?.closedBy} il {existingYearRecord?.closedAt ? new Date(existingYearRecord.closedAt).toLocaleDateString() : ''}</p>
+                                <p className="text-xs text-slate-500 mt-1">da {existingYearRecord?.closedBy} il {existingYearRecord?.closedAt ? new Date(existingYearRecord.closedAt).toLocaleDateString() : 'N/A'}</p>
                             </div>
                         ) : (
                             <div className="mt-2">
@@ -261,7 +263,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                         <div className="mt-2 space-y-1">
                             <div className="flex justify-between text-sm">
                                 <span>Incassato (Cassa):</span> 
-                                <span className="font-bold text-ep-blue-700">{simulation.revenue.toFixed(2)}€</span>
+                                <span className="font-bold text-indigo-700">{simulation.revenue.toFixed(2)}€</span>
                             </div>
                             <div className="flex justify-between text-sm">
                                 <span>Fatturato (Fiscale):</span> 
@@ -321,18 +323,18 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                         {/* OPZIONE 1: RIEMPIMENTO */}
                         <div className="bg-white p-4 rounded-lg border border-amber-100 shadow-sm relative">
                             <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-ep-blue-700 text-sm flex items-center gap-2">
+                                <h4 className="font-bold text-indigo-700 text-sm flex items-center gap-2">
                                     <PlusIcon /> Recupero Manuale
                                 </h4>
-                                <button onClick={() => toggleHelp(1)} className="text-gray-400 hover:text-ep-blue-600 transition-colors">
+                                <button onClick={() => toggleHelp(1)} className="text-gray-400 hover:text-indigo-600 transition-colors">
                                     <HelpIcon />
                                 </button>
                             </div>
                             <p className="text-xs text-gray-500 mb-4">Crea una nuova fattura usando il numero mancante.</p>
                             
                             {activeHelp === 1 && (
-                                <div className="absolute left-0 right-0 top-full mt-2 z-10 bg-ep-blue-900 text-white text-xs p-3 rounded-lg shadow-xl mx-2 animate-fade-in-down">
-                                    <strong className="block mb-1 text-ep-blue-200 uppercase">Dettaglio Opzione</strong>
+                                <div className="absolute left-0 right-0 top-full mt-2 z-10 bg-indigo-900 text-white text-xs p-3 rounded-lg shadow-xl mx-2 animate-fade-in-down">
+                                    <strong className="block mb-1 text-indigo-200 uppercase">Dettaglio Opzione</strong>
                                     Ideale se devi ancora emettere una fattura per quel periodo. 
                                     Il sistema apre l'editor forzando il numero mancante (es. #{simulation.gaps[0]}).
                                     <br/><br/>
@@ -342,7 +344,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
 
                             <button 
                                 onClick={() => handleFixGap('fill', simulation.gaps[0])}
-                                className="w-full md-btn md-btn-sm bg-ep-blue-50 text-ep-blue-700 border border-ep-blue-200 hover:bg-ep-blue-100 font-bold"
+                                className="w-full md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 font-bold"
                             >
                                 Usa #{simulation.gaps[0]}
                             </button>
@@ -351,18 +353,18 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                         {/* OPZIONE 2: SLITTAMENTO */}
                         <div className="bg-white p-4 rounded-lg border border-amber-100 shadow-sm relative">
                             <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-ep-blue-700 text-sm flex items-center gap-2">
+                                <h4 className="font-bold text-indigo-700 text-sm flex items-center gap-2">
                                     <RefreshIcon /> Rinumera
                                 </h4>
-                                <button onClick={() => toggleHelp(2)} className="text-gray-400 hover:text-ep-blue-600 transition-colors">
+                                <button onClick={() => toggleHelp(2)} className="text-gray-400 hover:text-indigo-600 transition-colors">
                                     <HelpIcon />
                                 </button>
                             </div>
                             <p className="text-xs text-gray-500 mb-4">Sposta indietro le successive per chiudere il buco.</p>
 
                             {activeHelp === 2 && (
-                                <div className="absolute left-0 right-0 top-full mt-2 z-10 bg-ep-blue-900 text-white text-xs p-3 rounded-lg shadow-xl mx-2 animate-fade-in-down">
-                                    <strong className="block mb-1 text-ep-blue-200 uppercase">Dettaglio Opzione</strong>
+                                <div className="absolute left-0 right-0 top-full mt-2 z-10 bg-indigo-900 text-white text-xs p-3 rounded-lg shadow-xl mx-2 animate-fade-in-down">
+                                    <strong className="block mb-1 text-indigo-200 uppercase">Dettaglio Opzione</strong>
                                     Consigliato se hai creato fatture successive in Bozza per errore saltando un numero.
                                     Il sistema rinomina automaticamente a cascata (es. la #8 diventa #7).
                                 </div>
@@ -370,7 +372,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
 
                             <button 
                                 onClick={() => handleFixGap('shift', simulation.gaps[0])}
-                                className="w-full md-btn md-btn-sm bg-ep-blue-50 text-ep-blue-700 border border-ep-blue-200 hover:bg-ep-blue-100 font-bold"
+                                className="w-full md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 font-bold"
                             >
                                 Compatta Numeri
                             </button>
@@ -424,7 +426,7 @@ const FiscalYearManager: React.FC<FiscalYearManagerProps> = ({ transactions, inv
                             {years.filter(y => y.status === 'CLOSED').map(y => (
                                 <tr key={y.id}>
                                     <td className="px-6 py-4 font-bold">{y.year}</td>
-                                    <td className="px-6 py-4 text-slate-500">{y.closedAt ? new Date(y.closedAt).toLocaleDateString() : ''}</td>
+                                    <td className="px-6 py-4 text-slate-500">{new Date(y.closedAt!).toLocaleDateString()}</td>
                                     <td className="px-6 py-4 text-right font-mono">{y.snapshot?.totalRevenue.toFixed(2)}€</td>
                                     <td className="px-6 py-4 text-right font-mono">{y.snapshot?.netProfit.toFixed(2)}€</td>
                                     <td className="px-6 py-4 text-center"><span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">LOCKED</span></td>

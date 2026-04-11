@@ -184,14 +184,14 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         suppliers.forEach(s => {
             s.locations.forEach(l => {
                 locs.push({
-                    id: l.id, name: l.name, color: l.color, city: (l as any).city,
+                    id: l.id, name: l.name, color: l.color, city: l.city,
                     supplierId: s.id, supplierName: s.companyName
                 });
             });
         });
 
         // Deduplicate by name and city to avoid visual duplicates in dropdowns
-        const uniqueMap = new Map<string, any>();
+        const uniqueMap = new Map<string, {id: string, name: string, color: string, supplierId: string, supplierName: string, city?: string}>();
         locs.forEach(l => {
             const nameKey = (l.name || '').trim().toLowerCase();
             const cityKey = (l.city || '').trim().toLowerCase();
@@ -592,7 +592,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
         
-        let appointmentsPayload: any[] = [];
+        let appointmentsPayload: Appointment[] = [];
         let finalStartDate = startDateInput;
         let finalEndDate = endDateInput;
         let finalLessonsTotal = Number(existingEnrollment?.lessonsTotal || selectedSub?.lessons || 0);
@@ -664,7 +664,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             }
         }
 
-        const enrollmentsToSave: EnrollmentInput[] = [];
+        const enrollmentsToSave: (EnrollmentInput & { id?: string })[] = [];
         const targets = isInstitutional 
             ? [{ id: existingEnrollment?.childId || 'institutional', name: projectName || (currentClient as InstitutionalClient).companyName }]
             : isAdultEnrollment 
@@ -714,7 +714,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 adjustmentAmount: existingEnrollment?.adjustmentAmount,
                 adjustmentNotes: existingEnrollment?.adjustmentNotes
             };
-            if (existingEnrollment) (newEnrollment as any).id = existingEnrollment.id;
+            if (existingEnrollment) (newEnrollment as Enrollment).id = existingEnrollment.id;
             enrollmentsToSave.push(newEnrollment);
         });
 

@@ -6,7 +6,7 @@ import { PeriodicCheck } from '../types';
 const NotificationScheduler: React.FC = () => {
     const checksRef = useRef<PeriodicCheck[]>([]);
     const lastNotifiedRef = useRef<Record<string, number>>({});
-    const intervalRef = useRef<NodeJS.Timeout | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
         // Caricamento iniziale dei check

@@ -252,7 +252,7 @@ export const generateDocumentPDF = async (
     currentY = 85; // Starting Y for table
     
     const tableColumn = ["Descrizione", "Quantità", "Prezzo Unit.", "Totale"];
-    let tableRows: any[] = [];
+    let tableRows: import('jspdf-autotable').RowInput[] = [];
 
     if (type === 'Fattura' && (doc as Invoice).relatedQuoteNumber) {
         tableRows.push([{
@@ -313,7 +313,7 @@ export const generateDocumentPDF = async (
         margin: { bottom: footerHeight + 10 } // Ensure table doesn't hit footer
     });
 
-    currentY = (docPdf as any).lastAutoTable?.finalY || currentY;
+    currentY = (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || currentY;
 
     // ============================================================
     // SEZIONE TOTALI
@@ -467,7 +467,7 @@ export const generateDocumentPDF = async (
             margin: { left: marginX, right: marginX, bottom: footerHeight }
         });
         
-        currentY = (docPdf as any).lastAutoTable?.finalY + 8;
+        currentY = (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ? (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable!.finalY + 8 : currentY;
     }
 
     // 3. NOTES

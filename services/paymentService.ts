@@ -4,7 +4,7 @@ import { runTransaction, doc, collection, writeBatch } from 'firebase/firestore'
 import { 
     Enrollment, EnrollmentStatus, 
     PaymentMethod, TransactionType, TransactionCategory, TransactionStatus, 
-    InvoiceInput, DocumentStatus,
+    InvoiceInput, DocumentStatus, TransactionInput,
     Client, ClientType, ParentClient, InstitutionalClient
 } from '../types';
 import { logFinancialAction } from './auditService';
@@ -152,7 +152,7 @@ export const processPayment = async (
                     transDesc = `Incasso Iscrizione (No Doc) - ${safeChildName} - ${safeSubName}`;
                 }
 
-                const transactionData: any = {
+                const transactionData: TransactionInput = {
                     transactionNumber: nextTransactionNumber,
                     date: paymentDate,
                     description: transDesc,
@@ -194,9 +194,9 @@ export const processPayment = async (
         
         return { success: true, invoiceNumber: nextRealInvoiceNumber };
 
-    } catch (e: any) {
+    } catch (e) {
         console.error("[PaymentService] Errore pagamento:", e);
-        return { success: false, error: e.message || "Errore sconosciuto durante il salvataggio." };
+        return { success: false, error: (e as Error).message || "Errore sconosciuto durante il salvataggio." };
     }
 };
 

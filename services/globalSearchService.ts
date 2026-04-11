@@ -74,7 +74,13 @@ export const searchGlobal = async (term: string): Promise<GlobalSearchResults> =
         ).slice(0, 5);
 
         // 5. Filtra Presenze (Lezioni/Appuntamenti)
-        const attendanceMatches: any[] = [];
+        const attendanceMatches: { 
+            lessonId: string; 
+            date: string; 
+            childName: string; 
+            startTime: string; 
+            locationName: string; 
+        }[] = [];
         // Ottimizzazione: Cerca solo se il termine non è numerico puro (evita match su ID o prezzi) o se sembra una data
         if (isNaN(Number(lowerTerm)) || lowerTerm.includes('/') || lowerTerm.includes('-')) {
             for (const enr of allEnrollments) {

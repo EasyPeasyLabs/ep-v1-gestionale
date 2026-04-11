@@ -9,15 +9,13 @@ import { getCommunicationTemplates, getCompanyInfo } from '../services/settingsS
 import { uploadCampaignFile, uploadCommunicationAttachment } from '../services/storageService';
 import { syncDismissedNotifications, getUserPreferences } from '../services/profileService'; // Added Cloud Sync
 import { auth } from '../firebase/config'; // Added Auth
-import { Enrollment, EnrollmentStatus, Transaction, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo } from '../types';
+import { Enrollment, EnrollmentStatus, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo, Transaction } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
-import SearchIcon from '../components/icons/SearchIcon';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import CalendarIcon from '../components/icons/CalendarIcon';
-import UploadIcon from '../components/icons/UploadIcon';
 import Pagination from '../components/Pagination';
 import ConfirmModal from '../components/ConfirmModal';
 import RichTextEditor from '../components/RichTextEditor';
@@ -113,7 +111,7 @@ interface CrmAlertItem {
     description: string;
     details?: string; // Secondary text
     amount?: number;
-    rawObj: any; // Original Object (Enrollment or Transaction)
+    rawObj: Enrollment | Transaction; // Original Object (Enrollment or Transaction)
 }
 
 // --- Communication Modal (Invio Diretto) ---
@@ -474,8 +472,6 @@ const CommunicationModal: React.FC<{
                 // If single recipient: Send directly.
                 // If multiple: Loop and send individually (safer for privacy).
                 
-                const emailRecipients = recipientsType === 'custom' ? [customRecipient] : recipientsList; // Wait, recipientsList has names, we need emails.
-                
                 // Re-gather emails
                 const targetEmails: string[] = [];
                 if (recipientsType === 'custom') {
@@ -688,7 +684,6 @@ const CRM: React.FC = () => {
     const [crmAlerts, setCrmAlerts] = useState<CrmAlertItem[]>([]);
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [logs, setLogs] = useState<CommunicationLog[]>([]);
-    const [templates, setTemplates] = useState<CommunicationTemplate[]>([]);
     const [clients, setClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]); // New State
@@ -753,14 +748,13 @@ const CRM: React.FC = () => {
     const fetchData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollmentsData, transactions, clientsData, suppliersData, logsData, campaignsData, templatesData, companyInfoData] = await Promise.all([
+            const [enrollmentsData, transactions, clientsData, suppliersData, logsData, campaignsData, companyInfoData] = await Promise.all([
                 getAllEnrollments(),
                 getTransactions(),
                 getClients(),
                 getSuppliers(),
                 getCommunicationLogs(),
                 getCampaigns(),
-                getCommunicationTemplates(),
                 getCompanyInfo()
             ]);
             
@@ -769,7 +763,6 @@ const CRM: React.FC = () => {
             setSuppliers(suppliersData);
             setLogs(logsData);
             setCampaigns(campaignsData);
-            setTemplates(templatesData);
             setCompanyInfo(companyInfoData);
 
             // --- NORMALIZE ALERTS ---
@@ -967,7 +960,7 @@ const CRM: React.FC = () => {
         setActiveAlertId(item.id);
         setCommunicationContext({
             clientName: item.recipientName,
-            childName: item.type !== 'rent' ? item.rawObj.childName : undefined,
+            childName: (item.type !== 'rent' && 'childName' in item.rawObj) ? (item.rawObj as Enrollment).childName : undefined,
             description: item.description,
             amount: item.amount ? item.amount.toFixed(2) : undefined,
             date: new Date(item.date).toLocaleDateString('it-IT')
@@ -1143,7 +1136,7 @@ const CRM: React.FC = () => {
                                     {['day', 'week', 'month', 'year'].map(t => (
                                         <button 
                                             key={t} 
-                                            onClick={() => setFilterTimeFrame(t as any)} 
+                                            onClick={() => setFilterTimeFrame(t as 'day' | 'week' | 'month' | 'year')} 
                                             className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap ${filterTimeFrame === t ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                         >
                                             {t === 'day' ? 'Giorno' : t === 'week' ? 'Settimana' : t === 'month' ? 'Mese' : 'Anno'}

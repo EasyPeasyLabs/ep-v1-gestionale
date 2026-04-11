@@ -2,7 +2,7 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 import { db } from '../firebase/config';
-import { Client, ClientType, ParentClientInput, InstitutionalClientInput, SupplierInput, Supplier, EnrollmentInput, EnrollmentStatus, PaymentMethod } from '../types';
+import { Client, ClientType, ParentClient, ParentClientInput, InstitutionalClientInput, SupplierInput, Supplier, EnrollmentInput, EnrollmentStatus, PaymentMethod, Enrollment } from '../types';
 import { ImportResult } from '../components/ImportModal';
 import { getClients, addClient } from './parentService';
 import { getSubscriptionTypes } from './settingsService';
@@ -49,7 +49,7 @@ const parsePaymentMethod = (methodStr: string): PaymentMethod => {
 };
 
 // Helper per parsing booleano (CreateInvoice)
-const parseBoolean = (val: any): boolean => {
+const parseBoolean = (val: unknown): boolean => {
     if (val === undefined || val === null || val === '') return true; // Default True se non specificato
     const s = String(val).toLowerCase().trim();
     if (['no', 'false', '0', 'n', 'falso'].includes(s)) return false;
@@ -57,7 +57,7 @@ const parseBoolean = (val: any): boolean => {
 };
 
 // Helper per analizzare il contenuto di un file Excel
-const parseExcel = async (file: File): Promise<Record<string, any>[]> => {
+const parseExcel = async (file: File): Promise<Record<string, unknown>[]> => {
     const buffer = await readFileAsArrayBuffer(file);
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -71,8 +71,8 @@ const parseExcel = async (file: File): Promise<Record<string, any>[]> => {
     const rows = data.slice(1);
 
     return rows.map(rowArray => {
-        const row = rowArray as any[];
-        const obj: Record<string, any> = {};
+        const row = rowArray as unknown[];
+        const obj: Record<string, unknown> = {};
         headers.forEach((header, index) => {
             // Trim headers to avoid issues with spaces
             const cleanHeader = header ? header.trim() : `col_${index}`;
@@ -166,7 +166,7 @@ export const importClientsFromExcel = async (file: File): Promise<ImportResult> 
             const existingId = existingClientsMap.get(clientEmail);
             if (existingId) {
                 const docRef = doc(db, 'clients', existingId);
-                batch.update(docRef, clientData as any);
+                batch.update(docRef, clientData as Record<string, unknown>);
                 result.updated++;
             } else {
                 const docRef = doc(clientCollectionRef);
@@ -237,7 +237,7 @@ export const importSuppliersFromExcel = async (file: File): Promise<ImportResult
         const existingId = existingSuppliersMap.get(supplierName);
         if (existingId) {
             const docRef = doc(db, 'suppliers', existingId);
-            batch.update(docRef, supplierData as any);
+            batch.update(docRef, supplierData as Record<string, unknown>);
             result.updated++;
         } else {
             const docRef = doc(supplierCollectionRef);
@@ -275,7 +275,7 @@ export const importEnrollmentsFromExcel = async (file: File): Promise<ImportResu
     const findClient = (email: string, cf: string) => {
         return clients.find(c => 
             (c.email && c.email.toLowerCase() === email.toLowerCase()) || 
-            (c.clientType === ClientType.Parent && (c as any).taxCode && (c as any).taxCode.toLowerCase() === cf.toLowerCase())
+            (c.clientType === ClientType.Parent && (c as ParentClient).taxCode && (c as ParentClient).taxCode.toLowerCase() === cf.toLowerCase())
         );
     };
 
@@ -346,8 +346,8 @@ export const importEnrollmentsFromExcel = async (file: File): Promise<ImportResu
                 e.subscriptionName === sub.name
             );
 
-            const rowStartDate = row.StartDate ? new Date(row.StartDate).toISOString() : new Date().toISOString();
-            const dayOfWeek = parseDayString(row.DayOfWeek);
+            const rowStartDate = row.StartDate ? new Date(row.StartDate as string | number).toISOString() : new Date().toISOString();
+            const dayOfWeek = parseDayString(row.DayOfWeek as string);
 
             if (activeEnrollment && row.LocationName && row.LocationName !== activeEnrollment.locationName) {
                 // --- MOVE LOGIC ---
@@ -423,20 +423,20 @@ export const importEnrollmentsFromExcel = async (file: File): Promise<ImportResu
                 // Financials (Payment)
                 if (row.AmountPaid && Number(row.AmountPaid) > 0) {
                     const amount = Number(row.AmountPaid);
-                    const isDeposit = (row.PaymentType || '').toLowerCase().includes('acconto');
-                    const method = parsePaymentMethod(row.PaymentMethod);
-                    const paymentDate = row.PaymentDate ? new Date(row.PaymentDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+                    const isDeposit = ((row.PaymentType as string) || '').toLowerCase().includes('acconto');
+                    const method = parsePaymentMethod(row.PaymentMethod as string);
+                    const paymentDate = row.PaymentDate ? new Date(row.PaymentDate as string | number).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
                     const sdiId = row.SDI ? String(row.SDI) : undefined;
                     
                     // NEW: Check invoice creation flag
                     const shouldCreateInvoice = parseBoolean(row.CreateInvoice);
 
                     // Mock object for processPayment
-                    const mockEnr = { ...enrollmentInput, id: enrollmentId } as any; 
+                    const mockEnr = { ...enrollmentInput, id: enrollmentId } as Enrollment; 
                     
                     // Se abbiamo creato la location durante activation, aggiorniamo il mock per la fattura
                     if (row.LocationName && findLocation(String(row.LocationName))) {
-                        mockEnr.locationName = row.LocationName;
+                        mockEnr.locationName = row.LocationName as string;
                     }
 
                     const payResult = await processPayment(

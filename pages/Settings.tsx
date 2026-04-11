@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType, PortalText } from '../types';
-import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate, getPortalTexts, savePortalText, addPortalText, updatePortalText, deletePortalText } from '../services/settingsService';
+import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate, getPortalTexts, addPortalText, updatePortalText, deletePortalText } from '../services/settingsService';
 import { migrateHistoricalEnrollments } from '../services/enrollmentService';
 import { migrateLocations } from '../services/migrationService';
 import { getSuppliers } from '../services/supplierService';
@@ -128,7 +128,7 @@ const SubscriptionStatusModal: React.FC<{
                         {status === 'promo' && (
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-xs font-bold text-gray-500">Tipo Sconto</label><select value={discountType} onChange={e => setDiscountType(e.target.value as any)} className="md-input"><option value="percent">Percentuale (%)</option><option value="fixed">Importo Fisso (€)</option></select></div>
+                                    <div><label className="text-xs font-bold text-gray-500">Tipo Sconto</label><select value={discountType} onChange={e => setDiscountType(e.target.value as 'percent' | 'fixed')} className="md-input"><option value="percent">Percentuale (%)</option><option value="fixed">Importo Fisso (€)</option></select></div>
                                     <div className="md-input-group"><input type="number" value={discountValue} onChange={e => setDiscountValue(Number(e.target.value))} className="md-input" placeholder=" " /><label className="md-input-label">Valore Sconto</label></div>
                                 </div>
                                 <div className="md-input-group"><input type="date" value={date} onChange={e => setDate(e.target.value)} className="md-input" /><label className="md-input-label !top-0">Valido dal:</label></div>
@@ -203,7 +203,7 @@ const SubscriptionForm: React.FC<{ sub?: SubscriptionType | null; onSave: (sub: 
             setIsPubliclyVisible(true);
             setAllowedDays([]);
         }
-    }, [sub?.id]);
+    }, [sub]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -603,7 +603,7 @@ const PortalTextForm: React.FC<{ text: PortalText; onSave: (t: PortalText) => vo
                 </div>
 
                 <div className="md-input-group">
-                    <select value={type} onChange={e => setType(e.target.value as any)} required className="md-input">
+                    <select value={type} onChange={e => setType(e.target.value as 'absence_recovery_warning' | 'payment_method')} required className="md-input">
                         <option value="absence_recovery_warning">Avviso Assenze e Recuperi</option>
                         <option value="payment_method">Modalità di Pagamento</option>
                     </select>
@@ -672,8 +672,8 @@ const CheckForm: React.FC<{ check?: PeriodicCheck | null; onSave: (c: PeriodicCh
     
     const handleSubmit = (e: React.FormEvent) => { 
         e.preventDefault(); 
-        const data: any = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; 
-        if (check?.id) onSave({ ...data, id: check.id }); 
+        const data: PeriodicCheckInput = { category, subCategory, daysOfWeek: daysOfWeek.sort(), startTime, endTime: startTime, pushEnabled, note }; 
+        if (check?.id) onSave({ ...data, id: check.id } as PeriodicCheck); 
         else onSave(data); 
     }; 
     
@@ -907,8 +907,9 @@ const Settings: React.FC = () => {
                         });
                         addLog("Notifica inviata tramite API Standard.");
                     }
-                } catch (e: any) {
-                    addLog("Errore invio notifica locale: " + e.message);
+                } catch (e: unknown) {
+                    const errorMessage = e instanceof Error ? e.message : "Sconosciuto";
+                    addLog("Errore invio notifica locale: " + errorMessage);
                 }
             } else {
                 addLog("ERRORE: " + result.error);

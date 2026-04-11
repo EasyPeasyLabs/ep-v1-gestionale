@@ -2,10 +2,18 @@
 import React, { useEffect, useRef } from 'react';
 import Chart from 'chart.js/auto';
 import Modal from '../Modal';
-import { LocationROI } from '../../types';
 
 interface LocationDetailModalProps {
-    data: LocationROI;
+    data: { 
+        name: string, 
+        color: string, 
+        revenue: number, 
+        costs: number, 
+        costPerLesson?: { value: number, min: number, max: number, avg: number }, 
+        costPerStudentPerLesson?: number,
+        costPerStudent?: number, 
+        breakdown?: { rent: { total: number, current: number }, operational: number, logistics: number, overhead: number } 
+    };
     onClose: () => void;
 }
 
@@ -89,7 +97,7 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
         <Modal onClose={onClose} size="lg">
             <div className="flex flex-col h-full overflow-hidden">
                 {/* HEADER: IL VERDETTO */}
-                <div className={`p-6 text-white flex justify-between items-start ${isProfitable ? 'bg-ep-blue-600' : 'bg-red-500'}`}>
+                <div className={`p-6 text-white flex justify-between items-start ${isProfitable ? 'bg-indigo-600' : 'bg-red-500'}`}>
                     <div>
                         <h3 className="text-2xl font-black uppercase tracking-tight">{data.name}</h3>
                         <p className="text-sm opacity-90 font-medium mt-1">Smart Insight - Controllo di Gestione</p>
@@ -193,13 +201,13 @@ const LocationDetailModal: React.FC<LocationDetailModalProps> = ({ data, onClose
                         </h5>
                         <ul className="space-y-3 text-sm text-slate-600">
                             <li className="flex gap-2">
-                                <span className="font-bold text-ep-blue-600">•</span>
+                                <span className="font-bold text-indigo-600">•</span>
                                 <span>
                                     Per ogni <strong>10€</strong> che incassi, ne devi spendere <strong>{((data.costs / (data.revenue || 1)) * 10).toFixed(1)}€</strong> solo per mantenere aperta la sede.
                                 </span>
                             </li>
                             <li className="flex gap-2">
-                                <span className="font-bold text-ep-blue-600">•</span>
+                                <span className="font-bold text-indigo-600">•</span>
                                 <span>
                                     Ti restano in tasca puliti <strong>{isProfitable ? pocketMoneyPer10.toFixed(1) : 0}€</strong> (su 10€) dopo aver pagato tutto (affitto, viaggi, tasse).
                                 </span>
