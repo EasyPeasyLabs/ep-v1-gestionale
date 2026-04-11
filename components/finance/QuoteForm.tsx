@@ -36,8 +36,27 @@ const QuoteForm: React.FC<{
     const [installmentsCount, setInstallmentsCount] = useState<number>(
         (quote?.installments && quote.installments.length > 1) ? quote.installments.length : 2
     );
-    const [paymentTerms, setPaymentTerms] = useState<string>('immed'); // immed, 30df, 60df, 30dffm, 60dffm
-    const [paymentMode, setPaymentMode] = useState<string>('bank_transfer');
+    const initialPaymentMode = useMemo(() => {
+        if (!quote?.paymentMethod) return 'bank_transfer';
+        if (quote.paymentMethod.includes("Bonifico Bancario")) return 'bank_transfer';
+        if (quote.paymentMethod.includes("Rimessa Diretta (Contanti)")) return 'direct_cash';
+        if (quote.paymentMethod.includes("Rimessa Diretta (Assegno)")) return 'direct_check';
+        if (quote.paymentMethod.includes("PayPal / Digital")) return 'direct_paypal';
+        return 'bank_transfer';
+    }, [quote]);
+
+    const initialPaymentTerms = useMemo(() => {
+        if (!quote?.paymentMethod) return 'immed';
+        if (quote.paymentMethod.includes("Vista Fattura")) return 'immed';
+        if (quote.paymentMethod.includes("30 GG DF") && !quote.paymentMethod.includes("DFFM")) return '30df';
+        if (quote.paymentMethod.includes("60 GG DF") && !quote.paymentMethod.includes("DFFM")) return '60df';
+        if (quote.paymentMethod.includes("30 GG DFFM")) return '30dffm';
+        if (quote.paymentMethod.includes("60 GG DFFM")) return '60dffm';
+        return 'immed';
+    }, [quote]);
+
+    const [paymentTerms, setPaymentTerms] = useState<string>(initialPaymentTerms);
+    const [paymentMode, setPaymentMode] = useState<string>(initialPaymentMode);
     
     // Schedule Simulator (For Preview)
     const [simulatedStartDate, setSimulatedStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -162,26 +181,23 @@ const QuoteForm: React.FC<{
     const prevCountRef = useRef(installmentsCount);
     const prevTermsRef = useRef(paymentTerms);
     const prevTotalRef = useRef(taxable); // Use taxable as base for split
+    const prevIssueDateRef = useRef(issueDate);
 
     useEffect(() => {
         const strategyChanged = prevStrategyRef.current !== paymentStrategy;
         const countChanged = prevCountRef.current !== installmentsCount;
         const totalChanged = Math.abs(prevTotalRef.current - taxable) > 0.01;
         const termsChanged = prevTermsRef.current !== paymentTerms;
+        const issueDateChanged = prevIssueDateRef.current !== issueDate;
 
         // Update refs
         prevStrategyRef.current = paymentStrategy;
         prevCountRef.current = installmentsCount;
         prevTotalRef.current = taxable;
         prevTermsRef.current = paymentTerms;
+        prevIssueDateRef.current = issueDate;
 
-        if (!strategyChanged && !countChanged && !totalChanged && !termsChanged) return;
-
-        // SKIP REGEN if initial load of existing quote matches state
-        // Fix: Added check for quote.installments to prevent undefined access
-        if (quote && quote.installments && installments.length > 0 && installments.length === quote.installments.length) {
-             if (!strategyChanged && !countChanged && !termsChanged && !totalChanged) return;
-        }
+        if (!strategyChanged && !countChanged && !totalChanged && !termsChanged && !issueDateChanged) return;
 
         // --- GENERATION LOGIC ---
         const newInstallments: Installment[] = [];
@@ -192,19 +208,28 @@ const QuoteForm: React.FC<{
             return d.toISOString().split('T')[0];
         };
 
+        const onlyTotalOrDateChanged = (totalChanged || issueDateChanged) && !strategyChanged && !countChanged && !termsChanged;
+
         if (paymentStrategy === 'single') {
             const termDays = getTermDaysFromKey(paymentTerms);
             const baseDate = issueDate;
             const collDate = calculateEffectiveDate(baseDate, termDays);
             
+            const existingInst = installments[0];
+            // If only total changed, preserve dates. If issueDate changed, we MUST update dates.
+            const preserveDates = onlyTotalOrDateChanged && !issueDateChanged;
+            const finalDueDate = (preserveDates && existingInst) ? existingInst.dueDate : baseDate;
+            const finalCollDate = (preserveDates && existingInst) ? existingInst.collectionDate : collDate;
+            const finalDesc = (onlyTotalOrDateChanged && existingInst) ? existingInst.description : 'Unica Soluzione';
+
             newInstallments.push({
-                description: 'Unica Soluzione',
-                dueDate: baseDate, // Due date is emission date basically
+                description: finalDesc,
+                dueDate: finalDueDate, // Due date is emission date basically
                 amount: taxable + (hasStampDuty ? 2 : 0),
-                isPaid: false,
-                triggerType: 'date',
-                paymentTermDays: termDays,
-                collectionDate: collDate,
+                isPaid: existingInst?.isPaid || false,
+                triggerType: existingInst?.triggerType || 'date',
+                paymentTermDays: existingInst?.paymentTermDays !== undefined ? existingInst.paymentTermDays : termDays,
+                collectionDate: finalCollDate,
                 hasStampDuty: hasStampDuty
             });
         } else {
@@ -230,14 +255,20 @@ const QuoteForm: React.FC<{
                 const termDays = getTermDaysFromKey(paymentTerms);
                 const collDate = calculateEffectiveDate(baseDate, termDays);
 
+                const existingInst = installments[i];
+                const preserveDates = onlyTotalOrDateChanged && !issueDateChanged;
+                const finalDueDate = (preserveDates && existingInst) ? existingInst.dueDate : baseDate;
+                const finalCollDate = (preserveDates && existingInst) ? existingInst.collectionDate : collDate;
+                const finalDesc = (onlyTotalOrDateChanged && existingInst) ? existingInst.description : desc;
+
                 newInstallments.push({
-                    description: desc,
-                    dueDate: baseDate,
+                    description: finalDesc,
+                    dueDate: finalDueDate,
                     amount: finalAmount,
-                    isPaid: false,
-                    triggerType: 'date',
-                    paymentTermDays: termDays,
-                    collectionDate: collDate,
+                    isPaid: existingInst?.isPaid || false,
+                    triggerType: existingInst?.triggerType || 'date',
+                    paymentTermDays: existingInst?.paymentTermDays !== undefined ? existingInst.paymentTermDays : termDays,
+                    collectionDate: finalCollDate,
                     hasStampDuty: hasStamp
                 });
             }

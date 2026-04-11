@@ -71,8 +71,8 @@ export const generateDocumentPDF = async (
 
     // Row Y Positions
     const row1Y = 10;       
-    const dividerY = 40;    
-    const row2Y = 45;       
+    const dividerY = 35;    
+    const row2Y = 40;       
 
     // ============================================================
     // HELPER: PAGE BREAK CHECKER
@@ -249,7 +249,7 @@ export const generateDocumentPDF = async (
     // TABELLA ARTICOLI
     // ============================================================
     
-    currentY = 85; // Starting Y for table
+    currentY = clientY + 8; // Starting Y for table
     
     const tableColumn = ["Descrizione", "Quantità", "Prezzo Unit.", "Totale"];
     let tableRows: import('jspdf-autotable').RowInput[] = [];
@@ -338,11 +338,11 @@ export const generateDocumentPDF = async (
     }
     const grandTotal = taxable + stampDuty;
 
-    // STIMA ALTEZZA TOTALI: circa 35mm
-    const totalsBlockHeight = 35;
+    // STIMA ALTEZZA TOTALI: circa 25mm
+    const totalsBlockHeight = 25;
     checkPageBreak(totalsBlockHeight);
 
-    currentY += 5;
+    currentY += 4;
     
     docPdf.setFont("helvetica", "normal");
     docPdf.setFontSize(10);
@@ -351,33 +351,33 @@ export const generateDocumentPDF = async (
 
     // Subtotal / Discount
     if (globalDiscountVal > 0) {
-        docPdf.text(`Imponibile Lordo:`, labelX, currentY + 5);
-        docPdf.text(`${formatCurrency(calculatedSubtotal)}`, rightAlignX, currentY + 5, { align: 'right' });
+        docPdf.text(`Imponibile Lordo:`, labelX, currentY + 4);
+        docPdf.text(`${formatCurrency(calculatedSubtotal)}`, rightAlignX, currentY + 4, { align: 'right' });
         
         docPdf.setTextColor(200, 0, 0); 
-        docPdf.text(`Sconto Globale:`, labelX, currentY + 10);
-        docPdf.text(`-${formatCurrency(globalDiscountVal)}`, rightAlignX, currentY + 10, { align: 'right' });
+        docPdf.text(`Sconto Globale:`, labelX, currentY + 8);
+        docPdf.text(`-${formatCurrency(globalDiscountVal)}`, rightAlignX, currentY + 8, { align: 'right' });
         docPdf.setTextColor(...blackColor);
-        currentY += 10;
+        currentY += 8;
     }
 
-    docPdf.text(`Imponibile Netto:`, labelX, currentY + 5);
-    docPdf.text(`${formatCurrency(taxable)}`, rightAlignX, currentY + 5, { align: 'right' });
+    docPdf.text(`Imponibile Netto:`, labelX, currentY + 4);
+    docPdf.text(`${formatCurrency(taxable)}`, rightAlignX, currentY + 4, { align: 'right' });
 
     if (stampDuty > 0) {
-        docPdf.text(`Bollo Virtuale:`, labelX, currentY + 10);
-        docPdf.text(`${formatCurrency(stampDuty)}`, rightAlignX, currentY + 10, { align: 'right' });
-        currentY += 5;
+        docPdf.text(`Bollo Virtuale:`, labelX, currentY + 8);
+        docPdf.text(`${formatCurrency(stampDuty)}`, rightAlignX, currentY + 8, { align: 'right' });
+        currentY += 4;
     }
 
     // Totale Line
     docPdf.setDrawColor(200, 200, 200);
-    docPdf.line(labelX, currentY + 13, rightAlignX, currentY + 13);
+    docPdf.line(labelX, currentY + 11, rightAlignX, currentY + 11);
 
     docPdf.setFont("helvetica", "bold");
     docPdf.setFontSize(12);
-    docPdf.text(`TOTALE:`, labelX, currentY + 20);
-    docPdf.text(`${formatCurrency(grandTotal)}`, rightAlignX, currentY + 20, { align: 'right' });
+    docPdf.text(`TOTALE:`, labelX, currentY + 17);
+    docPdf.text(`${formatCurrency(grandTotal)}`, rightAlignX, currentY + 17, { align: 'right' });
 
     // Expiry
     docPdf.setFontSize(9);
@@ -385,9 +385,9 @@ export const generateDocumentPDF = async (
     docPdf.setTextColor(...grayColor);
     const expiryDate = type === 'Fattura' ? formatDate((doc as Invoice).dueDate) : formatDate((doc as Quote).expiryDate);
     const deadlineLabel = type === 'Fattura' ? "Scadenza:" : "Valido fino al:";
-    docPdf.text(`${deadlineLabel} ${expiryDate}`, rightAlignX, currentY + 26, { align: 'right' });
+    docPdf.text(`${deadlineLabel} ${expiryDate}`, rightAlignX, currentY + 22, { align: 'right' });
 
-    currentY += 30; // Move past totals
+    currentY += 26; // Move past totals
 
     // ============================================================
     // FOOTER BLOCKS (Payment, Installments, Notes)
@@ -402,24 +402,51 @@ export const generateDocumentPDF = async (
         drawBlockHeader("MODALITÀ E TERMINI DI PAGAMENTO");
         
         docPdf.setTextColor(0, 0, 0);
-        docPdf.setFont("helvetica", "normal");
         docPdf.setFontSize(9);
-        docPdf.text(doc.paymentMethod, marginX, currentY + 4);
+        
+        // Parse paymentMethod string (e.g. "Bonifico Bancario - Termini: Vista Fattura")
+        let modalita = doc.paymentMethod;
+        let termini = "";
+        if (doc.paymentMethod.includes(" - Termini: ")) {
+            const parts = doc.paymentMethod.split(" - Termini: ");
+            modalita = parts[0];
+            termini = parts[1];
+        }
+
+        const labelX = marginX;
+        const valueX = marginX + 22;
+        let py = currentY + 5;
+
+        docPdf.setFont("helvetica", "bold");
+        docPdf.text("Modalità:", labelX, py);
+        docPdf.setFont("helvetica", "normal");
+        docPdf.text(modalita, valueX, py);
+        py += 4;
+
+        if (termini) {
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text("Termini:", labelX, py);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.text(termini, valueX, py);
+            py += 4;
+        }
         
         // Add IBAN and Intestatario
-        if (companyInfo && doc.paymentMethod.includes('Bonifico Bancario')) {
+        if (companyInfo && modalita.includes('Bonifico Bancario')) {
             docPdf.setFont("helvetica", "bold");
-            docPdf.text(`IBAN:`, marginX, currentY + 9);
-            docPdf.text(`Intestato a:`, marginX, currentY + 13);
-            
+            docPdf.text(`IBAN:`, labelX, py);
             docPdf.setFont("helvetica", "normal");
-            docPdf.text(`${companyInfo.iban || 'N/A'}`, marginX + 12, currentY + 9);
-            docPdf.text(`${companyInfo.name || 'N/A'}`, marginX + 22, currentY + 13);
-            
-            currentY += 15; // Increased spacing
-        } else {
-            currentY += 8; // Spacing
+            docPdf.text(`${companyInfo.iban || 'N/A'}`, valueX, py);
+            py += 4;
+
+            docPdf.setFont("helvetica", "bold");
+            docPdf.text(`Intestato a:`, labelX, py);
+            docPdf.setFont("helvetica", "normal");
+            docPdf.text(`${companyInfo.name || 'N/A'}`, valueX, py);
+            py += 4;
         }
+        
+        currentY = py + 4;
     }
 
     // 2. INSTALLMENTS
@@ -467,7 +494,7 @@ export const generateDocumentPDF = async (
             margin: { left: marginX, right: marginX, bottom: footerHeight }
         });
         
-        currentY = (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ? (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable!.finalY + 8 : currentY;
+        currentY = (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ? (docPdf as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable!.finalY + 4 : currentY;
     }
 
     // 3. NOTES
@@ -488,7 +515,7 @@ export const generateDocumentPDF = async (
         docPdf.setFontSize(8);
         docPdf.text(splitNotes, marginX, currentY + 3);
         
-        currentY += notesTextHeight + 5;
+        currentY += notesTextHeight + 2;
     }
 
     // ============================================================
