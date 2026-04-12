@@ -531,6 +531,8 @@ export interface Enrollment {
     locationName: string;
     locationColor: string;
     courseId?: string; // New: link to Course document
+    isRenewal?: boolean;
+    previousEnrollmentId?: string;
     appointments?: Appointment[]; // Deprecato/Opzionale: il calendario è ora gestito da LessonSession
     lessonsTotal: number;
     lessonsRemaining: number;
@@ -846,6 +848,8 @@ export interface IntegrityIssue {
     subscriptionName?: string;
     lessonsTotal?: number;
     amount?: number;
+    enrollmentId?: string;
+    ghostId?: string;
     suggestions?: IntegrityIssueSuggestion[];
 }
 

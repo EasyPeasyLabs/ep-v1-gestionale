@@ -217,8 +217,9 @@ const RentSyncModal: React.FC<{
 const FixWizard: React.FC<{
     issues: IntegrityIssue[];
     onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string) => Promise<void>;
+    fetchData: () => Promise<void>;
     onClose: () => void;
-}> = ({ issues, onFix, onClose }) => {
+}> = ({ issues, onFix, fetchData, onClose }) => {
     const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
     const [strategy, setStrategy] = useState<'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion' | null>(null);
@@ -306,6 +307,9 @@ const FixWizard: React.FC<{
                 payload?.transactionId as string, 
                 date 
             );
+            
+            // Refresh data immediately to update the issues list
+            await fetchData();
             
             // Show success message
             if (strat === 'oblivion') {
@@ -542,6 +546,28 @@ const FixWizard: React.FC<{
                                                     </div>
                                                     <button onClick={() => handleResolve('cash')} disabled={loading} className="w-full md-btn md-btn-raised md-btn-green py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px]">
                                                         {loading ? <Spinner /> : 'Esegui Sanatoria'}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Strategy: Oblivion */}
+                                        <div 
+                                            className={`p-6 rounded-[32px] border-2 transition-all cursor-pointer group flex flex-col md:col-span-2 ${strategy === 'oblivion' ? 'border-rose-600 bg-white shadow-xl scale-[1.02]' : 'border-slate-100 hover:border-slate-300 bg-slate-50/20'}`}
+                                            onClick={() => setStrategy('oblivion')}
+                                        >
+                                            <div className="flex justify-between items-center mb-3">
+                                                <h4 className="font-black text-slate-800 uppercase tracking-tighter text-sm">Applica Oblio</h4>
+                                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${strategy === 'oblivion' ? 'border-rose-600 bg-rose-600' : 'border-slate-200'}`}>
+                                                    {strategy === 'oblivion' && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                                                </div>
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 font-medium leading-tight mb-4">Ignora questa anomalia e rimuovila dalle segnalazioni del Fiscal Doctor in modo permanente.</p>
+                                            
+                                            {strategy === 'oblivion' && (
+                                                <div className="mt-auto pt-6 border-t border-rose-50 animate-fade-in space-y-4">
+                                                    <button onClick={() => handleResolve('oblivion')} disabled={loading} className="w-full md-btn md-btn-raised bg-rose-600 text-white shadow-rose-200 py-4 rounded-2xl font-black uppercase tracking-[0.2em] text-[10px]">
+                                                        {loading ? <Spinner /> : 'Conferma Oblio'}
                                                     </button>
                                                 </div>
                                             )}
@@ -1393,7 +1419,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
 
             {/* Modals */}
             {isSyncModalOpen && <Modal onClose={() => setIsSyncModalOpen(false)} size="xl"><RentSyncModal onClose={() => setIsSyncModalOpen(false)} onComplete={fetchData} enrollments={enrollments} /></Modal>}
-            {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="2xl"><FixWizard issues={integrityIssues} onFix={fixIntegrityIssue} onClose={() => { setIsFixWizardOpen(false); fetchData(); }} /></Modal>}
+            {isFixWizardOpen && <Modal onClose={() => setIsFixWizardOpen(false)} size="2xl"><FixWizard issues={integrityIssues} onFix={fixIntegrityIssue} fetchData={fetchData} onClose={() => { setIsFixWizardOpen(false); fetchData(); }} /></Modal>}
             {isTransactionModalOpen && <Modal onClose={() => setIsTransactionModalOpen(false)} size="lg"><TransactionForm transaction={editingTransaction} suppliers={suppliers} onSave={handleSaveTransaction} onCancel={() => setIsTransactionModalOpen(false)} /></Modal>}
             {isInvoiceModalOpen && <Modal onClose={() => setIsInvoiceModalOpen(false)} size="2xl"><InvoiceEditForm invoice={editingInvoice || {} as Invoice} clients={clients} companyInfo={companyInfo} onSave={handleSaveInvoice} onCancel={() => setIsInvoiceModalOpen(false)} /></Modal>}
             {isQuoteModalOpen && <Modal onClose={() => setIsQuoteModalOpen(false)} size="2xl"><QuoteForm quote={editingQuote} clients={clients} companyInfo={companyInfo} onSave={handleSaveQuote} onCancel={() => setIsQuoteModalOpen(false)} /></Modal>}

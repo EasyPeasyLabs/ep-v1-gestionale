@@ -1078,7 +1078,14 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         {clientFinancials && clientFinancials.rows.map((row, idx) => (
                             <div key={idx} className="border-b last:border-0 border-gray-100">
                                 <div className="bg-gray-50 p-3 flex justify-between items-center">
-                                    <span className="font-bold text-gray-700">{row.enrollment.subscriptionName}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold text-gray-700">{row.enrollment.subscriptionName}</span>
+                                        {row.enrollment.isRenewal && (
+                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap" title="Iscrizione Rinnovata">
+                                                🔄 Rinnovo
+                                            </span>
+                                        )}
+                                    </div>
                                     <span className="text-xs font-mono">{Number(row.enrollment.price).toFixed(2)}€</span>
                                 </div>
                                 <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

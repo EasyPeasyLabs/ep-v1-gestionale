@@ -9,6 +9,7 @@ import { processPayment } from '../services/paymentService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
+import RenewalModal from '../components/RenewalModal';
 import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
@@ -321,6 +322,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [filterYear, setFilterYear] = useState<string>(new Date().getFullYear().toString());
     const [filterMonth, setFilterMonth] = useState<string>((new Date().getMonth() + 1).toString());
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [isRenewalModalOpen, setIsRenewalModalOpen] = useState(false);
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     const [bulkAssignState, setBulkAssignState] = useState<{ isOpen: boolean; locationId: string; locationName: string; locationColor: string; } | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null); // State for delete confirm
@@ -652,10 +655,20 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     <h1 className="text-2xl md:text-3xl font-bold truncate">Iscrizioni</h1>
                     <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Gestione dei recinti operativi.</p>
                 </div>
-                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                    <button onClick={() => { setEditingEnrollment(undefined); setIsModalOpen(true); }} className="md-btn md-btn-raised md-btn-green px-4 py-2">
-                        <PlusIcon /> <span className="ml-2">Nuova</span>
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end relative">
+                    <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="md-btn md-btn-raised md-btn-green px-4 py-2 flex items-center">
+                        <PlusIcon /> <span className="ml-2">Nuova</span> <span className="ml-2 text-xs">▼</span>
                     </button>
+                    {isDropdownOpen && (
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-md shadow-lg border z-50 overflow-hidden">
+                            <button onClick={() => { setIsDropdownOpen(false); setEditingEnrollment(undefined); setIsModalOpen(true); }} className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b border-gray-100">
+                                Iscrizione Standard
+                            </button>
+                            <button onClick={() => { setIsDropdownOpen(false); setIsRenewalModalOpen(true); }} className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50">
+                                Rinnovo Iscrizioni
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -743,7 +756,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                         <div key={enr.id} draggable onDragStart={e => handleDragStart(e, enr.id)} className={`md-card p-4 border-l-[6px] transition-all hover:shadow-md cursor-grab flex flex-col gap-3 ${isInst ? 'border-indigo-900 bg-indigo-50/20' : 'border-slate-200'}`} style={!isInst ? { borderLeftColor: loc.locationColor } : {}}>
                                                                             {/* Riga 1 & 2: Nome ed Età */}
                                                                             <div>
-                                                                                <h4 className="font-bold text-slate-800 text-sm leading-tight break-words">{enr.childName}</h4>
+                                                                                <div className="flex items-start justify-between gap-2">
+                                                                                    <h4 className="font-bold text-slate-800 text-sm leading-tight break-words">{enr.childName}</h4>
+                                                                                    {enr.isRenewal && (
+                                                                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap" title="Iscrizione Rinnovata">
+                                                                                            🔄 Rinnovo
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                                 {childAge && <p className="text-xs text-slate-500 mt-1">{childAge}</p>}
                                                                                 {isInst && <span className="inline-block mt-1 text-[8px] font-black bg-indigo-900 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Progetto Ente</span>}
                                                                             </div>
@@ -829,7 +849,17 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                             {unassignedEnrollments.length === 0 ? (<p className="text-center text-gray-400 italic py-10">Nessun allievo non assegnato trovato.</p>) : (
                                 unassignedEnrollments.map(enr => (
                                     <div key={enr.id} className="flex justify-between items-center p-3 bg-white border rounded-lg hover:shadow-sm">
-                                        <div><p className="font-bold text-gray-800">{enr.childName}</p><p className="text-xs text-gray-500">{enr.subscriptionName}</p></div>
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-bold text-gray-800">{enr.childName}</p>
+                                                {enr.isRenewal && (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-800 whitespace-nowrap" title="Iscrizione Rinnovata">
+                                                        🔄 Rinnovo
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-gray-500">{enr.subscriptionName}</p>
+                                        </div>
                                         <button onClick={() => handleManualAssign(enr)} className="md-btn md-btn-sm bg-indigo-600 text-white font-bold hover:bg-indigo-700">Assegna</button>
                                     </div>
                                 ))
@@ -912,6 +942,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                         <div className="mt-6 flex justify-end gap-2"><button onClick={() => setPaymentModalState(prev => ({ ...prev, isOpen: false }))} className="md-btn md-btn-flat md-btn-sm">Annulla</button><button onClick={executePaymentAction} className="md-btn md-btn-raised md-btn-green md-btn-sm">Conferma Pagamento</button></div>
                     </div>
                 </Modal>
+            )}
+
+            {isRenewalModalOpen && (
+                <RenewalModal 
+                    isOpen={isRenewalModalOpen} 
+                    onClose={() => setIsRenewalModalOpen(false)} 
+                    onRefresh={fetchData} 
+                    allEnrollments={enrollments} 
+                    allClients={allClients} 
+                />
             )}
 
             <ConfirmModal 

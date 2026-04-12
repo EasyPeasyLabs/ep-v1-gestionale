@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, where, writeBatch, getDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, doc, DocumentData, QueryDocumentSnapshot, query, orderBy, where, writeBatch, getDoc, deleteDoc } from 'firebase/firestore';
 import { 
     Transaction, TransactionInput, Invoice, InvoiceInput, Quote, QuoteInput, 
     DocumentStatus, PaymentMethod, TransactionType, TransactionCategory, 
@@ -568,17 +568,18 @@ export const runFinancialHealthCheck = async (
                     suggestions.push({
                         type: 'smart_link',
                         label: label,
+                        reason: `Hai registrato in data ${new Date(t.date).toLocaleDateString()} un incasso manuale di ${t.amount}€ senza collegamento diretto a un'iscrizione, che corrisponde esattamente a questa anomalia. Vuoi abbinarlo per chiudere la pendenza?`,
                         payload: { transactionId: t.id }
                     });
                 });
 
-                // --- OBLIVION OPTION (Only for Closed Years) ---
-                if (isClosed) {
+                // --- OBLIVION OPTION ---
+                if (fiscalYear) {
                     suggestions.push({
                         type: 'oblivion',
-                        label: `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)`,
-                        reason: `L'anomalia risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.`,
-                        payload: { fiscalYearId: fiscalYear?.id }
+                        label: isClosed ? `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)` : `🚫 Applica Oblio (Ignora Anomalia)`,
+                        reason: isClosed ? `L'anomalia risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.` : `Applica l'oblio per ignorare questa anomalia e rimuoverla dalle segnalazioni del Fiscal Doctor.`,
+                        payload: { fiscalYearId: fiscalYear.id }
                     });
                 }
 
@@ -592,6 +593,7 @@ export const runFinancialHealthCheck = async (
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal, // Added missing mapping for UI
                     amount: missingAmount,
+                    enrollmentId: enr.id,
                     suggestions: suggestions // AI Suggestions
                 });
             }
@@ -607,18 +609,49 @@ export const runFinancialHealthCheck = async (
 
                 const ghostSuggestions: IntegrityIssueSuggestion[] = [];
                 
-                // Add Oblio option if year is closed
-                if (isClosed) {
+                // --- AI SMART MATCHING FOR GHOST INVOICES ---
+                const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
+                const ghostAmount = ghost.totalAmount;
+                const ghostDate = new Date(ghost.dueDate);
+
+                const ghostCandidates = transactions.filter(t => 
+                    !t.relatedEnrollmentId && 
+                    !t.isDeleted &&
+                    // Temporal Check (+/- 60 days)
+                    Math.abs((new Date(t.date).getTime() - ghostDate.getTime()) / (1000 * 3600 * 24)) < 60 &&
+                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match)
+                    (Math.abs(t.amount - ghostAmount) < 15 || (childLastName && t.description.toLowerCase().includes(childLastName)))
+                );
+
+                ghostCandidates.forEach(t => {
+                    const isPerfectAmount = Math.abs(t.amount - ghostAmount) < 5;
+                    const hasCausalMatch = childLastName && t.description.toLowerCase().includes(childLastName);
+                    
+                    let label = `Collega Transazione: ${t.description} (${t.amount}€ del ${t.date})`;
+                    if (isPerfectAmount && hasCausalMatch) label = `⭐ MATCH ECCELLENTE: ${t.description} (${t.amount}€)`;
+                    else if (hasCausalMatch) label = `👤 Corrispondenza Cognome: ${t.description} (${t.amount}€)`;
+                    else if (isPerfectAmount) label = `💰 Corrispondenza Importo: ${t.description} (${t.date})`;
+
+                    ghostSuggestions.push({
+                        type: 'smart_link',
+                        label: label,
+                        reason: `Hai registrato in data ${new Date(t.date).toLocaleDateString()} un incasso manuale di ${t.amount}€ senza collegamento diretto a un'iscrizione, che corrisponde esattamente a questa anomalia. Vuoi abbinarlo per chiudere la pendenza?`,
+                        payload: { transactionId: t.id }
+                    });
+                });
+
+                // Add Oblio option
+                if (fiscalYear) {
                     ghostSuggestions.push({
                         type: 'oblivion',
-                        label: `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)`,
-                        reason: `La proforma risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.`,
-                        payload: { fiscalYearId: fiscalYear?.id }
+                        label: isClosed ? `🚫 Applica Oblio (Esercizio ${enrYear} Chiuso)` : `🚫 Applica Oblio (Ignora Anomalia)`,
+                        reason: isClosed ? `La proforma risale al ${enrYear}, un esercizio fiscale già consolidato e chiuso. Non è necessaria riconciliazione contabile.` : `Applica l'oblio per ignorare questa proforma scaduta e rimuoverla dalle segnalazioni.`,
+                        payload: { fiscalYearId: fiscalYear.id }
                     });
                 }
                 
                 issues.push({
-                    id: `health-ghost-${ghost.id}`,
+                    id: `health-ghost-${ghost.id}-${enr.id}`,
                     type: 'missing_invoice',
                     date: ghost.dueDate,
                     description: `Rata scaduta non fatturata: ${enr.childName}`,
@@ -627,6 +660,8 @@ export const runFinancialHealthCheck = async (
                     subscriptionName: enr.subscriptionName,
                     lessonsTotal: enr.lessonsTotal,
                     amount: ghost.totalAmount,
+                    enrollmentId: enr.id,
+                    ghostId: ghost.id,
                     suggestions: ghostSuggestions
                 });
             }
@@ -644,6 +679,9 @@ export const fixIntegrityIssue = async (
     targetTransactionId?: string,
     forceDate?: string // NEW: Override Date parameter
 ) => {
+    // 0. DERIVE ENROLLMENT ID
+    const enrId = issue.enrollmentId || (issue.id.startsWith('health-ghost-') ? null : issue.id.replace('health-', ''));
+
     // 1. FISCAL YEAR CHECK
     // Determine target date for the check
     const targetDateToCheck = forceDate || issue.date;
@@ -658,17 +696,36 @@ export const fixIntegrityIssue = async (
 
     if (strategy === 'oblivion') {
         // Find fiscalYearId from suggestions if not explicitly passed (legacy)
-        const fyId = issue.suggestions?.find(s => s.type === 'oblivion')?.payload?.fiscalYearId;
+        let fyId = issue.suggestions?.find(s => s.type === 'oblivion')?.payload?.fiscalYearId;
         const reason = issue.suggestions?.find(s => s.type === 'oblivion')?.reason || "Oblio applicato manualmente.";
         
-        if (!fyId) throw new Error("ID Esercizio Fiscale non trovato per l'oblio.");
+        if (!fyId) {
+            // Find or create fiscal year based on issue date
+            const targetYear = new Date(finalDate).getFullYear();
+            const fiscalSnap = await getDocs(collection(db, 'fiscal_years'));
+            const existingFy = fiscalSnap.docs.find(doc => doc.data().year === targetYear || Number(doc.data().year) === targetYear);
+            
+            if (existingFy) {
+                fyId = existingFy.id;
+            } else {
+                // Create new fiscal year
+                const newFyRef = await addDoc(collection(db, 'fiscal_years'), {
+                    year: targetYear,
+                    status: 'OPEN',
+                    ignoredIssues: [],
+                    oblivionNotes: ''
+                });
+                fyId = newFyRef.id;
+            }
+        }
 
-        const fyRef = doc(db, 'fiscal_years', fyId);
+        const fyRef = doc(db, 'fiscal_years', fyId as string);
         const fySnap = await getDoc(fyRef);
         
         if (fySnap.exists()) {
             const data = fySnap.data() as FiscalYear;
-            const updatedIgnored = [...(data.ignoredIssues || []), issue.id];
+            const issueToIgnore = issue.ghostId ? `health-ghost-${issue.ghostId}` : issue.id;
+            const updatedIgnored = [...(data.ignoredIssues || []), issueToIgnore];
             const timestamp = new Date().toLocaleString('it-IT');
             const newNote = `\n[${timestamp}] Oblio per "${issue.description}": ${reason}`;
             const updatedNotes = (data.oblivionNotes || "") + newNote;
@@ -680,12 +737,15 @@ export const fixIntegrityIssue = async (
         }
     }
     else if (strategy === 'smart_link') {
-        const enrId = issue.id.replace('health-', '');
+        if (!enrId) {
+            console.error("[FiscalDoctor] Impossibile determinare l'ID iscrizione per l'anomalia:", issue.id);
+            throw new Error("ID Iscrizione mancante. Impossibile procedere con il collegamento.");
+        }
         
         // Check for transaction first
-        const transactionIdToLink = targetTransactionId || issue.suggestions?.[0]?.payload?.transactionId;
+        const transactionIdToLink = targetTransactionId || issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.transactionId;
         // Check for invoice
-        const suggestedInvoiceId = issue.suggestions?.[0]?.payload?.invoiceId;
+        const suggestedInvoiceId = issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.invoiceId;
         const invoiceIdsToLink = targetInvoiceIds || (suggestedInvoiceId ? [suggestedInvoiceId] : []);
         
         if (!transactionIdToLink && invoiceIdsToLink.length === 0) {
@@ -694,6 +754,13 @@ export const fixIntegrityIssue = async (
         
         await linkFinancialsToEnrollment(enrId, invoiceIdsToLink, transactionIdToLink ? [transactionIdToLink] : [], adjustment);
         
+        // If this was a ghost invoice issue, and we linked a cash transaction, we should probably delete the ghost invoice
+        // because the cash transaction covers the debt and no real invoice is needed.
+        if (issue.id.startsWith('health-ghost-') && transactionIdToLink && invoiceIdsToLink.length === 0) {
+            const ghostId = issue.ghostId || issue.id.replace('health-ghost-', '');
+            await deleteDoc(doc(db, 'invoices', ghostId));
+        }
+
         // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
         if (invoiceIdsToLink.length > 0) {
             const realInvoice = await getDoc(doc(db, 'invoices', invoiceIdsToLink[0]));
@@ -732,9 +799,19 @@ export const fixIntegrityIssue = async (
         }
     }
     else if (strategy === 'link') {
-        const enrId = issue.id.replace('health-', '');
+        if (!enrId) {
+            console.error("[FiscalDoctor] Impossibile determinare l'ID iscrizione per l'anomalia:", issue.id);
+            throw new Error("ID Iscrizione mancante. Impossibile procedere con il collegamento.");
+        }
+
         await linkFinancialsToEnrollment(enrId, targetInvoiceIds || [], targetTransactionId ? [targetTransactionId] : [], adjustment);
         
+        // If this was a ghost invoice issue, and we linked a cash transaction, we should probably delete the ghost invoice
+        if (issue.id.startsWith('health-ghost-') && targetTransactionId && (!targetInvoiceIds || targetInvoiceIds.length === 0)) {
+            const ghostId = issue.ghostId || issue.id.replace('health-ghost-', '');
+            await deleteDoc(doc(db, 'invoices', ghostId));
+        }
+
         // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
         if (targetInvoiceIds && targetInvoiceIds.length > 0) {
             const realInvoice = await getDoc(doc(db, 'invoices', targetInvoiceIds[0]));
@@ -770,6 +847,11 @@ export const fixIntegrityIssue = async (
         }
     } 
     else if (strategy === 'cash') {
+        if (!enrId) {
+            console.error("[FiscalDoctor] Impossibile determinare l'ID iscrizione per l'anomalia:", issue.id);
+            throw new Error("ID Iscrizione mancante. Impossibile procedere con il collegamento.");
+        }
+
         // Create Transaction
         // Need to fetch enrollment details or simulate enough info
         const transactionData: TransactionInput = {
@@ -781,12 +863,23 @@ export const fixIntegrityIssue = async (
             paymentMethod: PaymentMethod.Cash,
             status: TransactionStatus.Completed,
             allocationType: 'general',
-            relatedEnrollmentId: issue.id.replace('health-', ''),
+            relatedEnrollmentId: enrId,
             isDeleted: false
         };
         await addTransaction(transactionData);
+        
+        // If this was a ghost invoice issue, and we created a cash transaction, we should probably delete the ghost invoice
+        if (issue.id.startsWith('health-ghost-')) {
+            const ghostId = issue.ghostId || issue.id.replace('health-ghost-', '');
+            await deleteDoc(doc(db, 'invoices', ghostId));
+        }
     }
     else if (strategy === 'invoice') {
+        if (!enrId) {
+            console.error("[FiscalDoctor] Impossibile determinare l'ID iscrizione per l'anomalia:", issue.id);
+            throw new Error("ID Iscrizione mancante. Impossibile procedere con la creazione della fattura.");
+        }
+
         // Just create the invoice with the correct number/date
         // The FixWizard handles the number generation, here we just save?
         // Actually, 'invoice' strategy in FixWizard calls `onFix` with `manualNum`.
@@ -815,12 +908,11 @@ export const fixIntegrityIssue = async (
             hasStampDuty: (issue.amount || 0) > 77.47,
             isGhost: false,
             isDeleted: false,
-            relatedEnrollmentId: issue.id.replace('health-', '')
+            relatedEnrollmentId: enrId || undefined
         };
         // Need to fetch enrollment to get clientId really...
         // For simplicity, let's assume the calling code does better or we fetch.
         // Better to fetch enrollment to be safe:
-        const enrId = issue.id.replace('health-', '');
         const enrRef = doc(db, 'enrollments', enrId);
         const enrSnap = await getDoc(enrRef);
         if (enrSnap.exists()) {
@@ -828,30 +920,36 @@ export const fixIntegrityIssue = async (
         }
         
         await addInvoice(invoiceData);
+        
+        // If this was a ghost invoice issue, and we created a real invoice, we should probably delete the ghost invoice
+        if (issue.id.startsWith('health-ghost-')) {
+            const ghostId = issue.ghostId || issue.id.replace('health-ghost-', '');
+            await deleteDoc(doc(db, 'invoices', ghostId));
+        }
     }
 
     // 3. POST-VERIFICATION (DOUBLE CHECK)
     // Re-run health check logic for this specific enrollment to verify resolution
-    const enrId = issue.id.replace('health-', '');
-    const enrRef = doc(db, 'enrollments', enrId);
-    const enrSnap = await getDoc(enrRef);
-    
-    if (enrSnap.exists()) {
-        const enr = enrSnap.data() as Enrollment;
-        // Fetch new state
-        const qInv = query(getInvoicesCollectionRef(), where('relatedEnrollmentId', '==', enrId));
-        const qTrans = query(getTransactionsCollectionRef(), where('relatedEnrollmentId', '==', enrId));
-        const [invs, trans] = await Promise.all([getDocs(qInv), getDocs(qTrans)]);
+    if (enrId) {
+        const enrRef = doc(db, 'enrollments', enrId);
+        const enrSnap = await getDoc(enrRef);
         
-        const paidInv = invs.docs.map(docToInvoice).filter(i => !i.isDeleted && !i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
-        const paidTrans = trans.docs.map(docToTransaction).filter(t => !t.isDeleted).reduce((s, t) => s + t.amount, 0);
-        const totalPaid = paidInv + paidTrans + (enr.adjustmentAmount || 0);
+        if (enrSnap.exists()) {
+            const enr = enrSnap.data() as Enrollment;
+            // Fetch new state
+            const qInv = query(getInvoicesCollectionRef(), where('relatedEnrollmentId', '==', enrId));
+            const qTrans = query(getTransactionsCollectionRef(), where('relatedEnrollmentId', '==', enrId));
+            const [invs, trans] = await Promise.all([getDocs(qInv), getDocs(qTrans)]);
+            
+            const paidInv = invs.docs.map(docToInvoice).filter(i => !i.isDeleted && !i.isGhost).reduce((s, i) => s + i.totalAmount, 0);
+            const paidTrans = trans.docs.map(docToTransaction).filter(t => !t.isDeleted).reduce((s, t) => s + t.amount, 0);
+            const totalPaid = paidInv + paidTrans + (enr.adjustmentAmount || 0);
 
-        if (totalPaid < enr.price - 0.1) {
-            // Still failing
-            console.warn(`[FiscalDoctor] Verification Failed for ${enrId}. Gap remains: ${enr.price - totalPaid}`);
-            // UI will likely reload issues and show it again, which is correct behavior (it didn't fix it).
-            // Optionally, we could throw an error here to alert user "Fix Insufficient".
+            if (totalPaid < enr.price - 0.1) {
+                // Still failing
+                console.warn(`[FiscalDoctor] Verification Failed for ${enrId}. Gap remains: ${enr.price - totalPaid}`);
+                // UI will likely reload issues and show it again, which is correct behavior (it didn't fix it).
+            }
         }
     }
 };

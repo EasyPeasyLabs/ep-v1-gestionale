@@ -275,7 +275,7 @@ const QuoteForm: React.FC<{
         }
         setInstallments(newInstallments);
 
-    }, [paymentStrategy, installmentsCount, paymentTerms, taxable, issueDate, hasStampDuty, calculateEffectiveDate, installments.length, quote]); 
+    }, [paymentStrategy, installmentsCount, paymentTerms, taxable, issueDate, hasStampDuty, calculateEffectiveDate, installments, quote]); 
 
     // Update Installment
     const handleInstallmentChange = (idx: number, field: keyof Installment, value: string | number | boolean) => {

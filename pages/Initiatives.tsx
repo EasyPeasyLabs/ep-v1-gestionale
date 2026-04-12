@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Initiative, InitiativeInput, Book, BookInput, BookLoan, Supplier, Enrollment, EnrollmentStatus } from '../types';
 import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook } from '../services/initiativeService';
+import { suggestBookMetadata } from '../services/geminiService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
@@ -10,6 +11,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import { SortAsc, SortDesc } from 'lucide-react';
 
 // --- SUB-COMPONENTS ---
 
@@ -96,6 +98,21 @@ const BookForm: React.FC<{
     const [targetTags, setTargetTags] = useState<string[]>(book?.targetTags || []);
     const [categoryTags, setCategoryTags] = useState<string[]>(book?.categoryTags || []);
     const [themeTags, setThemeTags] = useState<string[]>(book?.themeTags || []);
+    const [isSuggesting, setIsSuggesting] = useState(false);
+
+    // Progressive Numbering Logic
+    const nextBookNumber = useMemo(() => {
+        if (book?.bookNumber) return book.bookNumber;
+        
+        const numbers = allBooks
+            .map(b => parseInt(b.bookNumber))
+            .filter(n => !isNaN(n));
+        
+        const max = numbers.length > 0 ? Math.max(...numbers) : 0;
+        return (max + 1).toString().padStart(3, '0');
+    }, [book, allBooks]);
+
+    const [bookNumber, setBookNumber] = useState(book?.bookNumber || nextBookNumber);
 
     // Extract unique tags from allBooks to use as suggestions
     const defaultTargetTags = ['piccolissimi', 'piccoli', 'grandi'];
@@ -106,10 +123,39 @@ const BookForm: React.FC<{
     const existingCategoryTags = Array.from(new Set([...defaultCategoryTags, ...allBooks.flatMap(b => b.categoryTags || [])]));
     const existingThemeTags = Array.from(new Set([...defaultThemeTags, ...allBooks.flatMap(b => b.themeTags || [])]));
 
+    const handleAISuggestion = async () => {
+        if (!title) return alert("Inserisci almeno il titolo per ricevere suggerimenti.");
+        
+        setIsSuggesting(true);
+        try {
+            const suggestion = await suggestBookMetadata(title, authors, categoryTags.join(', '));
+            
+            if (suggestion.targetTags.length > 0) {
+                // Filter to only include valid options: PICCOLISSIMI, PICCOLI, GRANDI
+                const validTargets = suggestion.targetTags
+                    .map(t => t.toLowerCase())
+                    .filter(t => ['piccolissimi', 'piccoli', 'grandi'].includes(t));
+                
+                if (validTargets.length > 0) {
+                    setTargetTags(prev => Array.from(new Set([...prev, ...validTargets])));
+                }
+            }
+            
+            if (suggestion.themeTags.length > 0) {
+                setThemeTags(prev => Array.from(new Set([...prev, ...suggestion.themeTags.map(t => t.toLowerCase())])));
+            }
+        } catch (error) {
+            console.error("AI Suggestion Error:", error);
+            alert("Errore durante il recupero dei suggerimenti AI.");
+        } finally {
+            setIsSuggesting(false);
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const data: BookInput = {
-            bookNumber: book?.bookNumber || '',
+            bookNumber,
             title,
             authors,
             publisher,
@@ -125,12 +171,57 @@ const BookForm: React.FC<{
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 bg-gray-50/50">
-            <div className="p-4 md:p-6 border-b bg-white"><h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3></div>
+            <div className="p-4 md:p-6 border-b bg-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <h3 className="text-xl font-bold text-gray-800">{book ? 'Modifica Libro' : 'Nuovo Libro'}</h3>
+                <div className="flex items-center gap-2 bg-indigo-50/50 p-1.5 rounded-xl border border-indigo-100">
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest ml-2">N. Progressivo:</span>
+                    <div className="flex items-center gap-1">
+                        <input 
+                            type="text" 
+                            value={bookNumber} 
+                            onChange={e => setBookNumber(e.target.value)}
+                            className="w-20 bg-white px-3 py-1 rounded-lg font-mono font-bold text-indigo-600 border border-indigo-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-center"
+                            placeholder="000"
+                        />
+                        {!book && (
+                            <button 
+                                type="button"
+                                onClick={() => setBookNumber(nextBookNumber)}
+                                className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 px-1.5 py-1 rounded border border-indigo-200 hover:bg-white transition-colors uppercase"
+                                title="Ripristina numero suggerito"
+                            >
+                                Auto
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
                     {/* Colonna Sinistra: Dati Principali */}
                     <div className="space-y-4 md:space-y-6">
-                        <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider border-b pb-2">Dati Principali</h4>
+                        <div className="flex justify-between items-center border-b pb-2">
+                            <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider">Dati Principali</h4>
+                            <button 
+                                type="button" 
+                                onClick={handleAISuggestion}
+                                disabled={isSuggesting || !title}
+                                className={`text-[10px] font-bold px-3 py-1 rounded-full transition-all flex items-center gap-1.5 shadow-sm
+                                    ${isSuggesting 
+                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                                        : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                                    }`}
+                            >
+                                {isSuggesting ? (
+                                    <>
+                                        <div className="w-2 h-2 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        Analisi in corso...
+                                    </>
+                                ) : (
+                                    <>✨ Suggerisci con AI</>
+                                )}
+                            </button>
+                        </div>
                         <div className="md-input-group"><input type="text" value={title} onChange={e => setTitle(e.target.value)} required className="md-input bg-white" placeholder=" " /><label className="md-input-label">Titolo</label></div>
                         <div className="md-input-group"><input type="text" value={authors} onChange={e => setAuthors(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Autori</label></div>
                         <div className="md-input-group"><input type="text" value={publisher} onChange={e => setPublisher(e.target.value)} className="md-input bg-white" placeholder=" " /><label className="md-input-label">Casa Editrice</label></div>
@@ -243,6 +334,8 @@ const BookManager: React.FC = () => {
     const [filterCategory, setFilterCategory] = useState('');
     const [filterTheme, setFilterTheme] = useState('');
     const [filterLocation, setFilterLocation] = useState('');
+    const [sortField, setSortField] = useState<'title' | 'authors' | 'publisher' | 'bookNumber'>('bookNumber');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -279,14 +372,15 @@ const BookManager: React.FC = () => {
     const allThemeTags = useMemo(() => Array.from(new Set(books.flatMap(b => b.themeTags || []))).sort(), [books]);
 
     const filteredBooks = useMemo(() => {
-        return books.filter(b => {
+        const filtered = books.filter(b => {
             // Text search
             if (invSearch) {
                 const term = invSearch.toLowerCase();
                 const matchTitle = b.title.toLowerCase().includes(term);
                 const matchAuthors = b.authors?.toLowerCase().includes(term);
                 const matchPublisher = b.publisher?.toLowerCase().includes(term);
-                if (!matchTitle && !matchAuthors && !matchPublisher) return false;
+                const matchNumber = b.bookNumber?.toLowerCase().includes(term);
+                if (!matchTitle && !matchAuthors && !matchPublisher && !matchNumber) return false;
             }
             
             // Tags
@@ -304,7 +398,32 @@ const BookManager: React.FC = () => {
             
             return true;
         });
-    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation]);
+
+        return filtered.sort((a, b) => {
+            let valA = '';
+            let valB = '';
+
+            if (sortField === 'title') {
+                valA = a.title.toLowerCase();
+                valB = b.title.toLowerCase();
+            } else if (sortField === 'authors') {
+                valA = (a.authors || '').toLowerCase();
+                valB = (b.authors || '').toLowerCase();
+            } else if (sortField === 'publisher') {
+                valA = (a.publisher || '').toLowerCase();
+                valB = (b.publisher || '').toLowerCase();
+            } else if (sortField === 'bookNumber') {
+                valA = a.bookNumber || '';
+                valB = b.bookNumber || '';
+            }
+
+            if (sortOrder === 'asc') {
+                return valA.localeCompare(valB, undefined, { numeric: true });
+            } else {
+                return valB.localeCompare(valA, undefined, { numeric: true });
+            }
+        });
+    }, [books, loans, invSearch, filterTarget, filterCategory, filterTheme, filterLocation, sortField, sortOrder]);
 
     // Actions
     const handleCheckout = async () => {
@@ -472,6 +591,29 @@ const BookManager: React.FC = () => {
                                     {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                 </select>
                             </div>
+
+                            <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-gray-100">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ordina per:</span>
+                                    <select 
+                                        value={sortField} 
+                                        onChange={e => setSortField(e.target.value as 'title' | 'authors' | 'publisher' | 'bookNumber')} 
+                                        className="text-xs border-none bg-transparent font-bold text-gray-600 focus:ring-0 cursor-pointer"
+                                    >
+                                        <option value="bookNumber">N. Progressivo</option>
+                                        <option value="title">Titolo</option>
+                                        <option value="authors">Autore</option>
+                                        <option value="publisher">Casa Editrice</option>
+                                    </select>
+                                </div>
+                                <button 
+                                    onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                    className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors bg-indigo-50 px-3 py-1.5 rounded-lg"
+                                >
+                                    {sortOrder === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />}
+                                    {sortOrder === 'asc' ? 'Crescente' : 'Decrescente'}
+                                </button>
+                            </div>
                         </div>
                         
                         {/* Box Elenco Libri */}
@@ -488,7 +630,8 @@ const BookManager: React.FC = () => {
                                     <div key={b.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
                                         <div className="flex justify-between items-start gap-4">
                                             <div className="flex-1">
-                                                <div className="flex items-center gap-2 flex-wrap">
+                                                <div className="flex items-center gap-3 flex-wrap">
+                                                    <span className="text-sm font-mono bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded border border-indigo-100" title="Numero Progressivo">{b.bookNumber}</span>
                                                     <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${b.isAvailable ? 'bg-green-500' : 'bg-red-500'}`} title={b.isAvailable ? 'Disponibile' : 'In Prestito'}></span>
                                                     <h5 className={`font-bold text-lg leading-tight ${!b.isAvailable ? 'text-gray-500' : 'text-gray-900'}`}>{b.title}</h5>
                                                 </div>
