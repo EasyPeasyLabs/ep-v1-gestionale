@@ -546,14 +546,34 @@ export const runFinancialHealthCheck = async (
 
                 // --- AI SMART MATCHING: Multicriteria search ---
                 const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
+                const institutionalName = client?.clientType === ClientType.Institutional ? (client as InstitutionalClient).companyName.toLowerCase() : '';
+                const enrollmentSearchKey = enr.childName.split(' - ')[0].toLowerCase();
 
                 const candidates = transactions.filter(t => 
                     !t.relatedEnrollmentId && 
                     !t.isDeleted &&
-                    // Temporal Check (+/- 60 days)
-                    Math.abs((new Date(t.date).getTime() - enrDate.getTime()) / (1000 * 3600 * 24)) < 60 &&
-                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match)
-                    (Math.abs(t.amount - missingAmount) < 15 || (childLastName && t.description.toLowerCase().includes(childLastName)))
+                    t.type === TransactionType.Income && // Directional Check: Only income for enrollment gaps
+                    // Temporal Check (+/- 90 days)
+                    Math.abs((new Date(t.date).getTime() - enrDate.getTime()) / (1000 * 3600 * 24)) < 90 &&
+                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match or Institutional match)
+                    (
+                        Math.abs(t.amount - missingAmount) < 15 || 
+                        (childLastName && childLastName.length > 2 && t.description.toLowerCase().includes(childLastName)) ||
+                        (institutionalName && (t.description.toLowerCase().includes(institutionalName) || t.allocationName?.toLowerCase().includes(institutionalName) || t.clientName?.toLowerCase().includes(institutionalName))) ||
+                        (enrollmentSearchKey && enrollmentSearchKey.length > 2 && (t.description.toLowerCase().includes(enrollmentSearchKey) || t.allocationName?.toLowerCase().includes(enrollmentSearchKey)))
+                    ) &&
+                    // Subject Validation: If allocated, must match client or be the same entity as supplier. 
+                    // Exclude known expense categories.
+                    (
+                        (!t.allocationId && !t.supplierId) || 
+                        t.allocationId === enr.clientId || 
+                        t.supplierId === enr.clientId ||
+                        (institutionalName && (t.description.toLowerCase().includes(institutionalName) || t.allocationName?.toLowerCase().includes(institutionalName))) ||
+                        (enrollmentSearchKey && (t.description.toLowerCase().includes(enrollmentSearchKey) || t.allocationName?.toLowerCase().includes(enrollmentSearchKey)))
+                    ) &&
+                    t.category !== TransactionCategory.Nolo &&
+                    // Keyword Safety: double check description for expense-related terms (relaxed for income)
+                    !['nolo', 'affitto', 'uscita'].some(keyword => t.description.toLowerCase().includes(keyword))
                 );
 
                 candidates.forEach(t => {
@@ -572,6 +592,38 @@ export const runFinancialHealthCheck = async (
                         payload: { transactionId: t.id }
                     });
                 });
+
+                // --- CUMULATIVE MATCHING ---
+                const orphanTransactions = transactions.filter(t => 
+                    !t.relatedEnrollmentId && 
+                    !t.isDeleted &&
+                    t.type === TransactionType.Income && // Directional Check
+                    Math.abs((new Date(t.date).getTime() - enrDate.getTime()) / (1000 * 3600 * 24)) < 150 && // Wider temporal range for cumulative
+                    (
+                        t.allocationId === enr.clientId || 
+                        t.supplierId === enr.clientId ||
+                        (childLastName && childLastName.length > 2 && t.description.toLowerCase().includes(childLastName)) ||
+                        (institutionalName && (t.description.toLowerCase().includes(institutionalName) || t.allocationName?.toLowerCase().includes(institutionalName) || t.clientName?.toLowerCase().includes(institutionalName))) ||
+                        (enrollmentSearchKey && enrollmentSearchKey.length > 2 && (t.description.toLowerCase().includes(enrollmentSearchKey) || t.allocationName?.toLowerCase().includes(enrollmentSearchKey)))
+                    ) &&
+                    t.category !== TransactionCategory.Nolo &&
+                    // Keyword Safety: relaxed for income
+                    !['nolo', 'affitto', 'uscita'].some(keyword => t.description.toLowerCase().includes(keyword))
+                );
+
+                if (orphanTransactions.length > 1) {
+                    const totalOrphan = orphanTransactions.reduce((sum, t) => sum + t.amount, 0);
+                    // If total matches or is slightly more (allowing for overpayment/residue)
+                    if (Math.abs(totalOrphan - missingAmount) < 10 || (totalOrphan > missingAmount && totalOrphan - missingAmount < 50)) {
+                        suggestions.push({
+                            type: 'smart_link',
+                            label: `⭐ MATCH CUMULATIVO: ${orphanTransactions.length} incassi (${totalOrphan.toFixed(2)}€)`,
+                            reason: `L'AI ha individuato ${orphanTransactions.length} incassi manuali orfani che sommati coprono il debito di ${missingAmount.toFixed(2)}€. Vuoi abbinarli cumulativamente?`,
+                            payload: { transactionIds: orphanTransactions.map(t => t.id) },
+                            multipleTransactions: orphanTransactions
+                        });
+                    }
+                }
 
                 // --- OBLIVION OPTION ---
                 if (fiscalYear) {
@@ -611,16 +663,36 @@ export const runFinancialHealthCheck = async (
                 
                 // --- AI SMART MATCHING FOR GHOST INVOICES ---
                 const childLastName = enr.childName.split(' ').pop()?.toLowerCase() || '';
+                const institutionalName = client?.clientType === ClientType.Institutional ? (client as InstitutionalClient).companyName.toLowerCase() : '';
+                const enrollmentSearchKey = enr.childName.split(' - ')[0].toLowerCase();
                 const ghostAmount = ghost.totalAmount;
                 const ghostDate = new Date(ghost.dueDate);
 
                 const ghostCandidates = transactions.filter(t => 
                     !t.relatedEnrollmentId && 
                     !t.isDeleted &&
-                    // Temporal Check (+/- 60 days)
-                    Math.abs((new Date(t.date).getTime() - ghostDate.getTime()) / (1000 * 3600 * 24)) < 60 &&
-                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match)
-                    (Math.abs(t.amount - ghostAmount) < 15 || (childLastName && t.description.toLowerCase().includes(childLastName)))
+                    t.type === TransactionType.Income && // Directional Check: Only income for enrollment gaps
+                    // Temporal Check (+/- 90 days)
+                    Math.abs((new Date(t.date).getTime() - ghostDate.getTime()) / (1000 * 3600 * 24)) < 90 &&
+                    // Economic Check (+/- 15 eur) OR Causal Check (Lastname match or Institutional match)
+                    (
+                        Math.abs(t.amount - ghostAmount) < 15 || 
+                        (childLastName && childLastName.length > 2 && t.description.toLowerCase().includes(childLastName)) ||
+                        (institutionalName && (t.description.toLowerCase().includes(institutionalName) || t.allocationName?.toLowerCase().includes(institutionalName) || t.clientName?.toLowerCase().includes(institutionalName))) ||
+                        (enrollmentSearchKey && enrollmentSearchKey.length > 2 && (t.description.toLowerCase().includes(enrollmentSearchKey) || t.allocationName?.toLowerCase().includes(enrollmentSearchKey)))
+                    ) &&
+                    // Subject Validation: If allocated, must match client or be the same entity as supplier. 
+                    // Exclude known expense categories.
+                    (
+                        (!t.allocationId && !t.supplierId) || 
+                        t.allocationId === enr.clientId || 
+                        t.supplierId === enr.clientId ||
+                        (institutionalName && (t.description.toLowerCase().includes(institutionalName) || t.allocationName?.toLowerCase().includes(institutionalName))) ||
+                        (enrollmentSearchKey && (t.description.toLowerCase().includes(enrollmentSearchKey) || t.allocationName?.toLowerCase().includes(enrollmentSearchKey)))
+                    ) &&
+                    t.category !== TransactionCategory.Nolo &&
+                    // Keyword Safety: relaxed for income
+                    !['nolo', 'affitto', 'uscita'].some(keyword => t.description.toLowerCase().includes(keyword))
                 );
 
                 ghostCandidates.forEach(t => {
@@ -677,7 +749,8 @@ export const fixIntegrityIssue = async (
     targetInvoiceIds?: string[], 
     adjustment?: { amount: number, notes: string }, 
     targetTransactionId?: string,
-    forceDate?: string // NEW: Override Date parameter
+    forceDate?: string, // NEW: Override Date parameter
+    transactionIds?: string[] // NEW: Support for multiple transactions (cumulative)
 ) => {
     // 0. DERIVE ENROLLMENT ID
     const enrId = issue.enrollmentId || (issue.id.startsWith('health-ghost-') ? null : issue.id.replace('health-', ''));
@@ -742,21 +815,41 @@ export const fixIntegrityIssue = async (
             throw new Error("ID Iscrizione mancante. Impossibile procedere con il collegamento.");
         }
         
-        // Check for transaction first
+        // Check for transactions
         const transactionIdToLink = targetTransactionId || issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.transactionId;
+        const transactionIdsToLink = transactionIds || issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.transactionIds || (transactionIdToLink ? [transactionIdToLink] : []);
+        
+        if (transactionIdsToLink.length === 0) {
+            throw new Error("Nessuna transazione identificata per il collegamento.");
+        }
+
         // Check for invoice
+        const invoiceIdToLink = issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.invoiceId as string;
+        
+        // EXECUTE LINKING
+        await linkFinancialsToEnrollment(enrId as string, invoiceIdToLink ? [invoiceIdToLink] : [], transactionIdsToLink);
+
+        // GHOST INVOICE HANDLING: If this was a ghost invoice anomaly and we linked cash transactions, delete the ghost
+        if (issue.id.startsWith('health-ghost-') && issue.ghostId) {
+            console.log("[FiscalDoctor] Eliminazione ghost invoice risolta:", issue.ghostId);
+            await deleteDoc(doc(db, 'invoices', issue.ghostId));
+        }
+    }
+    else if (strategy === 'link') {
         const suggestedInvoiceId = issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.invoiceId;
         const invoiceIdsToLink = targetInvoiceIds || (suggestedInvoiceId ? [suggestedInvoiceId] : []);
         
-        if (!transactionIdToLink && invoiceIdsToLink.length === 0) {
+        const transactionIdToLink = targetTransactionId || issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.transactionId;
+        const transactionIdsToLink = transactionIds || issue.suggestions?.find(s => s.type === 'smart_link')?.payload?.transactionIds || (transactionIdToLink ? [transactionIdToLink] : []);
+
+        if (transactionIdsToLink.length === 0 && invoiceIdsToLink.length === 0) {
             throw new Error("Nessuna transazione o fattura specificata per il collegamento automatico.");
         }
         
-        await linkFinancialsToEnrollment(enrId, invoiceIdsToLink, transactionIdToLink ? [transactionIdToLink] : [], adjustment);
+        await linkFinancialsToEnrollment(enrId as string, invoiceIdsToLink, transactionIdsToLink, adjustment);
         
-        // If this was a ghost invoice issue, and we linked a cash transaction, we should probably delete the ghost invoice
-        // because the cash transaction covers the debt and no real invoice is needed.
-        if (issue.id.startsWith('health-ghost-') && transactionIdToLink && invoiceIdsToLink.length === 0) {
+        // If this was a ghost invoice issue, and we linked cash transactions, we should probably delete the ghost invoice
+        if (issue.id.startsWith('health-ghost-') && transactionIdsToLink.length > 0 && invoiceIdsToLink.length === 0) {
             const ghostId = issue.ghostId || issue.id.replace('health-ghost-', '');
             await deleteDoc(doc(db, 'invoices', ghostId));
         }
@@ -783,54 +876,6 @@ export const fixIntegrityIssue = async (
                         // Only promote if amounts match (the pro-forma for this balance)
                         if (Math.abs((ghostData.totalAmount || 0) - realAmount) < 1) {
                             // Promote ghost to real invoice: copy number and date from real invoice
-                            batch.update(doc(db, 'invoices', gDoc.id), { 
-                                invoiceNumber: realData.invoiceNumber,
-                                issueDate: realData.issueDate,
-                                dueDate: realData.dueDate,
-                                status: realData.status || DocumentStatus.Sent,
-                                isGhost: false,
-                                notes: (ghostData.notes || '') + ' [Promossa a fattura reale: ' + realData.invoiceNumber + ']'
-                            });
-                        }
-                    });
-                    await batch.commit();
-                }
-            }
-        }
-    }
-    else if (strategy === 'link') {
-        if (!enrId) {
-            console.error("[FiscalDoctor] Impossibile determinare l'ID iscrizione per l'anomalia:", issue.id);
-            throw new Error("ID Iscrizione mancante. Impossibile procedere con il collegamento.");
-        }
-
-        await linkFinancialsToEnrollment(enrId, targetInvoiceIds || [], targetTransactionId ? [targetTransactionId] : [], adjustment);
-        
-        // If this was a ghost invoice issue, and we linked a cash transaction, we should probably delete the ghost invoice
-        if (issue.id.startsWith('health-ghost-') && targetTransactionId && (!targetInvoiceIds || targetInvoiceIds.length === 0)) {
-            const ghostId = issue.ghostId || issue.id.replace('health-ghost-', '');
-            await deleteDoc(doc(db, 'invoices', ghostId));
-        }
-
-        // PROMOTION LOGIC: Find ghost invoices for this enrollment and promote them to real invoices
-        if (targetInvoiceIds && targetInvoiceIds.length > 0) {
-            const realInvoice = await getDoc(doc(db, 'invoices', targetInvoiceIds[0]));
-            if (realInvoice.exists()) {
-                const realData = realInvoice.data();
-                const realAmount = realData.totalAmount || 0;
-                
-                const ghostQuery = query(
-                    collection(db, 'invoices'),
-                    where('relatedEnrollmentId', '==', enrId),
-                    where('isGhost', '==', true)
-                );
-                const ghostSnap = await getDocs(ghostQuery);
-                
-                if (!ghostSnap.empty) {
-                    const batch = writeBatch(db);
-                    ghostSnap.docs.forEach(gDoc => {
-                        const ghostData = gDoc.data();
-                        if (Math.abs((ghostData.totalAmount || 0) - realAmount) < 1) {
                             batch.update(doc(db, 'invoices', gDoc.id), { 
                                 invoiceNumber: realData.invoiceNumber,
                                 issueDate: realData.issueDate,

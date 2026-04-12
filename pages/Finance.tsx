@@ -216,7 +216,7 @@ const RentSyncModal: React.FC<{
 // ... [FixWizard Component - No changes here, kept for brevity] ...
 const FixWizard: React.FC<{
     issues: IntegrityIssue[];
-    onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string) => Promise<void>;
+    onFix: (issue: IntegrityIssue, strategy: 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', manualNum?: string, targetInvoiceIds?: string[], adjustment?: { amount: number, notes: string }, targetTransactionId?: string, forceDate?: string, transactionIds?: string[]) => Promise<void>;
     fetchData: () => Promise<void>;
     onClose: () => void;
 }> = ({ issues, onFix, fetchData, onClose }) => {
@@ -226,8 +226,22 @@ const FixWizard: React.FC<{
     const [date, setDate] = useState('');
     const [ghostPromoting, setGhostPromoting] = useState(false);
     const [ghostResult, setGhostResult] = useState<{ promoted: number; details: string[] } | null>(null);
+    const [selectedCumulativeIds, setSelectedCumulativeIds] = useState<Record<number, string[]>>({});
     
     const activeIssue = selectedIndex !== null ? issues[selectedIndex] : null;
+
+    // Initialize selected IDs when activeIssue changes
+    useEffect(() => {
+        if (activeIssue?.suggestions) {
+            const initial: Record<number, string[]> = {};
+            activeIssue.suggestions.forEach((s, idx) => {
+                if (s.multipleTransactions) {
+                    initial[idx] = s.multipleTransactions.map(t => t.id);
+                }
+            });
+            setSelectedCumulativeIds(initial);
+        }
+    }, [activeIssue]);
 
     // Ghost promotion state
     const [ghostFilter, setGhostFilter] = useState<{ parentName: string; amount: string; dateFrom: string; dateTo: string; enrollmentId: string }>({ parentName: '', amount: '', dateFrom: '', dateTo: '', enrollmentId: '' });
@@ -305,7 +319,8 @@ const FixWizard: React.FC<{
                 undefined, 
                 undefined, 
                 payload?.transactionId as string, 
-                date 
+                date,
+                payload?.transactionIds as string[]
             );
             
             // Refresh data immediately to update the issues list
@@ -461,26 +476,66 @@ const FixWizard: React.FC<{
 
                                     {activeIssue.suggestions && activeIssue.suggestions.length > 0 ? (
                                         <div className="grid grid-cols-1 gap-4">
-                                            {activeIssue.suggestions.map((suggestion, idx) => (
-                                                <div key={idx} className={`p-6 rounded-[32px] border-2 transition-all group ${suggestion.type === 'oblivion' ? 'bg-rose-50 border-rose-100 hover:border-rose-300' : 'bg-indigo-50 border-indigo-100 hover:border-indigo-300 shadow-sm hover:shadow-md'}`}>
-                                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                {suggestion.type === 'smart_link' && <span className="text-indigo-500">⭐</span>}
-                                                                <div className="text-lg font-black text-slate-800 leading-tight">{suggestion.label}</div>
+                                            {activeIssue.suggestions.map((suggestion, idx) => {
+                                                const isCumulative = !!suggestion.multipleTransactions;
+                                                const selectedIds = selectedCumulativeIds[idx] || [];
+                                                const currentTotal = suggestion.multipleTransactions?.filter(t => selectedIds.includes(t.id)).reduce((s, t) => s + t.amount, 0) || 0;
+
+                                                return (
+                                                    <div key={idx} className={`p-6 rounded-[32px] border-2 transition-all group ${suggestion.type === 'oblivion' ? 'bg-rose-50 border-rose-100 hover:border-rose-300' : 'bg-indigo-50 border-indigo-100 hover:border-indigo-300 shadow-sm hover:shadow-md'}`}>
+                                                        <div className="flex flex-col gap-6">
+                                                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                                                                <div className="flex-1">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        {suggestion.type === 'smart_link' && <span className="text-indigo-500">⭐</span>}
+                                                                        <div className="text-lg font-black text-slate-800 leading-tight">{suggestion.label}</div>
+                                                                    </div>
+                                                                    {suggestion.reason && <div className="text-xs text-slate-500 leading-relaxed font-medium mt-1">{suggestion.reason}</div>}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const payload = isCumulative ? { ...suggestion.payload, transactionIds: selectedIds } : suggestion.payload;
+                                                                        handleResolve(suggestion.type as 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', payload);
+                                                                    }}
+                                                                    disabled={loading || (isCumulative && selectedIds.length === 0)}
+                                                                    className={`md-btn md-btn-raised rounded-2xl px-8 py-4 font-black uppercase text-[10px] tracking-widest transition-transform active:scale-95 flex items-center gap-2 whitespace-nowrap ${suggestion.type === 'oblivion' ? 'bg-rose-600 text-white shadow-rose-200' : 'bg-indigo-600 text-white shadow-indigo-200'} ${isCumulative && selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                >
+                                                                    {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (suggestion.type === 'oblivion' ? 'Applica Oblio' : 'Conferma Match')}
+                                                                </button>
                                                             </div>
-                                                            {suggestion.reason && <div className="text-xs text-slate-500 leading-relaxed font-medium mt-1">{suggestion.reason}</div>}
+
+                                                            {isCumulative && (
+                                                                <div className="space-y-2 bg-white/50 p-4 rounded-2xl border border-indigo-100">
+                                                                    <div className="flex justify-between items-center mb-2">
+                                                                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Seleziona Transazioni</span>
+                                                                        <span className="font-mono text-xs font-bold text-indigo-600">Totale: {currentTotal.toFixed(2)}€ / {activeIssue.amount?.toFixed(2)}€</span>
+                                                                    </div>
+                                                                    {suggestion.multipleTransactions?.map(t => (
+                                                                        <label key={t.id} className="flex items-center gap-3 p-2 hover:bg-white rounded-xl cursor-pointer transition-colors">
+                                                                            <input 
+                                                                                type="checkbox" 
+                                                                                checked={selectedIds.includes(t.id)}
+                                                                                onChange={() => {
+                                                                                    setSelectedCumulativeIds(prev => ({
+                                                                                        ...prev,
+                                                                                        [idx]: prev[idx].includes(t.id) ? prev[idx].filter(id => id !== t.id) : [...prev[idx], t.id]
+                                                                                    }));
+                                                                                }}
+                                                                                className="w-4 h-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500"
+                                                                            />
+                                                                            <div className="flex-1">
+                                                                                <div className="text-xs font-bold text-slate-700">{t.description}</div>
+                                                                                <div className="text-[10px] text-slate-400">{new Date(t.date).toLocaleDateString()}</div>
+                                                                            </div>
+                                                                            <div className="font-mono text-xs font-black text-slate-900">{t.amount.toFixed(2)}€</div>
+                                                                        </label>
+                                                                    ))}
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                        <button
-                                                            onClick={() => handleResolve(suggestion.type as 'invoice' | 'cash' | 'link' | 'smart_link' | 'oblivion', suggestion.payload)}
-                                                            disabled={loading}
-                                                            className={`md-btn md-btn-raised rounded-2xl px-8 py-4 font-black uppercase text-[10px] tracking-widest transition-transform active:scale-95 flex items-center gap-2 whitespace-nowrap ${suggestion.type === 'oblivion' ? 'bg-rose-600 text-white shadow-rose-200' : 'bg-indigo-600 text-white shadow-indigo-200'}`}
-                                                        >
-                                                            {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (suggestion.type === 'oblivion' ? 'Applica Oblio' : 'Conferma Match')}
-                                                        </button>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     ) : (
                                         <div className="p-8 border-2 border-dashed border-slate-200 rounded-[32px] text-center bg-slate-50/30">

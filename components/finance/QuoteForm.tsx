@@ -64,6 +64,7 @@ const QuoteForm: React.FC<{
     // Generated Plan
     const [installments, setInstallments] = useState<Installment[]>(quote?.installments || []);
     const [notes, setNotes] = useState(quote?.notes || '');
+    const [status, setStatus] = useState<DocumentStatus>(quote?.status || DocumentStatus.Draft);
 
     // Init Logic
     useEffect(() => {
@@ -390,7 +391,7 @@ const QuoteForm: React.FC<{
             installments: installments,
             notes: finalNotes,
             paymentMethod: methodStr,
-            status: quote?.status || DocumentStatus.Draft,
+            status: status,
             quoteNumber: quote?.quoteNumber || '',
             isDeleted: false,
             globalDiscount,
@@ -403,10 +404,15 @@ const QuoteForm: React.FC<{
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full overflow-hidden bg-gray-50">
-            <div className="p-6 border-b bg-white flex-shrink-0">
+            <div className="p-6 border-b bg-white flex-shrink-0 flex justify-between items-center">
                 <h3 className="text-xl font-black text-slate-800 tracking-tight">
                     {quote ? 'Modifica Preventivo' : 'Nuovo Preventivo'}
                 </h3>
+                <select value={status} onChange={e => setStatus(e.target.value as DocumentStatus)} className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded py-1.5 px-3 focus:ring-2 focus:ring-indigo-200 outline-none">
+                    <option value={DocumentStatus.Draft}>Bozza</option>
+                    <option value={DocumentStatus.Sent}>Inviato</option>
+                    <option value={DocumentStatus.Paid}>Pagato</option>
+                </select>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8">

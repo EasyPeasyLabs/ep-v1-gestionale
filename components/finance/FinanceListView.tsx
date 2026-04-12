@@ -161,7 +161,8 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
                 'description' in item ? (item as Transaction).description : '',
                 'invoiceNumber' in item ? (item as Invoice).invoiceNumber : '',
                 'quoteNumber' in item ? (item as Quote).quoteNumber : '',
-                'allocationName' in item ? (item as Transaction).allocationName : ''
+                'allocationName' in item ? (item as Transaction).allocationName : '',
+                ('amount' in item ? (item as Transaction).amount : ('totalAmount' in item ? (item as Invoice).totalAmount : 0))?.toString() || ''
             ];
 
             // 1. Resolve Child Badge for Search

@@ -265,6 +265,7 @@ export interface Transaction {
     relatedDocumentId?: string; // invoice or quote id
     relatedEnrollmentId?: string;
     clientName?: string; // Denormalized
+    supplierId?: string; // Ref to Supplier
     isDeleted: boolean;
 }
 
@@ -772,10 +773,12 @@ export interface IntegrityIssueSuggestion {
     reason?: string;
     payload?: {
         transactionId?: string;
+        transactionIds?: string[]; // For cumulative matches
         invoiceId?: string;
         fiscalYearId?: string;
     };
     transactionDetails?: Transaction;
+    multipleTransactions?: Transaction[]; // For cumulative matches
     invoices?: Invoice[];
     isPerfect?: boolean;
     gap?: number;
