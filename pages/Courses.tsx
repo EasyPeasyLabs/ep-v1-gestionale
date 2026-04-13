@@ -164,7 +164,7 @@ const Courses: React.FC = () => {
 
                 const legacyModelCount = snapLegacy.docs.filter(d => {
                     const data = d.data();
-                    if (data.courseId) return false; // Già conteggiato nel nuovo modello
+                    if (data.courseId && data.courseId !== 'manual') return false; // Already counted in new model
 
                     const remaining = (data.lessonsRemaining || 0) + (data.labRemaining || 0) + (data.sgRemaining || 0) + (data.evtRemaining || 0);
                     if (remaining <= 0) return false;
@@ -172,17 +172,31 @@ const Courses: React.FC = () => {
                     const enrDayRaw = data.selectedSlot?.dayOfWeek || data.dayOfWeek || data.giorno;
                     let matchDay = false;
                     if (typeof enrDayRaw === 'number') matchDay = enrDayRaw === courseData.dayOfWeek;
-                    else if (typeof enrDayRaw === 'string') matchDay = enrDayRaw.toLowerCase().startsWith(targetDayName.substring(0,3).toLowerCase());
+                    else if (typeof enrDayRaw === 'string') {
+                        const dayStr = enrDayRaw.toLowerCase();
+                        matchDay = dayStr.startsWith(targetDayName.substring(0,3).toLowerCase()) || 
+                                   dayStr === targetDayName.toLowerCase();
+                    }
 
-                    const enrTypeRaw = data.selectedSlot?.type || data.slotType || data.type || data.tipo;
+                    const enrTypeRaw = data.selectedSlot?.type || data.slotType || data.type || data.tipo || data.subscriptionName;
                     let matchType = false;
                     if (enrTypeRaw) {
                         const cleanEnrType = String(enrTypeRaw).toUpperCase();
                         const cleanTargetType = String(courseData.slotType).toUpperCase();
-                        matchType = cleanEnrType.includes(cleanTargetType) || cleanTargetType.includes(cleanEnrType);
+                        // Broad match for combo types
+                        matchType = cleanEnrType.includes(cleanTargetType) || 
+                                    cleanTargetType.includes(cleanEnrType) ||
+                                    (cleanTargetType === 'LAB+SG' && (cleanEnrType.includes('LAB') || cleanEnrType.includes('SG')));
                     }
                     
-                    return matchDay && matchType;
+                    // Also check time if available to be more precise
+                    const enrTime = data.selectedSlot?.startTime || data.startTime || data.ora;
+                    let matchTime = true; // Default to true if not specified in legacy
+                    if (enrTime && courseData.startTime) {
+                        matchTime = String(enrTime).startsWith(courseData.startTime.substring(0, 2));
+                    }
+
+                    return matchDay && matchType && matchTime;
                 }).length;
 
                 const realCount = newModelCount + legacyModelCount;
@@ -277,9 +291,11 @@ const Courses: React.FC = () => {
                     }
                 };
                 courseData.weeklyPlan = weeklyPlan;
-                courseData.startTime = configs.LAB.startTime;
-                courseData.endTime = configs.LAB.endTime;
-                courseData.capacity = Math.max(configs.LAB.capacity, configs.SG.capacity);
+                
+                // Use the configured LAB+SG slot times for the main course document
+                courseData.startTime = configs['LAB+SG'].startTime;
+                courseData.endTime = configs['LAB+SG'].endTime;
+                courseData.capacity = configs['LAB+SG'].capacity || Math.max(configs.LAB.capacity, configs.SG.capacity);
             }
 
             if (editingCourseId) {

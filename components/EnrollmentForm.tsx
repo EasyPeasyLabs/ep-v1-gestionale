@@ -4,6 +4,7 @@ import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import { getEnrollmentsForClient } from '../services/enrollmentService';
 import { getOpenCourses } from '../services/courseService';
+import toast from 'react-hot-toast';
 import Spinner from './Spinner';
 import SearchIcon from './icons/SearchIcon';
 import PlusIcon from './icons/PlusIcon';
@@ -449,7 +450,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         }
         
         setCustomSchedule(prev => [...prev, ...newApps].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
-        alert(`Generate ${added} lezioni.`);
+        toast.success(`Generate ${added} lezioni.`);
     };
 
     const removeCustomLesson = (idx: number) => {
@@ -498,7 +499,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             
             // Filter by age if subscription specifies it
             if (childrenAgeRange && s.allowedAges) {
-                if (childrenAgeRange.min < s.allowedAges.min || childrenAgeRange.max > s.allowedAges.max) {
+                // Relaxed check: if child age is within 1 year of range, allow it (to handle DOB edge cases)
+                const minAge = s.allowedAges.min;
+                const maxAge = s.allowedAges.max;
+                if (childrenAgeRange.min < minAge || childrenAgeRange.max > maxAge) {
                     return false;
                 }
             }
@@ -507,22 +511,46 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         });
 
         // If a course is selected, filter by compatible tokens
+        let filteredSubs = baseSubs;
         if (selectedCourseId) {
             const course = courses.find(c => c.id === selectedCourseId);
             if (course) {
-                return baseSubs.filter(s => {
+                filteredSubs = baseSubs.filter(s => {
                     // Compatible if it has at least one token of the course's type
                     if (s.tokens && s.tokens.length > 0) {
-                        return s.tokens.some(t => t.type === course.slotType);
+                        const hasExactMatch = s.tokens.some(t => t.type === course.slotType);
+                        if (hasExactMatch) return true;
+
+                        // Special case for LAB+SG combo: compatible if subscription has both LAB and SG tokens
+                        if (course.slotType === 'LAB+SG') {
+                            const hasLab = s.tokens.some(t => t.type === 'LAB');
+                            const hasSg = s.tokens.some(t => t.type === 'SG');
+                            return hasLab && hasSg;
+                        }
+                        return false;
                     }
                     // Fallback for legacy subscriptions (assume compatible if slotType matches legacy expectations)
+                    // If the name contains the slotType, it's a good hint
+                    if (s.name.toUpperCase().includes(course.slotType.toUpperCase())) return true;
+                    
                     return true; 
                 });
             }
         }
 
-        return baseSubs;
-    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory, selectedChildIds, currentClient, courses, selectedCourseId]);
+        // --- NEW SORTING LOGIC ---
+        // Find last subscription
+        const lastEnrollment = clientHistory.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())[0];
+        const lastSubId = lastEnrollment?.subscriptionTypeId;
+
+        return filteredSubs.sort((a, b) => {
+            if (lastSubId) {
+                if (a.id === lastSubId && b.id !== lastSubId) return -1;
+                if (b.id === lastSubId && a.id !== lastSubId) return 1;
+            }
+            return a.name.localeCompare(b.name);
+        });
+    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory, selectedChildIds, currentClient, courses, selectedCourseId, clientHistory]);
 
     const filteredCourses = useMemo(() => {
         if (!isAgeFilteringActive || isAdultEnrollment) return courses;
@@ -584,11 +612,18 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         setSelectedChildIds(prev => prev.includes(childId) ? prev.filter(id => id !== childId) : [...prev, childId]);
     };
 
+    const [isSaving, setIsSaving] = useState(false);
+    
+    // ... (existing state)
+
     // --- SUBMIT ---
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedClientId) return alert("Seleziona un cliente.");
-        if (!isInstitutional && !isAdultEnrollment && selectedChildIds.length === 0) return alert("Seleziona almeno un figlio.");
+        if (isSaving) return;
+        setIsSaving(true);
+        
+        if (!selectedClientId) { setIsSaving(false); return alert("Seleziona un cliente."); }
+        if (!isInstitutional && !isAdultEnrollment && selectedChildIds.length === 0) { setIsSaving(false); return alert("Seleziona almeno un figlio."); }
 
         const selectedSub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
         
@@ -605,7 +640,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
         // --- MODE LOGIC BRANCH ---
         if (isCustomMode) {
-            if (customSchedule.length === 0) return alert("Inserisci almeno una lezione nel calendario.");
+            if (customSchedule.length === 0) { setIsSaving(false); return alert("Inserisci almeno una lezione nel calendario."); }
             
             appointmentsPayload = customSchedule;
             // Recalculate bounds from custom schedule
@@ -660,7 +695,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 finalCourseId = course.id;
                 const loc = allLocations.find(l => l.id === course.locationId);
                 finalLocationName = loc?.name || 'Sede';
-                // finalLocationColor = loc?.color || '#ccc'; // already handled if possible
             }
         }
 
@@ -718,7 +752,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             enrollmentsToSave.push(newEnrollment);
         });
 
-        onSave(enrollmentsToSave, { regenerateCalendar: !isCustomMode });
+        try {
+            await onSave(enrollmentsToSave, { regenerateCalendar: !isCustomMode });
+        } catch (e) {
+            console.error(e);
+            alert("Errore durante il salvataggio.");
+            setIsSaving(false);
+        }
     };
 
     if (loading) return <div className="flex justify-center items-center h-40"><Spinner /></div>;
@@ -1048,8 +1088,10 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             </div>
 
             <div className="p-4 border-t bg-gray-50 flex justify-end space-x-3 flex-shrink-0">
-                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm">Annulla</button>
-                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm">Salva Modifiche</button>
+                <button type="button" onClick={onCancel} className="md-btn md-btn-flat md-btn-sm" disabled={isSaving}>Annulla</button>
+                <button type="submit" className="md-btn md-btn-raised md-btn-green md-btn-sm" disabled={isSaving}>
+                    {isSaving ? <Spinner /> : 'Salva Modifiche'}
+                </button>
             </div>
         </form>
     );

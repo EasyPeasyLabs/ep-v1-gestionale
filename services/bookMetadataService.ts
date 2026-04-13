@@ -21,7 +21,6 @@ export const fetchBookMetadata = async (title: string, authors: string): Promise
 
         // Mappatura Tag (Logica Locale)
         const targetTags: string[] = [];
-        const age = volumeInfo.maturityRating || '';
         if (description.includes('0-2') || description.includes('0-3') || description.includes('primi anni')) targetTags.push('piccolissimi');
         if (description.includes('3-4') || description.includes('prescolare')) targetTags.push('piccoli');
         if (description.includes('5-7') || description.includes('scuola primaria')) targetTags.push('grandi');

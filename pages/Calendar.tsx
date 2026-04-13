@@ -14,6 +14,7 @@ import LessonForm from '../components/calendar/LessonForm';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import { toLocalISOString, getItalianHolidays } from '../utils/dateUtils';
+import toast from 'react-hot-toast';
 
 // Helper per contrasto colore
 const getTextColorForBg = (bgColor: string) => {
@@ -252,14 +253,16 @@ const Calendar: React.FC = () => {
             if ('id' in data) await updateLesson(data.id, data);
             else await addLesson(data as LessonInput);
             setIsLessonModalOpen(false);
+            toast.success("Lezione salvata!");
             fetchData();
-        } catch (e) { alert("Errore salvataggio lezione"); }
+        } catch (e) { toast.error("Errore salvataggio lezione"); }
     };
 
     const handleDeleteLesson = async (id: string) => {
         if(confirm("Eliminare questa lezione?")) {
             await deleteLesson(id);
             setIsLessonModalOpen(false);
+            toast.success("Lezione eliminata");
             fetchData();
         }
     };

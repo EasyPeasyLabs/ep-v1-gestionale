@@ -27,7 +27,6 @@ import Initiatives from './pages/Initiatives';
 import Manual from './pages/Manual';
 import ClientSituation from './pages/ClientSituation'; 
 import NotificationScheduler from './components/NotificationScheduler';
-import { requestNotificationPermission, setupForegroundMessaging } from './services/fcmService';
 import { getCompanyInfo } from './services/settingsService';
 import { LeadsPage } from './pages/LeadsPage';
 import Courses from './pages/Courses';

@@ -16,7 +16,8 @@ export const bookStudentIntoCourseLessons = async (
     childId: string,
     childName: string,
     startDate: string,
-    totalLessons: number
+    totalLessons: number,
+    quotas?: { lab?: number, sg?: number, evt?: number, read?: number }
 ) => {
     const lessonsRef = collection(db, 'lessons');
     const q = query(
@@ -32,6 +33,8 @@ export const bookStudentIntoCourseLessons = async (
     let bookedCount = 0;
     let labUsed = 0;
     let sgUsed = 0;
+    let evtUsed = 0;
+    let readUsed = 0;
     let finalEndDate = startDate;
 
     const attendee: LessonAttendee = {
@@ -45,6 +48,14 @@ export const bookStudentIntoCourseLessons = async (
     for (const lesson of lessons) {
         if (bookedCount >= totalLessons) break;
 
+        // Check quotas if provided
+        if (quotas) {
+            if (lesson.slotType === 'LAB' && quotas.lab !== undefined && labUsed >= quotas.lab) continue;
+            if (lesson.slotType === 'SG' && quotas.sg !== undefined && sgUsed >= quotas.sg) continue;
+            if (lesson.slotType === 'EVT' && quotas.evt !== undefined && evtUsed >= quotas.evt) continue;
+            if (lesson.slotType === 'READ' && quotas.read !== undefined && readUsed >= quotas.read) continue;
+        }
+
         const lessonDocRef = doc(db, 'lessons', lesson.id);
         
         // Controlla se l'allievo è già prenotato
@@ -57,7 +68,10 @@ export const bookStudentIntoCourseLessons = async (
         }
 
         if (lesson.slotType === 'LAB') labUsed++;
-        if (lesson.slotType === 'SG') sgUsed++;
+        else if (lesson.slotType === 'SG') sgUsed++;
+        else if (lesson.slotType === 'EVT') evtUsed++;
+        else if (lesson.slotType === 'READ') readUsed++;
+        
         bookedCount++;
         finalEndDate = lesson.date;
     }
@@ -66,7 +80,7 @@ export const bookStudentIntoCourseLessons = async (
         await batch.commit();
     }
 
-    return { bookedCount, labUsed, sgUsed, finalEndDate };
+    return { bookedCount, labUsed, sgUsed, evtUsed, readUsed, finalEndDate };
 };
 
 const docToEnrollment = (doc: QueryDocumentSnapshot<DocumentData>): Enrollment => {
@@ -455,6 +469,53 @@ export const syncEnrollmentFromLessonUpdate = async (lessonId: string, lessonUpd
             await batch.commit();
             console.log(`[Sync] Updated ${updatedCount} enrollments from manual lesson update.`);
         }
+    }
+};
+
+export const syncEnrollmentFromLessonDeletion = async (lessonId: string, lessonDetails?: { date: string, startTime: string, locationName: string }) => {
+    const q = query(collection(db, 'enrollments'), where('status', 'in', ['active', 'confirmed', 'pending']));
+    const snapshot = await getDocs(q);
+    
+    const batch = writeBatch(db);
+    let updatedCount = 0;
+
+    snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data() as Enrollment;
+        if (!data.appointments) return;
+
+        const hasMatch = data.appointments.some(a => {
+            // 1. Match by lessonId (Hard Link)
+            if (a.lessonId === lessonId) return true;
+            
+            // 2. Match by Slot (Fuzzy Link) - Only if details provided
+            if (lessonDetails) {
+                const matchDate = a.date.split('T')[0] === lessonDetails.date.split('T')[0];
+                const matchTime = a.startTime === lessonDetails.startTime;
+                const matchLoc = (a.locationName || '').trim().toLowerCase() === (lessonDetails.locationName || '').trim().toLowerCase();
+                return matchDate && matchTime && matchLoc;
+            }
+            return false;
+        });
+
+        if (hasMatch) {
+            const newApps = data.appointments.filter(a => {
+                if (a.lessonId === lessonId) return false;
+                if (lessonDetails) {
+                    const matchDate = a.date.split('T')[0] === lessonDetails.date.split('T')[0];
+                    const matchTime = a.startTime === lessonDetails.startTime;
+                    const matchLoc = (a.locationName || '').trim().toLowerCase() === (lessonDetails.locationName || '').trim().toLowerCase();
+                    if (matchDate && matchTime && matchLoc) return false;
+                }
+                return true;
+            });
+            batch.update(docSnap.ref, { appointments: newApps });
+            updatedCount++;
+        }
+    });
+
+    if (updatedCount > 0) {
+        await batch.commit();
+        console.log(`[Sync] Removed deleted lesson ${lessonId} (and matching slots) from ${updatedCount} enrollments.`);
     }
 };
 
@@ -1098,7 +1159,13 @@ export const activateEnrollmentWithLocation = async (
             enrollment.childId,
             enrollment.childName,
             currentDate.toISOString(),
-            enrollment.lessonsTotal
+            enrollment.lessonsTotal,
+            {
+                lab: enrollment.labCount,
+                sg: enrollment.sgCount,
+                evt: enrollment.evtCount,
+                read: enrollment.readCount
+            }
         );
         
         labUsed = bookingResult.labUsed;

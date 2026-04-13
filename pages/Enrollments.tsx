@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ParentClient, Enrollment, EnrollmentInput, PaymentMethod, ClientType, DocumentStatus, Supplier, Invoice, Client, Transaction, Quote } from '../types';
+import { ParentClient, InstitutionalClient, Enrollment, EnrollmentInput, PaymentMethod, ClientType, DocumentStatus, Supplier, Invoice, Client, Transaction, Quote } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, getInvoices, updateQuote, getTransactions, getOrphanedFinancialsForClient, getQuotes, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
+import toast from 'react-hot-toast';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
@@ -406,8 +407,15 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     }
                 }
             } 
-            setIsModalOpen(false); await fetchData(); 
-        } finally { setLoading(false); } 
+            setIsModalOpen(false); 
+            toast.success("Iscrizione salvata con successo!");
+            await fetchData(); 
+        } catch (e) {
+            console.error(e);
+            toast.error("Errore durante il salvataggio.");
+        } finally { 
+            setLoading(false); 
+        } 
     };
 
     const handleDragStart = (e: React.DragEvent, id: string) => { e.dataTransfer.setData("text/plain", id); };
@@ -497,7 +505,24 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         groups['unassigned'] = { locationId: 'unassigned', locationName: 'Non Assegnati / In Attesa', locationColor: '#e5e7eb', days: {} };
         
         const filtered = enrollments.filter(e => {
-            if (searchTerm && !e.childName.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                const matchChild = e.childName.toLowerCase().includes(term);
+                
+                const client = allClients.find(c => c.id === e.clientId);
+                let matchParent = false;
+                if (client) {
+                    if (client.clientType === ClientType.Parent) {
+                        const pc = client as ParentClient;
+                        matchParent = pc.firstName.toLowerCase().includes(term) || pc.lastName.toLowerCase().includes(term);
+                    } else if (client.clientType === ClientType.Institutional) {
+                        const ic = client as InstitutionalClient;
+                        matchParent = ic.companyName.toLowerCase().includes(term);
+                    }
+                }
+                
+                if (!matchChild && !matchParent) return false;
+            }
             if (filterLocation && e.locationName !== filterLocation) return false;
             
             // Exclude closed locations
@@ -563,11 +588,30 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         let result = Object.values(groups);
         if (filterLocation) { result = result.filter((g: Group) => g.locationName === filterLocation); }
         return result.sort((a: Group, b: Group) => { if (a.locationId === 'unassigned') return -1; if (b.locationId === 'unassigned') return 1; return a.locationName.localeCompare(b.locationName); });
-    }, [enrollments, suppliers, searchTerm, filterLocation, filterYear, filterMonth]);
+    }, [enrollments, suppliers, searchTerm, filterLocation, filterYear, filterMonth, allClients]);
 
     const unassignedEnrollments = useMemo(() => {
-        return enrollments.filter(e => (e.locationId === 'unassigned' || !e.locationId) && e.childName.toLowerCase().includes(assignSearch.toLowerCase()));
-    }, [enrollments, assignSearch]);
+        return enrollments.filter(e => {
+            if (e.locationId && e.locationId !== 'unassigned') return false;
+            
+            const term = assignSearch.toLowerCase();
+            const matchChild = e.childName.toLowerCase().includes(term);
+            
+            const client = allClients.find(c => c.id === e.clientId);
+            let matchParent = false;
+            if (client) {
+                if (client.clientType === ClientType.Parent) {
+                    const pc = client as ParentClient;
+                    matchParent = pc.firstName.toLowerCase().includes(term) || pc.lastName.toLowerCase().includes(term);
+                } else if (client.clientType === ClientType.Institutional) {
+                    const ic = client as InstitutionalClient;
+                    matchParent = ic.companyName.toLowerCase().includes(term);
+                }
+            }
+            
+            return matchChild || matchParent;
+        });
+    }, [enrollments, assignSearch, allClients]);
 
     // --- DELETION HANDLERS ---
     const handleDeleteRequest = (enr: Enrollment) => {

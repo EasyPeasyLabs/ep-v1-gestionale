@@ -1,8 +1,8 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch } from 'firebase/firestore';
 import { Lesson, LessonInput, SchoolClosure } from '../types';
-import { restoreSuspendedLessons, syncEnrollmentFromLessonUpdate } from './enrollmentService';
+import { restoreSuspendedLessons, syncEnrollmentFromLessonUpdate, syncEnrollmentFromLessonDeletion } from './enrollmentService';
 
 const getLessonCollectionRef = () => collection(db, 'lessons');
 const getClosuresCollectionRef = () => collection(db, 'school_closures');
@@ -51,6 +51,22 @@ export const updateLesson = async (id: string, lessonItem: Partial<LessonInput>)
 
 export const deleteLesson = async (id: string): Promise<void> => {
     const lessonDoc = doc(db, 'lessons', id);
+    const lessonSnap = await getDoc(lessonDoc);
+    
+    if (lessonSnap.exists()) {
+        const lessonData = lessonSnap.data() as Lesson;
+        // Prima di eliminare la lezione fisica, puliamo i riferimenti nelle iscrizioni
+        // Passiamo anche i dettagli per pulire eventuali slot "orfani" o duplicati nello stesso orario/sede
+        await syncEnrollmentFromLessonDeletion(id, {
+            date: lessonData.date,
+            startTime: lessonData.startTime,
+            locationName: lessonData.locationName
+        });
+    } else {
+        // Fallback se la lezione non esiste già (es. eliminazione concorrente)
+        await syncEnrollmentFromLessonDeletion(id);
+    }
+    
     await deleteDoc(lessonDoc);
 };
 

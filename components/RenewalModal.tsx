@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Enrollment, Client, Course, ClientType, EnrollmentStatus, ParentClient, InstitutionalClient, Location, Supplier } from '../types';
+import { Enrollment, Client, Course, ClientType, EnrollmentStatus, ParentClient, InstitutionalClient, Location, Supplier, SubscriptionType } from '../types';
 import { getOpenCourses, getLocations } from '../services/courseService';
 import { getSuppliers } from '../services/supplierService';
+import { getSubscriptionTypes } from '../services/settingsService';
 import { addEnrollment, activateEnrollmentWithLocation } from '../services/enrollmentService';
+import { db } from '../firebase/config';
+import { doc, updateDoc } from 'firebase/firestore';
 import Modal from './Modal';
 import Spinner from './Spinner';
+import toast from 'react-hot-toast';
 
 interface RenewalModalProps {
     isOpen: boolean;
@@ -19,7 +23,9 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
     const [courses, setCourses] = useState<Course[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+    const [subscriptionTypes, setSubscriptionTypes] = useState<SubscriptionType[]>([]);
     const [loading, setLoading] = useState(false);
+    const [renewalStartDate, setRenewalStartDate] = useState(new Date().toISOString().split('T')[0]);
 
     // Single Tab State
     const [searchClient, setSearchClient] = useState('');
@@ -34,6 +40,7 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
             getOpenCourses().then(setCourses).catch(console.error);
             getLocations().then(setLocations).catch(console.error);
             getSuppliers().then(setSuppliers).catch(console.error);
+            getSubscriptionTypes().then(setSubscriptionTypes).catch(console.error);
         }
     }, [isOpen]);
 
@@ -51,14 +58,59 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
 
     const clientEnrollments = useMemo(() => {
         if (!selectedClientId) return [];
-        return allEnrollments.filter(e => e.clientId === selectedClientId && e.courseId);
+        const filtered = allEnrollments.filter(e => 
+            e.clientId === selectedClientId && 
+            (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Completed || e.status === EnrollmentStatus.Expired)
+        );
+        
+        const latestByChild: Record<string, Enrollment> = {};
+        filtered.forEach(e => {
+            const key = e.childId || e.childName || 'default';
+            if (!latestByChild[key] || new Date(e.endDate) > new Date(latestByChild[key].endDate)) {
+                latestByChild[key] = e;
+            }
+        });
+        
+        return Object.values(latestByChild).sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
     }, [selectedClientId, allEnrollments]);
 
     // Derived Data for Course Tab
     const courseEnrollments = useMemo(() => {
         if (!selectedCourseId) return [];
-        return allEnrollments.filter(e => e.courseId === selectedCourseId && e.status === EnrollmentStatus.Active);
-    }, [selectedCourseId, allEnrollments]);
+        const course = courses.find(c => c.id === selectedCourseId);
+        if (!course) return [];
+
+        const filtered = allEnrollments.filter(e => {
+            // 1. Direct link
+            if (e.courseId === selectedCourseId) return true;
+
+            // 2. Fuzzy match for manual enrollments
+            if (!e.courseId || e.courseId === 'manual') {
+                const enrDate = e.appointments?.[0]?.date ? new Date(e.appointments[0].date) : (e.startDate ? new Date(e.startDate) : null);
+                if (!enrDate) return false;
+
+                const matchLocation = e.locationId === course.locationId;
+                const matchDay = enrDate.getDay() === course.dayOfWeek;
+                
+                const enrTime = e.appointments?.[0]?.startTime || '00:00';
+                const matchTime = enrTime === course.startTime;
+
+                return matchLocation && matchDay && matchTime;
+            }
+
+            return false;
+        }).filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Completed || e.status === EnrollmentStatus.Expired);
+
+        const latestByClientChild: Record<string, Enrollment> = {};
+        filtered.forEach(e => {
+            const key = `${e.clientId}_${e.childId || e.childName || 'default'}`;
+            if (!latestByClientChild[key] || new Date(e.endDate) > new Date(latestByClientChild[key].endDate)) {
+                latestByClientChild[key] = e;
+            }
+        });
+
+        return Object.values(latestByClientChild).sort((a, b) => a.childName.localeCompare(b.childName));
+    }, [selectedCourseId, allEnrollments, courses]);
 
     const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.checked) {
@@ -75,18 +127,27 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
     };
 
     const processRenewal = async (enrollment: Enrollment) => {
-        const course = courses.find(c => c.id === enrollment.courseId);
-        if (!course) throw new Error("Corso non trovato");
+        let course = courses.find(c => c.id === enrollment.courseId);
         
-        const location = locations.find(l => l.id === course.locationId);
-        if (!location) throw new Error("Sede del corso non trovata");
+        // If it's a manual enrollment, we try to find a matching course or use the enrollment's own details
+        if (!course && (enrollment.courseId === 'manual' || !enrollment.courseId)) {
+            // Try to find a course that matches the location and day
+            const enrDate = enrollment.appointments?.[0]?.date ? new Date(enrollment.appointments[0].date) : (enrollment.startDate ? new Date(enrollment.startDate) : null);
+            if (enrDate) {
+                course = courses.find(c => c.locationId === enrollment.locationId && c.dayOfWeek === enrDate.getDay());
+            }
+        }
 
-        // Calculate new start date (1 day after current end date)
-        const currentEndDate = new Date(enrollment.endDate);
-        if (isNaN(currentEndDate.getTime())) throw new Error("Data di fine iscrizione non valida");
+        // Manual Start Date from state
+        const newStartDate = new Date(renewalStartDate);
+        if (isNaN(newStartDate.getTime())) throw new Error("Data di inizio rinnovo non valida");
         
-        const newStartDate = new Date(currentEndDate);
-        newStartDate.setDate(newStartDate.getDate() + 1);
+        // Calculate Automatic End Date based on Subscription Duration
+        const subType = subscriptionTypes.find(st => st.id === enrollment.subscriptionTypeId);
+        const duration = subType?.durationInDays || 30; // Default to 30 if not found
+        
+        const newEndDate = new Date(newStartDate);
+        newEndDate.setDate(newEndDate.getDate() + duration - 1);
 
         const newEnrollmentData = {
             clientId: enrollment.clientId,
@@ -103,11 +164,19 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
             locationId: enrollment.locationId,
             locationName: enrollment.locationName,
             locationColor: enrollment.locationColor,
-            courseId: enrollment.courseId,
+            courseId: course?.id || enrollment.courseId,
             lessonsTotal: enrollment.lessonsTotal,
             lessonsRemaining: enrollment.lessonsTotal,
+            labCount: enrollment.labCount,
+            sgCount: enrollment.sgCount,
+            evtCount: enrollment.evtCount,
+            readCount: enrollment.readCount,
+            labRemaining: enrollment.labCount,
+            sgRemaining: enrollment.sgCount,
+            evtRemaining: enrollment.evtCount,
+            readRemaining: enrollment.readCount,
             startDate: newStartDate.toISOString(),
-            endDate: newStartDate.toISOString(), // Will be updated by activate
+            endDate: newEndDate.toISOString(), 
             status: EnrollmentStatus.Active,
             isRenewal: true,
             previousEnrollmentId: enrollment.id,
@@ -116,39 +185,63 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
 
         const newId = await addEnrollment(newEnrollmentData);
         
-        const supplier = suppliers.find(s => s.id === location.supplierId);
-        
-        await activateEnrollmentWithLocation(
-            newId,
-            location.supplierId || 'unassigned',
-            supplier?.companyName || '', 
-            course.locationId,
-            location.name,
-            location.color,
-            course.dayOfWeek,
-            course.startTime,
-            course.endTime
-        );
+        // If we have a course (direct or fuzzy matched), use its details for activation
+        if (course) {
+            const location = locations.find(l => l.id === course.locationId);
+            const supplier = suppliers.find(s => s.id === location?.supplierId);
+            
+            await activateEnrollmentWithLocation(
+                newId,
+                location?.supplierId || enrollment.supplierId || 'unassigned',
+                supplier?.companyName || enrollment.supplierName || '', 
+                course.locationId,
+                location?.name || enrollment.locationName || 'Sede',
+                location?.color || enrollment.locationColor || '#ccc',
+                course.dayOfWeek,
+                course.startTime,
+                course.endTime
+            );
+        } else {
+            // Fallback for purely manual renewal without a matching course
+            const startTime = enrollment.appointments?.[0]?.startTime || '16:00';
+            const endTime = enrollment.appointments?.[0]?.endTime || '18:00';
+            const dayOfWeek = new Date(newStartDate).getDay();
+            
+            await activateEnrollmentWithLocation(
+                newId,
+                enrollment.supplierId || 'unassigned',
+                enrollment.supplierName || '',
+                enrollment.locationId || 'unassigned',
+                enrollment.locationName || 'Sede',
+                enrollment.locationColor || '#ccc',
+                dayOfWeek,
+                startTime,
+                endTime
+            );
+        }
+
+        // Force the calculated End Date (respecting the subscription duration)
+        await updateDoc(doc(db, 'enrollments', newId), {
+            endDate: newEndDate.toISOString()
+        });
     };
 
     const handleRenewSingle = async (enrollment: Enrollment) => {
-        if (!window.confirm(`Vuoi rinnovare l'iscrizione per ${enrollment.childName}?`)) return;
         setLoading(true);
         try {
             await processRenewal(enrollment);
-            alert("Rinnovo completato con successo.");
+            toast.success("Rinnovo completato con successo.");
             onRefresh();
             onClose();
         } catch (e) {
-            alert("Errore durante il rinnovo: " + (e instanceof Error ? e.message : String(e)));
+            toast.error("Errore durante il rinnovo: " + (e instanceof Error ? e.message : String(e)));
         } finally {
             setLoading(false);
         }
     };
 
     const handleRenewBatch = async () => {
-        if (selectedEnrollmentIds.length === 0) return alert("Seleziona almeno un'iscrizione.");
-        if (!window.confirm(`Vuoi rinnovare ${selectedEnrollmentIds.length} iscrizioni?`)) return;
+        if (selectedEnrollmentIds.length === 0) return toast.error("Seleziona almeno un'iscrizione.");
         
         setLoading(true);
         try {
@@ -156,11 +249,12 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
             for (const enr of toRenew) {
                 await processRenewal(enr);
             }
-            alert("Rinnovi completati con successo.");
+            toast.success("Rinnovi completati con successo.");
+            setSelectedEnrollmentIds([]);
             onRefresh();
             onClose();
         } catch (e) {
-            alert("Errore durante i rinnovi: " + (e instanceof Error ? e.message : String(e)));
+            toast.error("Errore durante i rinnovi: " + (e instanceof Error ? e.message : String(e)));
         } finally {
             setLoading(false);
         }
@@ -170,28 +264,46 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
 
     return (
         <Modal onClose={onClose} size="lg">
-            <div className="p-6 max-w-4xl mx-auto">
-                <div className="flex justify-between items-center mb-6">
+            <div className="flex flex-col h-full max-h-[90dvh] overflow-hidden">
+                {/* Header Fissato */}
+                <div className="p-6 border-b bg-gray-50 flex justify-between items-center flex-shrink-0">
                     <h2 className="text-2xl font-bold text-gray-800">Rinnovo Iscrizioni</h2>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
-                {/* Tabs */}
-                <div className="flex border-b border-gray-200 mb-6">
-                    <button 
-                        className={`py-2 px-4 font-bold text-sm ${activeTab === 'single' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        onClick={() => setActiveTab('single')}
-                    >
-                        Rinnovo Singolo Cliente
-                    </button>
-                    <button 
-                        className={`py-2 px-4 font-bold text-sm ${activeTab === 'course' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                        onClick={() => setActiveTab('course')}
-                    >
-                        Rinnovo Multiplo per Corso
-                    </button>
-                </div>
+
+                {/* Area Scrollabile */}
+                <div className="p-6 flex-1 overflow-y-auto">
+                    {/* Data Inizio Rinnovo */}
+                    <div className="mb-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <p className="text-indigo-900 font-bold">Data Inizio Rinnovo</p>
+                            <p className="text-xs text-indigo-700">Tutti i rinnovi inizieranno in questa data. La scadenza sarà calcolata automaticamente.</p>
+                        </div>
+                        <input 
+                            type="date" 
+                            className="md-input border-indigo-200 focus:ring-indigo-500" 
+                            value={renewalStartDate}
+                            onChange={e => setRenewalStartDate(e.target.value)}
+                        />
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex border-b border-gray-200 mb-6">
+                        <button 
+                            className={`py-2 px-4 font-bold text-sm ${activeTab === 'single' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            onClick={() => setActiveTab('single')}
+                        >
+                            Rinnovo Singolo Cliente
+                        </button>
+                        <button 
+                            className={`py-2 px-4 font-bold text-sm ${activeTab === 'course' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                            onClick={() => setActiveTab('course')}
+                        >
+                            Rinnovo Multiplo per Corso
+                        </button>
+                    </div>
 
                 {activeTab === 'single' && (
                     <div>
@@ -234,8 +346,20 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
                                             <div key={e.id} className="p-4 border rounded-lg flex justify-between items-center bg-gray-50">
                                                 <div>
                                                     <p className="font-bold text-gray-800">{e.childName}</p>
-                                                    <p className="text-sm text-gray-600">Corso: {location?.name || 'Sconosciuto'}</p>
-                                                    <p className="text-xs text-gray-500">Scadenza: {new Date(e.endDate).toLocaleDateString('it-IT')}</p>
+                                                    <p className="text-sm text-gray-600">
+                                                        {e.courseId && e.courseId !== 'manual' ? 'Corso: ' : 'Manuale: '}
+                                                        {location?.name || e.locationName || 'Sede Sconosciuta'}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                                            e.status === EnrollmentStatus.Active ? 'bg-green-100 text-green-700' :
+                                                            e.status === EnrollmentStatus.Completed ? 'bg-blue-100 text-blue-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                        }`}>
+                                                            {e.status}
+                                                        </span>
+                                                        <p className="text-xs text-gray-500">Scadenza: {new Date(e.endDate).toLocaleDateString('it-IT')}</p>
+                                                    </div>
                                                 </div>
                                                 <button 
                                                     onClick={() => handleRenewSingle(e)}
@@ -332,8 +456,9 @@ const RenewalModal: React.FC<RenewalModalProps> = ({ isOpen, onClose, onRefresh,
                     </div>
                 )}
             </div>
-        </Modal>
-    );
+        </div>
+    </Modal>
+);
 };
 
 export default RenewalModal;
