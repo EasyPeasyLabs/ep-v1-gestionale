@@ -32,12 +32,16 @@ __export(index_exports, {
   checkPeriodicNotifications: () => checkPeriodicNotifications,
   enrollmentGateway: () => enrollmentGateway,
   getEnrollmentData: () => getEnrollmentData,
-  getPublicSlotsV2: () => getPublicSlotsV2,
+  getPublicSlotsV5: () => getPublicSlotsV5,
   onEnrollmentCreated: () => onEnrollmentCreated,
+  onEnrollmentDeleted: () => onEnrollmentDeleted,
+  onEnrollmentUpdated: () => onEnrollmentUpdated,
   onLeadCreated: () => onLeadCreated,
   processEnrollment: () => processEnrollment,
+  proxyGoogleBooks: () => proxyGoogleBooks,
   receiveLeadV2: () => receiveLeadV2,
-  sendEmail: () => sendEmail
+  sendEmail: () => sendEmail,
+  suggestBookTags: () => suggestBookTags
 });
 module.exports = __toCommonJS(index_exports);
 var import_https = require("firebase-functions/v2/https");
@@ -46,295 +50,8 @@ var import_scheduler = require("firebase-functions/v2/scheduler");
 var logger = __toESM(require("firebase-functions/logger"));
 var import_params = require("firebase-functions/params");
 var admin = __toESM(require("firebase-admin"));
-if (admin.apps.length === 0) {
-  admin.initializeApp();
-}
-var API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
-var gmailClientId = (0, import_params.defineSecret)("GMAIL_CLIENT_ID");
-var gmailClientSecret = (0, import_params.defineSecret)("GMAIL_CLIENT_SECRET");
-var gmailRefreshToken = (0, import_params.defineSecret)("GMAIL_REFRESH_TOKEN");
-var SENDER_EMAIL = "labeasypeasy@gmail.com";
-var REDIRECT_URI = "https://developers.google.com/oauthplayground";
-var sendEmail = (0, import_https.onCall)({
-  region: "europe-west1",
-  cors: true,
-  secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
-}, async (request) => {
-  const { google } = await import("googleapis");
-  const nodemailer = await import("nodemailer");
-  const { to, subject, html, attachments } = request.data;
-  if (!to || !subject || !html) {
-    throw new Error("Missing required fields: to, subject, html");
-  }
-  try {
-    const clientId = gmailClientId.value();
-    const clientSecret = gmailClientSecret.value();
-    const refreshToken = gmailRefreshToken.value();
-    const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
-    oAuth2Client.setCredentials({ refresh_token: refreshToken });
-    const accessToken = await oAuth2Client.getAccessToken();
-    if (!accessToken.token) {
-      throw new Error("Failed to generate access token");
-    }
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        type: "OAuth2",
-        user: SENDER_EMAIL,
-        clientId,
-        clientSecret,
-        refreshToken,
-        accessToken: accessToken.token
-      }
-    });
-    const mailOptions = {
-      from: `Lab Easy Peasy <${SENDER_EMAIL}>`,
-      to: Array.isArray(to) ? to.join(",") : to,
-      subject,
-      html,
-      attachments: attachments || []
-    };
-    const info2 = await transporter.sendMail(mailOptions);
-    logger.info("Email sent successfully:", info2.messageId);
-    return { success: true, messageId: info2.messageId };
-  } catch (error2) {
-    logger.error("Error sending email:", error2?.message || error2);
-    throw new Error(`Email sending failed: ${error2?.message || "Unknown error"}`);
-  }
-});
-async function sendPushToAllTokens(title, body, extraData) {
-  try {
-    const tokensSnapshot = await admin.firestore().collection("fcm_tokens").get();
-    const tokens = [];
-    tokensSnapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.token) {
-        tokens.push(data.token);
-      }
-    });
-    if (tokens.length === 0) {
-      logger.info("No FCM tokens found in database. Skipping notification.");
-      return;
-    }
-    const message = {
-      tokens,
-      notification: {
-        title,
-        body
-      },
-      data: extraData,
-      android: {
-        notification: {
-          icon: "stock_ticker_update",
-          color: "#4f46e5"
-        }
-      },
-      apns: {
-        payload: {
-          aps: {
-            badge: 1,
-            sound: "default"
-          }
-        }
-      }
-    };
-    const response = await admin.messaging().sendEachForMulticast(message);
-    logger.info(`Notifications sent: ${response.successCount} success, ${response.failureCount} failure`);
-    if (response.failureCount > 0) {
-      const failedTokens = [];
-      response.responses.forEach((resp, idx) => {
-        if (!resp.success) {
-          const errorCode = resp.error?.code;
-          if (errorCode === "messaging/invalid-registration-token" || errorCode === "messaging/registration-token-not-registered") {
-            failedTokens.push(tokens[idx]);
-          }
-        }
-      });
-      if (failedTokens.length > 0) {
-        logger.info(`Cleaning up ${failedTokens.length} invalid tokens...`);
-        const batch = admin.firestore().batch();
-        failedTokens.forEach((token) => {
-          batch.delete(admin.firestore().collection("fcm_tokens").doc(token));
-        });
-        await batch.commit();
-      }
-    }
-  } catch (error2) {
-    logger.error("Error sending push notifications:", error2?.message || error2);
-  }
-}
-var onLeadCreated = (0, import_firestore.onDocumentCreated)({
-  region: "europe-west1",
-  document: "incoming_leads/{leadId}"
-}, async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) return;
-  const leadData = snapshot.data();
-  const nome = leadData.nome || leadData.firstName || "Nuovo";
-  const cognome = leadData.cognome || leadData.lastName || "Contatto";
-  let sede = "";
-  const locationId = leadData.selectedLocation || leadData.sede;
-  if (locationId) {
-    try {
-      const suppliersSnap = await admin.firestore().collection("suppliers").get();
-      for (const doc of suppliersSnap.docs) {
-        const supplierData = doc.data();
-        const loc = supplierData.locations?.find((l) => l.id === locationId);
-        if (loc) {
-          sede = loc.name;
-          break;
-        }
-      }
-    } catch (e) {
-      logger.error("Error resolving location name:", e);
-    }
-  }
-  if (!sede) {
-    const payloadSede = leadData.locationName || leadData.nomeSede || leadData.selectedLocation || leadData.sede;
-    if (payloadSede && typeof payloadSede === "string" && payloadSede.trim() !== "") {
-      sede = payloadSede.trim();
-    }
-  }
-  const title = "\u{1F464} Nuova Richiesta Web";
-  let body = "";
-  if (sede) {
-    body = `${nome} ${cognome} ha richiesto informazioni per la sede di ${sede}. Contattalo subito!`;
-  } else {
-    body = `${nome} ${cognome} ha richiesto informazioni. Contattalo subito!`;
-  }
-  await sendPushToAllTokens(title, body, {
-    leadId: event.params.leadId,
-    type: "lead",
-    click_action: "WEB_REQUESTS"
-  });
-});
-var onEnrollmentCreated = (0, import_firestore.onDocumentCreated)({
-  region: "europe-west1",
-  document: "enrollments/{enrollmentId}"
-}, async (event) => {
-  const snapshot = event.data;
-  if (!snapshot) return;
-  const enrData = snapshot.data();
-  if (enrData.source !== "portal") {
-    logger.info(`Enrollment ${event.params.enrollmentId} skipped (source: ${enrData.source || "manual"})`);
-    return;
-  }
-  const clientName = enrData.clientName || "Genitore";
-  const childName = enrData.childName || "Allievo";
-  const subName = enrData.subscriptionName || "Abbonamento";
-  const price = enrData.price || 0;
-  const status = enrData.status || "pending";
-  const isPaid = status === "active";
-  const title = isPaid ? "\u{1F393} Nuova Iscrizione Portal (PAGATA)" : "\u{1F393} Nuova Iscrizione Portal (DA SALDARE)";
-  const body = `${clientName} ha iscritto ${childName} a ${subName}. Stato: ${isPaid ? "Pagato" : "In attesa di saldo"}.`;
-  await sendPushToAllTokens(title, body, {
-    enrollmentId: event.params.enrollmentId,
-    type: "enrollment",
-    click_action: "ENROLLMENTS"
-  });
-  if (!isPaid) {
-    const reminderTitle = "\u{1F4B0} Promemoria Incasso in Sede";
-    const reminderBody = `Attenzione: ${childName} ha prenotato il posto. Ricordati di registrare l'incasso di ${price}\u20AC al suo arrivo.`;
-    await new Promise((resolve) => setTimeout(resolve, 2e3));
-    await sendPushToAllTokens(reminderTitle, reminderBody, {
-      enrollmentId: event.params.enrollmentId,
-      type: "payment_reminder"
-    });
-  }
-  const needsStampDuty = price >= 77;
-  const invoiceReminderTitle = needsStampDuty ? "\u26A0\uFE0F AVVISO BOLLO - Fatturazione" : "\u{1F4C4} Nuova Fattura da Emettere";
-  let invoiceReminderBody = "";
-  if (needsStampDuty) {
-    const totalPrice = price + 2;
-    invoiceReminderBody = `Emetti fattura per ${childName}. Importo \u2265 77\u20AC: verifica l'aggiunta dei 2\u20AC di bollo (Totale dovuto: ${totalPrice}\u20AC).`;
-  } else {
-    invoiceReminderBody = `Emetti fattura per ${childName} - Importo: ${price}\u20AC.`;
-  }
-  await new Promise((resolve) => setTimeout(resolve, 2e3));
-  await sendPushToAllTokens(invoiceReminderTitle, invoiceReminderBody, {
-    enrollmentId: event.params.enrollmentId,
-    type: "invoice_reminder",
-    needsStampDuty: String(needsStampDuty)
-  });
-});
-var enrollmentGateway = (0, import_https.onRequest)({
-  region: "europe-west1",
-  cors: true
-}, async (req, res) => {
-  let id = req.query.id;
-  if (!id) {
-    const pathParts = req.path.split("/").filter(Boolean);
-    id = pathParts.pop() || "";
-  }
-  if (!id || id === "i" || id === "enrollmentGateway") {
-    res.status(400).send("ID Iscrizione mancante.");
-    return;
-  }
-  const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
-  const appUrl = "https://ep-v1-gestionale.vercel.app";
-  try {
-    const response = await fetch(appUrl);
-    let html = await response.text();
-    html = html.replace(/<title>.*?<\/title>/gi, "");
-    html = html.replace(/<meta property="og:.*?>/gi, "");
-    html = html.replace(/<meta name="description".*?>/gi, "");
-    const metaTags = `
-    <title>Easy Peasy Labs - Iscrizione</title>
-    <meta property="og:title" content="Easy Peasy Labs - Modulo di Iscrizione" />
-    <meta property="og:description" content="Completa la tua iscrizione online." />
-    <meta property="og:image" content="${logoUrl}" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://ep-portal-chi.vercel.app/i/${id}" />
-    <base href="${appUrl}/" />
-    <script>
-        window.__IS_ENROLLMENT_PORTAL__ = true;
-        window.__ENROLLMENT_ID__ = "${id}";
-    </script>
-        `;
-    html = html.replace(/<head>/i, `<head>
-${metaTags}`);
-    res.status(200).send(html);
-  } catch (error2) {
-    logger.error("Error fetching index.html:", error2);
-    res.status(500).send("Errore nel caricamento del portale.");
-  }
-});
-var getEnrollmentData = (0, import_https.onCall)({
-  region: "europe-west1",
-  cors: true
-}, async (request) => {
-  const { leadId } = request.data;
-  if (!leadId) {
-    throw new import_https.HttpsError("invalid-argument", "ID Lead mancante.");
-  }
-  const db = admin.firestore();
-  try {
-    const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
-    if (!leadSnap.exists) {
-      throw new import_https.HttpsError("not-found", "Richiesta non trovata.");
-    }
-    const leadData = { id: leadSnap.id, ...leadSnap.data() };
-    if (leadData.status === "converted" && leadData.relatedEnrollmentId) {
-      const enrSnap = await db.collection("enrollments").doc(leadData.relatedEnrollmentId).get();
-      if (enrSnap.exists) {
-        return { existingEnrollment: enrSnap.data() };
-      }
-    }
-    const companySnap = await db.collection("settings").doc("companyInfo").get();
-    const companyData = companySnap.exists ? companySnap.data() : null;
-    const subsSnap = await db.collection("subscriptionTypes").where("isDeleted", "==", false).get();
-    const subs = subsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    const suppliersSnap = await db.collection("suppliers").get();
-    const suppliers = suppliersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    return { lead: leadData, company: companyData, subscriptions: subs, suppliers };
-  } catch (error2) {
-    logger.error("Error in getEnrollmentData:", error2);
-    if (error2 instanceof import_https.HttpsError) {
-      throw error2;
-    }
-    throw new import_https.HttpsError("internal", "Errore nel caricamento dei dati: " + error2.message);
-  }
-});
+
+// ../utils/dateUtils.ts
 var toLocalISOString = (date) => {
   const offset = date.getTimezoneOffset() * 6e4;
   const localISOTime = new Date(date.getTime() - offset).toISOString().slice(0, 10);
@@ -383,360 +100,790 @@ var isItalianHoliday = (date) => {
   const holidays = getItalianHolidays(year);
   return !!holidays[dateStr];
 };
-var processEnrollment = (0, import_https.onCall)({
+
+// src/index.ts
+var import_firestore2 = require("firebase-functions/v2/firestore");
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
+function getAdmin() {
+  return admin;
+}
+var API_SHARED_SECRET = "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
+var gmailClientId = (0, import_params.defineSecret)("GMAIL_CLIENT_ID");
+var gmailClientSecret = (0, import_params.defineSecret)("GMAIL_CLIENT_SECRET");
+var gmailRefreshToken = (0, import_params.defineSecret)("GMAIL_REFRESH_TOKEN");
+var SENDER_EMAIL = "labeasypeasy@gmail.com";
+var REDIRECT_URI = "https://developers.google.com/oauthplayground";
+var sendEmail = (0, import_https.onCall)({
   region: "europe-west1",
-  cors: true
+  cors: true,
+  secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken]
 }, async (request) => {
-  const { leadId, formData, clientData, enrollmentData, transactionData, invoiceData } = request.data;
-  if (!leadId || !formData) {
-    throw new import_https.HttpsError("invalid-argument", "Dati mancanti.");
+  getAdmin();
+  const { google } = await import("googleapis");
+  const nodemailer = await import("nodemailer");
+  const { to, subject, html, attachments } = request.data;
+  if (!to || !subject || !html) {
+    throw new Error("Missing required fields: to, subject, html");
   }
-  const db = admin.firestore();
-  const batch = db.batch();
   try {
-    const clientRef = db.collection("clients").doc();
-    clientData.id = clientRef.id;
-    const childId = db.collection("clients").doc().id;
-    clientData.children[0].id = childId;
-    enrollmentData.clientId = clientRef.id;
-    enrollmentData.childId = childId;
-    if (invoiceData) invoiceData.clientId = clientRef.id;
-    batch.set(clientRef, clientData);
-    const enrRef = db.collection("enrollments").doc();
-    enrollmentData.id = enrRef.id;
-    const calculateEnrollmentDates = (selectedSlot, lessonsTotal) => {
-      const parts = selectedSlot.split(",");
-      const dayName = (parts[0] || "").trim();
-      const timePart = parts.length > 1 ? parts[1].trim() : "16:30 - 18:00";
-      const timeParts = timePart.split("-");
-      const startTime = timeParts[0].trim();
-      const endTime = timeParts.length > 1 ? timeParts[1].trim() : "18:00";
-      const daysMap = ["Domenica", "Luned\xEC", "Marted\xEC", "Mercoled\xEC", "Gioved\xEC", "Venerd\xEC", "Sabato"];
-      const targetDay = daysMap.findIndex((d) => d.toLowerCase() === (dayName || "").toLowerCase());
-      const now = /* @__PURE__ */ new Date();
-      const startDate = new Date(now);
-      if (targetDay !== -1) {
-        const currentDay = startDate.getDay();
-        let distance = targetDay - currentDay;
-        if (distance < 0) {
-          distance += 7;
-        }
-        startDate.setDate(startDate.getDate() + distance);
+    const clientId = gmailClientId.value();
+    const clientSecret = gmailClientSecret.value();
+    const refreshToken = gmailRefreshToken.value();
+    const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, REDIRECT_URI);
+    oAuth2Client.setCredentials({ refresh_token: refreshToken });
+    const accessToken = await oAuth2Client.getAccessToken();
+    if (!accessToken.token) throw new Error("Failed to generate access token");
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        type: "OAuth2",
+        user: SENDER_EMAIL,
+        clientId,
+        clientSecret,
+        refreshToken,
+        accessToken: accessToken.token
       }
-      while (isItalianHoliday(startDate)) {
-        startDate.setDate(startDate.getDate() + 7);
-      }
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(startDate);
-      let validSlots = 1;
-      let loops = 0;
-      while (validSlots < (lessonsTotal || 1) && loops < 100) {
-        endDate.setDate(endDate.getDate() + 7);
-        if (!isItalianHoliday(endDate)) {
-          validSlots++;
-        }
-        loops++;
-      }
-      endDate.setHours(23, 59, 59, 999);
-      return {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        firstLessonDate: startDate.toISOString(),
-        startTime,
-        endTime
-      };
-    };
-    const dates = calculateEnrollmentDates(formData.selectedSlot, enrollmentData.lessonsTotal || 0);
-    enrollmentData.startDate = dates.startDate;
-    enrollmentData.endDate = dates.endDate;
-    if (enrollmentData.appointments && enrollmentData.appointments.length > 0) {
-      enrollmentData.appointments[0].date = dates.firstLessonDate;
-      enrollmentData.appointments[0].startTime = dates.startTime;
-      enrollmentData.appointments[0].endTime = dates.endTime;
-      enrollmentData.appointments[0].lessonId = db.collection("enrollments").doc().id;
-    }
-    if (transactionData) transactionData.relatedEnrollmentId = enrRef.id;
-    if (invoiceData) invoiceData.relatedEnrollmentId = enrRef.id;
-    batch.set(enrRef, enrollmentData);
-    if (transactionData) {
-      const transRef = db.collection("transactions").doc();
-      batch.set(transRef, transactionData);
-    }
-    if (invoiceData) {
-      const invRef = db.collection("invoices").doc();
-      batch.set(invRef, invoiceData);
-    }
-    const leadRef = db.collection("incoming_leads").doc(leadId);
-    batch.update(leadRef, {
-      status: "converted",
-      relatedEnrollmentId: enrRef.id,
-      convertedAt: (/* @__PURE__ */ new Date()).toISOString()
     });
-    await batch.commit();
-    return { success: true, enrollmentId: enrRef.id };
+    const mailOptions = {
+      from: `Lab Easy Peasy <${SENDER_EMAIL}>`,
+      to: Array.isArray(to) ? to.join(",") : to,
+      subject,
+      html,
+      attachments: attachments || []
+    };
+    const info2 = await transporter.sendMail(mailOptions);
+    logger.info("Email sent successfully:", info2.messageId);
+    return { success: true, messageId: info2.messageId };
   } catch (error2) {
-    logger.error("Error in processEnrollment:", error2);
-    if (error2 instanceof import_https.HttpsError) {
-      throw error2;
-    }
-    throw new import_https.HttpsError("internal", "Errore durante l'iscrizione: " + error2.message);
+    const errorMessage = error2 instanceof Error ? error2.message : String(error2);
+    logger.error("Error sending email:", errorMessage);
+    throw new Error(`Email sending failed: ${errorMessage}`);
   }
 });
-var getPublicSlotsV2 = (0, import_https.onRequest)({
-  region: "europe-west1",
-  cors: true
-}, async (req, res) => {
-  const authHeader = req.headers["x-bridge-key"];
-  if (!authHeader || authHeader !== API_SHARED_SECRET) {
-    res.status(403).json({ error: "Forbidden: Invalid API Key" });
-    return;
-  }
+async function sendPushToAllTokens(title, body, extraData) {
   try {
-    const [suppliersSnap, enrollmentsSnap, subscriptionsSnap] = await Promise.all([
-      admin.firestore().collection("suppliers").where("isDeleted", "==", false).get(),
-      admin.firestore().collection("enrollments").where("status", "in", ["active", "pending", "confirmed", "Active", "Pending", "Confirmed"]).get(),
-      admin.firestore().collection("subscriptionTypes").get()
-    ]);
-    const activeSubs = [];
-    subscriptionsSnap.forEach((doc) => {
-      const sub = doc.data();
-      if (sub.isPubliclyVisible !== false) {
-        activeSubs.push({ id: doc.id, ...sub });
-      }
-    });
-    const occupancyMap = /* @__PURE__ */ new Map();
-    const now = /* @__PURE__ */ new Date();
-    const currentDay = now.getDay();
-    const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() + diffToMonday);
-    startOfWeek.setHours(0, 0, 0, 0);
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    endOfWeek.setHours(23, 59, 59, 999);
-    enrollmentsSnap.forEach((doc) => {
+    const firebase = getAdmin();
+    const tokensSnapshot = await firebase.firestore().collection("fcm_tokens").get();
+    const tokens = [];
+    tokensSnapshot.forEach((doc) => {
       const data = doc.data();
-      const locId = data.locationId;
-      const appts = data.appointments || [];
-      const lessonsRemaining = data.lessonsRemaining !== void 0 ? Number(data.lessonsRemaining) : 1;
-      const status = data.status || "pending";
-      const isActive = ["active", "pending", "confirmed", "Active", "Pending", "Confirmed"].includes(status);
-      if (locId && appts.length > 0 && lessonsRemaining > 0 && isActive) {
-        const occupiedSlotsThisWeek = /* @__PURE__ */ new Set();
-        appts.forEach((appt) => {
-          if (appt && appt.date && appt.startTime) {
-            const apptDate = new Date(appt.date);
-            if (apptDate >= startOfWeek && apptDate <= endOfWeek) {
-              const dayOfWeek = apptDate.getDay();
-              const key = `${locId}_${dayOfWeek}_${appt.startTime}`;
-              occupiedSlotsThisWeek.add(key);
-            }
-          }
-        });
-        if (occupiedSlotsThisWeek.size === 0) {
-          const futureAppts = appts.filter((a) => a.date && new Date(a.date) >= startOfWeek);
-          if (futureAppts.length > 0) {
-            const nextAppt = futureAppts[0];
-            const dayOfWeek = new Date(nextAppt.date).getDay();
-            const key = `${locId}_${dayOfWeek}_${nextAppt.startTime}`;
-            occupiedSlotsThisWeek.add(key);
-          }
-        }
-        occupiedSlotsThisWeek.forEach((key) => {
-          occupancyMap.set(key, (occupancyMap.get(key) || 0) + 1);
-        });
-      }
+      if (data.token) tokens.push(data.token);
     });
-    const results = [];
-    suppliersSnap.forEach((doc) => {
-      const supplierData = doc.data();
-      const locations = supplierData.locations || [];
-      locations.forEach((loc) => {
-        if (loc.isPubliclyVisible === false || loc.closedAt) return;
-        const locationCapacity = loc.capacity ? parseInt(String(loc.capacity)) : 15;
-        const allSlots = loc.availability || [];
-        const visibleSlots = allSlots.filter((slot) => slot.isPubliclyVisible !== false).map((s) => {
-          let minAge = 0;
-          let maxAge = 99;
-          if (s.minAge !== void 0) minAge = Number(s.minAge);
-          if (s.maxAge !== void 0) maxAge = Number(s.maxAge);
-          if (s.minAge === void 0 && s.maxAge === void 0 && s.ageRange) {
-            const parts = String(s.ageRange).split("-");
-            if (parts.length === 2) {
-              minAge = parseFloat(parts[0]) || 0;
-              maxAge = parseFloat(parts[1]) || 99;
-            }
+    if (tokens.length === 0) {
+      logger.info("No FCM tokens found in database. Skipping notification.");
+      return;
+    }
+    const message = {
+      tokens,
+      notification: { title, body },
+      data: extraData,
+      android: { notification: { icon: "stock_ticker_update", color: "#4f46e5" } },
+      apns: { payload: { aps: { badge: 1, sound: "default" } } }
+    };
+    const response = await firebase.messaging().sendEachForMulticast(message);
+    logger.info(`Notifications sent: ${response.successCount} success, ${response.failureCount} failure`);
+    if (response.failureCount > 0) {
+      const failedTokens = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success) {
+          const errorCode = resp.error?.code;
+          if (errorCode === "messaging/invalid-registration-token" || errorCode === "messaging/registration-token-not-registered") {
+            failedTokens.push(tokens[idx]);
           }
-          return {
-            dayOfWeek: typeof s.dayOfWeek === "string" ? parseInt(s.dayOfWeek) : s.dayOfWeek,
-            startTime: s.startTime,
-            endTime: s.endTime,
-            type: s.type || "LAB",
-            minAge: isNaN(minAge) ? 0 : minAge,
-            maxAge: isNaN(maxAge) ? 99 : maxAge
-          };
-        });
-        const slotsByDay = {};
-        visibleSlots.forEach((s) => {
-          if (!slotsByDay[s.dayOfWeek]) slotsByDay[s.dayOfWeek] = [];
-          slotsByDay[s.dayOfWeek].push(s);
-        });
-        const locationBundles = [];
-        for (const dayStr in slotsByDay) {
-          const dayOfWeek = parseInt(dayStr);
-          const daySlots = slotsByDay[dayStr];
-          activeSubs.forEach((sub) => {
-            if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
-              if (!sub.allowedDays.includes(dayOfWeek)) {
-                return;
-              }
-            }
-            const requiresLab = (sub.labCount || 0) > 0;
-            const requiresSg = (sub.sgCount || 0) > 0;
-            const requiresEvt = (sub.evtCount || 0) > 0;
-            if (!requiresLab && !requiresSg && !requiresEvt) {
-              return;
-            }
-            const hasLab = daySlots.some((s) => (s.type || "").toUpperCase() === "LAB");
-            const hasSg = daySlots.some((s) => (s.type || "").toUpperCase() === "SG");
-            const hasEvt = daySlots.some((s) => (s.type || "").toUpperCase() === "EVT");
-            if ((!requiresLab || hasLab) && (!requiresSg || hasSg) && (!requiresEvt || hasEvt)) {
-              const includedSlots = daySlots.filter(
-                (s) => requiresLab && (s.type || "").toUpperCase() === "LAB" || requiresSg && (s.type || "").toUpperCase() === "SG" || requiresEvt && (s.type || "").toUpperCase() === "EVT"
-              );
-              let bundleMinAge = 0;
-              let bundleMaxAge = 99;
-              includedSlots.forEach((s) => {
-                if (s.minAge > bundleMinAge) bundleMinAge = s.minAge;
-                if (s.maxAge < bundleMaxAge) bundleMaxAge = s.maxAge;
-              });
-              if (bundleMinAge > bundleMaxAge) bundleMaxAge = bundleMinAge;
-              let minAvailableSeatsInBundle = locationCapacity;
-              includedSlots.forEach((s) => {
-                const occupancyKey = `${loc.id}_${dayOfWeek}_${s.startTime}`;
-                const occupiedSeats = occupancyMap.get(occupancyKey) || 0;
-                const available = Math.max(0, locationCapacity - occupiedSeats);
-                if (available < minAvailableSeatsInBundle) {
-                  minAvailableSeatsInBundle = available;
-                }
-              });
-              locationBundles.push({
-                bundleId: sub.id,
-                name: sub.name,
-                publicName: sub.publicName || sub.name,
-                description: sub.description || "",
-                price: sub.price || 0,
-                dayOfWeek,
-                minAge: bundleMinAge,
-                maxAge: bundleMaxAge,
-                capacity: locationCapacity,
-                availableSeats: minAvailableSeatsInBundle,
-                isFull: minAvailableSeatsInBundle === 0,
-                includedSlots: includedSlots.map((s) => ({
-                  type: s.type,
-                  startTime: s.startTime,
-                  endTime: s.endTime,
-                  minAge: s.minAge,
-                  maxAge: s.maxAge
-                }))
-              });
-            }
-          });
-        }
-        if (locationBundles.length > 0) {
-          results.push({
-            id: loc.id,
-            name: loc.name,
-            address: loc.address || loc.indirizzo || "",
-            city: loc.city || loc.citta || supplierData.city || "",
-            googleMapsLink: loc.googleMapsLink || "",
-            bundles: locationBundles
-          });
         }
       });
-    });
-    res.status(200).json({ success: true, data: results });
+      if (failedTokens.length > 0) {
+        const batch = firebase.firestore().batch();
+        failedTokens.forEach((token) => {
+          batch.delete(firebase.firestore().collection("fcm_tokens").doc(token));
+        });
+        await batch.commit();
+      }
+    }
   } catch (error2) {
-    logger.error("Error fetching public slots v2:", error2?.message || error2);
-    res.status(500).json({ error: "Failed to fetch slots", details: error2?.message });
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    logger.error("Error sending push notifications:", message);
+  }
+}
+var onLeadCreated = (0, import_firestore.onDocumentCreated)({
+  region: "europe-west1",
+  document: "incoming_leads/{leadId}"
+}, async (event) => {
+  const firebase = getAdmin();
+  const snapshot = event.data;
+  if (!snapshot) return;
+  const leadData = snapshot.data();
+  let sede = "";
+  const locationId = leadData.selectedLocation || leadData.sede;
+  if (locationId) {
+    try {
+      const suppliersSnap = await firebase.firestore().collection("suppliers").get();
+      for (const doc of suppliersSnap.docs) {
+        const supplierData = doc.data();
+        const loc = supplierData.locations?.find((l) => l.id === locationId);
+        if (loc) {
+          sede = loc.name;
+          break;
+        }
+      }
+    } catch (e) {
+      logger.error("Error resolving location name:", e);
+    }
+  }
+  if (!sede) {
+    const payloadSede = leadData.locationName || leadData.nomeSede || leadData.selectedLocation || leadData.sede;
+    if (payloadSede && typeof payloadSede === "string") sede = payloadSede.trim();
   }
 });
 var receiveLeadV2 = (0, import_https.onRequest)({
   region: "europe-west1",
   cors: true
 }, async (req, res) => {
+  const firebase = getAdmin();
+  if (req.method === "OPTIONS") {
+    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization, x-bridge-key");
+    res.status(204).send("");
+    return;
+  }
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
     return;
   }
-  const authHeader = req.headers["x-bridge-key"];
-  if (!authHeader || authHeader !== API_SHARED_SECRET) {
+  const bridgeKey = req.headers["x-bridge-key"];
+  const authHeader = req.headers["authorization"];
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.split("Bearer ")[1] : null;
+  if (bridgeKey !== API_SHARED_SECRET && bearerToken !== API_SHARED_SECRET) {
     res.status(403).json({ error: "Forbidden: Invalid API Key" });
     return;
   }
   try {
     const data = req.body;
+    const db = firebase.firestore();
+    const email = data.email || data.parentEmail || "";
+    const childName = data.childName || "";
+    if (!email || !childName) {
+      res.status(400).json({ error: "Email genitore e nome figlio sono obbligatori" });
+      return;
+    }
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1e3);
+    const existingLead = await db.collection("incoming_leads").where("email", "==", email.toLowerCase()).where("childName", "==", childName).where("createdAt", ">", sixHoursAgo.toISOString()).limit(1).get();
+    if (!existingLead.empty) {
+      res.status(200).json({ success: true, referenceId: existingLead.docs[0].id, duplicate: true });
+      return;
+    }
     const leadDoc = {
       ...data,
+      nome: data.nome || data.parentFirstName || "",
+      cognome: data.cognome || data.parentLastName || "",
+      email,
+      telefono: data.telefono || data.parentPhone || "",
+      childName,
+      childAge: data.childAge || "",
       source: "projectB_api_v2",
       status: "pending",
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    const docRef = await admin.firestore().collection("incoming_leads").add(leadDoc);
+    delete leadDoc.syncStatus;
+    const docRef = await db.collection("incoming_leads").add(leadDoc);
+    try {
+      const dayNames = ["Domenica", "Luned\xEC", "Marted\xEC", "Mercoled\xEC", "Gioved\xEC", "Venerd\xEC", "Sabato"];
+      let giornoBundle = "";
+      if (data.selectedSlot && typeof data.selectedSlot.dayOfWeek === "number") {
+        giornoBundle = dayNames[data.selectedSlot.dayOfWeek];
+      } else if (data.selectedSlot && typeof data.selectedSlot.dayOfWeek === "string") {
+        giornoBundle = data.selectedSlot.dayOfWeek;
+      }
+      const reqSede = data.selectedLocation || leadDoc.locationName || leadDoc.sede || "Sede";
+      const reqTitle = "\u{1F464} Nuova Richiesta Web";
+      const reqBody = giornoBundle ? `${leadDoc.nome} ${leadDoc.cognome} ha richiesto informazioni per il corso presso ${reqSede} del ${giornoBundle}. Contattalo subito!` : `${leadDoc.nome} ${leadDoc.cognome} ha richiesto informazioni per la sede di ${reqSede}. Contattalo subito!`;
+      await sendPushToAllTokens(reqTitle, reqBody, {
+        leadId: docRef.id,
+        type: "lead",
+        click_action: "WEB_REQUESTS"
+      });
+    } catch (fcmErr) {
+      logger.error("Error sending immediate FCM in receiveLeadV2:", fcmErr);
+    }
     res.status(200).json({ success: true, referenceId: docRef.id });
   } catch (error2) {
-    logger.error("Error saving lead v2:", error2?.message || error2);
-    res.status(500).json({ error: "Internal Server Error", details: error2?.message });
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    logger.error("Error saving lead v2:", message);
+    res.status(500).json({ error: "Internal Server Error", details: message });
   }
 });
-var checkPeriodicNotifications = (0, import_scheduler.onSchedule)({
-  schedule: "* * * * *",
-  timeZone: "Europe/Rome",
-  region: "europe-west1"
-}, async (event) => {
+var getPublicSlotsV5 = (0, import_https.onRequest)({
+  region: "europe-west1",
+  cors: true
+}, async (req, res) => {
+  const firebase = getAdmin();
+  const bridgeKey = req.headers["x-bridge-key"];
+  const authHeader = req.headers["authorization"];
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.split("Bearer ")[1] : null;
+  if (bridgeKey !== API_SHARED_SECRET && bearerToken !== API_SHARED_SECRET) {
+    res.status(403).json({ error: "Forbidden: Invalid API Key" });
+    return;
+  }
   try {
-    const db = admin.firestore();
-    const now = /* @__PURE__ */ new Date();
-    const formatter = new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Rome",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
+    const db = firebase.firestore();
+    const age = req.query.age ? parseInt(req.query.age.toString()) : null;
+    const [locationsSnap, coursesSnap, subsSnap] = await Promise.all([
+      db.collection("locations").where("status", "==", "active").get(),
+      db.collection("courses").where("status", "==", "open").get(),
+      db.collection("subscriptionTypes").get()
+    ]);
+    const activeSubs = [];
+    subsSnap.forEach((doc) => {
+      const sub = doc.data();
+      if (sub.isPubliclyVisible !== false) {
+        activeSubs.push({ ...sub, id: doc.id });
+      }
     });
-    const parts = formatter.formatToParts(now);
-    const getPart = (type) => parts.find((p) => p.type === type)?.value;
-    const currentHour = `${getPart("hour")}:${getPart("minute")}`;
-    const romeDate = new Date(Date.UTC(Number(getPart("year")), Number(getPart("month")) - 1, Number(getPart("day"))));
-    const currentDay = romeDate.getUTCDay();
-    const todayStr = `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
-    const tokensSnapshot = await db.collection("fcm_tokens").get();
-    const allTokens = [];
-    tokensSnapshot.forEach((doc) => {
-      if (doc.data().token) allTokens.push(doc.data().token);
-    });
-    if (allTokens.length === 0) return;
-    const rulesSnapshot = await db.collection("notification_rules").where("enabled", "==", true).get();
-    for (const doc of rulesSnapshot.docs) {
-      const rule = doc.data();
-      if (rule.days && rule.days.includes(currentDay)) {
-        const [ruleH, ruleM] = (rule.time || "00:00").split(":").map(Number);
-        const [currH, currM] = currentHour.split(":").map(Number);
-        const diff = currH * 60 + currM - (ruleH * 60 + ruleM);
-        if (diff >= 0 && diff <= 5 && rule.lastSentDate !== todayStr) {
-          await doc.ref.update({ lastSentDate: todayStr });
-          const message = {
-            tokens: allTokens,
-            notification: { title: `EP Alert: ${rule.label}`, body: rule.description },
-            data: { link: "/", ruleId: rule.id }
+    const locationsMap = /* @__PURE__ */ new Map();
+    locationsSnap.forEach((doc) => locationsMap.set(doc.id, doc.data()));
+    const results = [];
+    const locationBundlesGrouped = /* @__PURE__ */ new Map();
+    coursesSnap.forEach((doc) => {
+      const course = doc.data();
+      course.id = doc.id;
+      const loc = locationsMap.get(course.locationId);
+      if (!loc) return;
+      if (age !== null && (age < course.minAge || age > course.maxAge)) return;
+      const compatibleSubs = activeSubs.filter((sub) => {
+        const hasToken = course.slotType === "LAB" && sub.labCount > 0 || course.slotType === "SG" && sub.sgCount > 0 || course.slotType === "EVT" && sub.evtCount > 0;
+        if (!hasToken) return false;
+        if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
+          if (!sub.allowedDays.includes(course.dayOfWeek)) return false;
+        }
+        const subMinAge = sub.allowedAges?.min || sub.minAge || 0;
+        const subMaxAge = sub.allowedAges?.max || sub.maxAge || 99;
+        if (age !== null && (age < subMinAge || age > subMaxAge)) return false;
+        return true;
+      });
+      compatibleSubs.forEach((sub) => {
+        const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(":", "")}`;
+        if (!locationBundlesGrouped.has(course.locationId)) {
+          locationBundlesGrouped.set(course.locationId, []);
+        }
+        const locBundles = locationBundlesGrouped.get(course.locationId);
+        let bundle = locBundles.find((b) => b.bundleId === groupKey);
+        const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
+        if (!bundle) {
+          bundle = {
+            bundleId: groupKey,
+            subscriptionId: sub.id,
+            name: sub.name,
+            publicName: sub.publicName || sub.name,
+            description: sub.description || "",
+            price: sub.price,
+            dayOfWeek: course.dayOfWeek,
+            startTime: course.startTime,
+            endTime: course.endTime,
+            minAge: Math.max(course.minAge, sub.allowedAges?.min || sub.minAge || 0),
+            maxAge: Math.min(course.maxAge, sub.allowedAges?.max || sub.maxAge || 99),
+            availableSeats: available,
+            isFull: available <= 0,
+            includedSlots: []
           };
-          await admin.messaging().sendEachForMulticast(message);
+          locBundles.push(bundle);
+        }
+        bundle.availableSeats = Math.min(bundle.availableSeats, available);
+        bundle.isFull = bundle.availableSeats <= 0;
+        bundle.includedSlots.push({
+          courseId: course.id,
+          type: course.slotType,
+          startTime: course.startTime,
+          endTime: course.endTime,
+          dayOfWeek: course.dayOfWeek
+        });
+      });
+    });
+    locationBundlesGrouped.forEach((bundles, locId) => {
+      const loc = locationsMap.get(locId);
+      if (loc) {
+        results.push({
+          id: locId,
+          name: loc.name,
+          address: loc.address || "",
+          city: loc.city || "",
+          googleMapsLink: loc.googleMapsLink || "",
+          bundles
+        });
+      }
+    });
+    res.status(200).json({ success: true, data: results });
+  } catch (error2) {
+    logger.error("Error in getPublicSlotsV5:", error2);
+    res.status(500).json({ error: "Failed to fetch slots v5" });
+  }
+});
+var proxyGoogleBooks = (0, import_https.onRequest)({
+  region: "europe-west1",
+  cors: true
+}, async (req, res) => {
+  if (req.method !== "GET") {
+    res.status(405).send("Method Not Allowed");
+    return;
+  }
+  const query = req.query.q;
+  if (!query) {
+    res.status(400).json({ error: "Missing query parameter" });
+    return;
+  }
+  try {
+    const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=1`);
+    if (!response.ok) {
+      res.status(response.status).json({ error: "Google Books API error" });
+      return;
+    }
+    const data = await response.json();
+    res.json(data);
+  } catch (error2) {
+    logger.error("Error proxying Google Books:", error2);
+    res.status(500).json({ error: "Failed to fetch from Google Books" });
+  }
+});
+var getEnrollmentData = (0, import_https.onCall)({ region: "europe-west1", cors: true }, async (request) => {
+  const firebase = getAdmin();
+  const { leadId } = request.data;
+  if (!leadId) throw new import_https.HttpsError("invalid-argument", "Missing leadId");
+  try {
+    const db = firebase.firestore();
+    const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
+    if (!leadSnap.exists) {
+      throw new import_https.HttpsError("not-found", "Lead non trovato");
+    }
+    const leadData = { id: leadSnap.id, ...leadSnap.data() };
+    const existingEnrSnap = await db.collection("enrollments").where("email", "==", leadData.email).where("childName", "==", leadData.childName).where("status", "in", ["active", "Active", "pending", "Pending", "confirmed", "Confirmed"]).limit(1).get();
+    if (!existingEnrSnap.empty) {
+      return { existingEnrollment: { id: existingEnrSnap.docs[0].id, ...existingEnrSnap.docs[0].data() } };
+    }
+    const [companySnap, subsSnap, suppliersSnap] = await Promise.all([
+      db.collection("settings").doc("company").get(),
+      db.collection("subscriptionTypes").get(),
+      db.collection("suppliers").where("isDeleted", "==", false).get()
+    ]);
+    const subscriptions = subsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((s) => s.statusConfig?.status === "active" && s.isPubliclyVisible !== false);
+    const suppliers = suppliersSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    return {
+      lead: leadData,
+      company: companySnap.data(),
+      subscriptions,
+      suppliers
+    };
+  } catch (error2) {
+    const message = error2 instanceof Error ? error2.message : String(error2);
+    logger.error("Error in getEnrollmentData:", error2);
+    throw new import_https.HttpsError("internal", message);
+  }
+});
+var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors: true }, async (request) => {
+  const firebase = getAdmin();
+  const db = firebase.firestore();
+  const { leadId, clientData, enrollmentData, transactionData, invoiceData } = request.data;
+  if (!leadId) throw new import_https.HttpsError("invalid-argument", "Missing leadId");
+  try {
+    return await db.runTransaction(async (transaction) => {
+      const subRef = db.collection("subscriptionTypes").doc(enrollmentData.subscriptionTypeId);
+      const subSnap = await transaction.get(subRef);
+      if (!subSnap.exists) throw new Error("Tipo abbonamento non trovato.");
+      const sub = subSnap.data();
+      const basePrice = sub.price || 0;
+      const stampPrice = basePrice >= 77 ? 2 : 0;
+      const totalPrice = basePrice + stampPrice;
+      const mainAppt = enrollmentData.appointments?.[0];
+      const dayNames = ["Domenica", "Luned\xEC", "Marted\xEC", "Mercoled\xEC", "Gioved\xEC", "Venerd\xEC", "Sabato"];
+      const slotDayName = mainAppt?.time?.split(",")[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+      const targetDayIndex = dayNames.indexOf(slotDayName);
+      let matchedCourseId = "manual";
+      if (targetDayIndex !== -1 && mainAppt?.startTime) {
+        const coursesSnap = await db.collection("courses").where("locationId", "==", enrollmentData.locationId).where("dayOfWeek", "==", targetDayIndex).where("startTime", "==", mainAppt.startTime).limit(1).get();
+        if (!coursesSnap.empty) {
+          matchedCourseId = coursesSnap.docs[0].id;
+          logger.info(`[matcher] Iscrizione collegata al corso ${matchedCourseId}`);
+        } else {
+          logger.warn(`[matcher] Nessun corso trovato per ${enrollmentData.locationName} il ${slotDayName} alle ${mainAppt.startTime}. Fallback su manual.`);
         }
       }
+      let clientId = "";
+      let childId = "";
+      const clientsSnap = await db.collection("clients").where("email", "==", clientData.email.toLowerCase()).limit(1).get();
+      const structuredAddress = {
+        address: clientData.address || "",
+        city: clientData.city || "",
+        zipCode: clientData.zipCode || clientData.zip || "",
+        province: clientData.province || ""
+      };
+      const structuredChildren = (clientData.children || []).map((child) => {
+        const id = child.id || `child_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+        if (!childId || child.name === enrollmentData.childName) childId = id;
+        return {
+          id,
+          name: child.name || "",
+          firstName: child.name?.split(" ")[0] || "",
+          lastName: child.name?.split(" ").slice(1).join(" ") || "",
+          dateOfBirth: child.dateOfBirth || "",
+          age: child.age || 0,
+          notes: child.notes || "",
+          tags: child.tags || [],
+          rating: child.rating || { learning: 0, behavior: 0, attendance: 0, hygiene: 0 }
+        };
+      });
+      if (!clientsSnap.empty) {
+        const clientDoc = clientsSnap.docs[0];
+        clientId = clientDoc.id;
+        const existingData = clientDoc.data();
+        const currentTags = existingData.tags || [];
+        const updatedTags = Array.from(new Set(
+          currentTags.filter((t) => t.toUpperCase() !== "LEAD").concat(["GENITORE"])
+        ));
+        const mergedChildren = [...existingData.children || []];
+        structuredChildren.forEach((newChild) => {
+          const existingChild = mergedChildren.find(
+            (c) => c.name?.toLowerCase() === newChild.name?.toLowerCase()
+          );
+          if (!existingChild) {
+            mergedChildren.push(newChild);
+          } else {
+            if (newChild.name === enrollmentData.childName) childId = existingChild.id;
+          }
+        });
+        transaction.update(db.collection("clients").doc(clientId), {
+          firstName: clientData.firstName,
+          lastName: clientData.lastName,
+          phone: clientData.phone,
+          taxCode: clientData.taxCode,
+          ...structuredAddress,
+          children: mergedChildren,
+          tags: updatedTags,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        const clientRef = db.collection("clients").doc();
+        clientId = clientRef.id;
+        transaction.set(clientRef, {
+          ...clientData,
+          id: clientId,
+          email: clientData.email.toLowerCase(),
+          ...structuredAddress,
+          children: structuredChildren,
+          tags: ["GENITORE"],
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      const enrRef = db.collection("enrollments").doc();
+      const enrichedAppointments = (enrollmentData.appointments || []).map((app) => ({
+        ...app,
+        dayOfWeek: targetDayIndex,
+        startTime: app.startTime || mainAppt?.startTime || "16:00",
+        endTime: app.endTime || mainAppt?.endTime || "17:00",
+        locationId: enrollmentData.locationId,
+        locationName: enrollmentData.locationName,
+        locationColor: enrollmentData.locationColor || "#6366f1",
+        childName: enrollmentData.childName
+      }));
+      const finalEnrollment = {
+        ...enrollmentData,
+        id: enrRef.id,
+        clientId,
+        childId,
+        // COLLEGAMENTO CRUCIALE PER MODALE
+        courseId: matchedCourseId,
+        // Collegamento al corso reale per visibilità liste/archivio
+        price: totalPrice,
+        startTime: enrichedAppointments[0]?.startTime || "16:00",
+        endTime: enrichedAppointments[0]?.endTime || "17:00",
+        appointments: enrichedAppointments,
+        status: enrollmentData.status || "Active",
+        // Manteniamo Case-Sensitive
+        source: "portal",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        startDate: admin.firestore.FieldValue.serverTimestamp()
+      };
+      transaction.set(enrRef, finalEnrollment);
+      const transRef = db.collection("transactions").doc();
+      transaction.set(transRef, {
+        ...transactionData,
+        id: transRef.id,
+        clientId,
+        relatedEnrollmentId: enrRef.id,
+        amount: totalPrice,
+        allocationId: enrollmentData.locationId,
+        allocationName: enrollmentData.locationName,
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      if (invoiceData) {
+        const invRef = db.collection("invoices").doc();
+        transaction.set(invRef, {
+          ...invoiceData,
+          id: invRef.id,
+          clientId,
+          relatedEnrollmentId: enrRef.id,
+          totalAmount: totalPrice,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      if (targetDayIndex !== -1) {
+        let firstDate = "";
+        if (matchedCourseId !== "manual") {
+          const courseLessonsQuery = db.collection("lessons").where("courseId", "==", matchedCourseId).where("date", ">=", (/* @__PURE__ */ new Date()).toISOString().split("T")[0]).orderBy("date", "asc").limit(enrollmentData.lessonsTotal || sub.lessons || 1);
+          const courseLessonsSnap = await transaction.get(courseLessonsQuery);
+          if (!courseLessonsSnap.empty) {
+            firstDate = courseLessonsSnap.docs[0].data().date;
+            courseLessonsSnap.forEach((docSnap) => {
+              const lessonData = docSnap.data();
+              const attendees = lessonData.attendees || [];
+              attendees.push({
+                enrollmentId: enrRef.id,
+                childName: enrollmentData.childName,
+                status: "Scheduled"
+              });
+              transaction.update(docSnap.ref, { attendees });
+            });
+          }
+        } else {
+          const currentLessonDate = /* @__PURE__ */ new Date();
+          while (currentLessonDate.getDay() !== targetDayIndex) {
+            currentLessonDate.setDate(currentLessonDate.getDate() + 1);
+          }
+          const lessonsToCreate = enrollmentData.lessonsTotal || sub.lessons || 1;
+          let createdCount = 0;
+          while (createdCount < lessonsToCreate) {
+            const dateStr = currentLessonDate.toISOString().split("T")[0];
+            if (!isItalianHoliday(currentLessonDate)) {
+              const lessonRef = db.collection("lessons").doc();
+              transaction.set(lessonRef, {
+                id: lessonRef.id,
+                enrollmentId: enrRef.id,
+                courseId: matchedCourseId,
+                locationId: enrollmentData.locationId,
+                locationName: enrollmentData.locationName,
+                locationColor: enrollmentData.locationColor || "#6366f1",
+                date: dateStr,
+                startTime: enrichedAppointments[0]?.startTime || "16:00",
+                endTime: enrichedAppointments[0]?.endTime || "17:00",
+                childName: enrollmentData.childName,
+                status: "Scheduled",
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+              });
+              if (createdCount === 0) firstDate = dateStr;
+              createdCount++;
+            }
+            currentLessonDate.setDate(currentLessonDate.getDate() + 7);
+          }
+        }
+        if (firstDate) {
+          transaction.update(enrRef, { startDate: firstDate });
+        }
+      }
+      transaction.update(db.collection("incoming_leads").doc(leadId), {
+        status: "processed",
+        processedAt: admin.firestore.FieldValue.serverTimestamp(),
+        relatedEnrollmentId: enrRef.id,
+        relatedClientId: clientId
+      });
+      try {
+        const title = "\u{1F680} Nuova Iscrizione!";
+        const body = `${finalEnrollment.childName} si \xE8 iscritto a ${finalEnrollment.locationName} (${finalEnrollment.subscriptionName})`;
+        await sendPushToAllTokens(title, body, {
+          enrollmentId: enrRef.id,
+          type: "enrollment",
+          click_action: "ENROLLMENTS"
+        });
+      } catch (pushErr) {
+        logger.error("Error sending push notification:", pushErr);
+      }
+      return { success: true, enrollmentId: enrRef.id, clientId };
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    logger.error("Error in processEnrollment:", e);
+    throw new import_https.HttpsError("internal", message);
+  }
+});
+var suggestBookTags = (0, import_https.onCall)({ region: "europe-west1", cors: true }, async () => {
+  return { target: ["piccoli"], category: ["testo & immagini"], theme: ["societ\xE0"] };
+});
+var checkPeriodicNotifications = (0, import_scheduler.onSchedule)({ schedule: "* * * * *", timeZone: "Europe/Rome", region: "europe-west1" }, async () => {
+  logger.info("Checking periodic notifications...");
+});
+var onEnrollmentCreated = (0, import_firestore.onDocumentCreated)({
+  region: "europe-west1",
+  document: "enrollments/{id}"
+}, async (event) => {
+  const firebase = getAdmin();
+  const db = firebase.firestore();
+  const enrollment = event.data?.data();
+  if (!enrollment) return;
+  logger.info(`Processing enrollment created: ${event.params.id}`);
+  if (["active", "Active", "confirmed", "Confirmed", "pending", "Pending"].includes(enrollment.status)) {
+    const courseId = enrollment.courseId || enrollment.selectedCourseId;
+    if (courseId) {
+      try {
+        await db.collection("courses").doc(courseId).update({
+          activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        logger.info(`Incremented occupancy for course ${courseId}`);
+      } catch (e) {
+        logger.error(`Failed to increment occupancy for course ${courseId}:`, e);
+      }
     }
-  } catch (error2) {
-    logger.error("Error in periodic notifications:", error2?.message || error2);
+  }
+});
+var onEnrollmentDeleted = (0, import_firestore2.onDocumentDeleted)({
+  region: "europe-west1",
+  document: "enrollments/{id}"
+}, async (event) => {
+  const firebase = getAdmin();
+  const db = firebase.firestore();
+  const enrollment = event.data?.data();
+  if (!enrollment) return;
+  logger.info(`Processing enrollment deleted: ${event.params.id}`);
+  if (["active", "Active", "confirmed", "Confirmed", "pending", "Pending"].includes(enrollment.status)) {
+    const courseId = enrollment.courseId || enrollment.selectedCourseId;
+    if (courseId) {
+      try {
+        await db.collection("courses").doc(courseId).update({
+          activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        logger.info(`Decremented occupancy for course ${courseId}`);
+      } catch (e) {
+        logger.error(`Failed to decrement occupancy for course ${courseId}:`, e);
+      }
+    }
+  }
+});
+var onEnrollmentUpdated = (0, import_firestore2.onDocumentUpdated)({
+  region: "europe-west1",
+  document: "enrollments/{id}"
+}, async (event) => {
+  const firebase = getAdmin();
+  const db = firebase.firestore();
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!before || !after) return;
+  const oldStatus = before.status;
+  const newStatus = after.status;
+  const oldRemaining = before.lessonsRemaining !== void 0 ? before.lessonsRemaining : before.labRemaining || 0;
+  const newRemaining = after.lessonsRemaining !== void 0 ? after.lessonsRemaining : after.labRemaining || 0;
+  const oldCourseId = before.courseId || before.selectedCourseId;
+  const newCourseId = after.courseId || after.selectedCourseId;
+  const isActive = (s) => ["active", "Active", "confirmed", "Confirmed", "pending", "Pending"].includes(s);
+  const wasValid = isActive(oldStatus) && oldRemaining > 0;
+  const isValid = isActive(newStatus) && newRemaining > 0;
+  if (oldCourseId !== newCourseId) {
+    if (oldCourseId && wasValid) {
+      try {
+        await db.collection("courses").doc(oldCourseId).update({
+          activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        logger.info(`Decremented old course ${oldCourseId} due to course move`);
+      } catch (e) {
+        logger.error(`Error decrementing old course ${oldCourseId}:`, e);
+      }
+    }
+    if (newCourseId && isValid) {
+      try {
+        await db.collection("courses").doc(newCourseId).update({
+          activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        logger.info(`Incremented new course ${newCourseId} due to course move`);
+      } catch (e) {
+        logger.error(`Error incrementing new course ${newCourseId}:`, e);
+      }
+    }
+  } else if (newCourseId) {
+    if (!wasValid && isValid) {
+      await db.collection("courses").doc(newCourseId).update({
+        activeEnrollmentsCount: admin.firestore.FieldValue.increment(1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      logger.info(`Incremented course ${newCourseId} (became valid)`);
+    } else if (wasValid && !isValid) {
+      await db.collection("courses").doc(newCourseId).update({
+        activeEnrollmentsCount: admin.firestore.FieldValue.increment(-1),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      logger.info(`Decremented course ${newCourseId} (became invalid)`);
+    }
+  }
+});
+var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", cors: true }, async (req, res) => {
+  const firebase = getAdmin();
+  const leadId = req.query.id;
+  if (!leadId) {
+    return res.status(400).send("ID Iscrizione mancante");
+  }
+  try {
+    const db = firebase.firestore();
+    const leadSnap = await db.collection("incoming_leads").doc(leadId).get();
+    if (!leadSnap.exists) {
+      return res.status(404).send("Iscrizione non trovata o scaduta.");
+    }
+    const lead = leadSnap.data();
+    const nomeAllievo = lead.childName || lead.nome || "Allievo";
+    const sede = lead.selectedLocation || lead.locationName || "EasyPeasy Lab";
+    const title = `Completa l'iscrizione di ${nomeAllievo}`;
+    const description = `Ciao ${lead.nome || "Genitore"}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
+    const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
+    const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
+    const html = `
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- Dynamic Open Graph Tags -->
+    <title>${title}</title>
+    <meta name="description" content="${description}">
+    <meta property="og:title" content="${title}">
+    <meta property="og:description" content="${description}">
+    <meta property="og:image" content="${logoUrl}">
+    <meta property="og:url" content="${portalUrl}">
+    <meta property="og:type" content="website">
+    
+    <!-- Twitter Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${title}">
+    <meta name="twitter:description" content="${description}">
+    <meta name="twitter:image" content="${logoUrl}">
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f9fafb; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #111827; }
+        .card { background: white; padding: 2rem; border-radius: 1.5rem; shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1); text-align: center; max-width: 400px; width: 90%; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        h1 { font-size: 1.25rem; font-weight: 800; margin-bottom: 0.5rem; }
+        p { color: #6b7280; font-size: 0.875rem; }
+    </style>
+
+    <!-- Redirect immediato -->
+    <script>
+        window.location.href = "${portalUrl}";
+    </script>
+    <meta http-equiv="refresh" content="2;url=${portalUrl}">
+</head>
+<body>
+    <div class="card">
+        <div class="spinner"></div>
+        <h1>Reindirizzamento in corso...</h1>
+        <p>Ti stiamo portando al modulo di iscrizione di <strong>${nomeAllievo}</strong>.</p>
+        <p style="margin-top: 1rem; font-size: 0.75rem;">Se non vieni reindirizzato, <a href="${portalUrl}" style="color: #4f46e5; font-weight: bold;">clicca qui</a>.</p>
+    </div>
+</body>
+</html>
+        `;
+    res.status(200).set("Content-Type", "text/html").send(html);
+  } catch (err) {
+    logger.error("Error in enrollmentGateway:", err);
+    res.status(500).send("Errore interno del server");
   }
 });
 // Annotate the CommonJS export names for ESM import in node:
@@ -744,10 +891,14 @@ var checkPeriodicNotifications = (0, import_scheduler.onSchedule)({
   checkPeriodicNotifications,
   enrollmentGateway,
   getEnrollmentData,
-  getPublicSlotsV2,
+  getPublicSlotsV5,
   onEnrollmentCreated,
+  onEnrollmentDeleted,
+  onEnrollmentUpdated,
   onLeadCreated,
   processEnrollment,
+  proxyGoogleBooks,
   receiveLeadV2,
-  sendEmail
+  sendEmail,
+  suggestBookTags
 });
