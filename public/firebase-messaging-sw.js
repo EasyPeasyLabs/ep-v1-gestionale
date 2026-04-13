@@ -80,6 +80,9 @@ self.addEventListener('fetch', (event) => {
   // Solo richieste GET http/https
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) return;
 
+  // Ignora richieste a Firestore e Cloud Functions
+  if (event.request.url.includes('firestore.googleapis.com') || event.request.url.includes('cloudfunctions.net')) return;
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
