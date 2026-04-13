@@ -77,7 +77,7 @@ try {
 } catch (e: unknown) {
     const errorMessage = e instanceof Error ? e.message : String(e);
     logToScreen("FIREBASE INIT ERROR: " + errorMessage, "error");
-    console.error("Firebase Init Error:", e);
+    console.error("Firebase Init Error:", e instanceof Error ? e.message : e);
 }
 
 export { app, db, auth, storage, messaging, functions };

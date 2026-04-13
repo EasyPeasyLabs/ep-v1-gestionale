@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, doc, updateDoc, getDoc, getDocFromServer, writeBatch, orderBy, arrayUnion } from 'firebase/firestore';
+import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, doc, updateDoc, getDoc, getDocFromServer, writeBatch, arrayUnion } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee, Course } from '../types';
 import { isItalianHoliday } from '../utils/dateUtils';
@@ -24,12 +24,15 @@ export const bookStudentIntoCourseLessons = async (
     const lessonsRef = collection(db, 'lessons');
     const q = query(
         lessonsRef,
-        where('courseId', '==', courseId),
-        where('date', '>=', startDate),
-        orderBy('date', 'asc')
+        where('courseId', '==', courseId)
     );
     const snap = await getDocs(q);
-    const lessons = snap.docs.map(d => ({ id: d.id, ...d.data() } as Lesson));
+    
+    // Filtriamo e ordiniamo in memoria per evitare la necessità di indici compositi su Firestore
+    const lessons = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Lesson))
+        .filter(l => l.date >= startDate)
+        .sort((a, b) => a.date.localeCompare(b.date));
 
     const batch = writeBatch(db);
     let bookedCount = 0;
@@ -367,7 +370,7 @@ export const deleteEnrollment = async (id: string): Promise<void> => {
         
         console.log(`Deep Delete: Cleaning up ${oldLessonsSnap.size} old lessons for enrollment ${id}`);
     } catch (error) {
-        console.error("Error during deep delete of old lessons:", error);
+        console.error("Error during deep delete of old lessons:", error instanceof Error ? error.message : error);
     }
 
     // 4. Remove attendee from Course Lessons (New Architecture)
@@ -387,7 +390,7 @@ export const deleteEnrollment = async (id: string): Promise<void> => {
             });
             console.log(`Deep Delete: Removed attendee from ${updatedCount} course lessons for enrollment ${id}`);
         } catch (error) {
-            console.error("Error during cleanup of course lessons:", error);
+            console.error("Error during cleanup of course lessons:", error instanceof Error ? error.message : error);
         }
     }
     
@@ -637,7 +640,7 @@ export const resyncInstitutionalEnrollment = async (enrollmentId: string): Promi
 
         return newAppointments.length;
     } catch (e) {
-        console.error("Critical Resync Error:", e);
+        console.error("Critical Resync Error:", e instanceof Error ? e.message : e);
         throw e; // Rilancia per la UI
     }
 };
@@ -1100,7 +1103,7 @@ export const migrateHistoricalEnrollments = async (): Promise<{ updated: number,
                 batchSize = 0;
             }
         } catch (e) {
-            console.error(`Error migrating enrollment ${docSnap.id}:`, e);
+            console.error(`Error migrating enrollment ${docSnap.id}:`, e instanceof Error ? e.message : e);
             errorCount++;
         }
     }
@@ -1178,14 +1181,16 @@ export const activateEnrollmentWithLocation = async (
         const lessonsRef = collection(db, 'lessons');
         const q = query(
             lessonsRef,
-            where('courseId', '==', enrollment.courseId),
-            where('date', '>=', currentDate.toISOString()),
-            orderBy('date', 'asc')
+            where('courseId', '==', enrollment.courseId)
         );
         const snap = await getDocs(q);
+        
+        // Filtriamo e ordiniamo in memoria per evitare indici compositi
+        const startDateStr = currentDate.toISOString();
         const bookedLessons = snap.docs
             .map(d => ({ id: d.id, ...d.data() } as Lesson))
-            .filter(l => (l.attendees || []).some(a => a.enrollmentId === enrollmentId))
+            .filter(l => l.date >= startDateStr && (l.attendees || []).some(a => a.enrollmentId === enrollmentId))
+            .sort((a, b) => a.date.localeCompare(b.date))
             .slice(0, enrollment.lessonsTotal);
 
         const now = new Date();
@@ -1520,8 +1525,9 @@ export const autoFixEnrollments = async (): Promise<{ fixed: number, total: numb
                 );
                 fixedCount++;
             }
-        } catch (err) {
-            console.error(`Error auto-fixing enrollment ${enr.id}:`, err);
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(`Error auto-fixing enrollment ${enr.id}:`, msg);
         }
     }
 

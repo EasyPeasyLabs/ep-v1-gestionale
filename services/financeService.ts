@@ -1044,6 +1044,40 @@ export const markInvoicesAsPaid = async (invoiceIds: string[]) => {
     await batch.commit();
 };
 
+export const registerInvoicePayment = async (invoice: Invoice, paymentDate?: string) => {
+    const date = paymentDate || new Date().toISOString();
+    const transactionNumber = await getNextTransactionNumber(date);
+    
+    const batch = writeBatch(db);
+    
+    // 1. Update Invoice Status
+    batch.update(doc(db, 'invoices', invoice.id), { 
+        status: DocumentStatus.Paid,
+        isGhost: false 
+    });
+    
+    // 2. Create Transaction
+    const transRef = doc(collection(db, 'transactions'));
+    const transData: TransactionInput = {
+        transactionNumber,
+        date: date,
+        description: `Incasso Fattura ${invoice.invoiceNumber} - ${invoice.clientName}`,
+        amount: invoice.totalAmount,
+        type: TransactionType.Income,
+        category: TransactionCategory.Vendite,
+        paymentMethod: invoice.paymentMethod || PaymentMethod.BankTransfer,
+        status: TransactionStatus.Completed,
+        allocationType: 'general',
+        relatedDocumentId: invoice.id,
+        relatedEnrollmentId: invoice.relatedEnrollmentId,
+        clientName: invoice.clientName,
+        isDeleted: false
+    };
+    batch.set(transRef, transData);
+    
+    await batch.commit();
+};
+
 export const checkAndSetOverdueInvoices = async () => {
     const today = new Date();
     const q = query(getInvoicesCollectionRef(), where('status', 'in', [DocumentStatus.Sent, DocumentStatus.Draft]));

@@ -7,7 +7,7 @@ import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
 import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType, Enrollment, TransactionCategory } from '../../types';
-import { updateInvoice, markInvoicesAsPaid } from '../../services/financeService';
+import { updateInvoice, markInvoicesAsPaid, registerInvoicePayment } from '../../services/financeService';
 
 // --- Icona WhatsApp ---
 const WhatsAppIcon = () => (
@@ -331,11 +331,12 @@ const totals = useMemo(() => {
     };
 
     const handleMarkAsPaid = async (item: Invoice) => {
+        if (!window.confirm(`Vuoi registrare l'incasso di ${item.totalAmount.toFixed(2)}€ per la fattura ${item.invoiceNumber}? Verrà creata una voce in Registro Cassa.`)) return;
         try {
-            await updateInvoice(item.id, { status: DocumentStatus.Paid });
+            await registerInvoicePayment(item);
             window.dispatchEvent(new Event('EP_DataUpdated'));
         } catch (e) {
-            alert("Errore aggiornamento stato.");
+            alert("Errore registrazione incasso.");
         }
     };
 
@@ -522,7 +523,7 @@ const totals = useMemo(() => {
                                         {onConvert && (
                                             <button onClick={() => onConvert(item as Invoice | Quote)} className="md-icon-btn text-purple-600" title="Converti in Fattura"><MagicWandIcon /></button>
                                         )}
-                                        {activeTab === 'invoices' && item.status !== DocumentStatus.Paid && item.status !== DocumentStatus.PendingSDI && item.status !== DocumentStatus.SealedSDI && (
+                                        {activeTab === 'invoices' && item.status !== DocumentStatus.Paid && item.status !== DocumentStatus.PendingSDI && (
                                             <button onClick={() => handleMarkAsPaid(item as Invoice)} className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" title="Segna come Pagata">€</button>
                                         )}
                                         {onSeal && (('sdiId' in item ? (item as Invoice).sdiId : undefined) && item.status !== DocumentStatus.SealedSDI) && (

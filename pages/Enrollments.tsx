@@ -381,7 +381,10 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             setSuppliers(suppliersData);
             setInvoices(invoicesData);
             setTransactions(transactionsData);
-        } catch (err) { console.error(err); } finally { setLoading(false); }
+        } catch (err: unknown) { 
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error(msg); 
+        } finally { setLoading(false); }
     }, []);
 
     useEffect(() => { 
@@ -411,7 +414,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             toast.success("Iscrizione salvata con successo!");
             await fetchData(); 
         } catch (e) {
-            console.error(e);
+            console.error(e instanceof Error ? e.message : e);
             toast.error("Errore durante il salvataggio.");
         } finally { 
             setLoading(false); 
@@ -485,10 +488,11 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 toast.success("Nessuna iscrizione problematica trovata.");
             }
             await fetchData();
-        } catch (e) {
+        } catch (e: unknown) {
             toast.dismiss(toastId);
             toast.error("Errore durante l'auto-fix.");
-            console.error(e);
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error("[Auto-Fix Error]", msg);
         } finally {
             setLoading(false);
         }
