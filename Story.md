@@ -130,3 +130,20 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
 *Documentazione aggiornata al 07 Marzo 2026.*
+
+## 6. Storico Sprint Dettagliato (Riassunto)
+- **Sprint 01-04 (Marzo 2026):** Risoluzione anomalie di visualizzazione slot, ottimizzazione backend per notifiche push, isolamento architetturale tra frontend pubblico e gestionale, e miglioramento del copy per la lead generation.
+- **Sprint 06-10 (Marzo 2026):** Implementazione del Gateway di isolamento per sicurezza, risoluzione bug di accorpamento bundle (LAB+SG), allineamento del Portale Iscrizioni (Progetto C), e fix critici per la visibilità delle sedi e il calcolo dell'occupazione.
+- **Sprint 11-12 (Marzo 2026):** Ripristino del Gateway di iscrizione, refactoring del modulo Corsi, ottimizzazione mobile-first della modale corsi, e allineamento dati tra Progetto B e Gestionale.
+- **Sprint 13-14 (Marzo 2026):** Integrazione profonda tra iscrizioni e gestionale (Course-Matcher), parser anagrafico, sincronizzazione iscrizioni, Fiscal Doctor (OBLIO), e strumenti di manutenzione dati.
+- **Sprint 15 (Aprile 2026):** Implementazione della Ricorrenza Avanzata (mesi attivi/blackout), ottimizzazione performance e robustezza del codice.
+
+## 7. Roadmap Evolutiva
+- [ ] **Paginazione Server-Side:** Ottimizzazione performance per gestire >10.000 record (caricamento incrementale "Load More" / Pagine).
+- [ ] **Modulo Sondaggi WhatsApp:** Template automatici per invio survey di soddisfazione a gruppi filtrati per Sede.
+- [x] **Integrazione Bridge:** Connessione protetta tra Project A e Project B per importazione lead.
+- [ ] **Implementazione API Bundles:** Modifica di `getPublicSlots` per generare pacchetti virtuali basati sugli Abbonamenti.
+- [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
+- [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
+
+*Documentazione aggiornata al 13 Aprile 2026.*

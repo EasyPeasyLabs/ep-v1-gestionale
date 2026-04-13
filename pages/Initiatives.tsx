@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Initiative, InitiativeInput, Book, BookInput, BookLoan, Supplier, Enrollment, EnrollmentStatus } from '../types';
 import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook } from '../services/initiativeService';
-import { suggestBookMetadata } from '../services/geminiService';
+import { fetchBookMetadata } from '../services/bookMetadataService';
 import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import Spinner from '../components/Spinner';
@@ -128,35 +128,26 @@ const BookForm: React.FC<{
         
         setIsSuggesting(true);
         try {
-            const suggestion = await suggestBookMetadata(title, authors, publisher);
+            const suggestion = await fetchBookMetadata(title, authors);
             
-            if (suggestion.targetTags.length > 0) {
-                // Filter to only include valid options: PICCOLISSIMI, PICCOLI, GRANDI
-                const validTargets = suggestion.targetTags
-                    .map(t => t.toLowerCase())
-                    .filter(t => ['piccolissimi', 'piccoli', 'grandi'].includes(t));
-                
-                if (validTargets.length > 0) {
-                    setTargetTags(prev => Array.from(new Set([...prev, ...validTargets])));
+            if (suggestion) {
+                if (suggestion.targetTags.length > 0) {
+                    setTargetTags(prev => Array.from(new Set([...prev, ...suggestion.targetTags])));
                 }
-            }
-            
-            if (suggestion.categoryTags.length > 0) {
-                const validCategories = suggestion.categoryTags
-                    .map(t => t.toLowerCase())
-                    .filter(t => ['solo testo', 'solo immagini', 'testo & immagini', 'tattile'].includes(t));
                 
-                if (validCategories.length > 0) {
-                    setCategoryTags(prev => Array.from(new Set([...prev, ...validCategories])));
+                if (suggestion.categoryTags.length > 0) {
+                    setCategoryTags(prev => Array.from(new Set([...prev, ...suggestion.categoryTags])));
                 }
-            }
-            
-            if (suggestion.themeTags.length > 0) {
-                setThemeTags(prev => Array.from(new Set([...prev, ...suggestion.themeTags.map(t => t.toLowerCase())])));
+                
+                if (suggestion.themeTags.length > 0) {
+                    setThemeTags(prev => Array.from(new Set([...prev, ...suggestion.themeTags])));
+                }
+            } else {
+                alert("Nessun suggerimento trovato per questo libro.");
             }
         } catch (error) {
             console.error("AI Suggestion Error:", error);
-            alert("Errore durante il recupero dei suggerimenti AI.");
+            alert("Errore durante il recupero dei suggerimenti.");
         } finally {
             setIsSuggesting(false);
         }
