@@ -128,7 +128,7 @@ const BookForm: React.FC<{
         
         setIsSuggesting(true);
         try {
-            const suggestion = await suggestBookMetadata(title, authors, categoryTags.join(', '));
+            const suggestion = await suggestBookMetadata(title, authors, publisher);
             
             if (suggestion.targetTags.length > 0) {
                 // Filter to only include valid options: PICCOLISSIMI, PICCOLI, GRANDI
@@ -138,6 +138,16 @@ const BookForm: React.FC<{
                 
                 if (validTargets.length > 0) {
                     setTargetTags(prev => Array.from(new Set([...prev, ...validTargets])));
+                }
+            }
+            
+            if (suggestion.categoryTags.length > 0) {
+                const validCategories = suggestion.categoryTags
+                    .map(t => t.toLowerCase())
+                    .filter(t => ['solo testo', 'solo immagini', 'testo & immagini', 'tattile'].includes(t));
+                
+                if (validCategories.length > 0) {
+                    setCategoryTags(prev => Array.from(new Set([...prev, ...validCategories])));
                 }
             }
             
