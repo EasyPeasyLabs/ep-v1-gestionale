@@ -5,19 +5,19 @@
   "gcm_sender_id": "103953800507",
   "icons": [
     {
-      "src": "lemon_logo_150px.png",
+      "src": "/lemon_logo_150px.png",
       "type": "image/png",
       "sizes": "150x150",
       "purpose": "any maskable"
     },
     {
-      "src": "lemon_logo_150px.png",
+      "src": "/lemon_logo_150px.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "lemon_logo_150px.png",
+      "src": "/lemon_logo_150px.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"

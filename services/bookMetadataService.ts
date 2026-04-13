@@ -10,7 +10,7 @@ export interface BookMetadata {
 export const fetchBookMetadata = async (title: string, authors: string): Promise<BookMetadata | null> => {
     try {
         const query = encodeURIComponent(`${title} ${authors}`);
-        const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${query}&maxResults=1`);
+        const response = await fetch(`/api/books?q=${query}`);
         const data = await response.json();
 
         if (!data.items || data.items.length === 0) return null;

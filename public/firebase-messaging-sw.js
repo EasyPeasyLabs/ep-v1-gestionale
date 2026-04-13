@@ -78,7 +78,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   // Solo richieste GET http/https
-  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) return;
+  if (event.request.method !== 'GET' || !event.request.url.startsWith('http') || event.request.url.includes('/api/')) return;
 
   event.respondWith(
     fetch(event.request)

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.49.0",
+    "@tailwindcss/vite": "^4.2.2",
     "chart.js": "^4.4.1",
     "cors": "^2.8.6",
     "date-fns": "^4.1.0",
