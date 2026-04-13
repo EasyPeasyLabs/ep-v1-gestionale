@@ -10,7 +10,7 @@ export interface BookMetadata {
 export const fetchBookMetadata = async (title: string, authors: string): Promise<BookMetadata | null> => {
     try {
         const query = encodeURIComponent(`${title} ${authors}`);
-        const response = await fetch(`/api/books?q=${query}`);
+        const response = await fetch(`https://europe-west1-ep-gestionale-v1.cloudfunctions.net/proxyGoogleBooks?q=${query}`);
         const data = await response.json();
 
         if (!data.items || data.items.length === 0) return null;

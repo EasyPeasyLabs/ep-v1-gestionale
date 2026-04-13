@@ -437,6 +437,38 @@ export const getPublicSlotsV5 = onRequest({
     }
 });
 
+// --- API PROXY PER GOOGLE BOOKS (PROGETTO B) ---
+export const proxyGoogleBooks = onRequest({
+    region: "europe-west1",
+    cors: true
+}, async (req: Request, res: Response) => {
+    if (req.method !== "GET") {
+        res.status(405).send("Method Not Allowed");
+        return;
+    }
+
+    const query = req.query.q;
+    if (!query) {
+        res.status(400).json({ error: "Missing query parameter" });
+        return;
+    }
+
+    try {
+        const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query as string)}&maxResults=1`);
+        
+        if (!response.ok) {
+            res.status(response.status).json({ error: "Google Books API error" });
+            return;
+        }
+
+        const data = await response.json();
+        res.json(data);
+    } catch (error: unknown) {
+        logger.error("Error proxying Google Books:", error);
+        res.status(500).json({ error: "Failed to fetch from Google Books" });
+    }
+});
+
 // --- FUNZIONI MANCANTI (REINTEGRATE) ---
 
 export const getEnrollmentData = onCall({ region: "europe-west1", cors: true }, async (request: CallableRequest) => {

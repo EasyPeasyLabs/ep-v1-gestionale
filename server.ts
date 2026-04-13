@@ -69,29 +69,6 @@ async function startServer() {
     }
   });
 
-  // API Proxy for Google Books
-  app.get("/api/books", async (req: express.Request, res: express.Response) => {
-    try {
-      const query = req.query.q;
-      if (!query) {
-        return res.status(400).json({ success: false, error: "Missing query parameter" });
-      }
-      
-      const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query as string)}&maxResults=1`);
-      
-      if (!response.ok) {
-        console.log(`[API Proxy] Google Books API returned ${response.status}`);
-        return res.status(response.status).json({ success: false, error: "Google Books API error" });
-      }
-
-      const data = await response.json();
-      res.json(data);
-    } catch (error) {
-      console.warn("Warning proxying Google Books:", error);
-      res.status(500).json({ success: false, error: "Failed to fetch from Google Books", details: error instanceof Error ? error.message : String(error) });
-    }
-  });
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
