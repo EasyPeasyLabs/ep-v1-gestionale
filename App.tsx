@@ -57,8 +57,8 @@ const App: React.FC = () => {
           setUser(currentUser);
           setLoadingAuth(false);
           if (currentUser) {
-              requestNotificationPermission(currentUser.uid).catch(err => console.warn('Notif Error:', err));
-              setupForegroundMessaging();
+              // requestNotificationPermission(currentUser.uid).catch(err => console.warn('Notif Error:', err));
+              // setupForegroundMessaging();
           }
         }, (error) => {
             console.error("Auth Error: " + error.message);
