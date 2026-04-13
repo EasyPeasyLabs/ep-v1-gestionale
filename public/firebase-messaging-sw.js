@@ -77,31 +77,13 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Solo richieste GET http/https
-  if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) return;
-
-  // Ignora richieste a Firestore e Cloud Functions
-  if (event.request.url.includes('firestore.googleapis.com') || event.request.url.includes('cloudfunctions.net')) return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Clona risposta valida nella cache
-        if (response && response.status === 200 && response.type === 'basic') {
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, responseToCache);
-            });
-        }
-        return response;
-      })
-      .catch(() => {
-        // Fallback offline
-        return caches.match(event.request).then(response => {
-            if (response) return response;
-            // Opzionale: Ritorna offline.html se è una navigazione
-            return null;
-        });
-      })
-  );
+  const url = event.request.url;
+  
+  // Only cache static assets
+  if (url.includes(self.location.origin) && (url.endsWith('.html') || url.endsWith('.js') || url.endsWith('.css') || url.endsWith('.png'))) {
+    event.respondWith(
+      caches.match(event.request).then(response => response || fetch(event.request))
+    );
+  }
+  // All other requests (Firestore, Functions, API) are handled directly by the browser
 });
