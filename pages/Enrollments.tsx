@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ParentClient, InstitutionalClient, Enrollment, EnrollmentInput, PaymentMethod, ClientType, DocumentStatus, Supplier, Invoice, Client, Transaction, Quote } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment } from '../services/enrollmentService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment, autoFixEnrollments } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, getInvoices, updateQuote, getTransactions, getOrphanedFinancialsForClient, getQuotes, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
 import toast from 'react-hot-toast';
@@ -469,6 +469,31 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         }
     };
 
+    const handleAutoFix = async () => {
+        if (!confirm("Questa funzione cercherà di riparare automaticamente le iscrizioni 'In Attesa' o senza calendario, collegandole ai corsi corrispondenti. Procedere?")) return;
+        
+        const toastId = toast.loading("Riparazione in corso...");
+        setLoading(true);
+        try {
+            const result = await autoFixEnrollments();
+            toast.dismiss(toastId);
+            if (result.fixed > 0) {
+                toast.success(`Riparazione completata: ${result.fixed} su ${result.total} iscrizioni sanate.`);
+            } else if (result.total > 0) {
+                toast.error(`Nessuna iscrizione riparata su ${result.total} problematiche trovate. Verifica che i corsi siano aperti.`);
+            } else {
+                toast.success("Nessuna iscrizione problematica trovata.");
+            }
+            await fetchData();
+        } catch (e) {
+            toast.dismiss(toastId);
+            toast.error("Errore durante l'auto-fix.");
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const availableLocations = useMemo(() => {
         const names = new Set<string>();
         suppliers.forEach(s => s.locations.forEach(l => {
@@ -700,6 +725,14 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                     <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Gestione dei recinti operativi.</p>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end relative">
+                    <button 
+                        onClick={handleAutoFix}
+                        disabled={loading}
+                        className="md-btn md-btn-flat text-amber-600 border-amber-200 hover:bg-amber-50 px-4 py-2 flex items-center gap-2"
+                        title="Ripara iscrizioni in attesa"
+                    >
+                        <RefreshIcon /> <span className="hidden md:inline">Auto-Fix</span>
+                    </button>
                     <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="md-btn md-btn-raised md-btn-green px-4 py-2 flex items-center">
                         <PlusIcon /> <span className="ml-2">Nuova</span> <span className="ml-2 text-xs">▼</span>
                     </button>

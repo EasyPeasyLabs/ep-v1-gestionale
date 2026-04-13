@@ -5,6 +5,8 @@ import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentD
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee, Course } from '../types';
 import { isItalianHoliday } from '../utils/dateUtils';
 import { getSchoolClosures } from './calendarService';
+import { getOpenCourses, getLocations } from './courseService';
+import { getSuppliers } from './supplierService';
 
 const getEnrollmentCollectionRef = () => collection(db, 'enrollments');
 
@@ -1171,6 +1173,47 @@ export const activateEnrollmentWithLocation = async (
         labUsed = bookingResult.labUsed;
         sgUsed = bookingResult.sgUsed;
         finalEndDate = bookingResult.finalEndDate;
+
+        // RECUPERO LEZIONI PER POPOLARE APPOINTMENTS (Cache per UI)
+        const lessonsRef = collection(db, 'lessons');
+        const q = query(
+            lessonsRef,
+            where('courseId', '==', enrollment.courseId),
+            where('date', '>=', currentDate.toISOString()),
+            orderBy('date', 'asc')
+        );
+        const snap = await getDocs(q);
+        const bookedLessons = snap.docs
+            .map(d => ({ id: d.id, ...d.data() } as Lesson))
+            .filter(l => (l.attendees || []).some(a => a.enrollmentId === enrollmentId))
+            .slice(0, enrollment.lessonsTotal);
+
+        const now = new Date();
+        appointments = bookedLessons.map(l => {
+            const attendee = l.attendees?.find(a => a.enrollmentId === enrollmentId);
+            let status = (attendee?.status as AppointmentStatus) || AppointmentStatus.Scheduled;
+            
+            // Distinguiamo correttamente: se la lezione è passata e l'allievo è appena stato aggiunto (Scheduled),
+            // lo marchiamo come Absent per non falsare i crediti residui, a meno che non sia oggi.
+            const lessonDate = new Date(l.date);
+            const isPast = lessonDate.getTime() < (now.getTime() - 24 * 60 * 60 * 1000);
+            if (isPast && status === AppointmentStatus.Scheduled) {
+                status = AppointmentStatus.Absent;
+            }
+
+            return {
+                lessonId: l.id,
+                date: l.date,
+                startTime: l.startTime,
+                endTime: l.endTime,
+                locationId: locationId,
+                locationName: locationName,
+                locationColor: locationColor,
+                childName: enrollment.childName,
+                status: status,
+                type: l.slotType
+            };
+        });
     } else {
         // FALLBACK VECCHIA ARCHITETTURA (per iscrizioni custom senza corso)
         appointments = generateTheoreticalAppointments(
@@ -1208,7 +1251,8 @@ export const activateEnrollmentWithLocation = async (
         labRemaining: (enrollment.labCount || 0) - labUsed,
         sgRemaining: (enrollment.sgCount || 0) - sgUsed,
         startDate: currentDate.toISOString(), 
-        endDate: finalEndDate
+        endDate: finalEndDate,
+        status: EnrollmentStatus.Active
     });
 };
 
@@ -1384,4 +1428,102 @@ export const rescheduleSuspendedLesson = async (
     const newEndDate = appointments[appointments.length - 1].date;
 
     await updateDoc(enrRef, { appointments, endDate: newEndDate });
+};
+
+export const autoFixEnrollments = async (): Promise<{ fixed: number, total: number }> => {
+    console.log("[Auto-Fix] Avvio scansione iscrizioni problematiche...");
+    const snapshot = await getDocs(getEnrollmentCollectionRef());
+    const allEnrollments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Enrollment));
+    
+    const problematic = allEnrollments.filter(e => {
+        const hasNoApps = !e.appointments || e.appointments.length === 0;
+        const hasND = e.appointments?.[0]?.startTime === 'N/D';
+        const isPending = e.status === EnrollmentStatus.Pending;
+        
+        return (isPending || hasNoApps || hasND) &&
+               e.status !== EnrollmentStatus.Completed &&
+               e.status !== EnrollmentStatus.Expired;
+    });
+
+    console.log(`[Auto-Fix] Trovate ${problematic.length} iscrizioni potenzialmente da sanare.`);
+    if (problematic.length === 0) return { fixed: 0, total: 0 };
+
+    const courses = await getOpenCourses();
+    const locations = await getLocations();
+    const suppliers = await getSuppliers();
+
+    let fixedCount = 0;
+
+    for (const enr of problematic) {
+        try {
+            let courseId = enr.courseId;
+            const locationId = enr.locationId;
+            
+            // 1. Try to find a course if missing
+            if ((!courseId || courseId === 'manual') && locationId && locationId !== 'unassigned') {
+                const startDate = new Date(enr.startDate);
+                if (!isNaN(startDate.getTime())) {
+                    const dayOfWeek = startDate.getDay();
+                    let matchingCourse = courses.find(c => 
+                        c.locationId === locationId && 
+                        c.dayOfWeek === dayOfWeek
+                    );
+                    
+                    // Fallback: se non c'è match esatto sul giorno, cerchiamo il primo corso disponibile in quella sede
+                    if (!matchingCourse) {
+                        matchingCourse = courses.find(c => c.locationId === locationId);
+                    }
+
+                    if (matchingCourse) {
+                        courseId = matchingCourse.id;
+                    }
+                }
+            }
+
+            // 2. If we have a courseId or enough info, activate it
+            if (courseId && courseId !== 'manual') {
+                const course = courses.find(c => c.id === courseId);
+                if (course) {
+                    const location = locations.find(l => l.id === course.locationId);
+                    const supplier = suppliers.find(s => s.id === location?.supplierId);
+
+                    await activateEnrollmentWithLocation(
+                        enr.id,
+                        location?.supplierId || enr.supplierId || 'unassigned',
+                        supplier?.companyName || enr.supplierName || '',
+                        course.locationId,
+                        location?.name || enr.locationName || 'Sede',
+                        location?.color || enr.locationColor || '#ccc',
+                        course.dayOfWeek,
+                        course.startTime,
+                        course.endTime
+                    );
+                    fixedCount++;
+                }
+            } else if (locationId && locationId !== 'unassigned') {
+                // Fallback for manual without course but with location
+                // We need a time. If missing, we use a default or try to infer.
+                const startTime = '16:00';
+                const endTime = '18:00';
+                const dayOfWeek = new Date(enr.startDate).getDay();
+                
+                await activateEnrollmentWithLocation(
+                    enr.id,
+                    enr.supplierId || 'unassigned',
+                    enr.supplierName || '',
+                    locationId,
+                    enr.locationName || 'Sede',
+                    enr.locationColor || '#ccc',
+                    dayOfWeek,
+                    startTime,
+                    endTime
+                );
+                fixedCount++;
+            }
+        } catch (err) {
+            console.error(`Error auto-fixing enrollment ${enr.id}:`, err);
+        }
+    }
+
+    return { fixed: fixedCount, total: problematic.length };
 };

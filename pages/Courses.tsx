@@ -80,6 +80,9 @@ const Courses: React.FC = () => {
         setSelectedCourseForStudents({ id: courseId, name: courseName });
         setIsLoadingStudents(true);
         try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
             const q = query(
                 collection(db, 'enrollments'),
                 where('courseId', '==', courseId)
@@ -91,10 +94,15 @@ const Courses: React.FC = () => {
                     return {
                         name: data.childName as string,
                         status: data.status as string,
+                        endDate: data.endDate as string,
                         remaining: (data.lessonsRemaining !== undefined ? data.lessonsRemaining : (data.labRemaining || 0)) as number
                     };
                 })
-                .filter((s) => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s.status) && s.remaining > 0);
+                .filter((s) => {
+                    const isActive = ['active', 'Active'].includes(s.status);
+                    const isNotExpired = s.endDate ? new Date(s.endDate) >= today : true;
+                    return isActive && isNotExpired && s.remaining > 0;
+                });
             setEnrolledStudents(students);
         } catch (error) {
             console.error("Errore recupero allievi:", error);
@@ -292,9 +300,13 @@ const Courses: React.FC = () => {
                 };
                 courseData.weeklyPlan = weeklyPlan;
                 
-                // Use the configured LAB+SG slot times for the main course document
-                courseData.startTime = configs['LAB+SG'].startTime;
-                courseData.endTime = configs['LAB+SG'].endTime;
+                // Use a range for display in the table, but keep it compatible if possible
+                // Actually, let's use the earliest start and latest end for the main fields
+                const startTimes = [configs.LAB.startTime, configs.SG.startTime].sort();
+                const endTimes = [configs.LAB.endTime, configs.SG.endTime].sort();
+                
+                courseData.startTime = startTimes[0];
+                courseData.endTime = endTimes[endTimes.length - 1];
                 courseData.capacity = configs['LAB+SG'].capacity || Math.max(configs.LAB.capacity, configs.SG.capacity);
             }
 
@@ -368,11 +380,9 @@ const Courses: React.FC = () => {
             setWeeklyPlan({ 1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG' });
         }
         
-        const newConfigs = { ...configs };
-        
-        // Reset quantities
-        Object.keys(newConfigs).forEach(k => {
-            newConfigs[k as SlotType].quantity = 0;
+        const newConfigs: Record<SlotType, CourseConfig> = {} as Record<SlotType, CourseConfig>;
+        (Object.keys(configs) as SlotType[]).forEach(k => {
+            newConfigs[k] = { ...configs[k], quantity: 0 };
         });
 
         if (course.slotType === 'LAB+SG' && course.comboConfigs) {
@@ -494,7 +504,22 @@ const Courses: React.FC = () => {
                                     <div className="flex justify-between items-start">
                                         <div>
                                             <h3 className="font-black text-gray-900 uppercase tracking-tight">{days[course.dayOfWeek]}</h3>
-                                            <p className="text-sm font-bold text-indigo-600">{course.startTime} - {course.endTime}</p>
+                                            <div className="text-sm font-bold text-indigo-600">
+                                                {course.slotType === 'LAB+SG' && course.comboConfigs ? (
+                                                    <div className="flex flex-col gap-0.5 mt-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[8px] bg-indigo-50 text-indigo-600 px-1 rounded font-black">LAB</span>
+                                                            <span>{course.comboConfigs.LAB?.startTime}-{course.comboConfigs.LAB?.endTime}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[8px] bg-emerald-50 text-emerald-600 px-1 rounded font-black">SG</span>
+                                                            <span>{course.comboConfigs.SG?.startTime}-{course.comboConfigs.SG?.endTime}</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    `${course.startTime} - ${course.endTime}`
+                                                )}
+                                            </div>
                                         </div>
                                         <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider
                                             ${course.slotType === 'LAB' ? 'bg-indigo-50 text-indigo-600' : 
@@ -585,7 +610,26 @@ const Courses: React.FC = () => {
                                         courses.map(course => (
                                             <tr key={course.id} className="hover:bg-gray-50/50 transition-colors">
                                                 <td className="px-6 py-4 font-bold text-gray-900">{days[course.dayOfWeek]}</td>
-                                                <td className="px-6 py-4 text-gray-600 font-medium">{course.startTime} - {course.endTime}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-gray-900 font-bold">
+                                                            {course.slotType === 'LAB+SG' && course.comboConfigs ? (
+                                                                <div className="flex flex-col gap-0.5">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-[9px] bg-indigo-50 text-indigo-600 px-1 rounded font-black">LAB</span>
+                                                                        <span className="text-xs">{course.comboConfigs.LAB?.startTime}-{course.comboConfigs.LAB?.endTime}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="text-[9px] bg-emerald-50 text-emerald-600 px-1 rounded font-black">SG</span>
+                                                                        <span className="text-xs">{course.comboConfigs.SG?.startTime}-{course.comboConfigs.SG?.endTime}</span>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                `${course.startTime} - ${course.endTime}`
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                </td>
                                                 <td className="px-6 py-4">
                                                     <span className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider
                                                         ${course.slotType === 'LAB' ? 'bg-indigo-50 text-indigo-600' : 
@@ -835,29 +879,31 @@ const Courses: React.FC = () => {
                                 <div className="flex items-center justify-between px-1">
                                     <h3 className="text-[10px] md:text-[11px] font-black text-gray-300 uppercase tracking-[0.2em]">Configurazione Slot Ammessi</h3>
                                 </div>                                
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
-                                    {(Object.keys(configs) as SlotType[]).map(type => {
-                                        const isActive = activeType === type || (activeType === 'LAB+SG' && (type === 'LAB' || type === 'SG'));
-                                        const config = configs[type];
-                                        
-                                        return (
-                                            <div 
-                                                key={type}
-                                                className={`rounded-2xl border-2 transition-all duration-300 p-3 md:p-4 space-y-4 md:space-y-5
-                                                    ${isActive 
-                                                        ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 md:scale-[1.02] z-10' 
-                                                        : 'bg-gray-50/50 border-gray-100 opacity-60 grayscale-[0.5]'}`}
-                                            >
-                                                {/* Quantity / Header */}
-                                                <div className="flex items-center md:flex-col justify-between md:justify-center gap-2 pb-3 md:pb-4 border-b border-gray-100/10">
-                                                    <span className={`text-[10px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
-                                                        {type}
-                                                    </span>
-                                                    <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-lg md:text-xl border-2 transition-colors
-                                                        ${isActive ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
-                                                        {config.quantity}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                                    {(Object.keys(configs) as SlotType[])
+                                        .filter(type => type !== 'LAB+SG')
+                                        .map(type => {
+                                            const isActive = activeType === type || (activeType === 'LAB+SG' && (type === 'LAB' || type === 'SG'));
+                                            const config = configs[type];
+                                            
+                                            return (
+                                                <div 
+                                                    key={type}
+                                                    className={`rounded-2xl border-2 transition-all duration-300 p-3 md:p-4 space-y-4 md:space-y-5
+                                                        ${isActive 
+                                                            ? 'bg-white border-indigo-500 shadow-xl shadow-indigo-100/50 md:scale-[1.02] z-10' 
+                                                            : 'bg-gray-50/50 border-gray-100 opacity-60 grayscale-[0.5]'}`}
+                                                >
+                                                    {/* Quantity / Header */}
+                                                    <div className="flex items-center md:flex-col justify-between md:justify-center gap-2 pb-3 md:pb-4 border-b border-gray-100/10">
+                                                        <span className={`text-[10px] font-black tracking-widest uppercase ${isActive ? 'text-indigo-600' : 'text-gray-400'}`}>
+                                                            {type}
+                                                        </span>
+                                                        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center font-black text-lg md:text-xl border-2 transition-colors
+                                                            ${isActive ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-100 border-gray-200 text-gray-400'}`}>
+                                                            {config.quantity}
+                                                        </div>
                                                     </div>
-                                                </div>
 
                                                 {/* Times */}
                                                 <div className="grid grid-cols-2 md:grid-cols-1 gap-3 md:gap-4">
