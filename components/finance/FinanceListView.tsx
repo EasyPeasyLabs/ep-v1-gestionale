@@ -7,7 +7,9 @@ import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
 import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType, Enrollment, TransactionCategory } from '../../types';
-import { updateInvoice, markInvoicesAsPaid, registerInvoicePayment } from '../../services/financeService';
+import { updateInvoice, markInvoicesAsPaid, registerInvoicePayment, runSmartSanityFix } from '../../services/financeService';
+import SparklesIcon from '../icons/SparklesIcon';
+import Spinner from '../Spinner';
 
 // --- Icona WhatsApp ---
 const WhatsAppIcon = () => (
@@ -85,6 +87,21 @@ const FinanceListView: React.FC<FinanceListViewProps> = ({
     const [statusFilter, setStatusFilter] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: 'date' | 'number'; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
     const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+    const [isSanityFixing, setIsSanityFixing] = useState(false);
+
+    const handleSanityFix = async () => {
+        if (!confirm("Avviare la scansione e correzione automatica delle anomalie segnalate (SNUPY, LA SCINTILLA, CUBE)?")) return;
+        setIsSanityFixing(true);
+        try {
+            await runSmartSanityFix();
+            alert("Correzioni applicate con successo!");
+            window.dispatchEvent(new CustomEvent('EP_DataUpdated'));
+        } catch (e) {
+            alert("Errore durante la correzione: " + e);
+        } finally {
+            setIsSanityFixing(false);
+        }
+    };
 
     // --- NUOVI FILTRI TEMPORALI ---
     const now = useMemo(() => new Date(), []);
@@ -364,16 +381,28 @@ const totals = useMemo(() => {
                         )}
 
                         {activeTab === 'invoices' && (
-                            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
-                                <option value="">Tutti gli stati</option>
-                                <option value="ghost">Pro-Forma (Ghost)</option>
-                                <option value={DocumentStatus.Draft}>Bozza</option>
-                                <option value={DocumentStatus.Sent}>Inviata</option>
-                                <option value={DocumentStatus.Paid}>Pagata</option>
-                                <option value={DocumentStatus.PendingSDI}>In Attesa SDI</option>
-                                <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
-                                <option value={DocumentStatus.Overdue}>Scaduta</option>
-                            </select>
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="block w-full md:w-48 pl-3 pr-8 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-indigo-500 focus:border-indigo-500 bg-white">
+                                    <option value="">Tutti gli stati</option>
+                                    <option value="ghost">Pro-Forma (Ghost)</option>
+                                    <option value={DocumentStatus.Draft}>Bozza</option>
+                                    <option value={DocumentStatus.Sent}>Inviata</option>
+                                    <option value={DocumentStatus.Paid}>Pagata</option>
+                                    <option value={DocumentStatus.PendingSDI}>In Attesa SDI</option>
+                                    <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
+                                    <option value={DocumentStatus.Overdue}>Scaduta</option>
+                                </select>
+                                {statusFilter === 'ghost' && (
+                                    <button 
+                                        onClick={handleSanityFix}
+                                        disabled={isSanityFixing}
+                                        className="md-btn bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all"
+                                    >
+                                        {isSanityFixing ? <Spinner /> : <SparklesIcon className="w-4 h-4 text-white" />}
+                                        {isSanityFixing ? 'Fixing...' : 'Sanity Check'}
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </div>
 
@@ -485,6 +514,34 @@ const totals = useMemo(() => {
                                     <div className="font-bold text-slate-900 truncate max-w-[250px]">
                                         {item.clientName || ('allocationName' in item ? (item as Transaction).allocationName : '') || ('description' in item ? (item as Transaction).description : '')}
                                     </div>
+                                    {/* NEW: Location Context Badge for Invoices */}
+                                    {activeTab === 'invoices' && (
+                                        (() => {
+                                            const invoice = item as Invoice;
+                                            let locationName = '';
+                                            
+                                            if (invoice.relatedEnrollmentId) {
+                                                locationName = enrollments?.find(e => e.id === invoice.relatedEnrollmentId)?.locationName || '';
+                                            } else if (invoice.relatedQuoteNumber) {
+                                                const quote = quotes.find(q => q.quoteNumber === invoice.relatedQuoteNumber);
+                                                if (quote) {
+                                                    const enr = enrollments?.find(e => e.relatedQuoteId === quote.id);
+                                                    locationName = enr?.locationName || '';
+                                                }
+                                            }
+
+                                            if (locationName) {
+                                                return (
+                                                    <div className="mt-1">
+                                                        <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border border-slate-200 tracking-tight">
+                                                            📍 {locationName}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            }
+                                            return null;
+                                        })()
+                                    )}
                                     {activeTab === 'transactions' && enrollments && (item as Transaction).relatedEnrollmentId && (
                                         (() => {
                                             const enr = enrollments.find(e => e.id === (item as Transaction).relatedEnrollmentId);
@@ -512,7 +569,41 @@ const totals = useMemo(() => {
                                     {amountPrefix}{safeAmount.toFixed(2)}€
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>{item.status}</span>
+                                    <div className="flex flex-col gap-1 items-start">
+                                        {(() => {
+                                            if (activeTab !== 'invoices') {
+                                                return (
+                                                    <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>
+                                                        {item.status}
+                                                    </span>
+                                                );
+                                            }
+
+                                            const inv = item as Invoice;
+                                            const isSealed = inv.status === DocumentStatus.SealedSDI || !!inv.sdiId;
+                                            const isPaid = inv.status === DocumentStatus.Paid || transactions.some(t => t.relatedDocumentId === inv.id && !t.isDeleted);
+
+                                            return (
+                                                <>
+                                                    {isPaid && (
+                                                        <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(DocumentStatus.Paid)}`}>
+                                                            {DocumentStatus.Paid}
+                                                        </span>
+                                                    )}
+                                                    {isSealed && (
+                                                        <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(DocumentStatus.SealedSDI)}`}>
+                                                            {DocumentStatus.SealedSDI}
+                                                        </span>
+                                                    )}
+                                                    {!isPaid && !isSealed && (
+                                                        <span className={`px-2 py-1 rounded-full text-[9px] font-black uppercase border ${getStatusColor(item.status)}`}>
+                                                            {item.status}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
+                                    </div>
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex justify-end gap-1">
