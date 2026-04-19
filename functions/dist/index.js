@@ -628,7 +628,9 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
       if (targetDayIndex !== -1) {
         let firstDate = "";
         if (matchedCourseId !== "manual") {
-          const courseLessonsQuery = db.collection("lessons").where("courseId", "==", matchedCourseId).where("date", ">=", (/* @__PURE__ */ new Date()).toISOString().split("T")[0]).orderBy("date", "asc").limit(enrollmentData.lessonsTotal || sub.lessons || 1);
+          const todayItaly = new Date((/* @__PURE__ */ new Date()).toLocaleString("en-US", { timeZone: "Europe/Rome" }));
+          const todayStr = todayItaly.toISOString().split("T")[0];
+          const courseLessonsQuery = db.collection("lessons").where("courseId", "==", matchedCourseId).where("date", ">=", todayStr).orderBy("date", "asc").limit(enrollmentData.lessonsTotal || sub.lessons || 1);
           const courseLessonsSnap = await transaction.get(courseLessonsQuery);
           if (!courseLessonsSnap.empty) {
             firstDate = courseLessonsSnap.docs[0].data().date;
