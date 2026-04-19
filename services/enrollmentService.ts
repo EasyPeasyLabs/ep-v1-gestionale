@@ -412,15 +412,25 @@ export const bonificaAppointments = async (): Promise<number> => {
 
     for (const docSnap of enrollmentsSnap.docs) {
         const data = docSnap.data() as Enrollment;
-        if (data.courseId && data.courseId !== 'manual' && data.appointments && data.appointments.length > 0) {
-            // SICUREZZA: Manteniamo solo appuntamenti che hanno già una presenza/assenza registrata
-            // o che non sono Scheduled. Lo svuotamento totale è vietato.
-            const preservedApps = (data.appointments || []).filter(app => 
-                app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended'
-            );
+        
+        // UNIVERSAL BONIFICA: Applica a TUTTI i tipi di iscrizione (Corso, Manuale o Istituzionale)
+        if (data.appointments && data.appointments.length > 0) {
+            const originalCount = data.appointments.length;
             
-            // Se l'array risultante è diverso, aggiorniamo
-            if (preservedApps.length !== data.appointments.length) {
+            // 1. Forza la conservazione solo di presenze storiche e stati bloccati
+            // 2. Rimuove appuntamenti Scheduled che non sono collegati a una lezione fisica
+            const preservedApps = (data.appointments || []).filter(app => {
+                // Se è già registrata una presenza/assenza o sospensione, NON TOCCARE
+                if (app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended') return true;
+                
+                // Se l'iscrizione ha un corso, le lezioni Scheduled devono stare SOLO in Lessons
+                // Se è manuale, verranno ripulite dalla deduplicazione del Registro e dal Recovery
+                if (data.courseId && data.courseId !== 'manual') return false;
+                
+                return true;
+            });
+            
+            if (preservedApps.length !== originalCount) {
                 batch.update(docSnap.ref, { appointments: preservedApps });
                 updatedCount++;
                 operationsInBatch++;
@@ -533,27 +543,33 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
         }
     }
 
-    // 3. Sanificazione Progetti (es. SNUPY / ARIA DI FESTA Duplicati)
+    // 3. Sanificazione Universale (Deduplicazione Totale - Indipendente dai nomi)
     for (const enr of enrMap.values()) {
         const originalLength = enr.appointments?.length || 0;
         if (originalLength === 0) continue;
 
         const cleanedApps = (enr.appointments || []).filter((app, index, self) => {
             const appDateStr = app.date.split('T')[0];
-            const d = new Date(appDateStr);
-            const day = d.getDay();
-
-            // SNUPY: Forza Giovedì (4), scarta Venerdì (5) se non è un recupero esplicito
-            if (enr.subscriptionName?.toUpperCase().includes('SNUPY') && !app.recoveryId) {
-                if (day === 5) return false;
-            }
-
+            
             // Deduplicazione per data/ora (Sorgente di verità univoca)
             const duplicateIndex = self.findIndex(t => 
                 t.date.split('T')[0] === appDateStr && 
-                t.startTime === app.startTime &&
-                t.lessonId === app.lessonId
+                t.startTime === app.startTime
             );
+
+            // Per i progetti (SNUPY, BABY CLUB, PUTIGNANO, etc.), 
+            // incrociamo con le lezioni fisiche master esistenti. 
+            // Se esiste una lezione master per quel giorno/ora per questo allievo,
+            // l'appuntamento slave (senza lessonId) deve sparire per evitare duplicati.
+            const hasMasterLesson = lessonDocs.some(l => {
+                const lessonData = l.data() as Lesson;
+                return lessonData.date.split('T')[0] === appDateStr && 
+                       lessonData.startTime === app.startTime &&
+                       lessonData.attendees?.some((a: LessonAttendee) => a.enrollmentId === enr.id);
+            });
+
+            if (hasMasterLesson && !app.lessonId) return false;
+
             return duplicateIndex === index;
         });
 
