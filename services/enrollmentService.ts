@@ -2,7 +2,7 @@
 import { db } from '../firebase/config';
 import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentData, QueryDocumentSnapshot, doc, updateDoc, getDoc, getDocFromServer, writeBatch, arrayUnion } from 'firebase/firestore';
 /* Added DocumentStatus to imports */
-import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee, Course } from '../types';
+import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee, Course, SubscriptionType } from '../types';
 import { isItalianHoliday } from '../utils/dateUtils';
 import { getSchoolClosures } from './calendarService';
 import { getOpenCourses, getLocations } from './courseService';
@@ -457,13 +457,15 @@ export const bonificaAppointments = async (): Promise<number> => {
 // --- MOTORE DI RECUPERO INTEGRALE (REPOSITIONING SYSTEM) ---
 export const recuperoIntegraleDati = async (): Promise<void> => {
     console.log("[Recovery] Avvio Motore di Ripristino...");
-    const [enrollmentsSnap, lessonsSnap, coursesSnap] = await Promise.all([
+    const [enrollmentsSnap, lessonsSnap, coursesSnap, subTypesSnap] = await Promise.all([
         getDocs(collection(db, 'enrollments')),
         getDocs(collection(db, 'lessons')),
-        getDocs(collection(db, 'courses'))
+        getDocs(collection(db, 'courses')),
+        getDocs(collection(db, 'subscriptionTypes'))
     ]);
 
     const enrMap = new Map<string, Enrollment>(enrollmentsSnap.docs.map(d => [d.id, { id: d.id, ...d.data() } as Enrollment]));
+    const subTypesMap = new Map<string, SubscriptionType>(subTypesSnap.docs.map(d => [d.id, { id: d.id, ...d.data() } as SubscriptionType]));
     const lessonDocs = lessonsSnap.docs;
     const courses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
     const batch = writeBatch(db);
@@ -548,17 +550,40 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
         const originalLength = enr.appointments?.length || 0;
         if (originalLength === 0) continue;
 
+        // Recupera le regole della sottoscrizione
+        const subType = subTypesMap.get(enr.subscriptionTypeId);
+        const allowedDays = subType?.allowedDays || []; // Se vuoto, nessuna restrizione rigida sui giorni
+
         const cleanedApps = (enr.appointments || []).filter((app, index, self) => {
             const appDateStr = app.date.split('T')[0];
             
-            // Deduplicazione per data/ora (Sorgente di verità univoca)
+            // --- REGOLA 1: VALIDAZIONE GIORNI (STRICT DAY RULE) ---
+            // Se la sottoscrizione definisce giorni specifici (es. solo Lunedi), 
+            // ogni appuntamento fuori da quel giorno è un errore di generazione o duplicazione,
+            // salvo che sia un recupero esplicito.
+            if (allowedDays.length > 0 && !app.recoveryId) {
+                const dateParts = appDateStr.split('-').map(Number);
+                const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, ..., 4=Thu...
+
+                // Nota: In Firestore allowedDays segue tipicamente lo standard (0-6)
+                if (!allowedDays.includes(dayOfWeek)) {
+                    console.log(`[Bonifica] Rimozione appuntamento illegale: ${enr.childName} il ${appDateStr} (Giorno ${dayOfWeek} non ammesso)`);
+                    return false;
+                }
+            }
+
+            // --- REGOLA 2: DEDUPLICAZIONE PER DATA/ORA ---
             const duplicateIndex = self.findIndex(t => 
                 t.date.split('T')[0] === appDateStr && 
                 t.startTime === app.startTime
             );
 
-            // Per i progetti (SNUPY, BABY CLUB, PUTIGNANO, etc.), 
-            // incrociamo con le lezioni fisiche master esistenti. 
+            // Se abbiamo più record per lo stesso allievo nello stesso istante, ne teniamo solo uno
+            if (duplicateIndex !== index) return false;
+
+            // --- REGOLA 3: COLLISIONE MASTER/SLAVE ---
+            // Per i progetti (SNUPY, BABY CLUB, PUTIGNANO, etc.), incrociamo con le lezioni fisiche master esistenti. 
             // Se esiste una lezione master per quel giorno/ora per questo allievo,
             // l'appuntamento slave (senza lessonId) deve sparire per evitare duplicati.
             const hasMasterLesson = lessonDocs.some(l => {
@@ -570,7 +595,7 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
 
             if (hasMasterLesson && !app.lessonId) return false;
 
-            return duplicateIndex === index;
+            return true;
         });
 
         if (cleanedApps.length !== originalLength) {
