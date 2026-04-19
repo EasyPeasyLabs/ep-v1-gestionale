@@ -557,19 +557,21 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
         const cleanedApps = (enr.appointments || []).filter((app, index, self) => {
             const appDateStr = app.date.split('T')[0];
             
-            // --- REGOLA 1: VALIDAZIONE GIORNI (STRICT DAY RULE) ---
+            // --- REGOLA 1: VALIDAZIONE GIORNI (PROTEZIONE VS CANCELLAZIONE) ---
+            // Qualsiasi appuntamento con presenza/assenza registrata è SACRO.
+            // Non deve essere rimosso mai, neanche se il giorno non è tra quelli previsti.
+            if (app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended') return true;
+
             // Se la sottoscrizione definisce giorni specifici (es. solo Lunedi), 
-            // ogni appuntamento fuori da quel giorno è un errore di generazione o duplicazione,
-            // salvo che sia un recupero esplicito.
+            // rimuoviamo solo i residui Scheduled (previsti) che non hanno riscontro fisico.
             if (allowedDays.length > 0 && !app.recoveryId) {
                 const dateParts = appDateStr.split('-').map(Number);
                 const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
-                const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, ..., 4=Thu...
+                const dayOfWeek = d.getDay();
 
-                // Nota: In Firestore allowedDays segue tipicamente lo standard (0-6)
                 if (!allowedDays.includes(dayOfWeek)) {
-                    console.log(`[Bonifica] Rimozione appuntamento illegale: ${enr.childName} il ${appDateStr} (Giorno ${dayOfWeek} non ammesso)`);
-                    return false;
+                    // Se è Scheduled ma non è il suo giorno, è sporco.
+                    if (app.status === AppointmentStatus.Scheduled || !app.status) return false;
                 }
             }
 
