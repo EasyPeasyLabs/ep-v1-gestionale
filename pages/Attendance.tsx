@@ -249,9 +249,12 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
                             // Filtra per range
                             if (appDate >= start && appDate <= end) {
-                                const key = `${enr.id}_${app.date}_${app.startTime}`;
+                                // NORMALIZZAZIONE CHIAVE: Solo YYYY-MM-DD per evitare disallineamenti ISO
+                                const dateKey = app.date.split('T')[0];
+                                const key = `${enr.id}_${dateKey}_${app.startTime}`;
                                 itemsMap.set(key, {
                                     ...app,
+                                    date: dateKey, // Forza formato breve per coerenza
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
                                     subscriptionName: enr.subscriptionName,
@@ -285,12 +288,14 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 if (lesson.attendees && lesson.attendees.length > 0) {
                     lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
-                        const key = `${attendee.enrollmentId}_${lesson.date}_${lesson.startTime}`;
+                        // NORMALIZZAZIONE CHIAVE: Solo YYYY-MM-DD
+                        const dateKey = lesson.date.split('T')[0];
+                        const key = `${attendee.enrollmentId}_${dateKey}_${lesson.startTime}`;
                         
                         // La nuova architettura sovrascrive la vecchia se c'è collisione (deduplicazione)
                         itemsMap.set(key, {
                             lessonId: doc.id,
-                            date: lesson.date,
+                            date: dateKey,
                             startTime: lesson.startTime,
                             endTime: lesson.endTime,
                             locationId: lesson.locationId || 'unassigned',

@@ -404,21 +404,27 @@ export const deleteEnrollment = async (id: string): Promise<void> => {
 
 // --- SCRIPT DI BONIFICA (TRANSIZIONE ARCHITETTURA) ---
 export const bonificaAppointments = async (): Promise<number> => {
-    console.log("Inizio bonifica appointments...");
+    console.log("Inizio bonifica chirurgica appointments...");
     const enrollmentsSnap = await getDocs(collection(db, 'enrollments'));
     let updatedCount = 0;
-    
-    // Non usiamo un singolo batch perché potremmo superare il limite di 500 scritture
     const batch = writeBatch(db);
     let operationsInBatch = 0;
 
     for (const docSnap of enrollmentsSnap.docs) {
         const data = docSnap.data() as Enrollment;
-        // Se l'iscrizione è legata a un corso (nuova architettura) e ha ancora l'array appointments pieno
         if (data.courseId && data.courseId !== 'manual' && data.appointments && data.appointments.length > 0) {
-            batch.update(docSnap.ref, { appointments: [] });
-            updatedCount++;
-            operationsInBatch++;
+            // SICUREZZA: Manteniamo solo appuntamenti che hanno già una presenza/assenza registrata
+            // o che non sono Scheduled. Lo svuotamento totale è vietato.
+            const preservedApps = (data.appointments || []).filter(app => 
+                app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended'
+            );
+            
+            // Se l'array risultante è diverso, aggiorniamo
+            if (preservedApps.length !== data.appointments.length) {
+                batch.update(docSnap.ref, { appointments: preservedApps });
+                updatedCount++;
+                operationsInBatch++;
+            }
             
             if (operationsInBatch >= 450) {
                 await batch.commit();
@@ -431,8 +437,136 @@ export const bonificaAppointments = async (): Promise<number> => {
         await batch.commit();
     }
     
-    console.log(`Bonifica completata. ${updatedCount} iscrizioni aggiornate.`);
+    // Avvia automaticamente il ripristino per tappare i buchi creati in precedenza
+    await recuperoIntegraleDati();
+    
+    console.log(`Bonifica e Ripristino completati. ${updatedCount} iscrizioni sanate.`);
     return updatedCount;
+};
+
+// --- MOTORE DI RECUPERO INTEGRALE (REPOSITIONING SYSTEM) ---
+export const recuperoIntegraleDati = async (): Promise<void> => {
+    console.log("[Recovery] Avvio Motore di Ripristino...");
+    const [enrollmentsSnap, lessonsSnap, coursesSnap] = await Promise.all([
+        getDocs(collection(db, 'enrollments')),
+        getDocs(collection(db, 'lessons')),
+        getDocs(collection(db, 'courses'))
+    ]);
+
+    const enrMap = new Map<string, Enrollment>(enrollmentsSnap.docs.map(d => [d.id, { id: d.id, ...d.data() } as Enrollment]));
+    const lessonDocs = lessonsSnap.docs;
+    const courses = coursesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Course));
+    const batch = writeBatch(db);
+    let counter = 0;
+
+    // 1. Ripristino da Source B (Lessons) -> Source A (Enrollments)
+    // Se un allievo è in una lezione fisica, DEVE avere l'appuntamento nel registro
+    for (const lessonDoc of lessonDocs) {
+        const lesson = lessonDoc.data() as Lesson;
+        if (!lesson.attendees || lesson.attendees.length === 0) continue;
+
+        for (const attendee of lesson.attendees) {
+            if (!attendee.enrollmentId) continue;
+            
+            const enr = enrMap.get(attendee.enrollmentId);
+            if (!enr) continue;
+
+            const exists = (enr.appointments || []).some(app => 
+                app.lessonId === lessonDoc.id || 
+                (app.date.split('T')[0] === lesson.date.split('T')[0] && app.startTime === lesson.startTime)
+            );
+
+            if (!exists) {
+                const newApp: Appointment = {
+                    lessonId: lessonDoc.id,
+                    date: lesson.date,
+                    startTime: lesson.startTime,
+                    endTime: lesson.endTime,
+                    locationId: lesson.locationId || enr.locationId,
+                    locationName: lesson.locationName,
+                    locationColor: lesson.locationColor,
+                    childName: attendee.childName,
+                    status: (attendee.status as AppointmentStatus) || AppointmentStatus.Scheduled,
+                    type: lesson.slotType
+                };
+
+                const updatedApps = [...(enr.appointments || []), newApp].sort((a,b) => a.date.localeCompare(b.date));
+                batch.update(doc(db, 'enrollments', enr.id), { appointments: updatedApps });
+                enr.appointments = updatedApps;
+                counter++;
+            }
+        }
+    }
+
+    // 2. Ripristino Architetturale per Iscrizioni "Vuote" (Ghost Recovery)
+    // Se un'iscrizione è attiva ma non ha appuntamenti, tentiamo di rigenerarli
+    for (const enr of enrMap.values()) {
+        if (enr.status === EnrollmentStatus.Active && (!enr.appointments || enr.appointments.length === 0)) {
+            // Se legata a un corso, proviamo a ri-prenotarla
+            if (enr.courseId && enr.courseId !== 'manual') {
+                const course = courses.find(c => c.id === enr.courseId);
+                if (course) {
+                    console.log(`[Recovery] Rigenerazione appuntamenti per allievo ${enr.childName} (Corso: ${enr.courseId})`);
+                    // Qui chiamiamo la logica di booking ma in batch se possibile
+                    // Per ora, segnaliamo e ripristiniamo teorici se mancano i fisici
+                    const startDate = enr.startDate;
+                    const lessonsToGenerate = enr.lessonsRemaining || enr.lessonsTotal || 0;
+                    
+                    if (lessonsToGenerate > 0) {
+                        // Generazione teorica di emergenza per ridare visibilità
+                        const dummyApps = generateTheoreticalAppointments(
+                            startDate,
+                            lessonsToGenerate,
+                            enr.locationId,
+                            enr.locationName,
+                            enr.locationColor,
+                            course.startTime,
+                            course.endTime,
+                            enr.childName
+                        );
+                        batch.update(doc(db, 'enrollments', enr.id), { appointments: dummyApps });
+                        enr.appointments = dummyApps;
+                        counter++;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Sanificazione Progetti (es. SNUPY / ARIA DI FESTA Duplicati)
+    for (const enr of enrMap.values()) {
+        const originalLength = enr.appointments?.length || 0;
+        if (originalLength === 0) continue;
+
+        const cleanedApps = (enr.appointments || []).filter((app, index, self) => {
+            const appDateStr = app.date.split('T')[0];
+            const d = new Date(appDateStr);
+            const day = d.getDay();
+
+            // SNUPY: Forza Giovedì (4), scarta Venerdì (5) se non è un recupero esplicito
+            if (enr.subscriptionName?.toUpperCase().includes('SNUPY') && !app.recoveryId) {
+                if (day === 5) return false;
+            }
+
+            // Deduplicazione per data/ora (Sorgente di verità univoca)
+            const duplicateIndex = self.findIndex(t => 
+                t.date.split('T')[0] === appDateStr && 
+                t.startTime === app.startTime &&
+                t.lessonId === app.lessonId
+            );
+            return duplicateIndex === index;
+        });
+
+        if (cleanedApps.length !== originalLength) {
+            batch.update(doc(db, 'enrollments', enr.id), { appointments: cleanedApps });
+            counter++;
+        }
+    }
+
+    if (counter > 0) {
+        await batch.commit();
+        console.log(`[Recovery] Ripristinati/Sanati ${counter} blocchi dati.`);
+    }
 };
 
 // --- SYNC ENGINE: Manual Lesson Update -> Enrollment Appointment Update ---
