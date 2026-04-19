@@ -31,7 +31,11 @@ export const bookStudentIntoCourseLessons = async (
     // Filtriamo e ordiniamo in memoria per evitare la necessità di indici compositi su Firestore
     const lessons = snap.docs
         .map(d => ({ id: d.id, ...d.data() } as Lesson))
-        .filter(l => l.date >= startDate)
+        .filter(l => {
+            const cleanLDate = l.date.split('T')[0];
+            const cleanSDate = startDate.split('T')[0];
+            return cleanLDate >= cleanSDate;
+        })
         .sort((a, b) => a.date.localeCompare(b.date));
 
     const batch = writeBatch(db);

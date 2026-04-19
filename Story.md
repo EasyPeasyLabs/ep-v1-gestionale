@@ -119,6 +119,16 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
     - **Risoluzione Overbooking/Blocchi:** Eliminati i falsi positivi e negativi causati dal conteggio basato sui "Lead" (raw_registrations). Il sistema ora sottrae dalla capienza della sede solo i posti fisicamente occupati dagli allievi iscritti nel Gestionale, garantendo dati esatti in tempo reale.
     - **Push Notification Fallback Logic:** Ottimizzazione della Cloud Function `onLeadCreated` per la ricezione dei lead. Implementato un sistema di risoluzione a cascata (ID Sede -> Nome Sede da Payload -> Fallback Generico) per garantire che le notifiche push mostrino sempre informazioni coerenti, eliminando il problema del testo "Sede non specificata".
 
+### Milestone Aprile 2026
+- **14/04 (Mattina):** **Finance UX & Data Integrity Upgrade.**
+    - **Multi-Badge Status:** Implementazione della visualizzazione a badge multipli incolonnati nella lista fatture. Ora è possibile distinguere istantaneamente i documenti che hanno completato sia l'iter fiscale (**Sealed SDI**) che quello finanziario (**Paid**).
+    - **Location Context Badge:** Aggiunta di un badge dinamico di contesto geografico (es. `📍 Sede Centrale`) sotto il nome del cliente nelle liste Fatture e Registro Cassa, migliorando la tracciabilità immediata dei flussi per sede.
+    - **Smart Sanity Fix (Fiscal Doctor):** Lancio del motore di correzione automatica `runSmartSanityFix`. Lo strumento risolve anomalie specifiche di integrità dati:
+        - **SNUPY:** Riconciliazione automatica di transazioni "Sanatoria" con fatture pro-forma scadute.
+        - **LA SCINTILLA:** Promozione automatica di pro-forma "fantasma" a fatture reali sigillate e pagate.
+        - **CUBE:** Identificazione ed eliminazione di fatture pro-forma duplicate per progetti istituzionali.
+    - **Duplicate Prevention:** Rafforzamento della logica di generazione fatture da preventivo per impedire la creazione di documenti pro-forma ridondanti per lo stesso progetto.
+
 ---
 
 ## 5. Roadmap Evolutiva
@@ -146,4 +156,4 @@ L'ecosistema è diviso in due progetti Firebase distinti per sicurezza (Isolatio
 - [ ] **AI Forecasting:** Predizione del Churn Rate (abbandono) basata sull'analisi dei rating storici.
 - [ ] **Reporting Avanzato:** Dashboard per commercialista con export massivo pre-validato dal Fiscal Doctor.
 
-*Documentazione aggiornata al 13 Aprile 2026.*
+*Documentazione aggiornata al 14 Aprile 2026.*

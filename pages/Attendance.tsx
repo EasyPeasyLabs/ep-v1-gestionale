@@ -243,7 +243,10 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments && enr.appointments.length > 0) {
                         enr.appointments.forEach((app: Appointment) => {
-                            const appDate = new Date(app.date);
+                            // Normalizzazione chirurgica: estrae YYYY-MM-DD e forza mezzogiorno locale per il confronto
+                            const dateParts = app.date.split('T')[0].split('-').map(Number);
+                            const appDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 12, 0, 0);
+
                             // Filtra per range
                             if (appDate >= start && appDate <= end) {
                                 const key = `${enr.id}_${app.date}_${app.startTime}`;
@@ -265,11 +268,15 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             const { collection, query, where, getDocs } = await import('firebase/firestore');
             const { db } = await import('../firebase/config');
             
+            // Normalizzazione range per query stringa (YYYY-MM-DD)
+            const rangeStart = start.toISOString().split('T')[0];
+            const rangeEnd = end.toISOString().split('T')[0] + "\uffff";
+
             const lessonsRef = collection(db, 'lessons');
             const q = query(
                 lessonsRef,
-                where('date', '>=', start.toISOString()),
-                where('date', '<=', end.toISOString())
+                where('date', '>=', rangeStart),
+                where('date', '<=', rangeEnd)
             );
             const lessonsSnap = await getDocs(q);
             

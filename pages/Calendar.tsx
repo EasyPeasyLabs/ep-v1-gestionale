@@ -112,7 +112,15 @@ const Calendar: React.FC = () => {
             const uniqueSlotsMap = new Map<string, CalendarEvent>();
 
             const generateKey = (dateStr: string, timeStr: string, locName: string) => {
-                const cleanDate = dateStr.split('T')[0]; 
+                // Normalizzazione chirurgica: estrae solo la componente YYYY-MM-DD
+                // Se la stringa contiene un'ora ISO (Z), usiamo l'oggetto Date per estrarre il giorno locale
+                let cleanDate = dateStr.split('T')[0];
+                if (dateStr.includes('T') && dateStr.endsWith('Z')) {
+                   const d = new Date(dateStr);
+                   // Se l'ora è vicina alla mezzanotte (es 22:00 del giorno prima), 
+                   // riportiamo alla data locale corretta (Italy)
+                   cleanDate = d.toLocaleDateString('en-CA'); // en-CA produce YYYY-MM-DD
+                }
                 const cleanLoc = (locName || 'Sede Non Definita').trim();
                 return `${cleanDate}_${timeStr}_${cleanLoc}`;
             };

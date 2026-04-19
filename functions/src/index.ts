@@ -714,9 +714,13 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 
                 if (matchedCourseId !== "manual") {
                     // NUOVA ARCHITETTURA: Aggiungi l'allievo alle lezioni esistenti del corso
+                    // Normalizzazione data odierna (Italia) per evitare slittamenti UTC
+                    const todayItaly = new Date(new Date().toLocaleString("en-US", {timeZone: "Europe/Rome"}));
+                    const todayStr = todayItaly.toISOString().split('T')[0];
+
                     const courseLessonsQuery = db.collection("lessons")
                         .where("courseId", "==", matchedCourseId)
-                        .where("date", ">=", new Date().toISOString().split('T')[0])
+                        .where("date", ">=", todayStr)
                         .orderBy("date", "asc")
                         .limit(enrollmentData.lessonsTotal || sub.lessons || 1);
                         
