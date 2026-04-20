@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee, ClientType } from '../types';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee, ClientType, Lesson } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
@@ -247,9 +247,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             // Utilizziamo una Map per deduplicare: chiave = enrollmentId + date + startTime
             const itemsMap = new Map<string, AttendanceItem>();
             
-            // 1. VECCHIA ARCHITETTURA: Estrai appuntamenti dalle iscrizioni (fallback)
+            // 1. VECCHIA ARCHITETTURA: Estrai appuntamenti dalle iscrizioni (Fonte di Verità: Iscrizioni)
             enrollments.forEach((enr: Enrollment) => {
-                // Consideriamo solo iscrizioni attive o in attesa
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments && enr.appointments.length > 0) {
                         enr.appointments.forEach((app: Appointment) => {
@@ -258,9 +257,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
                             if (appDate >= start && appDate <= end) {
                                 const dateKey = app.date.split('T')[0];
-                                // CHIAVE DEDUPLICAZIONE ISTITUZIONALE: Solo Enrollment + Data (Niente Orario)
-                                // Questo impedisce duplicati se l'orario del preventivo differisce da quello reale
                                 const isInstitutional = enr.clientType === ClientType.Institutional || enr.locationId === 'institutional';
+                                
+                                // Chiave deterministica per evitare duplicati nello stesso giorno/slot
                                 const key = isInstitutional 
                                     ? `${enr.id}_${dateKey}` 
                                     : `${enr.id}_${dateKey}_${app.startTime}`;
@@ -280,7 +279,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 }
             });
 
-            // 2. NUOVA ARCHITETTURA: Estrai lezioni dalla collezione 'lessons' (PREVALENTE)
+            // 2. NUOVA ARCHITETTURA: Estrai lezioni dal calendario (Fonte di Verità: Calendario)
             const { collection, query, where, getDocs } = await import('firebase/firestore');
             const { db } = await import('../firebase/config');
             
@@ -292,14 +291,11 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             );
             const lessonsSnap = await getDocs(q);
             
-            // Mappa per tracciare se ESISTONO lezioni nel calendario per una data+sede
-            const calendarPresence = new Set<string>();
-
-            lessonsSnap.forEach(doc => {
-                const lesson = doc.data();
+            lessonsSnap.forEach(docSnap => {
+                const lesson = docSnap.data() as Lesson;
                 const dateKey = lesson.date.split('T')[0];
-                calendarPresence.add(`${dateKey}_${lesson.locationName}`);
-
+                
+                // SINCRONIZZAZIONE: Le lezioni master caricano i partecipanti associati
                 if (lesson.attendees && lesson.attendees.length > 0) {
                     lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
@@ -309,9 +305,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             ? `${attendee.enrollmentId}_${dateKey}` 
                             : `${attendee.enrollmentId}_${dateKey}_${lesson.startTime}`;
                         
-                        // La nuova architettura (Lezioni Master) ha sempre la priorità
                         itemsMap.set(key, {
-                            lessonId: doc.id,
+                            lessonId: docSnap.id,
                             date: dateKey,
                             startTime: lesson.startTime,
                             endTime: lesson.endTime,
@@ -329,19 +324,41 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                         });
                     });
                 }
+
+                // FIX: MEGAMAMMA GAP. Se una lezione di corso esiste nel calendario, assicuriamoci di mostrare
+                // gli iscritti di quel corso che non sono stati caricati tramite attendees (Old Arch fallback)
+                if (lesson.courseId && lesson.courseId !== 'manual') {
+                    enrollments.forEach(enr => {
+                        if (enr.courseId === lesson.courseId && (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending)) {
+                            const dateKey = lesson.date.split('T')[0];
+                            const key = `${enr.id}_${dateKey}_${lesson.startTime}`;
+                            
+                            // Se non è già presente (magari caricato prima come attendee), lo aggiungiamo ora
+                            if (!itemsMap.has(key)) {
+                                itemsMap.set(key, {
+                                    lessonId: docSnap.id,
+                                    date: dateKey,
+                                    startTime: lesson.startTime,
+                                    endTime: lesson.endTime,
+                                    locationId: lesson.locationId || 'unassigned',
+                                    locationName: lesson.locationName || 'Sede Sconosciuta',
+                                    locationColor: lesson.locationColor || '#ccc',
+                                    childName: enr.childName,
+                                    status: 'Scheduled',
+                                    type: lesson.slotType || 'LAB',
+                                    enrollmentId: enr.id,
+                                    subscriptionName: enr.subscriptionName,
+                                    lessonsRemaining: enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0),
+                                    isNewArchitecture: true
+                                });
+                            }
+                        }
+                    });
+                }
             });
 
-            // 3. FILTRO DI SINCRONIZZAZIONE CALENDARIO (REGOLA: Calendario determina Registro)
-            // Se in una data per una certa sede NON esistono lezioni nel calendario, 
-            // rimuoviamo eventuali placeholder Scheduled rimasti dall'array locale delle iscrizioni.
-            const finalItems = Array.from(itemsMap.values()).filter(item => {
-                // Se è già Present/Absent o ha un lessonId reale (Nuova Architettura), lo teniamo
-                if (item.status !== 'Scheduled' || item.isNewArchitecture) return true;
-                
-                // Se è uno Scheduled orfano (Vecchia Architettura), lo mostriamo solo se il calendario ha lezioni quel giorno
-                return calendarPresence.has(`${item.date}_${item.locationName}`);
-            });
-
+            // 3. PULIZIA FINALE: Rimuoviamo duplicazioni e raggruppiamo i risultati finali
+            const finalItems = Array.from(itemsMap.values());
             setAttendanceItems(finalItems);
         } catch (err) {
             console.error("Errore caricamento presenze:", err);
