@@ -928,9 +928,27 @@ export const registerAbsence = async (
         
         const lessonData = lessonSnap.data() as Lesson;
         const attendees = [...(lessonData.attendees || [])];
-        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        let attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
-        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        if (attendeeIndex === -1) {
+            // Virtual Inclusion Support: Add student to lesson if missing
+            const enrRef = doc(db, 'enrollments', enrollmentId);
+            const enrSnap = await getDoc(enrRef);
+            if (enrSnap.exists()) {
+                const enrData = enrSnap.data();
+                const newAttendee: LessonAttendee = {
+                    clientId: enrData.clientId || '',
+                    childId: enrData.childId || enrData.id || '',
+                    childName: enrData.childName || 'Allievo',
+                    enrollmentId,
+                    status: 'Scheduled'
+                };
+                attendees.push(newAttendee);
+                attendeeIndex = attendees.length - 1;
+            } else {
+                throw new Error("Allievo non trovato nell'archivio");
+            }
+        }
         
         // PREVENZIONE DUPLICATI
         if ((strategy === 'recover_auto' || strategy === 'recover_manual') && attendees[attendeeIndex].recoveryId) {
@@ -1117,9 +1135,28 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
         
         const lessonData = lessonSnap.data() as Lesson;
         const attendees = [...(lessonData.attendees || [])];
-        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        let attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
-        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        if (attendeeIndex === -1) {
+            // Virtual Inclusion Support: Add student to lesson if missing
+            const enrRef = doc(db, 'enrollments', enrollmentId);
+            const enrSnap = await getDoc(enrRef);
+            if (enrSnap.exists()) {
+                const enrData = enrSnap.data();
+                const newAttendee: LessonAttendee = {
+                    clientId: enrData.clientId || '',
+                    childId: enrData.childId || enrData.id || '',
+                    childName: enrData.childName || 'Allievo',
+                    enrollmentId,
+                    status: 'Scheduled'
+                };
+                attendees.push(newAttendee);
+                attendeeIndex = attendees.length - 1;
+            } else {
+                throw new Error("Allievo non trovato nell'archivio");
+            }
+        }
+
         if (attendees[attendeeIndex].status === 'Present') return;
         
         attendees[attendeeIndex].status = 'Present';
@@ -1158,9 +1195,27 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
         
         const lessonData = lessonSnap.data() as Lesson;
         const attendees = [...(lessonData.attendees || [])];
-        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        let attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
-        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        if (attendeeIndex === -1) {
+            // Virtual Inclusion Support: Add student to lesson if missing
+            const enrRef = doc(db, 'enrollments', enrollmentId);
+            const enrSnap = await getDoc(enrRef);
+            if (enrSnap.exists()) {
+                const enrData = enrSnap.data();
+                const newAttendee: LessonAttendee = {
+                    clientId: enrData.clientId || '',
+                    childId: enrData.childId || enrData.id || '',
+                    childName: enrData.childName || 'Allievo',
+                    enrollmentId,
+                    status: 'Scheduled'
+                };
+                attendees.push(newAttendee);
+                attendeeIndex = attendees.length - 1;
+            } else {
+                throw new Error("Allievo non trovato nell'archivio");
+            }
+        }
         
         attendees[attendeeIndex].status = 'Scheduled';
         await updateDoc(lessonRef, { attendees });
@@ -1222,9 +1277,27 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
         
         const lessonData = lessonSnap.data() as Lesson;
         const attendees = [...(lessonData.attendees || [])];
-        const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
+        let attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
-        if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
+        if (attendeeIndex === -1) {
+            // Virtual Inclusion Support: Add student to lesson if missing
+            const enrRef = doc(db, 'enrollments', enrollmentId);
+            const enrSnap = await getDoc(enrRef);
+            if (enrSnap.exists()) {
+                const enrData = enrSnap.data();
+                const newAttendee: LessonAttendee = {
+                    clientId: enrData.clientId || '',
+                    childId: enrData.childId || enrData.id || '',
+                    childName: enrData.childName || 'Allievo',
+                    enrollmentId,
+                    status: 'Scheduled'
+                };
+                attendees.push(newAttendee);
+                attendeeIndex = attendees.length - 1;
+            } else {
+                throw new Error("Allievo non trovato nell'archivio");
+            }
+        }
         
         const currentStatus = attendees[attendeeIndex].status;
         let nextStatus = currentStatus;
