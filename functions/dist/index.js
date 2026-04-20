@@ -833,8 +833,10 @@ var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", co
     const sede = lead.selectedLocation || lead.locationName || "EasyPeasy Lab";
     const title = `Completa l'iscrizione di ${nomeAllievo}`;
     const description = `Ciao ${lead.nome || "Genitore"}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
-    const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
-    const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
+    const appBase = process.env.APP_URL || "https://ep-v1-gestionale.vercel.app";
+    const portalBase = process.env.PORTAL_URL || "https://ep-portal-chi.vercel.app";
+    const logoUrl = `${appBase}/lemon_logo_150px.png`;
+    const portalUrl = `${portalBase}/?id=${leadId}#/iscrizione`;
     const html = `
 <!DOCTYPE html>
 <html lang="it">

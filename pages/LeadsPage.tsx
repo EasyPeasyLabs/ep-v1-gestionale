@@ -200,8 +200,8 @@ export const LeadsPage: React.FC = () => {
 
   const generateEnrollmentLink = (leadId: string) => {
     // GATEWAY ISOLATION: Usiamo il Progetto B (Pagina Pubblica) o il Portale come scudo
-    // Questo nasconde l'URL tecnico del Gestionale (Progetto A) e abilita l'anteprima con Logo
-    return `https://ep-portal-chi.vercel.app/i/${leadId}`;
+    const portalBase = import.meta.env.VITE_PORTAL_URL || 'https://ep-portal-chi.vercel.app';
+    return `${portalBase}/i/${leadId}`;
   };
 
   const copyToClipboard = (text: string) => {

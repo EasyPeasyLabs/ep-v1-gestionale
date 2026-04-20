@@ -252,21 +252,27 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments && enr.appointments.length > 0) {
                         enr.appointments.forEach((app: Appointment) => {
-                            const dateParts = app.date.split('T')[0].split('-').map(Number);
-                            const appDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 12, 0, 0);
+                            // Usiamo lo stesso approccio del calendario per la data
+                            let appDateStr = app.date.split('T')[0];
+                            if (app.date.includes('T') && app.date.endsWith('Z')) {
+                                const d = new Date(app.date);
+                                appDateStr = d.toLocaleDateString('en-CA'); // YYYY-MM-DD locale
+                            }
 
-                            if (appDate >= start && appDate <= end) {
-                                const dateKey = app.date.split('T')[0];
+                            const currentRangeStart = formatLocalDate(start);
+                            const currentRangeEnd = formatLocalDate(end);
+
+                            if (appDateStr >= currentRangeStart && appDateStr <= currentRangeEnd) {
                                 const isInstitutional = enr.clientType === ClientType.Institutional || enr.locationId === 'institutional';
                                 
                                 // Chiave deterministica per evitare duplicati nello stesso giorno/slot
                                 const key = isInstitutional 
-                                    ? `${enr.id}_${dateKey}` 
-                                    : `${enr.id}_${dateKey}_${app.startTime}`;
+                                    ? `${enr.id}_${appDateStr}` 
+                                    : `${enr.id}_${appDateStr}_${app.startTime}`;
 
                                 itemsMap.set(key, {
                                     ...app,
-                                    date: dateKey,
+                                    date: appDateStr,
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
                                     subscriptionName: enr.subscriptionName,
@@ -293,7 +299,11 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             
             lessonsSnap.forEach(docSnap => {
                 const lesson = docSnap.data() as Lesson;
-                const dateKey = lesson.date.split('T')[0];
+                let dateKey = lesson.date.split('T')[0];
+                if (lesson.date.includes('T') && lesson.date.endsWith('Z')) {
+                    const d = new Date(lesson.date);
+                    dateKey = d.toLocaleDateString('en-CA');
+                }
                 
                 // SINCRONIZZAZIONE: Le lezioni master caricano i partecipanti associati
                 if (lesson.attendees && lesson.attendees.length > 0) {
@@ -327,10 +337,10 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
                 // FIX: MEGAMAMMA GAP. Se una lezione di corso esiste nel calendario, assicuriamoci di mostrare
                 // gli iscritti di quel corso che non sono stati caricati tramite attendees (Old Arch fallback)
+                // LIMITAZIONE: Solo se la lezione NON è manuale (per evitare inquinamento su lezioni extra)
                 if (lesson.courseId && lesson.courseId !== 'manual') {
                     enrollments.forEach(enr => {
                         if (enr.courseId === lesson.courseId && (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending)) {
-                            const dateKey = lesson.date.split('T')[0];
                             const key = `${enr.id}_${dateKey}_${lesson.startTime}`;
                             
                             // Se non è già presente (magari caricato prima come attendee), lo aggiungiamo ora

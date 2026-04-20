@@ -151,14 +151,15 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, enr
 
     const isChildSelected = (childName: string) => attendees.some(a => a.childName === childName);
 
-    const toggleAttendee = (parent: ParentClient, childId: string, childName: string) => {
+    const toggleAttendee = (parent: ParentClient, childId: string, childName: string, enrollmentId?: string) => {
         if (isChildSelected(childName)) {
             setAttendees(prev => prev.filter(a => a.childName !== childName));
         } else {
             setAttendees(prev => [...prev, {
                 clientId: parent.id,
                 childId: childId,
-                childName: childName
+                childName: childName,
+                enrollmentId: enrollmentId
             }]);
         }
     };
@@ -284,7 +285,7 @@ const LessonForm: React.FC<LessonFormProps> = ({ lesson, suppliers, clients, enr
                                 <input 
                                     type="checkbox" 
                                     checked={isChildSelected(item.childName)} 
-                                    onChange={() => toggleAttendee(item.parent, item.childId, item.childName)}
+                                    onChange={() => toggleAttendee(item.parent, item.childId, item.childName, item.activeEnrollments[0]?.id)}
                                     className="mt-1 rounded text-indigo-600 focus:ring-indigo-500"
                                 />
                                 <div className="flex-1">

@@ -50,7 +50,7 @@ try {
             db = initializeFirestore(app, {
                 localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
                 ignoreUndefinedProperties: true
-            });
+            }, firestoreDatabaseId);
             logToScreen("Firestore Initialized.", "success");
         } catch (err: unknown) {
             const error = err as { code?: string };

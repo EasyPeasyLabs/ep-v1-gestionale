@@ -1096,6 +1096,7 @@ const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appoin
     const sgCount = enrollment.sgCount || 0;
     const evtCount = enrollment.evtCount || 0;
     const readCount = enrollment.readCount || 0;
+    const lessonsTotal = enrollment.lessonsTotal || 0;
 
     const labAttended = appointments.filter(a => (a.type === 'LAB' || !a.type) && a.status === 'Present').length;
     const sgAttended = appointments.filter(a => a.type === 'SG' && a.status === 'Present').length;
@@ -1105,7 +1106,7 @@ const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appoin
     const totalAttended = appointments.filter(a => a.status === 'Present').length;
 
     return {
-        lessonsRemaining: Math.max(0, enrollment.lessonsTotal - totalAttended),
+        lessonsRemaining: Math.max(0, lessonsTotal - totalAttended),
         labRemaining: Math.max(0, labCount - labAttended),
         sgRemaining: Math.max(0, sgCount - sgAttended),
         evtRemaining: Math.max(0, evtCount - evtAttended),

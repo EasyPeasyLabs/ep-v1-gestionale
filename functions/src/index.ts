@@ -961,10 +961,14 @@ export const enrollmentGateway = onRequest({ region: "europe-west1", cors: true 
         // Costruiamo i Meta Tag dinamici per l'anteprima WhatsApp/Social
         const title = `Completa l'iscrizione di ${nomeAllievo}`;
         const description = `Ciao ${lead.nome || 'Genitore'}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
-        const logoUrl = "https://ep-v1-gestionale.vercel.app/lemon_logo_150px.png";
+        
+        const appBase = process.env.APP_URL || "https://ep-v1-gestionale.vercel.app";
+        const portalBase = process.env.PORTAL_URL || "https://ep-portal-chi.vercel.app";
+        
+        const logoUrl = `${appBase}/lemon_logo_150px.png`;
         
         // URL del portale reale (Progetto C) - Ritorno alla logica Hash per compatibilità HashRouter
-        const portalUrl = `https://ep-portal-chi.vercel.app/?id=${leadId}#/iscrizione`;
+        const portalUrl = `${portalBase}/?id=${leadId}#/iscrizione`;
 
         const html = `
 <!DOCTYPE html>
