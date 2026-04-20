@@ -135,7 +135,8 @@ export const addEnrollment = async (enrollment: EnrollmentInput): Promise<string
 export const createInstitutionalEnrollment = async (
     quote: Quote, 
     selectedLessons: Lesson[], 
-    projectName: string
+    projectName: string,
+    shouldGenerateInvoices: boolean = true
 ): Promise<string> => {
     const batch = writeBatch(db);
     
@@ -143,7 +144,7 @@ export const createInstitutionalEnrollment = async (
     const enrollmentData: EnrollmentInput = {
         clientId: quote.clientId,
         clientType: ClientType.Institutional,
-        childId: 'institutional-project', // Convenzione per enti
+        childId: 'institutional-student', // Convenzione per allievi enti
         childName: projectName,
         isAdult: false,
         isQuoteBased: true,
@@ -151,7 +152,7 @@ export const createInstitutionalEnrollment = async (
         subscriptionTypeId: 'quote-based',
         subscriptionName: `Progetto: ${quote.quoteNumber}`,
         price: quote.totalAmount,
-        supplierId: 'multiple', // Istituzionali possono avere sedi multiple
+        supplierId: 'multiple', 
         supplierName: 'Ente Istituzionale',
         locationId: 'institutional',
         locationName: 'Sedi Progetto',
@@ -185,19 +186,23 @@ export const createInstitutionalEnrollment = async (
             clientId: quote.clientId,
             childId: 'institutional',
             childName: projectName,
-            enrollmentId: newEnrRef.id
+            enrollmentId: newEnrRef.id,
+            status: AppointmentStatus.Scheduled
         };
         // Carichiamo dati correnti della lezione per non sovrascrivere altri attendee se presenti
-        // Nota: In un sistema enterprise reale useremmo arrayUnion, qui per semplicità batch.update
+        // NOTA: Qui usiamo update su attendees. In produzione si userebbe arrayUnion.
+        // Ma per istituzionali spesso inizializziamo da zero la lista.
         batch.update(lessonRef, { 
-            attendees: [attendee], // Un ente di solito occupa l'intera lezione "Extra"
+            attendees: arrayUnion(attendee), // Uso arrayUnion per supportare iscrizioni multiple
             description: `${projectName} (${quote.quoteNumber})`
         });
     });
 
-    // 3. Aggiorna Preventivo (Stato)
-    const quoteRef = doc(db, 'quotes', quote.id);
-    batch.update(quoteRef, { status: DocumentStatus.Paid });
+    // 3. Aggiorna Preventivo (Stato) - Solo se richiesto
+    if (shouldGenerateInvoices) {
+        const quoteRef = doc(db, 'quotes', quote.id);
+        batch.update(quoteRef, { status: DocumentStatus.Paid });
+    }
 
     await batch.commit();
     return newEnrRef.id;
@@ -410,6 +415,10 @@ export const bonificaAppointments = async (): Promise<number> => {
     const batch = writeBatch(db);
     let operationsInBatch = 0;
 
+    const lessonsRef = collection(db, 'lessons');
+    const lessonsSnap = await getDocs(lessonsRef);
+    const lessonDocs = lessonsSnap.docs;
+
     for (const docSnap of enrollmentsSnap.docs) {
         const data = docSnap.data() as Enrollment;
         
@@ -420,12 +429,29 @@ export const bonificaAppointments = async (): Promise<number> => {
             // 1. Forza la conservazione solo di presenze storiche e stati bloccati
             // 2. Rimuove appuntamenti Scheduled che non sono collegati a una lezione fisica
             const preservedApps = (data.appointments || []).filter(app => {
-                // Se è già registrata una presenza/assenza o sospensione, NON TOCCARE
-                if (app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended') return true;
+                // REGOLA DI SICUREZZA 1: Presenze, assenze e recuperi sono SACRI
+                if (app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended' || app.recoveryId) return true;
                 
-                // Se l'iscrizione ha un corso, le lezioni Scheduled devono stare SOLO in Lessons
-                // Se è manuale, verranno ripulite dalla deduplicazione del Registro e dal Recovery
-                if (data.courseId && data.courseId !== 'manual') return false;
+                // REGOLA DI SICUREZZA 1.1: Istituzionali con date da preventivo (Fonte di Verità)
+                // Se l'iscrizione è istituzionale e ha un preventivo, non cancelliamo gli Scheduled 
+                // se la data corrisponde a una rata del preventivo (anche se non c'è ancora la lezione master).
+                if (data.clientType === ClientType.Institutional && data.relatedQuoteId && app.status === 'Scheduled') {
+                    return true; // Conserviamo i placeholder basati su preventivo
+                }
+                
+                // REGOLA DI SICUREZZA 2: Evitiamo il PENDOLO. 
+                // Se l'iscrizione ha un corso, cancelliamo lo Scheduled SOLO se esiste un corrispondente master fisico (Lesson).
+                // Altrimenti lo teniamo come placeholder per l'UI (verrà pulito dal recupero se ridondante).
+                if (data.courseId && data.courseId !== 'manual') {
+                    const hasLesson = lessonDocs.some(ld => {
+                        const l = ld.data() as Lesson;
+                        return l.courseId === data.courseId && 
+                               l.date.split('T')[0] === app.date.split('T')[0] && 
+                               l.startTime === app.startTime &&
+                               l.attendees?.some((att: LessonAttendee) => att.enrollmentId === docSnap.id);
+                    });
+                    if (hasLesson) return false; // Nukeredundant slave
+                }
                 
                 return true;
             });
@@ -471,7 +497,53 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
     const batch = writeBatch(db);
     let counter = 0;
 
-    // 1. Ripristino da Source B (Lessons) -> Source A (Enrollments)
+    // 1. SANIFICAZIONE FISICA (LESSONS MASTER)
+    // Se una lezione fisica viola il calendario di un progetto (manuale), va sistemata alla radice
+    for (const lessonDoc of lessonDocs) {
+        const lesson = lessonDoc.data() as Lesson;
+        if (!lesson.attendees || lesson.attendees.length === 0) {
+            // Rimuovi scatole vuote prodotte da errori di generazione precedenti o cancelations
+            if (lesson.courseId === 'manual' || !lesson.courseId) {
+                 batch.delete(lessonDoc.ref);
+            }
+            continue;
+        }
+
+        const validAttendees = lesson.attendees.filter(att => {
+            const enr = enrMap.get(att.enrollmentId || '');
+            if (!enr) return true;
+            if (enr.courseId && enr.courseId !== 'manual') return true; 
+
+            const subType = subTypesMap.get(enr.subscriptionTypeId);
+            const allowedDays = subType?.allowedDays || [];
+            if (allowedDays.length === 0) return true;
+
+            const dateParts = lesson.date.split('T')[0].split('-').map(Number);
+            const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+            const dayOfWeek = d.getDay();
+
+            return allowedDays.includes(dayOfWeek);
+        });
+
+        if (validAttendees.length === 0) {
+            // Se nessun allievo può stare in questa lezione (es. SNUPY di Venerdì), cancella la lezione INTERA
+            batch.delete(lessonDoc.ref);
+            for (const att of lesson.attendees) {
+                if (att.enrollmentId) {
+                    const e = enrMap.get(att.enrollmentId);
+                    if (e) {
+                         const updatedApps = (e.appointments || []).filter(a => a.lessonId !== lessonDoc.id);
+                         batch.update(doc(db, 'enrollments', e.id), { appointments: updatedApps });
+                    }
+                }
+            }
+        } else if (validAttendees.length !== lesson.attendees.length) {
+            // Rimuovi solo gli allievi illegali
+            batch.update(lessonDoc.ref, { attendees: validAttendees });
+        }
+    }
+
+    // 2. RIPRISTINO DA SOURCE B (Lessons) -> SOURCE A (Enrollments)
     // Se un allievo è in una lezione fisica, DEVE avere l'appuntamento nel registro
     for (const lessonDoc of lessonDocs) {
         const lesson = lessonDoc.data() as Lesson;
@@ -510,98 +582,111 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
         }
     }
 
-    // 2. Ripristino Architetturale per Iscrizioni "Vuote" (Ghost Recovery)
-    // Se un'iscrizione è attiva ma non ha appuntamenti, tentiamo di rigenerarli
+    // 3. GHOST RECOVERY & GAP FILLING (Course Based & Institutional)
+    // Assicuriamoci che le iscrizioni attive abbiano il numero corretto di lezioni pianificate nel futuro
     for (const enr of enrMap.values()) {
-        if (enr.status === EnrollmentStatus.Active && (!enr.appointments || enr.appointments.length === 0)) {
-            // Se legata a un corso, proviamo a ri-prenotarla
-            if (enr.courseId && enr.courseId !== 'manual') {
-                const course = courses.find(c => c.id === enr.courseId);
-                if (course) {
-                    console.log(`[Recovery] Rigenerazione appuntamenti per allievo ${enr.childName} (Corso: ${enr.courseId})`);
-                    // Qui chiamiamo la logica di booking ma in batch se possibile
-                    // Per ora, segnaliamo e ripristiniamo teorici se mancano i fisici
-                    const startDate = enr.startDate;
-                    const lessonsToGenerate = enr.lessonsRemaining || enr.lessonsTotal || 0;
-                    
-                    if (lessonsToGenerate > 0) {
-                        // Generazione teorica di emergenza per ridare visibilità
-                        const dummyApps = generateTheoreticalAppointments(
-                            startDate,
-                            lessonsToGenerate,
-                            enr.locationId,
-                            enr.locationName,
-                            enr.locationColor,
-                            course.startTime,
-                            course.endTime,
-                            enr.childName
-                        );
-                        batch.update(doc(db, 'enrollments', enr.id), { appointments: dummyApps });
-                        enr.appointments = dummyApps;
-                        counter++;
+        if (enr.status === EnrollmentStatus.Active && enr.lessonsTotal > 0) {
+            const currentCount = (enr.appointments || []).length;
+            
+            if (currentCount < enr.lessonsTotal) {
+                const remaining = enr.lessonsTotal - currentCount;
+                let recoveredApps: Appointment[] = [];
+
+                // ISTITUZIONALE: Recupero da PREVENTIVO (Fonte di Verità)
+                if (enr.clientType === ClientType.Institutional && enr.relatedQuoteId) {
+                    const quoteDoc = await getDoc(doc(db, 'quotes', enr.relatedQuoteId));
+                    if (quoteDoc.exists()) {
+                        const quote = quoteDoc.data() as Quote;
+                        const installments = quote.installments || [];
+                        const existingDates = new Set((enr.appointments || []).map(a => a.date.split('T')[0]));
+                        
+                        // Prendiamo le rate la cui dueDate non è già presente negli appuntamenti
+                        const missingDates = installments
+                            .map(i => i.dueDate.split('T')[0])
+                            .filter(date => !existingDates.has(date))
+                            .sort()
+                            .slice(0, remaining);
+
+                        recoveredApps = missingDates.map(date => ({
+                            lessonId: 'ghost-' + Date.now() + Math.random().toString(36).substr(2, 5),
+                            date: date + 'T12:00:00Z',
+                            startTime: '10:00', // Default per istituzionali
+                            endTime: '12:00',
+                            locationId: enr.locationId || 'institutional',
+                            locationName: enr.locationName || 'Sede Istituzionale',
+                            locationColor: enr.locationColor || '#3C3C52',
+                            childName: enr.childName,
+                            status: AppointmentStatus.Scheduled
+                        }));
                     }
+                } 
+                // CORSO STANDARD: Recupero Teorico (Weekly)
+                else if (enr.courseId && enr.courseId !== 'manual') {
+                    const course = courses.find(c => c.id === enr.courseId);
+                    const lastDate = enr.appointments && enr.appointments.length > 0 
+                        ? enr.appointments[enr.appointments.length - 1].date 
+                        : enr.startDate;
+
+                    recoveredApps = generateTheoreticalAppointments(
+                        lastDate,
+                        remaining + 1,
+                        enr.locationId,
+                        enr.locationName,
+                        enr.locationColor,
+                        course?.startTime || '09:00',
+                        course?.endTime || '10:00',
+                        enr.childName,
+                        course?.comboConfigs,
+                        course?.weeklyPlan
+                    ).slice(1);
+                }
+
+                if (recoveredApps.length > 0) {
+                    const updatedApps = [...(enr.appointments || []), ...recoveredApps].sort((a,b) => a.date.localeCompare(b.date));
+                    batch.update(doc(db, 'enrollments', enr.id), { appointments: updatedApps });
+                    enr.appointments = updatedApps;
+                    counter++;
                 }
             }
         }
     }
 
-    // 3. Sanificazione Universale (Deduplicazione Totale - Indipendente dai nomi)
+    // 4. SANIFICAZIONE FINALE (Strict Day Rule v2 & Deduplication)
     for (const enr of enrMap.values()) {
         const originalLength = enr.appointments?.length || 0;
         if (originalLength === 0) continue;
 
-        // Recupera le regole della sottoscrizione
         const subType = subTypesMap.get(enr.subscriptionTypeId);
-        const allowedDays = subType?.allowedDays || []; // Se vuoto, nessuna restrizione rigida sui giorni
+        const allowedDays = subType?.allowedDays || [];
 
-        const cleanedApps = (enr.appointments || []).filter((app, index, self) => {
+        const finalApps = (enr.appointments || []).filter((app, index, self) => {
             const appDateStr = app.date.split('T')[0];
             
-            // --- REGOLA 1: VALIDAZIONE GIORNI (PROTEZIONE VS CANCELLAZIONE) ---
-            // Qualsiasi appuntamento con presenza/assenza registrata è SACRO.
-            // Non deve essere rimosso mai, neanche se il giorno non è tra quelli previsti.
-            if (app.status === 'Present' || app.status === 'Absent' || app.status === 'Suspended') return true;
-
-            // Se la sottoscrizione definisce giorni specifici (es. solo Lunedi), 
-            // rimuoviamo solo i residui Scheduled (previsti) che non hanno riscontro fisico.
-            if (allowedDays.length > 0 && !app.recoveryId) {
-                const dateParts = appDateStr.split('-').map(Number);
-                const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
-                const dayOfWeek = d.getDay();
-
-                if (!allowedDays.includes(dayOfWeek)) {
-                    // Se è Scheduled ma non è il suo giorno, è sporco.
-                    if (app.status === AppointmentStatus.Scheduled || !app.status) return false;
-                }
-            }
-
-            // --- REGOLA 2: DEDUPLICAZIONE PER DATA/ORA ---
+            // DEDUPLICAZIONE CHIRURGICA
             const duplicateIndex = self.findIndex(t => 
                 t.date.split('T')[0] === appDateStr && 
                 t.startTime === app.startTime
             );
-
-            // Se abbiamo più record per lo stesso allievo nello stesso istante, ne teniamo solo uno
             if (duplicateIndex !== index) return false;
 
-            // --- REGOLA 3: COLLISIONE MASTER/SLAVE ---
-            // Per i progetti (SNUPY, BABY CLUB, PUTIGNANO, etc.), incrociamo con le lezioni fisiche master esistenti. 
-            // Se esiste una lezione master per quel giorno/ora per questo allievo,
-            // l'appuntamento slave (senza lessonId) deve sparire per evitare duplicati.
-            const hasMasterLesson = lessonDocs.some(l => {
-                const lessonData = l.data() as Lesson;
-                return lessonData.date.split('T')[0] === appDateStr && 
-                       lessonData.startTime === app.startTime &&
-                       lessonData.attendees?.some((a: LessonAttendee) => a.enrollmentId === enr.id);
-            });
-
-            if (hasMasterLesson && !app.lessonId) return false;
+            // VALIDAZIONE GIORNI PROGETTO (Solo per manuali/istituzionali)
+            if (enr.courseId === 'manual' || !enr.courseId) {
+                if (allowedDays.length > 0 && !app.recoveryId) {
+                    const dateParts = appDateStr.split('-').map(Number);
+                    const d = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                    const dayOfWeek = d.getDay();
+                    if (!allowedDays.includes(dayOfWeek)) {
+                         // Rimuoviamo Scheduled e i "Ghost Present/Absent" se sono senza lessonId su giorni illegali degli istituzionali
+                         if (app.status === 'Scheduled' || !app.status || (!app.lessonId && (app.status === 'Present' || app.status === 'Absent'))) return false;
+                    }
+                }
+            }
 
             return true;
         });
 
-        if (cleanedApps.length !== originalLength) {
-            batch.update(doc(db, 'enrollments', enr.id), { appointments: cleanedApps });
+        if (finalApps.length !== originalLength) {
+            batch.update(doc(db, 'enrollments', enr.id), { appointments: finalApps });
             counter++;
         }
     }
@@ -842,7 +927,7 @@ export const registerAbsence = async (
         if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
         
         const lessonData = lessonSnap.data() as Lesson;
-        const attendees = lessonData.attendees || [];
+        const attendees = [...(lessonData.attendees || [])];
         const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
         if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
@@ -855,13 +940,12 @@ export const registerAbsence = async (
 
         attendees[attendeeIndex].status = 'Absent';
         
-        // TODO: Implementare logica di recupero (creazione nuova Lesson o inserimento in Lesson esistente)
-        // Per ora ci limitiamo a segnare l'assenza
-        if (strategy === 'recover_auto' || strategy === 'recover_manual') {
-            console.warn("Recupero non ancora implementato per la nuova architettura");
-        }
-
+        // NOTE: Per ora il recupero automatico non aggiorna i contatori perfettamente 
+        // finché non creiamo la nuova lesson, ma l'assenza va notificata
         await updateDoc(lessonRef, { attendees });
+        
+        // SYNC CACHE ENROLLMENT
+        await syncAttendanceToEnrollmentCache(enrollmentId, appointmentLessonId, 'Absent');
         return;
     }
 
@@ -1006,6 +1090,24 @@ const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appoin
     };
 };
 
+// --- ATTENDANCE HELPERS ---
+
+const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: string, status: AppointmentStatus | string) => {
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    if (!enrollmentSnap.exists()) return;
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    const appIndex = appointments.findIndex(a => a.lessonId === lessonId);
+    
+    if (appIndex !== -1) {
+        appointments[appIndex].status = status;
+        const newCounters = calculateRemainingCounters(enrollment, appointments);
+        await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
+    }
+};
+
 export const registerPresence = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
@@ -1014,15 +1116,17 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
         if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
         
         const lessonData = lessonSnap.data() as Lesson;
-        const attendees = lessonData.attendees || [];
+        const attendees = [...(lessonData.attendees || [])];
         const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
         if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
         if (attendees[attendeeIndex].status === 'Present') return;
         
         attendees[attendeeIndex].status = 'Present';
-        
         await updateDoc(lessonRef, { attendees });
+        
+        // SYNC CACHE ENROLLMENT
+        await syncAttendanceToEnrollmentCache(enrollmentId, appointmentLessonId, 'Present');
         return;
     }
 
@@ -1053,14 +1157,16 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
         if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
         
         const lessonData = lessonSnap.data() as Lesson;
-        const attendees = lessonData.attendees || [];
+        const attendees = [...(lessonData.attendees || [])];
         const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
         if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
         
         attendees[attendeeIndex].status = 'Scheduled';
-        
         await updateDoc(lessonRef, { attendees });
+        
+        // SYNC CACHE ENROLLMENT
+        await syncAttendanceToEnrollmentCache(enrollmentId, appointmentLessonId, 'Scheduled');
         return;
     }
 
@@ -1115,21 +1221,26 @@ export const toggleAppointmentStatus = async (enrollmentId: string, appointmentL
         if (!lessonSnap.exists()) throw new Error("Lezione non trovata");
         
         const lessonData = lessonSnap.data() as Lesson;
-        const attendees = lessonData.attendees || [];
+        const attendees = [...(lessonData.attendees || [])];
         const attendeeIndex = attendees.findIndex(a => a.enrollmentId === enrollmentId);
         
         if (attendeeIndex === -1) throw new Error("Allievo non trovato nella lezione");
         
         const currentStatus = attendees[attendeeIndex].status;
+        let nextStatus = currentStatus;
         if (currentStatus === 'Present') {
-            attendees[attendeeIndex].status = 'Absent';
+            nextStatus = 'Absent';
         } else if (currentStatus === 'Absent') {
-            attendees[attendeeIndex].status = 'Present';
+            nextStatus = 'Present';
         } else if (currentStatus === 'Scheduled') {
-            attendees[attendeeIndex].status = 'Present';
+            nextStatus = 'Present';
         }
         
+        attendees[attendeeIndex].status = nextStatus;
         await updateDoc(lessonRef, { attendees });
+        
+        // SYNC CACHE ENROLLMENT
+        await syncAttendanceToEnrollmentCache(enrollmentId, appointmentLessonId, nextStatus as AppointmentStatus);
         return;
     }
 

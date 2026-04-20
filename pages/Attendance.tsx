@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee } from '../types';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee, ClientType } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import Spinner from '../components/Spinner';
@@ -243,18 +243,21 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
                     if (enr.appointments && enr.appointments.length > 0) {
                         enr.appointments.forEach((app: Appointment) => {
-                            // Normalizzazione chirurgica: estrae YYYY-MM-DD e forza mezzogiorno locale per il confronto
                             const dateParts = app.date.split('T')[0].split('-').map(Number);
                             const appDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2], 12, 0, 0);
 
-                            // Filtra per range
                             if (appDate >= start && appDate <= end) {
-                                // NORMALIZZAZIONE CHIAVE: Solo YYYY-MM-DD per evitare disallineamenti ISO
                                 const dateKey = app.date.split('T')[0];
-                                const key = `${enr.id}_${dateKey}_${app.startTime}`;
+                                // CHIAVE DEDUPLICAZIONE ISTITUZIONALE: Solo Enrollment + Data (Niente Orario)
+                                // Questo impedisce duplicati se l'orario del preventivo differisce da quello reale
+                                const isInstitutional = enr.clientType === ClientType.Institutional || enr.locationId === 'institutional';
+                                const key = isInstitutional 
+                                    ? `${enr.id}_${dateKey}` 
+                                    : `${enr.id}_${dateKey}_${app.startTime}`;
+
                                 itemsMap.set(key, {
                                     ...app,
-                                    date: dateKey, // Forza formato breve per coerenza
+                                    date: dateKey,
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
                                     subscriptionName: enr.subscriptionName,
@@ -267,11 +270,10 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 }
             });
 
-            // 2. NUOVA ARCHITETTURA: Estrai lezioni dalla collezione 'lessons'
+            // 2. NUOVA ARCHITETTURA: Estrai lezioni dalla collezione 'lessons' (PREVALENTE)
             const { collection, query, where, getDocs } = await import('firebase/firestore');
             const { db } = await import('../firebase/config');
             
-            // Normalizzazione range per query stringa (YYYY-MM-DD)
             const rangeStart = start.toISOString().split('T')[0];
             const rangeEnd = end.toISOString().split('T')[0] + "\uffff";
 
@@ -288,11 +290,14 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 if (lesson.attendees && lesson.attendees.length > 0) {
                     lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
-                        // NORMALIZZAZIONE CHIAVE: Solo YYYY-MM-DD
                         const dateKey = lesson.date.split('T')[0];
-                        const key = `${attendee.enrollmentId}_${dateKey}_${lesson.startTime}`;
                         
-                        // La nuova architettura sovrascrive la vecchia se c'è collisione (deduplicazione)
+                        const isInstitutional = enr?.clientType === ClientType.Institutional || lesson.locationId === 'institutional';
+                        const key = isInstitutional 
+                            ? `${attendee.enrollmentId}_${dateKey}` 
+                            : `${attendee.enrollmentId}_${dateKey}_${lesson.startTime}`;
+                        
+                        // La nuova architettura (Lezioni Master) ha sempre la priorità
                         itemsMap.set(key, {
                             lessonId: doc.id,
                             date: dateKey,

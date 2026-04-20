@@ -43,6 +43,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [projectName, setProjectName] = useState(quote.items[0]?.description || '');
+    const [studentsInput, setStudentsInput] = useState('');
     
     // --- MODE: LINK EXISTING ---
     const [allLessons, setAllLessons] = useState<Lesson[]>([]);
@@ -88,6 +89,30 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
     };
 
     // GENERATOR LOGIC
+    const handleGenerateFromQuote = () => {
+        const installments = quote.installments || [];
+        if (installments.length === 0) return alert("Nessuna rata trovata nel preventivo.");
+        
+        const loc = allLocations.find(l => l.id === genLocationId);
+        if (!loc) return alert("Seleziona una sede operativa.");
+
+        const previews: LessonInput[] = installments.map((inst, idx) => {
+            const d = new Date(inst.dueDate);
+            d.setHours(12, 0, 0, 0);
+            return {
+                date: d.toISOString(),
+                startTime: genStartTime,
+                endTime: genEndTime,
+                locationName: loc.name,
+                locationColor: loc.color,
+                description: `${projectName} (${idx + 1}/${installments.length})`,
+                attendees: []
+            };
+        });
+        setGeneratedPreview(previews);
+        setGenCount(previews.length);
+    };
+
     const handleGeneratePreview = () => {
         if (!genLocationId) return alert("Seleziona una sede operativa.");
         const loc = allLocations.find(l => l.id === genLocationId);
@@ -147,11 +172,20 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                 finalLessons = allLessons.filter(l => selectedLessonIds.includes(l.id));
             }
             
-            // 3. Create Enrollment & Link Lessons
-            const enrollmentId = await createInstitutionalEnrollment(quote, finalLessons, projectName);
-            
-            // 4. Generate Scheduled Invoices from Installments
-            await generateInvoicesFromQuote(quote, enrollmentId, finalLessons);
+            // 3. Create Multi-Enrollments
+            const names = studentsInput.split('\n').map(n => n.trim()).filter(n => n);
+            if (names.length === 0) names.push(projectName); // Fallback
+
+            for (let i = 0; i < names.length; i++) {
+                const name = names[i];
+                // First enrollment also marks the quote as Paid
+                const enrollmentId = await createInstitutionalEnrollment(quote, finalLessons, name, i === 0);
+                
+                // 4. Generate Scheduled Invoices from Installments (linked to first enrollment)
+                if (i === 0) {
+                    await generateInvoicesFromQuote(quote, enrollmentId, finalLessons);
+                }
+            }
 
             onComplete();
         } catch (e: unknown) {
@@ -191,6 +225,18 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                             <p className="text-sm opacity-80 leading-relaxed font-medium">Stai trasformando l'accordo economico in un'entità gestionale. L'iscrizione monitorerà le rate del preventivo e le presenze sul campo.</p>
                         </div>
                         <div className="md-input-group !mb-0"><input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} required className="md-input font-black text-lg" placeholder=" " /><label className="md-input-label !top-[-10px] !text-[10px] !bg-gray-50">Nome Pubblico del Progetto</label></div>
+                        
+                        <div className="md-input-group !mb-0">
+                            <textarea 
+                                value={studentsInput} 
+                                onChange={e => setStudentsInput(e.target.value)} 
+                                className="md-input font-bold text-sm min-h-[100px] pt-4" 
+                                placeholder="Inserisci un nome per riga..."
+                            />
+                            <label className="md-input-label !top-[-10px] !text-[10px] !bg-gray-50">Lista Allievi (Generazione Massiva)</label>
+                            <p className="text-[10px] text-slate-400 mt-1 italic font-medium">Lascia vuoto per creare una singola iscrizione master col nome progetto.</p>
+                        </div>
+
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                             <h5 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-[0.2em]">Riepilogo Rateale</h5>
                             <div className="space-y-2">
@@ -267,9 +313,14 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                                         </div>
                                     </div>
 
-                                    <button onClick={handleGeneratePreview} className="w-full md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold hover:bg-indigo-100">
-                                        Aggiorna Anteprima
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleGeneratePreview} className="flex-1 md-btn md-btn-sm bg-slate-50 text-slate-700 border border-slate-200 font-bold hover:bg-slate-100">
+                                            Genera Serie
+                                        </button>
+                                        <button onClick={handleGenerateFromQuote} className="flex-1 md-btn md-btn-sm bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold hover:bg-indigo-100">
+                                            Dati Prev.
+                                        </button>
+                                    </div>
                                 </div>
 
                                 <div className="lg:col-span-2 bg-slate-100 rounded-2xl border border-slate-200 p-4 flex flex-col min-h-[300px]">
@@ -334,6 +385,7 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
                             <ul className="text-sm space-y-2 text-slate-700 font-bold">
                                 <li className="flex justify-between border-b pb-2"><span>Ente:</span> <span className="text-slate-900">{quote.clientName}</span></li>
                                 <li className="flex justify-between border-b pb-2"><span>Progetto:</span> <span className="text-slate-900">{projectName}</span></li>
+                                <li className="flex justify-between border-b pb-2"><span>N. Allievi:</span> <span className="text-slate-900">{studentsInput.split('\n').map(n => n.trim()).filter(n => n).length || 1}</span></li>
                                 <li className="flex justify-between border-b pb-2"><span>Modalità:</span> <span className="text-slate-900">{activationMode === 'generate' ? 'Generazione Automatica' : 'Collegamento Manuale'}</span></li>
                                 <li className="flex justify-between border-b pb-2"><span>Slot Totali:</span> <span className="text-slate-900">{activationMode === 'generate' ? generatedPreview.length : selectedLessonIds.length}</span></li>
                                 <li className="flex justify-between"><span>Valore:</span> <span className="text-green-600">{quote.totalAmount.toFixed(2)}€</span></li>

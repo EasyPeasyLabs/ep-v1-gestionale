@@ -57,6 +57,7 @@ const QuoteForm: React.FC<{
 
     const [paymentTerms, setPaymentTerms] = useState<string>(initialPaymentTerms);
     const [paymentMode, setPaymentMode] = useState<string>(initialPaymentMode);
+    const [defaultTrigger, setDefaultTrigger] = useState<'date' | 'lesson_number'>('date');
     
     // Schedule Simulator (For Preview)
     const [simulatedStartDate, setSimulatedStartDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -66,13 +67,26 @@ const QuoteForm: React.FC<{
     const [notes, setNotes] = useState(quote?.notes || '');
     const [status, setStatus] = useState<DocumentStatus>(quote?.status || DocumentStatus.Draft);
 
-    // Init Logic
+    // Init Logic & Persistence
     useEffect(() => {
         if (quote) {
+            setIssueDate(quote.issueDate ? quote.issueDate.split('T')[0] : new Date().toISOString().split('T')[0]);
+            setExpiryDate(quote.expiryDate ? quote.expiryDate.split('T')[0] : '');
+            setSelectedClientId(quote.clientId || '');
+            setItems(quote.items || [{ description: '', quantity: 1, price: 0, notes: '' }]);
+            setGlobalDiscount(quote.globalDiscount || 0);
+            setGlobalDiscountType(quote.globalDiscountType || 'amount');
             setHasStampDuty(quote.hasStampDuty || false);
+            setNotes(quote.notes || '');
+            setStatus(quote.status || DocumentStatus.Draft);
+            setInstallments(quote.installments || []);
+            setPaymentStrategy((quote.installments && quote.installments.length > 1) ? 'multiple' : 'single');
+            setInstallmentsCount((quote.installments && quote.installments.length > 1) ? quote.installments.length : 2);
+            setPaymentTerms(initialPaymentTerms);
+            setPaymentMode(initialPaymentMode);
             setManualStampMode(true); 
         }
-    }, [quote]);
+    }, [quote, initialPaymentTerms, initialPaymentMode]);
 
     const filteredClients = useMemo(() => {
         return clients.filter(c => {
@@ -181,6 +195,7 @@ const QuoteForm: React.FC<{
     const prevStrategyRef = useRef(paymentStrategy);
     const prevCountRef = useRef(installmentsCount);
     const prevTermsRef = useRef(paymentTerms);
+    const prevTriggerRef = useRef(defaultTrigger);
     const prevTotalRef = useRef(taxable); // Use taxable as base for split
     const prevIssueDateRef = useRef(issueDate);
 
@@ -189,6 +204,7 @@ const QuoteForm: React.FC<{
         const countChanged = prevCountRef.current !== installmentsCount;
         const totalChanged = Math.abs(prevTotalRef.current - taxable) > 0.01;
         const termsChanged = prevTermsRef.current !== paymentTerms;
+        const triggerChanged = prevTriggerRef.current !== defaultTrigger;
         const issueDateChanged = prevIssueDateRef.current !== issueDate;
 
         // Update refs
@@ -196,9 +212,10 @@ const QuoteForm: React.FC<{
         prevCountRef.current = installmentsCount;
         prevTotalRef.current = taxable;
         prevTermsRef.current = paymentTerms;
+        prevTriggerRef.current = defaultTrigger;
         prevIssueDateRef.current = issueDate;
 
-        if (!strategyChanged && !countChanged && !totalChanged && !termsChanged && !issueDateChanged) return;
+        if (!strategyChanged && !countChanged && !totalChanged && !termsChanged && !triggerChanged && !issueDateChanged) return;
 
         // --- GENERATION LOGIC ---
         const newInstallments: Installment[] = [];
@@ -228,8 +245,8 @@ const QuoteForm: React.FC<{
                 dueDate: finalDueDate, // Due date is emission date basically
                 amount: taxable + (hasStampDuty ? 2 : 0),
                 isPaid: existingInst?.isPaid || false,
-                triggerType: existingInst?.triggerType || 'date',
-                paymentTermDays: existingInst?.paymentTermDays !== undefined ? existingInst.paymentTermDays : termDays,
+                triggerType: (termsChanged || triggerChanged) ? defaultTrigger : (existingInst?.triggerType || defaultTrigger),
+                paymentTermDays: (termsChanged || triggerChanged) ? termDays : (existingInst?.paymentTermDays !== undefined ? existingInst.paymentTermDays : termDays),
                 collectionDate: finalCollDate,
                 hasStampDuty: hasStampDuty
             });
@@ -267,8 +284,8 @@ const QuoteForm: React.FC<{
                     dueDate: finalDueDate,
                     amount: finalAmount,
                     isPaid: existingInst?.isPaid || false,
-                    triggerType: existingInst?.triggerType || 'date',
-                    paymentTermDays: existingInst?.paymentTermDays !== undefined ? existingInst.paymentTermDays : termDays,
+                    triggerType: (termsChanged || triggerChanged) ? defaultTrigger : (existingInst?.triggerType || defaultTrigger),
+                    paymentTermDays: (termsChanged || triggerChanged) ? termDays : (existingInst?.paymentTermDays !== undefined ? existingInst.paymentTermDays : termDays),
                     collectionDate: finalCollDate,
                     hasStampDuty: hasStamp
                 });
@@ -276,7 +293,7 @@ const QuoteForm: React.FC<{
         }
         setInstallments(newInstallments);
 
-    }, [paymentStrategy, installmentsCount, paymentTerms, taxable, issueDate, hasStampDuty, calculateEffectiveDate, installments, quote]); 
+    }, [paymentStrategy, installmentsCount, paymentTerms, taxable, issueDate, hasStampDuty, calculateEffectiveDate, installments, quote, defaultTrigger]); 
 
     // Update Installment
     const handleInstallmentChange = (idx: number, field: keyof Installment, value: string | number | boolean) => {
@@ -522,7 +539,7 @@ const QuoteForm: React.FC<{
                     </div>
 
                     {/* Area A: Configurazione */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
                         {/* Strategia */}
                         <div>
                             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Strategia Rateale</label>
@@ -536,6 +553,19 @@ const QuoteForm: React.FC<{
                                     <input type="number" min="2" max="24" value={installmentsCount} onChange={e => setInstallmentsCount(Number(e.target.value))} className="w-16 p-1 text-center font-bold border rounded text-sm focus:ring-indigo-500 border-indigo-300 bg-white" />
                                 </div>
                             )}
+                        </div>
+
+                        {/* Trigger Default */}
+                        <div>
+                            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-2">Trigger Predefinito</label>
+                            <select 
+                                value={defaultTrigger} 
+                                onChange={e => setDefaultTrigger(e.target.value as 'date' | 'lesson_number')} 
+                                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            >
+                                <option value="date">Data Fissa</option>
+                                <option value="lesson_number">N. Lezione</option>
+                            </select>
                         </div>
 
                         {/* Termini & Trigger */}
