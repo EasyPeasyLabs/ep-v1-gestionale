@@ -212,7 +212,14 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             
             setSuppliers(suppliersData);
 
-            // Calcola Range Date
+            // Calcola Range Date in formato Locale per evitare slittamenti UTC (toISOString())
+            const formatLocalDate = (d: Date) => {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
             let start = new Date(currentDate);
             let end = new Date(currentDate);
             
@@ -229,6 +236,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 end = getEndOfMonth(currentDate);
                 end.setHours(23,59,59,999);
             }
+
+            const rangeStart = formatLocalDate(start);
+            const rangeEnd = formatLocalDate(end) + "\uffff";
 
             // Mappa delle iscrizioni per arricchire i dati delle lezioni
             const enrollmentMap = new Map<string, Enrollment>();
@@ -274,9 +284,6 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             const { collection, query, where, getDocs } = await import('firebase/firestore');
             const { db } = await import('../firebase/config');
             
-            const rangeStart = start.toISOString().split('T')[0];
-            const rangeEnd = end.toISOString().split('T')[0] + "\uffff";
-
             const lessonsRef = collection(db, 'lessons');
             const q = query(
                 lessonsRef,
@@ -352,7 +359,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
         
         attendanceItems.forEach(item => {
             const loc = item.locationName || 'Sede Non Definita';
-            const dateKey = new Date(item.date).toDateString(); // Group by day
+            const dateKey = item.date; // Usa la stringa YYYY-MM-DD direttamente per evitare slittamenti TZ
 
             if (!locationGroups[loc]) locationGroups[loc] = {};
             if (!locationGroups[loc][dateKey]) locationGroups[loc][dateKey] = [];
@@ -635,7 +642,19 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             </div>
 
                             <div className="divide-y divide-gray-100">
-                                {sortedDates.map(dateKey => {
+                                {sortedDates
+                                    .filter(dateKey => {
+                                        // FILTRO RIGOROSO VISTA GIORNO
+                                        if (viewMode === 'day') {
+                                            const year = currentDate.getFullYear();
+                                            const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+                                            const day = String(currentDate.getDate()).padStart(2, '0');
+                                            const currentStr = `${year}-${month}-${day}`;
+                                            return dateKey === currentStr;
+                                        }
+                                        return true;
+                                    })
+                                    .map(dateKey => {
                                     // GROUP BY TIME SLOT INSIDE DATE
                                     const timeGroups = groupItemsByTime(datesMap[dateKey]);
                                     const sortedTimeKeys = Object.keys(timeGroups).sort();
