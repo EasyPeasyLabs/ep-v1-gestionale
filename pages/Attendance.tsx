@@ -285,12 +285,17 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             );
             const lessonsSnap = await getDocs(q);
             
+            // Mappa per tracciare se ESISTONO lezioni nel calendario per una data+sede
+            const calendarPresence = new Set<string>();
+
             lessonsSnap.forEach(doc => {
                 const lesson = doc.data();
+                const dateKey = lesson.date.split('T')[0];
+                calendarPresence.add(`${dateKey}_${lesson.locationName}`);
+
                 if (lesson.attendees && lesson.attendees.length > 0) {
                     lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
-                        const dateKey = lesson.date.split('T')[0];
                         
                         const isInstitutional = enr?.clientType === ClientType.Institutional || lesson.locationId === 'institutional';
                         const key = isInstitutional 
@@ -319,7 +324,18 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 }
             });
 
-            setAttendanceItems(Array.from(itemsMap.values()));
+            // 3. FILTRO DI SINCRONIZZAZIONE CALENDARIO (REGOLA: Calendario determina Registro)
+            // Se in una data per una certa sede NON esistono lezioni nel calendario, 
+            // rimuoviamo eventuali placeholder Scheduled rimasti dall'array locale delle iscrizioni.
+            const finalItems = Array.from(itemsMap.values()).filter(item => {
+                // Se è già Present/Absent o ha un lessonId reale (Nuova Architettura), lo teniamo
+                if (item.status !== 'Scheduled' || item.isNewArchitecture) return true;
+                
+                // Se è uno Scheduled orfano (Vecchia Architettura), lo mostriamo solo se il calendario ha lezioni quel giorno
+                return calendarPresence.has(`${item.date}_${item.locationName}`);
+            });
+
+            setAttendanceItems(finalItems);
         } catch (err) {
             console.error("Errore caricamento presenze:", err);
         } finally {
