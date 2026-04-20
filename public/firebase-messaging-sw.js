@@ -41,7 +41,7 @@ self.addEventListener('notificationclick', function(event) {
 });
 
 // --- PWA CACHING STRATEGY ---
-const CACHE_NAME = 'ep-v1-cache-v2';
+const CACHE_NAME = 'ep-v1-cache-v3';
 const urlsToCache = [
   '/',
   '/index.html',
