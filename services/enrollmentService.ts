@@ -922,6 +922,7 @@ export const registerAbsence = async (
     cachedClosures?: SchoolClosure[],
     isNewArchitecture?: boolean
 ): Promise<void> => {
+    if (!appointmentLessonId) throw new Error("ID lezione mancante per assenza");
     if (!enrollmentId) throw new Error("Impossibile gestire assenza: ID iscrizione mancante");
 
     if (isNewArchitecture) {
@@ -1132,6 +1133,7 @@ const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: s
 };
 
 export const registerPresence = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (!appointmentLessonId) throw new Error("ID lezione mancante per presenza");
     if (!enrollmentId) {
         // Fallback for detached attendees (manual addition without enrollment link)
         if (isNewArchitecture) {
@@ -1140,7 +1142,7 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
             if (lessonSnap.exists()) {
                 const lessonData = lessonSnap.data() as Lesson;
                 const attendees = [...(lessonData.attendees || [])];
-                const index = attendees.findIndex(a => !a.enrollmentId && a.childName); // Try to match by name or context if possible, but usually we need enrollmentId
+                attendees.findIndex(a => !a.enrollmentId && a.childName); // Try to match by name or context if possible, but usually we need enrollmentId
                 // If we don't have enrollmentId, we probably can't reliably find them unless we pass index
                 // For now, let's just throw or skip if ID is missing for critical sync
             }
@@ -1263,6 +1265,7 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
 };
 
 export const deleteAppointment = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (!appointmentLessonId) throw new Error("ID lezione mancante per cancellazione");
     if (!enrollmentId) throw new Error("Impossibile eliminare: ID iscrizione mancante");
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Rimuovi l'allievo dall'array attendees della Lesson

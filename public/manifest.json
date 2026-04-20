@@ -2,21 +2,21 @@
 {
   "short_name": "EP v1",
   "name": "EP v1",
-  "gcm_sender_id": "103953800507",
+  "gcm_sender_id": "332612800443",
   "icons": [
     {
-      "src": "/lemon_logo_150px.png",
+      "src": "lemon_logo_150px.png",
       "type": "image/png",
       "sizes": "150x150"
     },
     {
-      "src": "/lemon_logo_192px.png",
+      "src": "lemon_logo_192px.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
-      "src": "/lemon_logo_512px.png",
+      "src": "lemon_logo_512px.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"
