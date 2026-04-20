@@ -422,6 +422,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
     // --- Individual Actions ---
     const handleMarkPresence = async (item: AttendanceItem) => {
+        if (!item.enrollmentId) {
+            return alert("Impossibile segnare presenza: Questo allievo non ha un ID iscrizione collegato (inserimento manuale?).");
+        }
         try {
             setLoading(true);
             await registerPresence(item.enrollmentId, item.lessonId, item.isNewArchitecture);
@@ -435,6 +438,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     };
 
     const handleMarkAbsence = (item: AttendanceItem) => {
+        if (!item.enrollmentId) {
+            return alert("Impossibile segnare assenza: ID iscrizione mancante.");
+        }
         setWizardItems([item]);
     };
 
@@ -493,6 +499,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
 
     const handleDelete = async (item: AttendanceItem) => {
         setOpenMenuId(null);
+        if (!item.enrollmentId) {
+            return alert("Impossibile eliminare: ID iscrizione mancante.");
+        }
         if(!confirm("ELIMINARE questa presenza? L'operazione cancellerà questa lezione specifica, restituirà il credito (slot) all'allievo e aggiornerà i conteggi di nolo/fatturazione. Confermi?")) return;
         
         try {

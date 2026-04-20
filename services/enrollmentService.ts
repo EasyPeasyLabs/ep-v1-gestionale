@@ -277,6 +277,7 @@ const generateTheoreticalAppointments = (
 };
 
 export const updateEnrollment = async (id: string, enrollment: Partial<EnrollmentInput>, regenerateCalendar: boolean = false): Promise<void> => {
+    if (!id) throw new Error("ID iscrizione mancante per aggiornamento");
     const enrollmentDoc = doc(db, 'enrollments', id);
     
     if (regenerateCalendar && enrollment.startDate && enrollment.lessonsTotal) {
@@ -793,6 +794,7 @@ export const syncEnrollmentFromLessonDeletion = async (lessonId: string, lessonD
 // --- NEW: RESYNC FORZATO PER PROGETTI ISTITUZIONALI (OPTIMIZED) ---
 // Questa funzione interroga SOLO la finestra temporale rilevante per evitare Transport Error (Full Table Scan).
 export const resyncInstitutionalEnrollment = async (enrollmentId: string): Promise<number> => {
+    if (!enrollmentId) throw new Error("ID iscrizione mancante per resync");
     try {
         const enrollmentRef = doc(db, 'enrollments', enrollmentId);
         // FORCE SERVER FETCH: Bypass cache to avoid stale data or cache deadlock
@@ -920,6 +922,8 @@ export const registerAbsence = async (
     cachedClosures?: SchoolClosure[],
     isNewArchitecture?: boolean
 ): Promise<void> => {
+    if (!enrollmentId) throw new Error("Impossibile gestire assenza: ID iscrizione mancante");
+
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
         const lessonRef = doc(db, 'lessons', appointmentLessonId);
@@ -1111,6 +1115,7 @@ const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appoin
 // --- ATTENDANCE HELPERS ---
 
 const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: string, status: AppointmentStatus | string) => {
+    if (!enrollmentId) return; // Guard against empty ID
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) return;
@@ -1127,6 +1132,22 @@ const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: s
 };
 
 export const registerPresence = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (!enrollmentId) {
+        // Fallback for detached attendees (manual addition without enrollment link)
+        if (isNewArchitecture) {
+            const lessonRef = doc(db, 'lessons', appointmentLessonId);
+            const lessonSnap = await getDoc(lessonRef);
+            if (lessonSnap.exists()) {
+                const lessonData = lessonSnap.data() as Lesson;
+                const attendees = [...(lessonData.attendees || [])];
+                const index = attendees.findIndex(a => !a.enrollmentId && a.childName); // Try to match by name or context if possible, but usually we need enrollmentId
+                // If we don't have enrollmentId, we probably can't reliably find them unless we pass index
+                // For now, let's just throw or skip if ID is missing for critical sync
+            }
+        }
+        throw new Error("Impossibile sincronizzare: ID iscrizione mancante");
+    }
+
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
         const lessonRef = doc(db, 'lessons', appointmentLessonId);
@@ -1187,6 +1208,8 @@ export const registerPresence = async (enrollmentId: string, appointmentLessonId
 };
 
 export const resetAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (!enrollmentId) throw new Error("Impossibile resettare: ID iscrizione mancante");
+    
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
         const lessonRef = doc(db, 'lessons', appointmentLessonId);
@@ -1240,6 +1263,7 @@ export const resetAppointmentStatus = async (enrollmentId: string, appointmentLe
 };
 
 export const deleteAppointment = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (!enrollmentId) throw new Error("Impossibile eliminare: ID iscrizione mancante");
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Rimuovi l'allievo dall'array attendees della Lesson
         const lessonRef = doc(db, 'lessons', appointmentLessonId);
@@ -1269,6 +1293,8 @@ export const deleteAppointment = async (enrollmentId: string, appointmentLessonI
 };
 
 export const toggleAppointmentStatus = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
+    if (!enrollmentId) throw new Error("Impossibile cambiare stato: ID iscrizione mancante");
+    
     if (isNewArchitecture) {
         // NUOVA ARCHITETTURA: Aggiorna lo stato nell'array attendees della Lesson
         const lessonRef = doc(db, 'lessons', appointmentLessonId);
@@ -1348,6 +1374,7 @@ export const addRecoveryLessons = async (
     locationName: string,
     locationColor: string
 ): Promise<void> => {
+    if (!enrollmentId) throw new Error("ID iscrizione mancante per recupero");
     const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
     const enrollmentSnap = await getDoc(enrollmentDocRef);
     if (!enrollmentSnap.exists()) throw new Error("Iscrizione non trovata");
