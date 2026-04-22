@@ -1143,7 +1143,7 @@ export const findGhostPromotionCandidates = async (filter?: GhostPromotionFilter
         return [];
     }
     
-    const ghosts = ghostSnap.docs.map(d => ({ id: d.id, ...d.data() } as Invoice));
+    const ghosts = ghostSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) } as Invoice));
     const candidates: GhostPromotionCandidate[] = [];
     
     for (const ghost of ghosts) {
