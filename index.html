@@ -1,13 +1,32 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="it">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <link rel="icon" type="image/png" href="/lemon_logo_150px.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#3C3C52" />
+    <meta name="description" content="Portale Iscrizioni" />
+    
+    <!-- Open Graph / WhatsApp -->
+    <meta property="og:title" content="EasyPeasy Labs" />
+    <meta property="og:description" content="Portale Iscrizioni" />
+    <meta property="og:image" content="/lemon_logo_150px.png" />
+    <meta property="og:type" content="website" />
+
+    <link rel="manifest" href="/manifest.json">
+    <title>EP Gestionale</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+      /* Fallback critico per evitare FOUC (Flash of Unstyled Content) */
+      body { background-color: #F6F8FA; font-family: 'Inter', sans-serif; display: block; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <div id="boot-monitor">
+        <div></div>
+    </div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
-

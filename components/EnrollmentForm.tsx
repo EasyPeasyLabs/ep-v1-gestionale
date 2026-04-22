@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment, Course } from '../types';
+import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment, Course, SlotType } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
 import { getEnrollmentsForClient } from '../services/enrollmentService';
@@ -345,6 +345,15 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         loadData();
     }, []);
 
+    // Sync price when subscription changes
+    useEffect(() => {
+        if (!subscriptionTypeId || subscriptionTypeId === 'quote-based') return;
+        const sub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+        if (sub) {
+            setManualPrice(sub.price.toString());
+        }
+    }, [subscriptionTypeId, subscriptionTypes]);
+
     // --- SMART TIME SELECTOR LOGIC ---
     const getSlotsForContext = useCallback((locationId: string, dayOfWeek: number) => {
         if (!locationId) return [];
@@ -477,10 +486,9 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             const status = s.statusConfig?.status || 'active';
             const isStatusOk = status === 'active' || status === 'promo';
             
-            // Un abbonamento è visibile se:
-            // 1. Lo stato è attivo/promo
-            // 2. E (è pubblico OPPURE il cliente ha uno storico/è un rinnovo)
-            return isStatusOk && (s.isPubliclyVisible || hasHistory);
+            // In manual mode, visibility constraints (public/history) should NOT apply.
+            // These are for the end-user portal. The operator must see all active packages.
+            return isStatusOk;
         };
 
         // Age filter logic
@@ -503,8 +511,13 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             if (s.target) matchesTarget = isAdultEnrollment ? s.target === 'adult' : s.target === 'kid';
             else { const isAdultName = s.name.startsWith('A -'); matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName; }
             
-            // Filter by age if subscription specifies it
-            if (childrenAgeRange && s.allowedAges) {
+            // SPECIAL CASE FOR TOKEN BUNDLES: Always visible in manual mode if active, 
+            // regardless of target convention, to ensure they can be selected.
+            const isTokenBundle = s.tokens && s.tokens.length > 0;
+            if (isTokenBundle) matchesTarget = true;
+
+            // Filter by age if subscription specifies it AND filtering is active
+            if (isAgeFilteringActive && childrenAgeRange && s.allowedAges) {
                 const minAge = s.allowedAges.min;
                 const maxAge = s.allowedAges.max;
                 if (childrenAgeRange.min < minAge || childrenAgeRange.max > maxAge) {
@@ -512,50 +525,12 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 }
             }
 
-            return matchesTarget && isVisible(s);
+            return (matchesTarget && isVisible(s)) || (isTokenBundle && isVisible(s));
         });
 
-        // If a course is selected, filter by compatible tokens
-        let filteredSubs = baseSubs;
-        if (selectedCourseId) {
-            const course = courses.find(c => c.id === selectedCourseId);
-            if (course) {
-                const normalizedCourseType = normalizeType(course.slotType);
-
-                filteredSubs = baseSubs.filter(s => {
-                    // 1. Controllo tramite Tokens (nuova logica bundle)
-                    if (s.tokens && s.tokens.length > 0) {
-                        // Se l'abbonamento contiene ALMENO un token che (normalizzato) corrisponde al tipo del corso
-                        const hasCompatibleToken = s.tokens.some(t => normalizeType(t.type) === normalizedCourseType);
-                        if (hasCompatibleToken) return true;
-
-                        // Caso speciale LAB+SG: se il corso è LAB o SG, un abbonamento che li ha entrambi è compatibile
-                        if (normalizedCourseType === 'LAB' || normalizedCourseType === 'SG') {
-                            const hasLab = s.tokens.some(t => normalizeType(t.type) === 'LAB');
-                            const hasSg = s.tokens.some(t => normalizeType(t.type) === 'SG');
-                            if (normalizedCourseType === 'LAB' && hasLab) return true;
-                            if (normalizedCourseType === 'SG' && hasSg) return true;
-                        }
-
-                        // Se il corso è un bundle LAB+SG, l'abbonamento deve avere entrambi
-                        if (normalizedCourseType === 'LAB+SG') {
-                            const hasLab = s.tokens.some(t => normalizeType(t.type) === 'LAB');
-                            const hasSg = s.tokens.some(t => normalizeType(t.type) === 'SG');
-                            return hasLab && hasSg;
-                        }
-
-                        return false;
-                    }
-
-                    // 2. Fallback per abbonamenti legacy (senza tokens definiti)
-                    // Se il nome contiene il tipo di slot (es. "LAB"), lo consideriamo compatibile
-                    if (s.name.toUpperCase().includes(normalizedCourseType)) return true;
-                    
-                    // Se l'abbonamento non ha restrizioni (tokens vuoti) e il nome non dice nulla, lo mostriamo per sicurezza
-                    return true; 
-                });
-            }
-        }
+        // In manual mode, we show all base subscriptions to give the operator maximum flexibility
+        // without strict technical token matching that might hide valid options.
+        const filteredSubs = baseSubs;
 
         // --- NEW SORTING LOGIC ---
         // Find last subscription
@@ -729,6 +704,29 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
         targets.forEach(target => {
             if(!target) return;
+            // Function to extract count from tokens array or legacy fields
+            const getTokenCount = (sub: SubscriptionType | undefined, type: SlotType) => {
+                if (!sub) return 0;
+                // Check new tokens array first
+                if (sub.tokens && sub.tokens.length > 0) {
+                    const token = sub.tokens.find(t => t.type === type);
+                    if (token) return token.count;
+                }
+                // Fallback to legacy fields
+                switch(type) {
+                    case 'LAB': return sub.labCount || 0;
+                    case 'SG': return sub.sgCount || 0;
+                    case 'EVT': return sub.evtCount || 0;
+                    case 'READ': return sub.readCount || 0;
+                    default: return 0;
+                }
+            };
+
+            const labC = getTokenCount(selectedSub, 'LAB');
+            const sgC = getTokenCount(selectedSub, 'SG');
+            const evtC = getTokenCount(selectedSub, 'EVT');
+            const readC = getTokenCount(selectedSub, 'READ');
+
             const newEnrollment: EnrollmentInput = {
                 clientId: selectedClientId,
                 clientType: currentClient?.clientType || ClientType.Parent,
@@ -752,14 +750,17 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 
                 lessonsTotal: finalLessonsTotal,
                 lessonsRemaining: isCustomMode ? finalLessonsTotal : Number(existingEnrollment?.lessonsRemaining || selectedSub?.lessons || 0),
-                labCount: selectedSub?.labCount || existingEnrollment?.labCount || 0,
-                sgCount: selectedSub?.sgCount || existingEnrollment?.sgCount || 0,
-                evtCount: selectedSub?.evtCount || existingEnrollment?.evtCount || 0,
-                readCount: selectedSub?.readCount || existingEnrollment?.readCount || 0,
-                labRemaining: isCustomMode ? (selectedSub?.labCount || 0) : Number(existingEnrollment?.labRemaining || selectedSub?.labCount || 0),
-                sgRemaining: isCustomMode ? (selectedSub?.sgCount || 0) : Number(existingEnrollment?.sgRemaining || selectedSub?.sgCount || 0),
-                evtRemaining: isCustomMode ? (selectedSub?.evtCount || 0) : Number(existingEnrollment?.evtRemaining || selectedSub?.evtCount || 0),
-                readRemaining: isCustomMode ? (selectedSub?.readCount || 0) : Number(existingEnrollment?.readRemaining || selectedSub?.readCount || 0),
+                
+                labCount: labC || existingEnrollment?.labCount || 0,
+                sgCount: sgC || existingEnrollment?.sgCount || 0,
+                evtCount: evtC || existingEnrollment?.evtCount || 0,
+                readCount: readC || existingEnrollment?.readCount || 0,
+                
+                labRemaining: isCustomMode ? (labC || 0) : Number(existingEnrollment?.labRemaining ?? labC ?? 0),
+                sgRemaining: isCustomMode ? (sgC || 0) : Number(existingEnrollment?.sgRemaining ?? sgC ?? 0),
+                evtRemaining: isCustomMode ? (evtC || 0) : Number(existingEnrollment?.evtRemaining ?? evtC ?? 0),
+                readRemaining: isCustomMode ? (readC || 0) : Number(existingEnrollment?.readRemaining ?? readC ?? 0),
+
                 startDate: new Date(finalStartDate).toISOString(),
                 endDate: new Date(finalEndDate).toISOString(),
                 status: existingEnrollment ? existingEnrollment.status : EnrollmentStatus.Pending, 
@@ -864,11 +865,17 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             {isInstitutional ? <option value="quote-based">Basato su Preventivo</option> : (
                                 <>
                                     <option value="" disabled>Seleziona pacchetto...</option>
-                                    {availableSubscriptions.map(sub => (
-                                        <option key={sub.id} value={sub.id}>
-                                            {sub.name} - {sub.price.toFixed(2)}€ ({sub.lessons} lez.)
-                                        </option>
-                                    ))}
+                                    {availableSubscriptions.map(sub => {
+                                        const totalTokens = sub.tokens?.reduce((acc, t) => acc + t.count, 0) || 0;
+                                        const displayLessons = sub.lessons || totalTokens;
+                                        const hasTokens = sub.tokens && sub.tokens.length > 0;
+                                        
+                                        return (
+                                            <option key={sub.id} value={sub.id}>
+                                                {hasTokens ? '📦 ' : ''}{sub.name} - {sub.price.toFixed(2)}€ ({displayLessons} lez.)
+                                            </option>
+                                        );
+                                    })}
                                 </>
                             )}
                         </select>

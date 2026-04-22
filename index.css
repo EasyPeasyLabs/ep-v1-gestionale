@@ -1,6 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-primary: var(--md-primary);
+  --color-ep-blue-600: #323244;
+  --color-ep-yellow: #FACC15;
+}
 
 body {
   font-family: 'Inter', sans-serif;
