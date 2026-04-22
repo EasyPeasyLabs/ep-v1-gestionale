@@ -143,7 +143,7 @@ export const addSubscriptionType = async (sub: SubscriptionTypeInput): Promise<s
 
 export const updateSubscriptionType = async (id: string, sub: Partial<SubscriptionTypeInput>): Promise<void> => {
     const docRef = doc(db, 'subscriptionTypes', id);
-    await updateDoc(docRef, sub as { [x: string]: unknown });
+    await updateDoc(docRef, sub as any);
 };
 
 export const deleteSubscriptionType = async (id: string): Promise<void> => {

@@ -166,7 +166,7 @@ export const importClientsFromExcel = async (file: File): Promise<ImportResult> 
             const existingId = existingClientsMap.get(clientEmail);
             if (existingId) {
                 const docRef = doc(db, 'clients', existingId);
-                batch.update(docRef, clientData as Record<string, unknown>);
+                batch.update(docRef, clientData as any);
                 result.updated++;
             } else {
                 const docRef = doc(clientCollectionRef);
@@ -237,7 +237,7 @@ export const importSuppliersFromExcel = async (file: File): Promise<ImportResult
         const existingId = existingSuppliersMap.get(supplierName);
         if (existingId) {
             const docRef = doc(db, 'suppliers', existingId);
-            batch.update(docRef, supplierData as Record<string, unknown>);
+            batch.update(docRef, supplierData as any);
             result.updated++;
         } else {
             const docRef = doc(supplierCollectionRef);

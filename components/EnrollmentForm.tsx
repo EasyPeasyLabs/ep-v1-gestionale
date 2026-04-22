@@ -467,21 +467,27 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     }, [clientHistory]);
 
     const availableSubscriptions = useMemo(() => {
+        const normalizeType = (type: string) => {
+            if (!type) return '';
+            // Rimuove prefissi K- o A- e converte in UpperCase
+            return type.replace(/^[KA]-/, '').toUpperCase();
+        };
+
         const isVisible = (s: SubscriptionType) => {
-            if (hasHistory) return true; // Show all if has history
+            const status = s.statusConfig?.status || 'active';
+            const isStatusOk = status === 'active' || status === 'promo';
             
-            // For new clients, strictly check status and name
-            const status = s.statusConfig?.status || 'active'; 
-            const isOld = s.name.includes('(OLD)');
-            
-            return (status === 'active' || status === 'promo') && !isOld;
+            // Un abbonamento è visibile se:
+            // 1. Lo stato è attivo/promo
+            // 2. E (è pubblico OPPURE il cliente ha uno storico/è un rinnovo)
+            return isStatusOk && (s.isPubliclyVisible || hasHistory);
         };
 
         // Age filter logic
         let childrenAgeRange: { min: number, max: number } | null = null;
         if (!isAdultEnrollment && selectedChildIds.length > 0 && currentClient?.clientType === ClientType.Parent) {
             const ages = selectedChildIds.map(id => {
-                const child = (currentClient as ParentClient).children.find(c => c.id === id);
+                const child = (currentClient as ParentClient).children.find(c => id === c.id);
                 if (!child) return 0;
                 if (child.dateOfBirth) {
                     const dob = new Date(child.dateOfBirth);
@@ -499,7 +505,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             
             // Filter by age if subscription specifies it
             if (childrenAgeRange && s.allowedAges) {
-                // Relaxed check: if child age is within 1 year of range, allow it (to handle DOB edge cases)
                 const minAge = s.allowedAges.min;
                 const maxAge = s.allowedAges.max;
                 if (childrenAgeRange.min < minAge || childrenAgeRange.max > maxAge) {
@@ -515,24 +520,38 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         if (selectedCourseId) {
             const course = courses.find(c => c.id === selectedCourseId);
             if (course) {
-                filteredSubs = baseSubs.filter(s => {
-                    // Compatible if it has at least one token of the course's type
-                    if (s.tokens && s.tokens.length > 0) {
-                        const hasExactMatch = s.tokens.some(t => t.type === course.slotType);
-                        if (hasExactMatch) return true;
+                const normalizedCourseType = normalizeType(course.slotType);
 
-                        // Special case for LAB+SG combo: compatible if subscription has both LAB and SG tokens
-                        if (course.slotType === 'LAB+SG') {
-                            const hasLab = s.tokens.some(t => t.type === 'LAB');
-                            const hasSg = s.tokens.some(t => t.type === 'SG');
+                filteredSubs = baseSubs.filter(s => {
+                    // 1. Controllo tramite Tokens (nuova logica bundle)
+                    if (s.tokens && s.tokens.length > 0) {
+                        // Se l'abbonamento contiene ALMENO un token che (normalizzato) corrisponde al tipo del corso
+                        const hasCompatibleToken = s.tokens.some(t => normalizeType(t.type) === normalizedCourseType);
+                        if (hasCompatibleToken) return true;
+
+                        // Caso speciale LAB+SG: se il corso è LAB o SG, un abbonamento che li ha entrambi è compatibile
+                        if (normalizedCourseType === 'LAB' || normalizedCourseType === 'SG') {
+                            const hasLab = s.tokens.some(t => normalizeType(t.type) === 'LAB');
+                            const hasSg = s.tokens.some(t => normalizeType(t.type) === 'SG');
+                            if (normalizedCourseType === 'LAB' && hasLab) return true;
+                            if (normalizedCourseType === 'SG' && hasSg) return true;
+                        }
+
+                        // Se il corso è un bundle LAB+SG, l'abbonamento deve avere entrambi
+                        if (normalizedCourseType === 'LAB+SG') {
+                            const hasLab = s.tokens.some(t => normalizeType(t.type) === 'LAB');
+                            const hasSg = s.tokens.some(t => normalizeType(t.type) === 'SG');
                             return hasLab && hasSg;
                         }
+
                         return false;
                     }
-                    // Fallback for legacy subscriptions (assume compatible if slotType matches legacy expectations)
-                    // If the name contains the slotType, it's a good hint
-                    if (s.name.toUpperCase().includes(course.slotType.toUpperCase())) return true;
+
+                    // 2. Fallback per abbonamenti legacy (senza tokens definiti)
+                    // Se il nome contiene il tipo di slot (es. "LAB"), lo consideriamo compatibile
+                    if (s.name.toUpperCase().includes(normalizedCourseType)) return true;
                     
+                    // Se l'abbonamento non ha restrizioni (tokens vuoti) e il nome non dice nulla, lo mostriamo per sicurezza
                     return true; 
                 });
             }

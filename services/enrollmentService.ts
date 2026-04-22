@@ -1488,7 +1488,7 @@ export const migrateHistoricalEnrollments = async (): Promise<{ updated: number,
                     readRemaining: Math.max(0, readCount - readAttended)
                 };
 
-                batch.update(docSnap.ref, updateData);
+                batch.update(docSnap.ref, updateData as any);
                 batchSize++;
                 updatedCount++;
             }
