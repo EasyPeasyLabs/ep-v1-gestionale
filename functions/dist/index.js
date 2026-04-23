@@ -577,6 +577,8 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         });
       }
       const enrRef = db.collection("enrollments").doc();
+      const fallbackEndDate = /* @__PURE__ */ new Date();
+      fallbackEndDate.setDate(fallbackEndDate.getDate() + 36 * 7);
       const enrichedAppointments = (enrollmentData.appointments || []).map((app) => ({
         ...app,
         dayOfWeek: targetDayIndex,
@@ -603,7 +605,8 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         // Manteniamo Case-Sensitive
         source: "portal",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        startDate: admin.firestore.FieldValue.serverTimestamp()
+        startDate: admin.firestore.FieldValue.serverTimestamp(),
+        endDate: fallbackEndDate.toISOString()
       };
       transaction.set(enrRef, finalEnrollment);
       const transRef = db.collection("transactions").doc();
@@ -619,17 +622,23 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
       });
       if (invoiceData) {
         const invRef = db.collection("invoices").doc();
+        const balancedItems = (invoiceData.items || []).map((item, index) => {
+          if (index === 0) return { ...item, price: totalPrice };
+          return item;
+        });
         transaction.set(invRef, {
           ...invoiceData,
           id: invRef.id,
           clientId,
           relatedEnrollmentId: enrRef.id,
           totalAmount: totalPrice,
+          items: balancedItems,
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         });
       }
       if (targetDayIndex !== -1) {
         let firstDate = "";
+        let physicalAppointments = [];
         if (matchedCourseId !== "manual") {
           const todayItaly = new Date((/* @__PURE__ */ new Date()).toLocaleString("en-US", { timeZone: "Europe/Rome" }));
           const todayStr = todayItaly.toISOString().split("T")[0];
@@ -641,11 +650,24 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
               const lessonData = docSnap.data();
               const attendees = lessonData.attendees || [];
               attendees.push({
+                clientId,
+                childId,
                 enrollmentId: enrRef.id,
                 childName: enrollmentData.childName,
                 status: "Scheduled"
               });
               transaction.update(docSnap.ref, { attendees });
+              physicalAppointments.push({
+                lessonId: docSnap.id,
+                date: lessonData.date,
+                startTime: lessonData.startTime,
+                endTime: lessonData.endTime,
+                locationId: lessonData.locationId,
+                locationName: lessonData.locationName,
+                locationColor: lessonData.locationColor,
+                childName: enrollmentData.childName,
+                status: "Scheduled"
+              });
             });
           }
         } else {
@@ -659,19 +681,36 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
             const dateStr = currentLessonDate.toISOString().split("T")[0];
             if (!isItalianHoliday(currentLessonDate)) {
               const lessonRef = db.collection("lessons").doc();
-              transaction.set(lessonRef, {
+              const newLessonData = {
                 id: lessonRef.id,
-                enrollmentId: enrRef.id,
-                courseId: matchedCourseId,
+                courseId: matchedCourseId !== "manual" ? matchedCourseId : void 0,
                 locationId: enrollmentData.locationId,
                 locationName: enrollmentData.locationName,
                 locationColor: enrollmentData.locationColor || "#6366f1",
                 date: dateStr,
                 startTime: enrichedAppointments[0]?.startTime || "16:00",
                 endTime: enrichedAppointments[0]?.endTime || "17:00",
-                childName: enrollmentData.childName,
-                status: "Scheduled",
+                description: `Lezione ${enrollmentData.childName}`,
+                attendees: [{
+                  clientId,
+                  childId,
+                  enrollmentId: enrRef.id,
+                  childName: enrollmentData.childName,
+                  status: "Scheduled"
+                }],
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
+              };
+              transaction.set(lessonRef, newLessonData);
+              physicalAppointments.push({
+                lessonId: lessonRef.id,
+                date: dateStr,
+                startTime: newLessonData.startTime,
+                endTime: newLessonData.endTime,
+                locationId: newLessonData.locationId,
+                locationName: newLessonData.locationName,
+                locationColor: newLessonData.locationColor,
+                childName: enrollmentData.childName,
+                status: "Scheduled"
               });
               if (createdCount === 0) firstDate = dateStr;
               createdCount++;
@@ -680,7 +719,15 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
           }
         }
         if (firstDate) {
-          transaction.update(enrRef, { startDate: firstDate });
+          const exactStartDate = new Date(firstDate);
+          const durationWeeks = enrollmentData.lessonsTotal || sub.lessons || 36;
+          const finalEndDate = new Date(exactStartDate.getTime());
+          finalEndDate.setDate(finalEndDate.getDate() + durationWeeks * 7 + 21);
+          transaction.update(enrRef, {
+            startDate: firstDate,
+            endDate: finalEndDate.toISOString(),
+            appointments: physicalAppointments
+          });
         }
       }
       transaction.update(db.collection("incoming_leads").doc(leadId), {
@@ -837,9 +884,8 @@ var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", co
     const title = `Completa l'iscrizione di ${nomeAllievo}`;
     const description = `Ciao ${lead.nome || "Genitore"}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
     const appBase = process.env.APP_URL || "https://ep-v1-gestionale.vercel.app";
-    const portalBase = process.env.PORTAL_URL || "https://ep-portal-chi.vercel.app";
     const logoUrl = `${appBase}/lemon_logo_150px.png`;
-    const portalUrl = `${portalBase}/?id=${leadId}#/iscrizione`;
+    const portalUrl = `/?id=${leadId}#/iscrizione`;
     const html = `
 <!DOCTYPE html>
 <html lang="it">

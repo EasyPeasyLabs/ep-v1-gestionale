@@ -661,6 +661,10 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             // 3. Creazione Iscrizione Arricchita (FASE B)
             const enrRef = db.collection("enrollments").doc();
 
+            // Calcolo Data Scadenza Fallback (Carnet) - Circa 9 mesi (36 settimane)
+            const fallbackEndDate = new Date();
+            fallbackEndDate.setDate(fallbackEndDate.getDate() + (36 * 7));
+
             // Arricchimento appointments per evitare N/D nel frontend
             const enrichedAppointments = (enrollmentData.appointments || []).map((app: Record<string, unknown>) => ({
                 ...app,
@@ -686,7 +690,8 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 status: (enrollmentData.status || 'Active'), // Manteniamo Case-Sensitive
                 source: 'portal',
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                startDate: admin.firestore.FieldValue.serverTimestamp()
+                startDate: admin.firestore.FieldValue.serverTimestamp(),
+                endDate: fallbackEndDate.toISOString()
             };
             transaction.set(enrRef, finalEnrollment);
             // 4. Creazione Transazione (con allocationId)
@@ -705,12 +710,20 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             // 5. Creazione Fattura (se prevista)
             if (invoiceData) {
                 const invRef = db.collection("invoices").doc();
+                
+                // Aggiorniamo Item per bilanciare il TotalPrice reale del server (es. con marca da bollo)
+                const balancedItems = (invoiceData.items || []).map((item: any, index: number) => {
+                    if (index === 0) return { ...item, price: totalPrice };
+                    return item;
+                });
+
                 transaction.set(invRef, {
                     ...invoiceData,
                     id: invRef.id,
                     clientId: clientId,
                     relatedEnrollmentId: enrRef.id,
                     totalAmount: totalPrice,
+                    items: balancedItems,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
             }
@@ -718,6 +731,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             // 6. Generazione Automatica Lezioni (Physical Lesson Engine - FASE C)
             if (targetDayIndex !== -1) {
                 let firstDate = "";
+                let physicalAppointments: any[] = [];
                 
                 if (matchedCourseId !== "manual") {
                     // NUOVA ARCHITETTURA: Aggiungi l'allievo alle lezioni esistenti del corso
@@ -739,11 +753,25 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                             const lessonData = docSnap.data();
                             const attendees = lessonData.attendees || [];
                             attendees.push({
+                                clientId: clientId,
+                                childId: childId,
                                 enrollmentId: enrRef.id,
                                 childName: enrollmentData.childName,
                                 status: 'Scheduled'
                             });
                             transaction.update(docSnap.ref, { attendees });
+                            // Sincronizza l'appuntamento fisico sulla cache dell'Iscrizione
+                            physicalAppointments.push({
+                                lessonId: docSnap.id,
+                                date: lessonData.date,
+                                startTime: lessonData.startTime,
+                                endTime: lessonData.endTime,
+                                locationId: lessonData.locationId,
+                                locationName: lessonData.locationName,
+                                locationColor: lessonData.locationColor,
+                                childName: enrollmentData.childName,
+                                status: 'Scheduled'
+                            });
                         });
                     }
                 } else {
@@ -760,19 +788,37 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                         const dateStr = currentLessonDate.toISOString().split('T')[0];
                         if (!isItalianHoliday(currentLessonDate)) {
                             const lessonRef = db.collection("lessons").doc();
-                            transaction.set(lessonRef, {
+                            const newLessonData = {
                                 id: lessonRef.id,
-                                enrollmentId: enrRef.id,
-                                courseId: matchedCourseId,
+                                courseId: matchedCourseId !== "manual" ? matchedCourseId : undefined,
                                 locationId: enrollmentData.locationId,
                                 locationName: enrollmentData.locationName,
                                 locationColor: enrollmentData.locationColor || "#6366f1",
                                 date: dateStr,
                                 startTime: enrichedAppointments[0]?.startTime || "16:00",
                                 endTime: enrichedAppointments[0]?.endTime || "17:00",
-                                childName: enrollmentData.childName,
-                                status: 'Scheduled',
+                                description: `Lezione ${enrollmentData.childName}`,
+                                attendees: [{
+                                    clientId: clientId,
+                                    childId: childId,
+                                    enrollmentId: enrRef.id,
+                                    childName: enrollmentData.childName,
+                                    status: 'Scheduled'
+                                }],
                                 createdAt: admin.firestore.FieldValue.serverTimestamp()
+                            };
+                            transaction.set(lessonRef, newLessonData);
+
+                            physicalAppointments.push({
+                                lessonId: lessonRef.id,
+                                date: dateStr,
+                                startTime: newLessonData.startTime,
+                                endTime: newLessonData.endTime,
+                                locationId: newLessonData.locationId,
+                                locationName: newLessonData.locationName,
+                                locationColor: newLessonData.locationColor,
+                                childName: enrollmentData.childName,
+                                status: 'Scheduled'
                             });
 
                             if (createdCount === 0) firstDate = dateStr;
@@ -782,9 +828,19 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     }
                 }
 
-                // Aggiorna la data di inizio dell'iscrizione
+                // Aggiorna la data di inizio dell'iscrizione e sincronizza i physicalAppointments
                 if (firstDate) {
-                    transaction.update(enrRef, { startDate: firstDate });
+                    const exactStartDate = new Date(firstDate);
+                    // Calcola endDate con buffer di +2/3 lezioni (festività/recuperi)
+                    const durationWeeks = enrollmentData.lessonsTotal || sub.lessons || 36;
+                    const finalEndDate = new Date(exactStartDate.getTime());
+                    finalEndDate.setDate(finalEndDate.getDate() + (durationWeeks * 7) + 21); // +3 weeks buffer
+                    
+                    transaction.update(enrRef, { 
+                        startDate: firstDate,
+                        endDate: finalEndDate.toISOString(),
+                        appointments: physicalAppointments
+                    });
                 }
             }
 
@@ -970,12 +1026,13 @@ export const enrollmentGateway = onRequest({ region: "europe-west1", cors: true 
         const description = `Ciao ${lead.nome || 'Genitore'}, mancano pochissimi passi per confermare il posto presso ${sede}.`;
         
         const appBase = process.env.APP_URL || "https://ep-v1-gestionale.vercel.app";
-        const portalBase = process.env.PORTAL_URL || "https://ep-portal-chi.vercel.app";
+        // Rimuoviamo portalBase per il redirect per usare un percorso relativo che preserva il dominio proxy 
+        // configurato dall'utente tramite Vercel
         
         const logoUrl = `${appBase}/lemon_logo_150px.png`;
         
-        // URL del portale reale (Progetto C) - Ritorno alla logica Hash per compatibilità HashRouter
-        const portalUrl = `${portalBase}/?id=${leadId}#/iscrizione`;
+        // URL relativo per non rompere il Custom Domain (lo "schermo")
+        const portalUrl = `/?id=${leadId}#/iscrizione`;
 
         const html = `
 <!DOCTYPE html>

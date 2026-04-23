@@ -299,7 +299,9 @@ const EnrollmentPortal: React.FC = () => {
 
         // 3. Match Bundle (Subscription) - ID Prioritized (Infallible ID from Project B)
         if (leadData.selectedSlot && typeof leadData.selectedSlot === 'object') {
-          preselectedSubId = (leadData.selectedSlot as Record<string, unknown>).bundleId as string || (leadData.selectedSlot as Record<string, unknown>).subscriptionId as string || '';
+          const slotObj = leadData.selectedSlot as Record<string, unknown>;
+          preselectedSubId = (slotObj.subscriptionId as string) || 
+                             (typeof slotObj.bundleId === 'string' ? slotObj.bundleId.split('_')[0] : '');
         }
 
         // Validation & Name Fallback
@@ -313,9 +315,11 @@ const EnrollmentPortal: React.FC = () => {
               (s.publicName && normalizeString(s.publicName).includes(normalizeString(normalizedSlotString)))
             )
           );
-          if (matchedSub) preselectedSubId = matchedSub.id;
+          preselectedSubId = matchedSub ? matchedSub.id : ''; // Azzera la maschera se non esiste l'abbonamento
         } else if (subExists) {
           preselectedSubId = subExists.id;
+        } else {
+          preselectedSubId = ''; // Nessun match trovato e nessuno slot string parsabile
         }
 
         // Estrai gli slot inclusi nel bundle (es. LAB + SG) se disponibili
@@ -405,6 +409,27 @@ const EnrollmentPortal: React.FC = () => {
           }
       }
 
+      // Flatten tokens for legacy enrollment schema
+      const getTokenCount = (sub: SubscriptionType | undefined, type: string) => {
+          if (!sub) return 0;
+          if (sub.tokens && sub.tokens.length > 0) {
+              const token = sub.tokens.find(t => t.type === type);
+              if (token) return token.count;
+          }
+          switch(type) {
+              case 'LAB': return sub.labCount || 0;
+              case 'SG': return sub.sgCount || 0;
+              case 'EVT': return sub.evtCount || 0;
+              case 'READ': return (sub as any).readCount || 0;
+              default: return 0;
+          }
+      };
+
+      const finalLabC = getTokenCount(sub, 'LAB');
+      const finalSgC = getTokenCount(sub, 'SG');
+      const finalEvtC = getTokenCount(sub, 'EVT');
+      const finalReadC = getTokenCount(sub, 'READ');
+
       const enrollmentData = {
         clientId: '', // Will be set by server
         clientName: `${formData.parentFirstName} ${formData.parentLastName}`,
@@ -417,12 +442,14 @@ const EnrollmentPortal: React.FC = () => {
         price: sub?.price || 0,
         lessonsTotal: sub?.lessons || 0,
         lessonsRemaining: sub?.lessons || 0,
-        labCount: sub?.labCount || 0,
-        sgCount: sub?.sgCount || 0,
-        evtCount: sub?.evtCount || 0,
-        labRemaining: sub?.labCount || 0,
-        sgRemaining: sub?.sgCount || 0,
-        evtRemaining: sub?.evtCount || 0,
+        labCount: finalLabC,
+        sgCount: finalSgC,
+        evtCount: finalEvtC,
+        readCount: finalReadC,
+        labRemaining: finalLabC,
+        sgRemaining: finalSgC,
+        evtRemaining: finalEvtC,
+        readRemaining: finalReadC,
         status: isCash ? EnrollmentStatus.Pending : EnrollmentStatus.Active,
         startDate: '', // Will be set by server
         endDate: '', // Will be set by server
@@ -624,7 +651,7 @@ const EnrollmentPortal: React.FC = () => {
       <div className="bg-[#012169] text-white pt-12 pb-24 px-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400 rounded-full blur-3xl opacity-20 -mr-32 -mt-32"></div>
         <div className="max-w-2xl mx-auto relative z-10">
-          <img src="/lemon_logo_150px.png" alt="Logo" className="h-16 mb-8 mx-auto" />
+          <img src={companyInfo?.logoBase64 || "/lemon_logo_150px.png"} alt="Logo" className="h-16 mb-8 mx-auto object-contain" />
           <h1 className="text-4xl font-black text-center mb-2 tracking-tight">Completa Iscrizione</h1>
           <p className="text-ep-blue-200 text-center font-medium">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
         </div>
