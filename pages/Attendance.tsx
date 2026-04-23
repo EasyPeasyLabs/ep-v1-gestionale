@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee, ClientType, Lesson } from '../types';
+import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee, ClientType, Lesson, Client, ParentClient } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
+import { getClients } from '../services/parentService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import CalendarIcon from '../components/icons/CalendarIcon';
@@ -205,12 +206,32 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollments, suppliersData] = await Promise.all([
+            const [enrollmentsData, clientsData, suppliersData] = await Promise.all([
                 getAllEnrollments(),
+                getClients(),
                 getSuppliers()
             ]);
             
             setSuppliers(suppliersData);
+
+            // GESTIONE CANCELLAZIONE: Creiamo mappa clienti validi (non eliminati)
+            const clientMap = new Map<string, Client>();
+            clientsData.forEach((c: Client) => {
+                if (!c.isDeleted) clientMap.set(c.id, c);
+            });
+
+            // Filtro Iscrizioni: Solo quelle che appartengono a un cliente esistente e attivo.
+            // Se Genitore, verifichiamo anche che il figlio non sia stato rimosso dall'anagrafica.
+            const enrollments = enrollmentsData.filter(enr => {
+                const client = clientMap.get(enr.clientId);
+                if (!client) return false;
+
+                if (client.clientType === ClientType.Parent) {
+                    const parent = client as ParentClient;
+                    return parent.children && parent.children.some((c) => c.id === enr.childId);
+                }
+                return true;
+            });
 
             // Calcola Range Date in formato Locale per evitare slittamenti UTC (toISOString())
             const formatLocalDate = (d: Date) => {
@@ -314,6 +335,9 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                     lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
                         
+                        // GESTIONE CANCELLAZIONE: Se l'iscrizione non esiste più (cancellata da DB) o il cliente è stato rimosso, saltiamo la riga
+                        if (!enr) return;
+
                         // FILTRO VALIDITÀ: Verifica che l'iscrizione sia attiva per questa data specifica
                         if (enr) {
                             const enrStart = enr.startDate ? enr.startDate.split('T')[0] : '0000-00-00';
