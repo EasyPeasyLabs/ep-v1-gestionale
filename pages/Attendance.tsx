@@ -262,7 +262,11 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             const currentRangeStart = formatLocalDate(start);
                             const currentRangeEnd = formatLocalDate(end);
 
-                            if (appDateStr >= currentRangeStart && appDateStr <= currentRangeEnd) {
+                            // FILTRO VALIDITÀ: L'allievo compare solo se la lezione è compresa tra startDate e endDate dell'iscrizione
+                            const enrStart = enr.startDate ? enr.startDate.split('T')[0] : '0000-00-00';
+                            const enrEnd = enr.endDate ? enr.endDate.split('T')[0] : '9999-12-31';
+
+                            if (appDateStr >= currentRangeStart && appDateStr <= currentRangeEnd && appDateStr >= enrStart && appDateStr <= enrEnd) {
                                 const isInstitutional = enr.clientType === ClientType.Institutional || enr.locationId === 'institutional';
                                 
                                 // Chiave deterministica per evitare duplicati nello stesso giorno/slot
@@ -310,6 +314,13 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                     lesson.attendees.forEach((attendee: LessonAttendee) => {
                         const enr = attendee.enrollmentId ? enrollmentMap.get(attendee.enrollmentId) : null;
                         
+                        // FILTRO VALIDITÀ: Verifica che l'iscrizione sia attiva per questa data specifica
+                        if (enr) {
+                            const enrStart = enr.startDate ? enr.startDate.split('T')[0] : '0000-00-00';
+                            const enrEnd = enr.endDate ? enr.endDate.split('T')[0] : '9999-12-31';
+                            if (dateKey < enrStart || dateKey > enrEnd) return;
+                        }
+
                         const isInstitutional = enr?.clientType === ClientType.Institutional || lesson.locationId === 'institutional';
                         const key = isInstitutional 
                             ? `${attendee.enrollmentId}_${dateKey}` 
@@ -341,6 +352,11 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 if (lesson.courseId && lesson.courseId !== 'manual') {
                     enrollments.forEach(enr => {
                         if (enr.courseId === lesson.courseId && (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending)) {
+                            // FILTRO VALIDITÀ: Verifica che l'iscrizione sia attiva per questa data specifica
+                            const enrStart = enr.startDate ? enr.startDate.split('T')[0] : '0000-00-00';
+                            const enrEnd = enr.endDate ? enr.endDate.split('T')[0] : '9999-12-31';
+                            if (dateKey < enrStart || dateKey > enrEnd) return;
+
                             const key = `${enr.id}_${dateKey}_${lesson.startTime}`;
                             
                             // Se non è già presente (magari caricato prima come attendee), lo aggiungiamo ora

@@ -6,9 +6,10 @@ import TrashIcon from '../icons/TrashIcon';
 import DocumentCheckIcon from '../icons/DocumentCheckIcon';
 import PencilIcon from '../icons/PencilIcon';
 import BanknotesIcon from '../icons/BanknotesIcon';
-import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType, Enrollment, TransactionCategory } from '../../types';
-import { updateInvoice, markInvoicesAsPaid, registerInvoicePayment, runSmartSanityFix } from '../../services/financeService';
+import { Transaction, Invoice, Quote, DocumentStatus, Supplier, TransactionType, Enrollment, TransactionCategory, TransactionStatus } from '../../types';
+import { updateInvoice, markInvoicesAsPaid, registerInvoicePayment, runSmartSanityFix, updateTransaction } from '../../services/financeService';
 import SparklesIcon from '../icons/SparklesIcon';
+import CheckIcon from '../icons/CheckIcon';
 import Spinner from '../Spinner';
 
 // --- Icona WhatsApp ---
@@ -619,6 +620,24 @@ const totals = useMemo(() => {
                                         )}
                                         {onSeal && (('sdiId' in item ? (item as Invoice).sdiId : undefined) && item.status !== DocumentStatus.SealedSDI) && (
                                             <button onClick={() => onSeal(item as Invoice)} className="md-icon-btn text-indigo-600 hover:bg-indigo-50" title="Sigilla SDI"><DocumentCheckIcon /></button>
+                                        )}
+                                        {activeTab === 'transactions' && item.status === 'pending' && (
+                                            <button 
+                                                onClick={async () => {
+                                                    if (window.confirm("Confermare l'incasso e passare la transazione a COMPLETATA?")) {
+                                                        try {
+                                                            await updateTransaction(item.id, { status: TransactionStatus.Completed });
+                                                            window.dispatchEvent(new CustomEvent('EP_DataUpdated'));
+                                                        } catch (e) {
+                                                            alert("Errore aggiornamento transazione");
+                                                        }
+                                                    }
+                                                }} 
+                                                className="md-icon-btn text-emerald-600 bg-emerald-50 hover:bg-emerald-100 font-bold" 
+                                                title="Segna come Completata"
+                                            >
+                                                <CheckIcon className="w-4 h-4" />
+                                            </button>
                                         )}
                                         <button onClick={() => onWhatsApp(item)} className="md-icon-btn text-emerald-600" title="WhatsApp"><WhatsAppIcon /></button>
                                         {(activeTab === 'invoices' || activeTab === 'quotes' || activeTab === 'archive') && onPrint && (

@@ -551,11 +551,20 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             const stampPrice = basePrice >= 77 ? 2 : 0;
             const totalPrice = basePrice + stampPrice;
 
-            // 1.1 MOTORE DI MATCHING CORSO (FASE A)
+            // 1.1 MOTORE DI MATCHING CORSO (FASE A - Migliorata con estrazione giorno da stringa)
             const mainAppt = enrollmentData.appointments?.[0];
             const dayNames = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
-            const slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+            
+            // Estrazione robusta del giorno dalla stringa dello slot se mainAppt è incompleto
+            let slotDayName = "";
+            if (enrollmentData.selectedSlot && enrollmentData.selectedSlot.includes(",")) {
+                slotDayName = enrollmentData.selectedSlot.split(",")[0].trim();
+            } else {
+                slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+            }
+            
             const targetDayIndex = dayNames.indexOf(slotDayName);
+            logger.info(`[matcher] Giorno rilevato: ${slotDayName} (Index: ${targetDayIndex})`);
 
             let matchedCourseId = "manual";
             if (targetDayIndex !== -1 && mainAppt?.startTime) {
@@ -572,6 +581,25 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     logger.warn(`[matcher] Nessun corso trovato per ${enrollmentData.locationName} il ${slotDayName} alle ${mainAppt.startTime}. Fallback su manual.`);
                 }
             }
+
+            // 1.2 CALCOLO NUMERO TRANSAZIONE PROGRESSIVO
+            const currentYear = new Date().getFullYear();
+            const yearStart = `${currentYear}-01-01`;
+            const yearEnd = `${currentYear}-12-31`;
+            const yearTxSnap = await db.collection("transactions")
+                .where("date", ">=", yearStart)
+                .where("date", "<=", yearEnd)
+                .get();
+            
+            let maxTxNum = 0;
+            yearTxSnap.forEach(doc => {
+                const d = doc.data();
+                if (!d.isDeleted && typeof d.transactionNumber === 'number') {
+                    if (d.transactionNumber > maxTxNum) maxTxNum = d.transactionNumber;
+                }
+            });
+            const nextTransactionNumber = maxTxNum + 1;
+            logger.info(`[finance] Assegnato numero transazione: ${nextTransactionNumber}`);
 
             // 2. Creazione o Aggiornamento Cliente (Basato su Email) con Tag Management (FASE D)
             let clientId = "";
@@ -702,11 +730,12 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             }
             
             transaction.set(enrRef, JSON.parse(JSON.stringify(finalEnrollment)));
-            // 4. Creazione Transazione (con allocationId)
+            // 4. Creazione Transazione (con allocationId e transactionNumber progressivo)
             const transRef = db.collection("transactions").doc();
             const finalTransaction = {
                 ...transactionData,
                 id: transRef.id,
+                transactionNumber: nextTransactionNumber, // Coerenza con Gestionale
                 clientId: clientId,
                 relatedEnrollmentId: enrRef.id,
                 amount: totalPrice,
@@ -846,15 +875,21 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
 
                 // Aggiorna la data di inizio dell'iscrizione e sincronizza i physicalAppointments
                 if (firstDate) {
-                    const exactStartDate = new Date(firstDate);
-                    // Calcola endDate con buffer di +2/3 lezioni (festività/recuperi)
-                    const durationWeeks = enrollmentData.lessonsTotal || sub.lessons || 36;
-                    const finalEndDate = new Date(exactStartDate.getTime());
-                    finalEndDate.setDate(finalEndDate.getDate() + (durationWeeks * 7) + 21); // +3 weeks buffer
+                    // Calcolo data fine precisa basata sull'ultima lezione generata
+                    let finalEndDateStr = "";
+                    if (physicalAppointments.length > 0) {
+                        finalEndDateStr = physicalAppointments[physicalAppointments.length - 1].date;
+                    } else {
+                        const exactStartDate = new Date(firstDate);
+                        const durationWeeks = enrollmentData.lessonsTotal || sub.lessons || 36;
+                        const fallbackEndDate = new Date(exactStartDate.getTime());
+                        fallbackEndDate.setDate(fallbackEndDate.getDate() + (durationWeeks * 7) + 7);
+                        finalEndDateStr = fallbackEndDate.toISOString().split('T')[0];
+                    }
                     
                     transaction.update(enrRef, { 
                         startDate: firstDate,
-                        endDate: finalEndDate.toISOString(),
+                        endDate: finalEndDateStr,
                         appointments: physicalAppointments
                     });
                 }

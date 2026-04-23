@@ -227,7 +227,7 @@ const EnrollmentPortal: React.FC = () => {
 
         // Extract locations from suppliers
         const daysMap = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-        const locs: { id: string, name: string, address: string, city: string, color: string, slots: { time: string, type: SlotType }[] }[] = [];
+        const locs: { id: string, name: string, address: string, city: string, color: string, slots: { time: string, type: SlotType, dayOfWeek: number }[] }[] = [];
         suppliers.forEach((s: Supplier) => {
           s.locations.forEach((l: Location) => {
             // Filter out closed or hidden locations
@@ -243,7 +243,8 @@ const EnrollmentPortal: React.FC = () => {
                   .filter((a: AvailabilitySlot) => a.isPubliclyVisible !== false)
                   .map((a: AvailabilitySlot) => ({
                     time: `${daysMap[a.dayOfWeek || 0]}, ${a.startTime} - ${a.endTime}`,
-                    type: a.type || 'LAB'
+                    type: a.type || 'LAB',
+                    dayOfWeek: a.dayOfWeek || 0
                   }))
               });
             }
@@ -279,21 +280,29 @@ const EnrollmentPortal: React.FC = () => {
           matchedLocationId = matchedLoc.id;
           matchedLocationName = matchedLoc.name;
 
-          // 2. Match Slot within Location (Time-only matching)
-          const extractTimeDigits = (s: string) => s.replace(/\D/g, '');
-          const leadTimeDigits = extractTimeDigits(normalizedSlotString);
+          // 2. Match Slot within Location (Improved fuzzy/string matching)
+          const leadSlotNorm = normalizeString(normalizedSlotString);
 
           const matchedSlot = matchedLoc.slots.find(s => {
-            const dbSlotTime = String(s.time || '');
-            const dbTimeDigits = extractTimeDigits(dbSlotTime);
-            return dbTimeDigits !== '' && (dbTimeDigits.includes(leadTimeDigits) || leadTimeDigits.includes(dbTimeDigits));
+            const dbSlotTime = normalizeString(String(s.time || ''));
+            return dbSlotTime === leadSlotNorm || 
+                   (dbSlotTime.length > 8 && leadSlotNorm.includes(dbSlotTime)) ||
+                   (leadSlotNorm.length > 8 && dbSlotTime.includes(leadSlotNorm));
           });
 
           if (matchedSlot) {
             matchedSlotTime = matchedSlot.time;
           } else {
-            // Fallback: use the raw string if location matched but slot didn't exactly
-            matchedSlotTime = normalizedSlotString;
+            // Fallback secondary: try digit matching only if string fails
+            const extractTimeDigits = (s: string) => s.replace(/\D/g, '');
+            const leadTimeDigits = extractTimeDigits(normalizedSlotString);
+            
+            const digitMatch = matchedLoc.slots.find(s => {
+                const dbDigits = extractTimeDigits(s.time);
+                return dbDigits !== '' && dbDigits === leadTimeDigits;
+            });
+            
+            matchedSlotTime = digitMatch ? digitMatch.time : normalizedSlotString;
           }
         }
 
@@ -364,6 +373,8 @@ const EnrollmentPortal: React.FC = () => {
     try {
       const sub = subscriptionTypes.find(s => s.id === formData.selectedSubscriptionId);
       const isCash = method === 'Cash';
+      // Localized mapping for management app compatibility
+      const mappedPaymentMethod = isCash ? PaymentMethod.Cash : (method as PaymentMethod);
 
       const clientData = {
         clientType: ClientType.Parent,
@@ -451,6 +462,7 @@ const EnrollmentPortal: React.FC = () => {
         evtRemaining: finalEvtC,
         readRemaining: finalReadC,
         status: isCash ? EnrollmentStatus.Pending : EnrollmentStatus.Active,
+        paymentMethod: mappedPaymentMethod,
         startDate: '', // Will be set by server
         endDate: '', // Will be set by server
         appointments: [{
@@ -474,7 +486,7 @@ const EnrollmentPortal: React.FC = () => {
         amount: sub?.price || 0,
         type: TransactionType.Income,
         category: TransactionCategory.Vendite,
-        paymentMethod: isCash ? PaymentMethod.Cash : method as PaymentMethod,
+        paymentMethod: mappedPaymentMethod,
         status: isCash ? TransactionStatus.Pending : TransactionStatus.Completed,
         relatedEnrollmentId: '', // Will be set by server
         allocationId: formData.selectedLocationId,
@@ -651,12 +663,19 @@ const EnrollmentPortal: React.FC = () => {
       <div className="bg-[#012169] text-white pt-12 pb-24 px-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400 rounded-full blur-3xl opacity-20 -mr-32 -mt-32"></div>
         <div className="max-w-2xl mx-auto relative z-10 text-center flex flex-col items-center">
-          <img 
-            src={companyInfo?.logoBase64 && companyInfo.logoBase64.length > 100 ? companyInfo.logoBase64 : "/lemon_logo_150px.png"} 
-            alt="Logo" 
-            className="h-24 mb-6 mx-auto object-contain bg-white rounded-2xl p-3 shadow-xl inline-block border-4 border-white/20" 
-            onError={(e) => { (e.target as HTMLImageElement).src = "/lemon_logo_150px.png"; }}
-          />
+          <div className="bg-white p-3 md:p-4 rounded-[28px] md:rounded-[36px] shadow-2xl border border-white/50 backdrop-blur-sm group hover:scale-105 transition-transform duration-500 overflow-hidden min-w-[100px] min-h-[100px] flex items-center justify-center mb-6">
+            <img 
+              src={companyInfo?.logoBase64 && companyInfo.logoBase64.length > 100 ? companyInfo.logoBase64 : "/lemon_logo_150px.png"} 
+              alt="Logo" 
+              className="w-auto h-16 md:h-20 object-contain drop-shadow-sm" 
+              onError={(e) => { 
+                const img = e.target as HTMLImageElement;
+                if (img.src !== window.location.origin + "/lemon_logo_150px.png") {
+                  img.src = "/lemon_logo_150px.png";
+                }
+              }}
+            />
+          </div>
           <h1 className="text-3xl md:text-5xl font-black text-center mb-3 tracking-tighter w-full uppercase">Completa Iscrizione</h1>
           <p className="text-ep-blue-100 text-center font-bold w-full text-sm md:text-base uppercase tracking-widest opacity-80">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
         </div>
@@ -1129,11 +1148,30 @@ const EnrollmentPortal: React.FC = () => {
                           // 1. Primo tentativo: Filtro completo
                           let filtered = subscriptionTypes.filter(sub => {
                             if (sub.statusConfig?.status !== 'active' || sub.isPubliclyVisible === false) return false;
+                            
+                            // AGES: Always respect kid/adult target
                             if (sub.target === 'kid' && !isKid && ageNum > 0) return false;
                             if (sub.target === 'adult' && isKid) return false;
+                            
+                            // DAYS: Always respect allowed days if set
                             if (dayIndex !== -1 && sub.allowedDays && sub.allowedDays.length > 0) {
                               if (!sub.allowedDays.includes(dayIndex)) return false;
                             }
+
+                            // COMPATIBILITY: If "See others" is on, only show subs with same token structure (e.g. Monthly vs Quarterly for same activity)
+                            if (showOtherSubscriptions && preSelectedId) {
+                                const preSub = subscriptionTypes.find(s => s.id === preSelectedId);
+                                if (preSub) {
+                                    const hasLab = sub.labCount > 0 || (sub.tokens?.some(t => t.type === 'LAB' || t.type === 'LAB+SG') ?? false);
+                                    const hasSG = sub.sgCount > 0 || (sub.tokens?.some(t => t.type === 'SG' || t.type === 'LAB+SG') ?? false);
+                                    const preHasLab = preSub.labCount > 0 || (preSub.tokens?.some(t => t.type === 'LAB' || t.type === 'LAB+SG') ?? false);
+                                    const preHasSG = preSub.sgCount > 0 || (preSub.tokens?.some(t => t.type === 'SG' || t.type === 'LAB+SG') ?? false);
+
+                                    // Must match the core activity type
+                                    if (hasLab !== preHasLab || hasSG !== preHasSG) return false;
+                                }
+                            }
+                            
                             return true;
                           });
 

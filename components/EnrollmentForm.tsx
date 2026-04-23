@@ -102,7 +102,15 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     }, [resolvedChildId, selectedChildIds]);
     const [isAdultEnrollment, setIsAdultEnrollment] = useState<boolean>(existingEnrollment?.isAdult || false);
     const [subscriptionTypeId, setSubscriptionTypeId] = useState(existingEnrollment?.subscriptionTypeId || '');
-    const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(existingEnrollment?.preferredPaymentMethod || PaymentMethod.BankTransfer);
+    const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<PaymentMethod>(() => {
+        // Supporta mapping retroattivo per ID portale (Cash, BankTransfer)
+        const raw = (existingEnrollment as any)?.paymentMethod || existingEnrollment?.preferredPaymentMethod;
+        if (raw === 'Cash') return PaymentMethod.Cash;
+        if (raw === 'BankTransfer') return PaymentMethod.BankTransfer;
+        if (raw === 'CreditCard') return PaymentMethod.CreditCard;
+        if (raw === 'PayPal') return PaymentMethod.PayPal;
+        return raw || PaymentMethod.BankTransfer;
+    });
     const [manualPrice, setManualPrice] = useState<string>(existingEnrollment?.price?.toString() || '');
     const [projectName, setProjectName] = useState<string>(existingEnrollment?.childName || '');
 
@@ -340,10 +348,38 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 setSubscriptionTypes(subs);
                 setSuppliers(supps);
                 setCourses(openCourses);
-            } catch (e) { console.error(e); } finally { setLoading(false); }
+            } catch (e) { 
+                console.error(e); 
+            } finally { 
+                setLoading(false); 
+            }
         };
         loadData();
     }, []);
+
+    // RECOVERY MATCHING: Matches course for existing enrollments from portal that missed the courseId link
+    useEffect(() => {
+        if (existingEnrollment && !selectedCourseId && courses.length > 0 && targetLocationId) {
+            const firstAppt = existingEnrollment.appointments?.[0];
+            if (firstAppt) {
+                // Try matching by slot details
+                const apptDate = new Date(firstAppt.date);
+                const dayIndex = isNaN(apptDate.getTime()) ? -1 : apptDate.getDay();
+                
+                const matched = courses.find(c => 
+                    c.locationId === targetLocationId && 
+                    c.startTime === firstAppt.startTime && 
+                    c.endTime === firstAppt.endTime &&
+                    (dayIndex === -1 || c.dayOfWeek === dayIndex)
+                );
+                
+                if (matched) {
+                    console.log("[Recovery] Auto-matched course:", matched.id);
+                    setSelectedCourseId(matched.id);
+                }
+            }
+        }
+    }, [existingEnrollment, courses, targetLocationId, selectedCourseId]);
 
     // Sync price when subscription changes
     useEffect(() => {
