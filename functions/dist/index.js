@@ -595,8 +595,6 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         clientId,
         childId,
         // COLLEGAMENTO CRUCIALE PER MODALE
-        courseId: matchedCourseId,
-        // Collegamento al corso reale per visibilità liste/archivio
         price: totalPrice,
         startTime: enrichedAppointments[0]?.startTime || "16:00",
         endTime: enrichedAppointments[0]?.endTime || "17:00",
@@ -608,25 +606,32 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         startDate: admin.firestore.FieldValue.serverTimestamp(),
         endDate: fallbackEndDate.toISOString()
       };
-      transaction.set(enrRef, finalEnrollment);
+      if (matchedCourseId !== "manual") {
+        finalEnrollment.courseId = matchedCourseId;
+      } else {
+        delete finalEnrollment.courseId;
+        delete finalEnrollment.selectedCourseId;
+      }
+      transaction.set(enrRef, JSON.parse(JSON.stringify(finalEnrollment)));
       const transRef = db.collection("transactions").doc();
-      transaction.set(transRef, {
+      const finalTransaction = {
         ...transactionData,
         id: transRef.id,
         clientId,
         relatedEnrollmentId: enrRef.id,
         amount: totalPrice,
-        allocationId: enrollmentData.locationId,
-        allocationName: enrollmentData.locationName,
+        allocationId: enrollmentData.locationId || "unassigned",
+        allocationName: enrollmentData.locationName || "Sede",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      };
+      transaction.set(transRef, JSON.parse(JSON.stringify(finalTransaction)));
       if (invoiceData) {
         const invRef = db.collection("invoices").doc();
         const balancedItems = (invoiceData.items || []).map((item, index) => {
           if (index === 0) return { ...item, price: totalPrice };
           return item;
         });
-        transaction.set(invRef, {
+        const finalInvoice = {
           ...invoiceData,
           id: invRef.id,
           clientId,
@@ -634,7 +639,8 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
           totalAmount: totalPrice,
           items: balancedItems,
           createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        };
+        transaction.set(invRef, JSON.parse(JSON.stringify(finalInvoice)));
       }
       if (targetDayIndex !== -1) {
         let firstDate = "";
@@ -683,7 +689,6 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
               const lessonRef = db.collection("lessons").doc();
               const newLessonData = {
                 id: lessonRef.id,
-                courseId: matchedCourseId !== "manual" ? matchedCourseId : void 0,
                 locationId: enrollmentData.locationId,
                 locationName: enrollmentData.locationName,
                 locationColor: enrollmentData.locationColor || "#6366f1",
@@ -700,7 +705,12 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
                 }],
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
               };
-              transaction.set(lessonRef, newLessonData);
+              if (matchedCourseId !== "manual") {
+                newLessonData.courseId = matchedCourseId;
+              } else {
+                delete newLessonData.courseId;
+              }
+              transaction.set(lessonRef, JSON.parse(JSON.stringify(newLessonData)));
               physicalAppointments.push({
                 lessonId: lessonRef.id,
                 date: dateStr,

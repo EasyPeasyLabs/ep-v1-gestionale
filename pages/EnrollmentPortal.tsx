@@ -650,25 +650,30 @@ const EnrollmentPortal: React.FC = () => {
       {/* Hero Header */}
       <div className="bg-[#012169] text-white pt-12 pb-24 px-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400 rounded-full blur-3xl opacity-20 -mr-32 -mt-32"></div>
-        <div className="max-w-2xl mx-auto relative z-10">
-          <img src={companyInfo?.logoBase64 || "/lemon_logo_150px.png"} alt="Logo" className="h-16 mb-8 mx-auto object-contain" />
-          <h1 className="text-4xl font-black text-center mb-2 tracking-tight">Completa Iscrizione</h1>
-          <p className="text-ep-blue-200 text-center font-medium">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
+        <div className="max-w-2xl mx-auto relative z-10 text-center flex flex-col items-center">
+          <img 
+            src={companyInfo?.logoBase64 && companyInfo.logoBase64.length > 100 ? companyInfo.logoBase64 : "/lemon_logo_150px.png"} 
+            alt="Logo" 
+            className="h-24 mb-6 mx-auto object-contain bg-white rounded-2xl p-3 shadow-xl inline-block border-4 border-white/20" 
+            onError={(e) => { (e.target as HTMLImageElement).src = "/lemon_logo_150px.png"; }}
+          />
+          <h1 className="text-3xl md:text-5xl font-black text-center mb-3 tracking-tighter w-full uppercase">Completa Iscrizione</h1>
+          <p className="text-ep-blue-100 text-center font-bold w-full text-sm md:text-base uppercase tracking-widest opacity-80">Pochi passi per entrare nel mondo EasyPeasy Lab</p>
         </div>
       </div>
 
       {/* Main Content Card */}
-      <div className="max-w-2xl mx-auto -mt-12 px-4">
-        <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
+      <div className="max-w-3xl mx-auto -mt-14 px-4 relative z-20 pb-20">
+        <div className="bg-white rounded-[32px] md:rounded-[48px] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] border border-white/40 overflow-hidden backdrop-blur-sm">
 
           {/* Progress Bar */}
-          <div className="flex h-1.5 bg-gray-100">
+          <div className="flex h-2 bg-gray-100/50">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className={`flex-1 transition-all duration-500 ${step >= i ? 'bg-amber-400' : 'bg-transparent'}`}></div>
+              <div key={i} className={`flex-1 transition-all duration-700 ease-out ${step >= i ? 'bg-amber-400' : 'bg-transparent'}`}></div>
             ))}
           </div>
 
-          <div className="p-8">
+          <div className="p-6 md:p-10">
 
             {/* STEP 1: DATI ANAGRAFICI */}
             {step === 1 && (
@@ -1032,46 +1037,46 @@ const EnrollmentPortal: React.FC = () => {
                     const nameParts = sub.name.split('.');
                     const shortName = sub.publicName || (nameParts.length > 1 ? nameParts[nameParts.length - 1].toUpperCase() : sub.name.toUpperCase());
 
-                    // First lesson logic
-                    const slotDay = (formData.selectedSlot || '').split(',')[0].trim();
-                    const firstLessonDate = getNextOccurrence(slotDay);
-                    const formattedFirstLesson = firstLessonDate ? format(parseISO(firstLessonDate), 'EEEE d MMMM') : 'da definire';
+                    const monthsCount = Math.round(sub.durationInDays / 30);
+                    const labelMesi = monthsCount === 1 ? '1 MESE' : `${monthsCount} MESI`;
+                    const needsStamp = sub.price >= 77;
+                    const totalPrice = needsStamp ? sub.price + 2 : sub.price;
 
                     return (
                       <div className="space-y-10">
                         {/* HERO AMBER BOX */}
-                        <div className="bg-amber-400 border-4 border-amber-500 rounded-[40px] p-10 shadow-2xl relative overflow-hidden transform hover:scale-[1.02] transition-transform duration-500">
-                          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-10 -mr-32 -mt-32 rounded-full"></div>
+                        <div className="bg-amber-400 border-4 border-amber-500 rounded-[32px] md:rounded-[48px] p-8 md:p-12 shadow-2xl relative overflow-hidden transform hover:scale-[1.01] transition-all duration-500">
+                          <div className="absolute top-0 right-0 w-80 h-80 bg-white opacity-10 -mr-40 -mt-40 rounded-full blur-3xl"></div>
 
-                          <div className="flex flex-col md:flex-row justify-between items-center gap-8 relative z-10 text-center md:text-left">
-                            <div className="space-y-6 flex-1">
-                              <span className="bg-white/30 text-gray-900 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-[0.2em]">Selezione Confermata</span>
-                              <h3 className="text-5xl font-black text-gray-900 leading-none break-words uppercase">{shortName}</h3>
+                          <div className="flex flex-col md:flex-row justify-between items-center gap-10 relative z-10 text-center md:text-left">
+                            <div className="space-y-8 flex-1">
+                              <span className="bg-white/40 text-gray-900 px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.25em] inline-block shadow-sm">Selezione Confermata</span>
+                              <div className="space-y-2">
+                                <h3 className="text-4xl md:text-6xl font-black text-gray-900 leading-tight uppercase tracking-tighter">{shortName}</h3>
+                                <p className="text-gray-900/60 font-black text-sm uppercase tracking-widest">{sub.lessons} lezioni inclusi • Validità {labelMesi}</p>
+                              </div>
+                              
                               {selectedBundleSlots.length > 0 && (
-                                <div className="flex flex-col gap-1.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-white/20 p-4 rounded-3xl border border-white/30">
                                   {selectedBundleSlots.map((s, i) => (
-                                    <div key={i} className="flex items-center gap-2">
-                                      <span className="px-2 py-0.5 rounded text-[10px] font-black bg-white/40 uppercase text-gray-900">{s.type}</span>
-                                      <span className="font-bold text-gray-900/80 text-sm">{s.startTime} – {s.endTime}</span>
+                                    <div key={i} className="flex items-center gap-3">
+                                      <div className="w-8 h-8 bg-white/40 rounded-lg flex items-center justify-center font-black text-[10px] uppercase text-gray-900">{s.type}</div>
+                                      <span className="font-black text-sm text-gray-900">{s.startTime} – {s.endTime}</span>
                                     </div>
                                   ))}
                                 </div>
                               )}
-                              <div className="space-y-2">
-                                <p className="text-gray-900/80 font-bold text-xl uppercase tracking-tight">Prima Lezione Utile:</p>
-                                <p className="text-3xl font-black text-gray-900 capitalize">{formattedFirstLesson}</p>
-                              </div>
                             </div>
 
-                            <div className="flex flex-col items-center justify-center bg-white p-8 rounded-[32px] shadow-xl min-w-[200px]">
-                              <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Prezzo Totale</p>
+                            <div className="flex flex-col items-center justify-center bg-white p-10 rounded-[40px] shadow-[0_20px_40px_rgba(0,0,0,0.1)] min-w-[220px] border-b-8 border-gray-100">
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Totale da Versare</p>
                               <div className="text-center">
-                                <p className="text-6xl font-black text-gray-900 leading-none">
-                                  {sub.price >= 77 ? sub.price + 2 : sub.price}€
+                                <p className="text-7xl font-black text-gray-900 leading-none tracking-tighter">
+                                  {totalPrice}<span className="text-4xl">€</span>
                                 </p>
-                                {sub.price >= 77 && (
-                                  <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tighter italic">
-                                    Include 2€ bollo virtuale
+                                {needsStamp && (
+                                  <p className="text-[9px] font-black text-amber-600 mt-3 uppercase tracking-widest bg-amber-50 px-3 py-1 rounded-full">
+                                    Include 2€ Bollo
                                   </p>
                                 )}
                               </div>
@@ -1083,9 +1088,9 @@ const EnrollmentPortal: React.FC = () => {
                         <div className="flex justify-center">
                           <button
                             onClick={() => setShowOtherSubscriptions(true)}
-                            className="flex items-center gap-2 text-ep-blue-600 font-black text-xs uppercase tracking-widest hover:text-ep-blue-800 transition-colors bg-white px-8 py-4 rounded-2xl border-2 border-dashed border-ep-blue-100 hover:border-ep-blue-300 shadow-sm"
+                            className="group flex items-center gap-3 text-gray-400 font-bold text-[10px] uppercase tracking-[0.2em] hover:text-ep-blue-600 transition-all bg-gray-50/50 px-10 py-5 rounded-3xl border-2 border-dashed border-gray-200 hover:border-ep-blue-200 hover:bg-ep-blue-50/30"
                           >
-                            <Sparkles className="w-5 h-5" /> Vedi altri Abbonamenti o Cambia Idea
+                            <Sparkles className="w-5 h-5 group-hover:scale-110 transition-transform" /> Vuoi vedere altre opzioni? Clicca qui per cambiare
                           </button>
                         </div>
                       </div>

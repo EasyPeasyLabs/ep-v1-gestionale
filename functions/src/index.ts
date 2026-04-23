@@ -677,12 +677,11 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 childName: enrollmentData.childName
             }));
 
-            const finalEnrollment = {
+            const finalEnrollment: any = {
                 ...enrollmentData,
                 id: enrRef.id,
                 clientId: clientId,
                 childId: childId, // COLLEGAMENTO CRUCIALE PER MODALE
-                courseId: matchedCourseId, // Collegamento al corso reale per visibilità liste/archivio
                 price: totalPrice,
                 startTime: enrichedAppointments[0]?.startTime || "16:00",
                 endTime: enrichedAppointments[0]?.endTime || "17:00",
@@ -693,19 +692,29 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 startDate: admin.firestore.FieldValue.serverTimestamp(),
                 endDate: fallbackEndDate.toISOString()
             };
-            transaction.set(enrRef, finalEnrollment);
+            
+            if (matchedCourseId !== "manual") {
+                finalEnrollment.courseId = matchedCourseId;
+            } else {
+                // Rimuoviamo eventuali chiavi courseId se manual
+                delete finalEnrollment.courseId;
+                delete finalEnrollment.selectedCourseId;
+            }
+            
+            transaction.set(enrRef, JSON.parse(JSON.stringify(finalEnrollment)));
             // 4. Creazione Transazione (con allocationId)
             const transRef = db.collection("transactions").doc();
-            transaction.set(transRef, {
+            const finalTransaction = {
                 ...transactionData,
                 id: transRef.id,
                 clientId: clientId,
                 relatedEnrollmentId: enrRef.id,
                 amount: totalPrice,
-                allocationId: enrollmentData.locationId,
-                allocationName: enrollmentData.locationName,
+                allocationId: enrollmentData.locationId || 'unassigned',
+                allocationName: enrollmentData.locationName || 'Sede',
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            transaction.set(transRef, JSON.parse(JSON.stringify(finalTransaction)));
 
             // 5. Creazione Fattura (se prevista)
             if (invoiceData) {
@@ -717,7 +726,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     return item;
                 });
 
-                transaction.set(invRef, {
+                const finalInvoice = {
                     ...invoiceData,
                     id: invRef.id,
                     clientId: clientId,
@@ -725,7 +734,8 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     totalAmount: totalPrice,
                     items: balancedItems,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
-                });
+                };
+                transaction.set(invRef, JSON.parse(JSON.stringify(finalInvoice)));
             }
 
             // 6. Generazione Automatica Lezioni (Physical Lesson Engine - FASE C)
@@ -788,9 +798,8 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                         const dateStr = currentLessonDate.toISOString().split('T')[0];
                         if (!isItalianHoliday(currentLessonDate)) {
                             const lessonRef = db.collection("lessons").doc();
-                            const newLessonData = {
+                            const newLessonData: any = {
                                 id: lessonRef.id,
-                                courseId: matchedCourseId !== "manual" ? matchedCourseId : undefined,
                                 locationId: enrollmentData.locationId,
                                 locationName: enrollmentData.locationName,
                                 locationColor: enrollmentData.locationColor || "#6366f1",
@@ -807,7 +816,14 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                                 }],
                                 createdAt: admin.firestore.FieldValue.serverTimestamp()
                             };
-                            transaction.set(lessonRef, newLessonData);
+                            
+                            if (matchedCourseId !== "manual") {
+                                newLessonData.courseId = matchedCourseId;
+                            } else {
+                                delete newLessonData.courseId;
+                            }
+                            
+                            transaction.set(lessonRef, JSON.parse(JSON.stringify(newLessonData)));
 
                             physicalAppointments.push({
                                 lessonId: lessonRef.id,
