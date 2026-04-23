@@ -352,9 +352,16 @@ export const getPublicSlotsV5 = onRequest({
             // Matching con SubscriptionTypes (Bundles)
             // Un bundle è compatibile se ha almeno un gettone del tipo del corso
             const compatibleSubs = activeSubs.filter(sub => {
-                const hasToken = (course.slotType === 'LAB' && sub.labCount > 0) ||
-                                 (course.slotType === 'SG' && sub.sgCount > 0) ||
-                                 (course.slotType === 'EVT' && sub.evtCount > 0);
+                const hasLegacyToken = (course.slotType === 'LAB' && sub.labCount > 0) ||
+                                       (course.slotType === 'SG' && sub.sgCount > 0) ||
+                                       (course.slotType === 'EVT' && sub.evtCount > 0);
+
+                const hasNewToken = sub.tokens && Array.isArray(sub.tokens) && sub.tokens.some(t => t.type === course.slotType && t.count > 0);
+
+                // Gestione speciale per i corsi ibridi LAB+SG (se il bundle fornisce o LAB o SG)
+                const hasCompositeToken = course.slotType === 'LAB+SG' && sub.tokens && sub.tokens.some(t => (t.type === 'LAB' || t.type === 'SG') && t.count > 0);
+                
+                const hasToken = hasLegacyToken || hasNewToken || hasCompositeToken;
                 
                 if (!hasToken) return false;
 

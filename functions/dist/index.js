@@ -352,7 +352,10 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
       if (!loc) return;
       if (age !== null && (age < course.minAge || age > course.maxAge)) return;
       const compatibleSubs = activeSubs.filter((sub) => {
-        const hasToken = course.slotType === "LAB" && sub.labCount > 0 || course.slotType === "SG" && sub.sgCount > 0 || course.slotType === "EVT" && sub.evtCount > 0;
+        const hasLegacyToken = course.slotType === "LAB" && sub.labCount > 0 || course.slotType === "SG" && sub.sgCount > 0 || course.slotType === "EVT" && sub.evtCount > 0;
+        const hasNewToken = sub.tokens && Array.isArray(sub.tokens) && sub.tokens.some((t) => t.type === course.slotType && t.count > 0);
+        const hasCompositeToken = course.slotType === "LAB+SG" && sub.tokens && sub.tokens.some((t) => (t.type === "LAB" || t.type === "SG") && t.count > 0);
+        const hasToken = hasLegacyToken || hasNewToken || hasCompositeToken;
         if (!hasToken) return false;
         if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
           if (!sub.allowedDays.includes(course.dayOfWeek)) return false;
