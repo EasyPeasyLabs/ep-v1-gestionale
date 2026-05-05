@@ -159,7 +159,7 @@ var sendEmail = (0, import_https.onCall)({
   } catch (error2) {
     const errorMessage = error2 instanceof Error ? error2.message : String(error2);
     logger.error("Error sending email:", errorMessage);
-    throw new Error(`Email sending failed: ${errorMessage}`);
+    throw new import_https.HttpsError("internal", `Email sending failed: ${errorMessage}`);
   }
 });
 async function sendPushToAllTokens(title, body, extraData) {

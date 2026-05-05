@@ -111,10 +111,12 @@ export const convertQuoteToInvoice = async (quoteId: string) => {
         items: quote.items, 
         totalAmount: quote.totalAmount, 
         status: DocumentStatus.Draft, // Converted quotes start as Draft usually
-        paymentMethod: PaymentMethod.BankTransfer, 
+        paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer,
         hasStampDuty: quote.hasStampDuty || quote.totalAmount > 77.47, 
         globalDiscount: quote.globalDiscount,
         globalDiscountType: quote.globalDiscountType,
+        installments: quote.installments || [],
+        notes: quote.notes || "",
         isGhost: false, 
         isDeleted: false, 
         relatedQuoteNumber: quote.quoteNumber
@@ -179,9 +181,11 @@ export const generateInvoicesFromQuote = async (quote: Quote, enrollmentId: stri
             clientId: quote.clientId,
             clientName: quote.clientName,
             status: DocumentStatus.Draft,
-            paymentMethod: PaymentMethod.BankTransfer,
+            paymentMethod: quote.paymentMethod || PaymentMethod.BankTransfer,
             isGhost: true,
             isDeleted: false,
+            installments: quote.installments || [],
+            notes: quote.notes || "",
             items: [{
                 description: `${inst.description} - Rif. Prev. ${quote.quoteNumber}`,
                 quantity: 1,

@@ -105,7 +105,7 @@ export const sendEmail = onCall({
     } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error("Error sending email:", errorMessage);
-        throw new Error(`Email sending failed: ${errorMessage}`);
+        throw new HttpsError("internal", `Email sending failed: ${errorMessage}`);
     }
 });
 

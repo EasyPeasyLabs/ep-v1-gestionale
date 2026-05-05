@@ -113,7 +113,12 @@ const InvoiceEditForm: React.FC<{
             hasStampDuty: stampDuty > 0,
             notes,
             isGhost: invoice.isGhost,
-            isDeleted: invoice.isDeleted
+            isDeleted: invoice.isDeleted,
+            installments: invoice.installments,
+            relatedQuoteNumber: invoice.relatedQuoteNumber,
+            relatedEnrollmentId: invoice.relatedEnrollmentId,
+            globalDiscount: invoice.globalDiscount,
+            globalDiscountType: invoice.globalDiscountType,
         };
         if (sdiId && sdiId.trim().length > 0) {
             dataToSave.status = DocumentStatus.SealedSDI;
@@ -135,7 +140,12 @@ const InvoiceEditForm: React.FC<{
             totalAmount: grandTotal,
             hasStampDuty: stampDuty > 0,
             notes,
-            sdiId
+            sdiId,
+            installments: invoice.installments,
+            relatedQuoteNumber: invoice.relatedQuoteNumber,
+            relatedEnrollmentId: invoice.relatedEnrollmentId,
+            globalDiscount: invoice.globalDiscount,
+            globalDiscountType: invoice.globalDiscountType,
         };
         const blobUrl = await generateDocumentPDF(tempInvoice, 'Fattura', companyInfo || null, selectedClientObj, true);
         if (typeof blobUrl === 'string') {
@@ -212,7 +222,7 @@ const InvoiceEditForm: React.FC<{
                             <div className="md-input-group !mb-0"><input type="date" value={issueDate} onChange={e => setIssueDate(e.target.value)} className="md-input !py-2 !px-3 text-xs" required /><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Data Emissione</label></div>
                             <div className="md-input-group !mb-0"><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="md-input !py-2 !px-3 text-xs" required /><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Data Scadenza</label></div>
                         </div>
-                        <div className="md-input-group !mb-0"><select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="md-input !py-2 !px-3 text-xs">{Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m}</option>)}</select><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Metodo Pagamento</label></div>
+                        <div className="md-input-group !mb-0"><input type="text" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="md-input !py-2 !px-3 text-xs" /><label className="md-input-label !top-[-10px] !text-[10px] !bg-white">Metodo e Termini Pagamento</label></div>
                     </div>
                 </div>
 

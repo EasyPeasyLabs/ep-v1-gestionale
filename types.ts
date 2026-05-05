@@ -257,7 +257,7 @@ export interface Transaction {
     amount: number;
     type: TransactionType;
     category: TransactionCategory;
-    paymentMethod: PaymentMethod;
+    paymentMethod: PaymentMethod | string;
     status: TransactionStatus;
     allocationType?: 'location' | 'general';
     allocationId?: string;
@@ -300,7 +300,8 @@ export interface Invoice {
     items: DocumentItem[];
     totalAmount: number;
     status: DocumentStatus;
-    paymentMethod?: PaymentMethod;
+    paymentMethod?: PaymentMethod | string;
+    installments?: Installment[];
     hasStampDuty?: boolean;
     globalDiscount?: number;
     globalDiscountType?: 'percent' | 'amount';

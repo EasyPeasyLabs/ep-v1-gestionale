@@ -432,7 +432,7 @@ export const generateDocumentPDF = async (
         }
         
         // Add IBAN and Intestatario
-        if (companyInfo && modalita.includes('Bonifico Bancario')) {
+        if (companyInfo && (modalita.includes('Bonifico Bancario') || modalita.includes('Bonifico'))) {
             docPdf.setFont("helvetica", "bold");
             docPdf.text(`IBAN:`, labelX, py);
             docPdf.setFont("helvetica", "normal");
