@@ -17,9 +17,34 @@ interface CourseConfig {
     startTime: string;
     endTime: string;
     minAge: number;
+    minAgeUnit: 'months' | 'years';
     maxAge: number;
+    maxAgeUnit: 'months' | 'years';
     capacity: number;
 }
+
+const formatAgeDisplay = (min: number | undefined, max: number | undefined) => {
+    const minVal = min ?? 0;
+    const maxVal = max ?? 0;
+    const formatSingle = (val: number) => {
+        if (val === 0) return '0a';
+        if (val % 12 === 0) return `${val / 12}a`;
+        return `${val}m`;
+    };
+    return `${formatSingle(minVal)} - ${formatSingle(maxVal)}`;
+};
+
+const formatAgeDisplayFull = (min: number | undefined, max: number | undefined) => {
+    const minVal = min ?? 0;
+    const maxVal = max ?? 0;
+    const formatSingle = (val: number) => {
+        if (val === 0) return '0 anni';
+        if (val % 12 === 0) return `${val / 12} anni`;
+        return `${val} mesi`;
+    };
+    if (minVal === maxVal) return formatSingle(minVal);
+    return `${formatSingle(minVal)} - ${formatSingle(maxVal)}`;
+};
 
 const Courses: React.FC = () => {
     const [locations, setLocations] = useState<Location[]>([]);
@@ -36,11 +61,11 @@ const Courses: React.FC = () => {
         1: 'LAB', 2: 'LAB', 3: 'SG', 4: 'SG', 5: 'SG'
     });
     const [configs, setConfigs] = useState<Record<SlotType, CourseConfig>>({
-        LAB: { quantity: 1, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
-        SG: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
-        READ: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
-        EVT: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
-        'LAB+SG': { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, maxAge: 14, capacity: 10 },
+        LAB: { quantity: 1, startTime: '09:00', endTime: '10:00', minAge: 3, minAgeUnit: 'years', maxAge: 14, maxAgeUnit: 'years', capacity: 10 },
+        SG: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, minAgeUnit: 'years', maxAge: 14, maxAgeUnit: 'years', capacity: 10 },
+        READ: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, minAgeUnit: 'years', maxAge: 14, maxAgeUnit: 'years', capacity: 10 },
+        EVT: { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, minAgeUnit: 'years', maxAge: 14, maxAgeUnit: 'years', capacity: 10 },
+        'LAB+SG': { quantity: 0, startTime: '09:00', endTime: '10:00', minAge: 3, minAgeUnit: 'years', maxAge: 14, maxAgeUnit: 'years', capacity: 10 },
     });
     
     const [startDate, setStartDate] = useState<string>('');
@@ -271,8 +296,8 @@ const Courses: React.FC = () => {
                 slotType: activeType,
                 startTime: mainConfig.startTime,
                 endTime: mainConfig.endTime,
-                minAge: mainConfig.minAge,
-                maxAge: mainConfig.maxAge,
+                minAge: mainConfig.minAgeUnit === 'years' ? mainConfig.minAge * 12 : mainConfig.minAge,
+                maxAge: mainConfig.maxAgeUnit === 'years' ? mainConfig.maxAge * 12 : mainConfig.maxAge,
                 capacity: mainConfig.capacity,
                 locationId: selectedLocationId,
                 status: 'open' as const,
@@ -286,15 +311,15 @@ const Courses: React.FC = () => {
                     LAB: { 
                         startTime: configs.LAB.startTime, 
                         endTime: configs.LAB.endTime, 
-                        minAge: configs.LAB.minAge, 
-                        maxAge: configs.LAB.maxAge, 
+                        minAge: configs.LAB.minAgeUnit === 'years' ? configs.LAB.minAge * 12 : configs.LAB.minAge, 
+                        maxAge: configs.LAB.maxAgeUnit === 'years' ? configs.LAB.maxAge * 12 : configs.LAB.maxAge,
                         capacity: configs.LAB.capacity 
                     },
                     SG: { 
                         startTime: configs.SG.startTime, 
                         endTime: configs.SG.endTime, 
-                        minAge: configs.SG.minAge, 
-                        maxAge: configs.SG.maxAge, 
+                        minAge: configs.SG.minAgeUnit === 'years' ? configs.SG.minAge * 12 : configs.SG.minAge, 
+                        maxAge: configs.SG.maxAgeUnit === 'years' ? configs.SG.maxAge * 12 : configs.SG.maxAge, 
                         capacity: configs.SG.capacity 
                     }
                 };
@@ -386,29 +411,42 @@ const Courses: React.FC = () => {
         });
 
         if (course.slotType === 'LAB+SG' && course.comboConfigs) {
+            const labMinAge = course.comboConfigs.LAB?.minAge || 36;
+            const labMaxAge = course.comboConfigs.LAB?.maxAge || 168;
+            const sgMinAge = course.comboConfigs.SG?.minAge || 36;
+            const sgMaxAge = course.comboConfigs.SG?.maxAge || 168;
+
             newConfigs.LAB = { 
                 quantity: 1, 
                 startTime: course.comboConfigs.LAB?.startTime || '09:00',
                 endTime: course.comboConfigs.LAB?.endTime || '10:00',
-                minAge: course.comboConfigs.LAB?.minAge || 3,
-                maxAge: course.comboConfigs.LAB?.maxAge || 14,
+                minAge: labMinAge % 12 === 0 ? labMinAge / 12 : labMinAge,
+                minAgeUnit: labMinAge % 12 === 0 ? 'years' : 'months',
+                maxAge: labMaxAge % 12 === 0 ? labMaxAge / 12 : labMaxAge,
+                maxAgeUnit: labMaxAge % 12 === 0 ? 'years' : 'months',
                 capacity: course.comboConfigs.LAB?.capacity || 10
             };
             newConfigs.SG = { 
                 quantity: 1, 
                 startTime: course.comboConfigs.SG?.startTime || '09:00',
                 endTime: course.comboConfigs.SG?.endTime || '10:00',
-                minAge: course.comboConfigs.SG?.minAge || 3,
-                maxAge: course.comboConfigs.SG?.maxAge || 14,
+                minAge: sgMinAge % 12 === 0 ? sgMinAge / 12 : sgMinAge,
+                minAgeUnit: sgMinAge % 12 === 0 ? 'years' : 'months',
+                maxAge: sgMaxAge % 12 === 0 ? sgMaxAge / 12 : sgMaxAge,
+                maxAgeUnit: sgMaxAge % 12 === 0 ? 'years' : 'months',
                 capacity: course.comboConfigs.SG?.capacity || 10
             };
         } else {
+            const rawMinAge = course.minAge;
+            const rawMaxAge = course.maxAge;
             newConfigs[course.slotType] = {
                 quantity: 1,
                 startTime: course.startTime,
                 endTime: course.endTime,
-                minAge: course.minAge,
-                maxAge: course.maxAge,
+                minAge: rawMinAge % 12 === 0 ? rawMinAge / 12 : rawMinAge,
+                minAgeUnit: rawMinAge % 12 === 0 ? 'years' : 'months',
+                maxAge: rawMaxAge % 12 === 0 ? rawMaxAge / 12 : rawMaxAge,
+                maxAgeUnit: rawMaxAge % 12 === 0 ? 'years' : 'months',
                 capacity: course.capacity
             };
         }
@@ -535,7 +573,7 @@ const Courses: React.FC = () => {
                                     <div className="flex items-center justify-between py-3 border-y border-gray-50">
                                         <div className="text-center">
                                             <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest mb-1">Età</p>
-                                            <p className="text-sm font-bold text-gray-700">{course.minAge}-{course.maxAge}a</p>
+                                            <p className="text-sm font-bold text-gray-700">{formatAgeDisplay(course.minAge, course.maxAge)}</p>
                                         </div>
                                         <div className="text-center flex-1 px-4">
                                             <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest mb-1">Occupazione</p>
@@ -641,7 +679,7 @@ const Courses: React.FC = () => {
                                                         {course.slotType}
                                                     </span>
                                                 </td>
-                                                <td className="px-6 py-4 text-gray-500 font-medium">{course.minAge} - {course.maxAge} anni</td>
+                                                <td className="px-6 py-4 text-gray-500 font-medium whitespace-nowrap">{formatAgeDisplayFull(course.minAge, course.maxAge)}</td>
                                                 <td className="px-6 py-4">
                                                     <div className="flex flex-col items-center gap-2">
                                                         <div className="flex items-center gap-2">
@@ -934,23 +972,43 @@ const Courses: React.FC = () => {
                                                 {/* Ages */}
                                                 <div className="space-y-2">
                                                     <label className="block text-[8px] font-black text-gray-400 uppercase tracking-widest text-center">Età Min / Max</label>
-                                                    <div className="flex items-center gap-2">
-                                                        <input 
-                                                            type="number" 
-                                                            value={config.minAge} 
-                                                            disabled={!isActive}
-                                                            onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], minAge: parseInt(e.target.value) || 0 }}))}
-                                                            className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
-                                                                ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
-                                                        />
-                                                        <input 
-                                                            type="number" 
-                                                            value={config.maxAge} 
-                                                            disabled={!isActive}
-                                                            onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], maxAge: parseInt(e.target.value) || 0 }}))}
-                                                            className={`w-full text-center py-2 rounded-xl text-sm font-black border-2 transition-all
-                                                                ${isActive ? 'border-gray-100 focus:border-indigo-500 bg-white' : 'border-transparent bg-transparent'}`}
-                                                        />
+                                                    <div className="flex flex-col gap-2">
+                                                        <div className="flex items-center gap-1 rounded-xl border-2 transition-all p-1 bg-white">
+                                                            <input 
+                                                                type="number" 
+                                                                value={config.minAge} 
+                                                                disabled={!isActive}
+                                                                onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], minAge: parseInt(e.target.value) || 0 }}))}
+                                                                className="w-full text-center text-sm font-black border-transparent bg-transparent focus:ring-0 focus:outline-none"
+                                                            />
+                                                            <select
+                                                                value={config.minAgeUnit || 'years'}
+                                                                disabled={!isActive}
+                                                                onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], minAgeUnit: e.target.value as 'months' | 'years' }}))}
+                                                                className="text-xs bg-gray-50 text-gray-600 font-bold border-0 rounded p-1 outline-none focus:ring-0 cursor-pointer"
+                                                            >
+                                                                <option value="months">mesi</option>
+                                                                <option value="years">anni</option>
+                                                            </select>
+                                                        </div>
+                                                        <div className="flex items-center gap-1 rounded-xl border-2 transition-all p-1 bg-white">
+                                                            <input 
+                                                                type="number" 
+                                                                value={config.maxAge} 
+                                                                disabled={!isActive}
+                                                                onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], maxAge: parseInt(e.target.value) || 0 }}))}
+                                                                className="w-full text-center text-sm font-black border-transparent bg-transparent focus:ring-0 focus:outline-none"
+                                                            />
+                                                            <select
+                                                                value={config.maxAgeUnit || 'years'}
+                                                                disabled={!isActive}
+                                                                onChange={(e) => setConfigs(prev => ({ ...prev, [type]: { ...prev[type], maxAgeUnit: e.target.value as 'months' | 'years' }}))}
+                                                                className="text-xs bg-gray-50 text-gray-600 font-bold border-0 rounded p-1 outline-none focus:ring-0 cursor-pointer"
+                                                            >
+                                                                <option value="months">mesi</option>
+                                                                <option value="years">anni</option>
+                                                            </select>
+                                                        </div>
                                                     </div>
                                                 </div>
 

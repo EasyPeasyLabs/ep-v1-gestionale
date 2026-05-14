@@ -1,6 +1,6 @@
 
 import { db } from '../firebase/config';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, setDoc, serverTimestamp, DocumentData, QueryDocumentSnapshot, query, where } from 'firebase/firestore';
 import { Supplier, SupplierInput, Location } from '../types';
 
 const getSupplierCollectionRef = () => collection(db, 'suppliers');
@@ -43,8 +43,35 @@ export const getSuppliers = async (): Promise<Supplier[]> => {
     return querySnapshot.docs.map(docToSupplier);
 };
 
+const syncSupplierLocations = async (supplierId: string, locations: Location[] | undefined) => {
+    if (!locations) return;
+    
+    // Trova ed elimina le sedi rimosse
+    const q = query(collection(db, 'locations'), where('supplierId', '==', supplierId));
+    const snap = await getDocs(q);
+    const newLocationIds = locations.map(l => l.id).filter(Boolean);
+    
+    for (const docSnap of snap.docs) {
+        if (!newLocationIds.includes(docSnap.id)) {
+            await deleteDoc(doc(db, 'locations', docSnap.id));
+        }
+    }
+
+    // Aggiorna o crea le sedi presenti
+    for (const loc of locations) {
+        if (!loc.id) continue;
+        await setDoc(doc(db, 'locations', loc.id), {
+            ...loc,
+            supplierId,
+            status: loc.closedAt ? 'closed' : 'active',
+            updatedAt: serverTimestamp()
+        });
+    }
+};
+
 export const addSupplier = async (supplier: SupplierInput): Promise<string> => {
     const docRef = await addDoc(getSupplierCollectionRef(), { ...supplier, isDeleted: false });
+    await syncSupplierLocations(docRef.id, supplier.locations);
     return docRef.id;
 };
 
@@ -52,6 +79,9 @@ export const updateSupplier = async (id: string, supplier: Partial<SupplierInput
     const supplierDoc = doc(db, 'suppliers', id);
     // Assicurati che i dati inviati siano un oggetto "pulito"
     await updateDoc(supplierDoc, { ...supplier });
+    if (supplier.locations) {
+        await syncSupplierLocations(id, supplier.locations);
+    }
 };
 
 // Soft Delete: sposta nel cestino

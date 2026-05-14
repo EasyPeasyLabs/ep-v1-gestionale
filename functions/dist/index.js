@@ -41,6 +41,7 @@ __export(index_exports, {
   proxyGoogleBooks: () => proxyGoogleBooks,
   receiveLeadV2: () => receiveLeadV2,
   sendEmail: () => sendEmail,
+  setupStorageCors: () => setupStorageCors,
   suggestBookTags: () => suggestBookTags
 });
 module.exports = __toCommonJS(index_exports);
@@ -160,6 +161,29 @@ var sendEmail = (0, import_https.onCall)({
     const errorMessage = error2 instanceof Error ? error2.message : String(error2);
     logger.error("Error sending email:", errorMessage);
     throw new import_https.HttpsError("internal", `Email sending failed: ${errorMessage}`);
+  }
+});
+var setupStorageCors = (0, import_https.onCall)({
+  region: "europe-west1",
+  cors: true
+}, async () => {
+  getAdmin();
+  try {
+    const bucket = admin.storage().bucket();
+    await bucket.setCorsConfiguration([
+      {
+        origin: ["*"],
+        method: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
+        maxAgeSeconds: 3600,
+        responseHeader: ["*"]
+      }
+    ]);
+    logger.info("CORS configured successfully");
+    return { success: true };
+  } catch (error2) {
+    const errorMessage = error2 instanceof Error ? error2.message : String(error2);
+    logger.error("Error setting CORS:", errorMessage);
+    throw new import_https.HttpsError("internal", `CORS setup failed: ${errorMessage}`);
   }
 });
 async function sendPushToAllTokens(title, body, extraData) {
@@ -990,5 +1014,6 @@ var enrollmentGateway = (0, import_https.onRequest)({ region: "europe-west1", co
   proxyGoogleBooks,
   receiveLeadV2,
   sendEmail,
+  setupStorageCors,
   suggestBookTags
 });

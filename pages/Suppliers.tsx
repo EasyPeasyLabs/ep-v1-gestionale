@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Supplier, SupplierInput, Location, LocationInput, SupplierRating, Note, ContractTemplate, CompanyInfo, Course } from '../types';
 import { getSuppliers, addSupplier, updateSupplier, deleteSupplier, restoreSupplier } from '../services/supplierService';
+import { migrateLocations } from '../services/migrationService';
 import { getOpenCourses } from '../services/courseService';
 import { getContractTemplates, getCompanyInfo } from '../services/settingsService';
 import { compileContractTemplate } from '../utils/contractUtils';
+import { toast } from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
 import PlusIcon from '../components/icons/PlusIcon';
 import PencilIcon from '../components/icons/PencilIcon';
 import TrashIcon from '../components/icons/TrashIcon';
 import RestoreIcon from '../components/icons/RestoreIcon';
 import PrinterIcon from '../components/icons/PrinterIcon';
+import UploadIcon from '../components/icons/UploadIcon';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -567,6 +570,14 @@ const SupplierForm: React.FC<{
         setIsEditingLoc(false);
         setEditingLocation(null);
     };
+
+    const handleDeleteLocation = (locId: string | undefined) => {
+        if (!locId) return;
+        if (confirm("Sei sicuro di voler eliminare questa sede? Per confermare definitivamente l'eliminazione dal database sarà necessario cliccare su Salva in basso a destra.")) {
+            setLocations(locations.filter(l => l.id !== locId));
+        }
+    };
+
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-full overflow-hidden">
             <div className="p-6 pb-2 border-b border-gray-100"><h2 className="text-xl font-bold text-gray-800">{supplier ? 'Modifica Fornitore' : 'Nuovo Fornitore'}</h2></div>
@@ -619,6 +630,9 @@ const SupplierForm: React.FC<{
                             </div>
                             <div className="flex gap-1">
                                 <button type="button" onClick={() => { setEditingLocation(loc); setIsEditingLoc(true); }} className="md-icon-btn edit p-1"><PencilIcon/></button>
+                                <button type="button" onClick={() => handleDeleteLocation(loc.id)} className="md-icon-btn delete p-1 text-red-500 hover:bg-red-100 rounded" title="Elimina Sede">
+                                    <TrashIcon className="w-4 h-4" />
+                                </button>
                             </div>
                         </div>
                     ))}</div>
@@ -641,6 +655,11 @@ const Suppliers: React.FC = () => {
     const [sortOrder, setSortOrder] = useState<'name_asc' | 'name_desc' | 'day_asc'>('day_asc');
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 12;
+
+    // Sync Locations logic
+    const [showConfirmLocMigrate, setShowConfirmLocMigrate] = useState(false);
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [locMigrationResult, setLocMigrationResult] = useState<number | null>(null);
 
     const fetchSuppliers = useCallback(async () => {
         try {
@@ -700,6 +719,16 @@ const Suppliers: React.FC = () => {
                     <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Gestione sedi e anagrafiche.</p>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end overflow-x-auto pb-1 scrollbar-hide">
+                    {locMigrationResult !== null ? (
+                        <div className="flex items-center gap-2 px-2 py-1.5 bg-emerald-50 border border-emerald-200 rounded text-xs">
+                            <span className="font-bold text-emerald-800">Sincronizzate {locMigrationResult} sedi.</span>
+                            <button onClick={() => setLocMigrationResult(null)} className="text-emerald-600 hover:underline">Chiudi</button>
+                        </div>
+                    ) : (
+                        <button onClick={() => setShowConfirmLocMigrate(true)} disabled={isMigrating} className={`md-btn md-btn-sm flex items-center text-xs font-bold flex-shrink-0 px-2 py-1.5 ${isMigrating ? 'bg-gray-100 text-gray-400' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'}`}>
+                            {isMigrating ? <Spinner /> : <UploadIcon />} <span className="ml-1 hidden sm:inline">Sincronizza Sedi</span>
+                        </button>
+                    )}
                     <button onClick={() => setIsDeleteAllModalOpen(true)} className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center text-xs font-bold flex-shrink-0 px-2 py-1.5">
                         <TrashIcon /> <span className="ml-1 hidden sm:inline">Elimina Tutto</span><span className="sm:hidden ml-1">Reset</span>
                     </button>
@@ -781,6 +810,30 @@ const Suppliers: React.FC = () => {
             {isModalOpen && <Modal onClose={() => setIsModalOpen(false)} size="2xl"><SupplierForm supplier={editingSupplier} onSave={handleSaveSupplier} onCancel={() => setIsModalOpen(false)} /></Modal>}
             {contractModalSupplier && (<ContractGeneratorModal supplier={contractModalSupplier} onClose={() => setContractModalSupplier(null)} />)}
             <ConfirmModal isOpen={isDeleteAllModalOpen} onClose={() => setIsDeleteAllModalOpen(false)} onConfirm={fetchSuppliers} title="ELIMINA TUTTI I FORNITORI" message="⚠️ ATTENZIONE: Stai per eliminare TUTTI i fornitori." isDangerous={true} confirmText="Sì, Elimina TUTTO" />
+            
+            {showConfirmLocMigrate && (
+                <ConfirmModal 
+                    isOpen={true} 
+                    onClose={() => setShowConfirmLocMigrate(false)} 
+                    onConfirm={async () => {
+                        setShowConfirmLocMigrate(false);
+                        setIsMigrating(true);
+                        try {
+                            const count = await migrateLocations();
+                            setLocMigrationResult(count);
+                            if (toast) toast.success(`Migrazione completata: ${count} sedi sincronizzate`);
+                        } catch (e) {
+                            console.error(e);
+                            if (toast) toast.error("Errore durante la migrazione delle sedi.");
+                        } finally {
+                            setIsMigrating(false);
+                        }
+                    }} 
+                    title="Sincronizzazione Sedi" 
+                    message="Questa operazione sincronizzerà tutte le sedi dei fornitori nella collezione globale 'locations'. Procedere?" 
+                    isDangerous={true}
+                />
+            )}
         </div>
     );
 };

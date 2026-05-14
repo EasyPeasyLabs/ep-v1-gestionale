@@ -3,6 +3,8 @@ import { storage } from '../firebase/config';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { FirebaseError } from 'firebase/app';
 
+storage.maxUploadRetryTime = 10000; // Fail relatively fast (10s) instead of infinite loop on CORS errors
+
 export const uploadCampaignFile = async (file: File): Promise<string> => {
     console.log(`[Storage] Starting upload for campaign: ${file.name} (${file.size} bytes)`);
     try {
@@ -62,8 +64,9 @@ export const uploadCommunicationAttachment = async (file: File): Promise<string>
             console.error('PERMISSION DENIED: Check Firebase Storage Rules.');
         } else if (err.code === 'storage/canceled') {
             console.error('UPLOAD CANCELED');
-        } else if (err.code === 'storage/unknown') {
-            console.error('UNKNOWN ERROR: Check CORS configuration.');
+        } else if (err.code === 'storage/unknown' || err.code === 'storage/retry-limit-exceeded' || err.message?.includes('network')) {
+            console.error('ERROR: Possible CORS configuration missing. See SETUP_CORS.md');
+            alert("ERRORE DI RETE O CORS: L'upload è fallito. Verifica di aver configurato il CORS del bucket Firebase come descritto in SETUP_CORS.md.");
         }
         throw err;
     }

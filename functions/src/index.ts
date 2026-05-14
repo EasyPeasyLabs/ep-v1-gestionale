@@ -109,7 +109,30 @@ export const sendEmail = onCall({
     }
 });
 
-// --- HELPER PER INVIO NOTIFICHE PUSH ---
+// --- SETUP CORS FUNC ---
+export const setupStorageCors = onCall({
+    region: "europe-west1",
+    cors: true,
+}, async () => {
+    getAdmin();
+    try {
+        const bucket = admin.storage().bucket();
+        await bucket.setCorsConfiguration([
+            {
+                origin: ["*"],
+                method: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
+                maxAgeSeconds: 3600,
+                responseHeader: ["*"]
+            }
+        ]);
+        logger.info("CORS configured successfully");
+        return { success: true };
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error("Error setting CORS:", errorMessage);
+        throw new HttpsError("internal", `CORS setup failed: ${errorMessage}`);
+    }
+});
 async function sendPushToAllTokens(title: string, body: string, extraData: Record<string, string>) {
     try {
         const firebase = getAdmin();

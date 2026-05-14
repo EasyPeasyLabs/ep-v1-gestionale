@@ -6,8 +6,84 @@ import { getSuppliers } from '../services/supplierService';
 import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment, autoFixEnrollments } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, getInvoices, updateQuote, getTransactions, getOrphanedFinancialsForClient, getQuotes, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
+import { migrateLocationRecords } from '../services/migrationService';
 import toast from 'react-hot-toast';
 import Spinner from '../components/Spinner';
+
+// --- NEW LOCATION MIGRATION MODAL ---
+const LocationMigrationModal: React.FC<{
+    allLocations: { id: string, name: string }[];
+    onConfirm: (sourceId: string, targetId: string, fromDate: string) => Promise<void>;
+    onClose: () => void;
+}> = ({ allLocations, onConfirm, onClose }) => {
+    const [sourceId, setSourceId] = useState('');
+    const [targetId, setTargetId] = useState('');
+    const [fromDate, setFromDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isMigrating, setIsMigrating] = useState(false);
+
+    const handleConfirm = async () => {
+        if (!sourceId || !targetId || !fromDate) {
+            toast.error("Compila tutti i campi richiesti.");
+            return;
+        }
+        if (sourceId === targetId) {
+            toast.error("La sede di origine e di destinazione devono essere diverse.");
+            return;
+        }
+
+        if (confirm("Attenzione: Questa operazione non è reversibile. Verranno trasferiti tutti i corsi, le iscrizioni e le prossime lezioni. Continuare?")) {
+            setIsMigrating(true);
+            try {
+                await onConfirm(sourceId, targetId, fromDate);
+            } finally {
+                setIsMigrating(false);
+            }
+        }
+    };
+
+    return (
+        <Modal onClose={onClose} size="md">
+            <div className="flex flex-col h-full max-h-full overflow-hidden">
+                <div className="p-6 pb-4 border-b border-gray-100 bg-red-50 flex-shrink-0">
+                    <h2 className="text-xl font-bold text-red-800">Migrazione Massiva Sede</h2>
+                    <p className="text-xs text-red-600 mt-1">Trasferisci in blocco corsi, iscrizioni e lezioni future da una sede all'altra.</p>
+                </div>
+                <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-5">
+                    <div className="md-input-group">
+                        <select value={sourceId} onChange={e => setSourceId(e.target.value)} className="md-input" disabled={isMigrating}>
+                            <option value="">Seleziona origine...</option>
+                            {allLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                        <label className="md-input-label">Sede di Origine (Vecchia)</label>
+                    </div>
+
+                    <div className="md-input-group">
+                        <select value={targetId} onChange={e => setTargetId(e.target.value)} className="md-input border-emerald-300" disabled={isMigrating}>
+                            <option value="">Seleziona destinazione...</option>
+                            {allLocations.map(l => <option key={`t-${l.id}`} value={l.id}>{l.name}</option>)}
+                        </select>
+                        <label className="md-input-label text-emerald-700">Sede di Destinazione (Nuova)</label>
+                    </div>
+
+                    <div className="md-input-group">
+                        <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="md-input" disabled={isMigrating} />
+                        <label className="md-input-label !top-0">A partire dalla data specificata (storico intatto)</label>
+                    </div>
+
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
+                        <strong>Attenzione:</strong> Le iscrizioni e i corsi la cui validità termina prima della data specificata non subiranno variazioni.
+                    </div>
+                </div>
+                <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
+                    <button type="button" onClick={onClose} className="md-btn md-btn-flat" disabled={isMigrating}>Annulla</button>
+                    <button type="button" onClick={handleConfirm} className="md-btn md-btn-raised md-btn-primary bg-red-600 hover:bg-red-700 text-white" disabled={isMigrating}>
+                        {isMigrating ? <Spinner /> : "Trasferisci Tutto"}
+                    </button>
+                </div>
+            </div>
+        </Modal>
+    );
+};
 import Modal from '../components/Modal';
 import EnrollmentForm from '../components/EnrollmentForm';
 import RenewalModal from '../components/RenewalModal';
@@ -328,6 +404,32 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | undefined>(undefined);
     const [bulkAssignState, setBulkAssignState] = useState<{ isOpen: boolean; locationId: string; locationName: string; locationColor: string; } | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<Enrollment | null>(null); // State for delete confirm
+
+    // Location Migration State
+    const [isLocMigrationModalOpen, setIsLocMigrationModalOpen] = useState(false);
+    const [locMigrationResult, setLocMigrationResult] = useState<number | null>(null);
+
+    const allLocations = useMemo(() => {
+        return suppliers.flatMap(s => s.locations || []).map(l => ({ id: l.id, name: l.name }));
+    }, [suppliers]);
+
+    const handleLocMigrationConfirm = async (sourceId: string, targetId: string, fromDate: string) => {
+        try {
+            const count = await migrateLocationRecords(sourceId, targetId, fromDate);
+            setLocMigrationResult(count);
+            setIsLocMigrationModalOpen(false);
+            if (count > 0) {
+                toast.success(`Migrazione completata. ${count} record aggiornati.`);
+                fetchData(); // Ricarica i dati
+            } else {
+                toast.success(`Nessun record trovato da migrare.`);
+            }
+        } catch (error: unknown) {
+            console.error("Errore migrazione massiva sede:", error);
+            const msg = error instanceof Error ? error.message : "Errore durante il trasferimento sede";
+            toast.error(msg);
+        }
+    };
 
     // State per la modale di assegnazione manuale
     const [assignSearch, setAssignSearch] = useState('');
@@ -730,6 +832,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end relative">
                     <button 
+                        onClick={() => setIsLocMigrationModalOpen(true)}
+                        className="md-btn md-btn-flat text-red-600 border-red-200 hover:bg-red-50 px-4 py-2 flex items-center gap-2"
+                        title="Trasferisci blocco iscrizioni a nuova sede"
+                    >
+                        <RefreshIcon /> <span className="hidden md:inline">Sposta Sede</span>
+                    </button>
+                    <button 
                         onClick={handleAutoFix}
                         disabled={loading}
                         className="md-btn md-btn-flat text-amber-600 border-amber-200 hover:bg-amber-50 px-4 py-2 flex items-center gap-2"
@@ -1043,6 +1152,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 message="Sei sicuro? Se è un progetto istituzionale, il preventivo tornerà in stato 'Inviato'."
                 isDangerous={true}
             />
+            {isLocMigrationModalOpen && (
+                <LocationMigrationModal
+                    allLocations={allLocations}
+                    onConfirm={handleLocMigrationConfirm}
+                    onClose={() => setIsLocMigrationModalOpen(false)}
+                />
+            )}
         </div>
     );
 };

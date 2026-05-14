@@ -17,7 +17,8 @@ import {
 import { 
     getAllEnrollments, 
     updateEnrollment, 
-    deleteEnrollment 
+    deleteEnrollment,
+    migrateHistoricalEnrollments
 } from '../services/enrollmentService';
 import { getInvoices, getTransactions } from '../services/financeService';
 import { getClients } from '../services/parentService';
@@ -130,6 +131,11 @@ const EnrollmentArchive: React.FC = () => {
 
     // Financial Wizard State
     const [financialWizardTarget, setFinancialWizardTarget] = useState<Enrollment | null>(null);
+
+    // Migration State
+    const [showConfirmMigrate, setShowConfirmMigrate] = useState(false);
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [migrationResult, setMigrationResult] = useState<{ updated: number, errors: number } | null>(null);
 
     // Payment Modal State
     const [paymentModalState, setPaymentModalState] = useState<{
@@ -440,6 +446,22 @@ const EnrollmentArchive: React.FC = () => {
                         <DownloadIcon />
                         {selectedEnrollmentIds.length > 0 && <span className="text-[10px] font-bold bg-ep-blue-600 text-white px-1.5 rounded-full">{selectedEnrollmentIds.length}</span>}
                     </button>
+                    {migrationResult ? (
+                        <div className="flex items-center gap-2 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-xs ms-2">
+                           <span className="font-bold text-emerald-800">Migrazione OK ({migrationResult.updated} ricalcolati)</span>
+                           <button onClick={() => setMigrationResult(null)} className="text-emerald-600 hover:underline">Chiudi</button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setShowConfirmMigrate(true)}
+                            disabled={isMigrating}
+                            className={`p-1.5 rounded-md transition-all flex items-center gap-1 border border-transparent shadow-sm ${isMigrating ? 'bg-slate-100 text-slate-400' : 'bg-ep-blue-600 text-white hover:bg-ep-blue-700'}`}
+                            title="Migrazione Storico Carnet"
+                        >
+                            {isMigrating ? <Spinner /> : <Calendar size={18} />}
+                            <span className="text-xs font-bold whitespace-nowrap">Ricalcola Crediti (Carnet)</span>
+                        </button>
+                    )}
                     <div className="w-px h-6 bg-gray-200 mx-1"></div>
 
                     <div className="relative w-40"><div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none"><SearchIcon /></div><input type="text" className="w-full pl-8 pr-2 py-1.5 text-sm border-none bg-transparent focus:ring-0 placeholder:text-gray-400" placeholder="Cerca..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/></div>
@@ -610,6 +632,29 @@ const EnrollmentArchive: React.FC = () => {
 
             <ConfirmModal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleConfirmDelete} title="Elimina Iscrizione" message="Sei sicuro? Questa azione cancellerà anche i dati finanziari collegati." isDangerous={true} />
             <ConfirmModal isOpen={!!terminateTarget} onClose={() => setTerminateTarget(null)} onConfirm={handleConfirmTerminate} title="Termina Iscrizione" message="Vuoi segnare l'iscrizione come 'Scaduta'?" confirmText="Sì, Termina" />
+
+            {showConfirmMigrate && (
+                <ConfirmModal 
+                    isOpen={true} 
+                    onClose={() => setShowConfirmMigrate(false)} 
+                    onConfirm={async () => {
+                        setShowConfirmMigrate(false);
+                        setIsMigrating(true);
+                        try {
+                            const result = await migrateHistoricalEnrollments();
+                            setMigrationResult(result);
+                        } catch (e) {
+                            console.error(e);
+                            alert("Errore durante la migrazione.");
+                        } finally {
+                            setIsMigrating(false);
+                        }
+                    }} 
+                    title="Conferma Migrazione" 
+                    message="Questa operazione ricalcolerà tutti i crediti residui degli allievi in base alle nuove regole dei Carnet. Procedere?" 
+                    isDangerous={true}
+                />
+            )}
         </div>
     );
 };
