@@ -13,6 +13,8 @@ import ConfirmModal from '../components/ConfirmModal';
 import LessonForm from '../components/calendar/LessonForm';
 import PlusIcon from '../components/icons/PlusIcon';
 import TrashIcon from '../components/icons/TrashIcon';
+import GoogleCalendarIcon from '../components/icons/GoogleCalendarIcon';
+import RefreshIcon from '../components/icons/RefreshIcon';
 import { toLocalISOString, getItalianHolidays } from '../utils/dateUtils';
 import toast from 'react-hot-toast';
 
@@ -64,6 +66,10 @@ const Calendar: React.FC = () => {
     // Closure Management State
     const [manageClosureData, setManageClosureData] = useState<{ date: Date, closure?: SchoolClosure } | null>(null);
     const [closureReason, setClosureReason] = useState('');
+    
+    // Google Calendar State
+    const [showGoogleCalendar, setShowGoogleCalendar] = useState(false);
+    const [googleRefreshKey, setGoogleRefreshKey] = useState(0);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -392,8 +398,28 @@ const Calendar: React.FC = () => {
                         <h1 className="text-xl md:text-3xl font-bold truncate">Calendario</h1>
                         <p className="mt-0.5 text-xs md:text-base text-gray-500 truncate">Lezioni extra e chiusure.</p>
                     </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        {closures.length > 0 && (
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+                        <div className="flex items-center gap-2 mr-2">
+                            <span className="text-sm text-gray-600 font-medium hidden md:inline">Usa il tuo calendario Google &gt;</span>
+                            {showGoogleCalendar && (
+                                <button
+                                    onClick={() => setGoogleRefreshKey(prev => prev + 1)}
+                                    className="p-2 rounded-lg transition-colors border bg-white border-gray-200 text-gray-500 hover:bg-gray-50 flex items-center gap-1"
+                                    title="Aggiorna Google Calendar"
+                                >
+                                    <RefreshIcon className="w-5 h-5 text-gray-600" />
+                                    <span className="hidden sm:inline text-xs font-bold">Refresh</span>
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setShowGoogleCalendar(!showGoogleCalendar)}
+                                className={`p-2 rounded-lg transition-colors border ${showGoogleCalendar ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                title={showGoogleCalendar ? "Torna al calendario App" : "Apri Google Calendar"}
+                            >
+                                <GoogleCalendarIcon className="w-6 h-6 text-blue-500" />
+                            </button>
+                        </div>
+                        {!showGoogleCalendar && closures.length > 0 && (
                             <button 
                                 onClick={() => setIsDeleteAllClosuresModalOpen(true)}
                                 className="md-btn md-btn-sm bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center font-bold"
@@ -402,15 +428,32 @@ const Calendar: React.FC = () => {
                                 <TrashIcon /> <span className="ml-1 hidden sm:inline">Elimina Tutte</span>
                             </button>
                         )}
-                        <button onClick={() => { setEditingLesson(null); setIsLessonModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center px-3 py-2 md:px-4 md:py-2">
-                            <PlusIcon /><span className="ml-2 hidden md:inline">Nuova Lezione</span><span className="md:hidden ml-1">Nuova</span>
-                        </button>
+                        {!showGoogleCalendar && (
+                            <button onClick={() => { setEditingLesson(null); setIsLessonModalOpen(true); }} className="md-btn md-btn-raised md-btn-green flex items-center px-3 py-2 md:px-4 md:py-2">
+                                <PlusIcon /><span className="ml-2 hidden md:inline">Nuova Lezione</span><span className="md:hidden ml-1">Nuova</span>
+                            </button>
+                        )}
                     </div>
                 </div>
 
-            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                {/* Calendar Header */}
-                <div className="flex items-center justify-between p-2 md:p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0 z-10 relative">
+            <div className="flex-1 flex flex-col min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative">
+                {showGoogleCalendar ? (
+                    <div className="flex-1 w-full h-full p-2 bg-gray-50">
+                        <iframe 
+                            key={googleRefreshKey}
+                            src="https://calendar.google.com/calendar/embed?src=labeasypeasy%40gmail.com&color=%23E4C441&src=it.italian%23holiday%40group.v.calendar.google.com&color=%23616161&ctz=Europe%2FRome&showTitle=0&showPrint=0&showCalendars=0" 
+                            style={{ border: 0 }} 
+                            width="100%" 
+                            height="100%" 
+                            frameBorder="0" 
+                            scrolling="no"
+                            className="rounded-xl shadow-sm"
+                        ></iframe>
+                    </div>
+                ) : (
+                    <>
+                        {/* Calendar Header */}
+                        <div className="flex items-center justify-between p-2 md:p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0 z-10 relative">
                     <button onClick={handlePrevMonth} className="md-icon-btn bg-white shadow-sm hover:bg-gray-100 p-1 md:p-2">&lt;</button>
                     <h2 className="text-base md:text-xl font-bold text-gray-800 capitalize">
                         {currentDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}
@@ -536,6 +579,8 @@ const Calendar: React.FC = () => {
                             );
                         })}
                     </div>
+                )}
+                </>
                 )}
             </div>
 
