@@ -1,4 +1,4 @@
-import express, { Request, Response } from "express";
+import express from "express";
 import cors from "cors";
 
 async function startServer() {
@@ -9,7 +9,7 @@ async function startServer() {
   app.use(cors());
 
   // API Proxy for Slots (Punta alla V2 in produzione)
-  app.get("/api/slots", async (req: Request, res: Response) => {
+  app.get("/api/slots", async (req: any, res: any) => {
     try {
       const BRIDGE_SECURE_KEY = process.env.BRIDGE_SECURE_KEY || "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
       
@@ -41,7 +41,7 @@ async function startServer() {
   });
 
   // API Proxy for Lead Submission (Punta alla V2 in produzione)
-  app.post("/api/receive-lead", async (req: Request, res: Response) => {
+  app.post("/api/receive-lead", async (req: any, res: any) => {
     try {
       const BRIDGE_SECURE_KEY = process.env.BRIDGE_SECURE_KEY || "EP_V1_BRIDGE_SECURE_KEY_8842_XY";
       
@@ -83,7 +83,7 @@ async function startServer() {
   } else {
     // In production, serve static files from dist
     app.use(express.static("dist"));
-    app.get("*all", (req: Request, res: Response) => {
+    app.get("*all", (req: any, res: any) => {
       res.sendFile("dist/index.html", { root: "." });
     });
   }
