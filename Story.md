@@ -1,38 +1,7 @@
 # STORY.MD - CRONOLOGIA EPIC E SPRINT
 
 ## INDICE DELLE ITERAZIONI
-- 01_2026-03-20.md
-- 02_2026-03-20.md
-- 03_2026-03-20.md
-- 04_2026-03-20.md
-- 06_2026-03-20.md
-- 07_2026-03-20.md
-- 08_2026-03-20.md
-- 09_2026-03-20.md
-- 10_2026-03-20.md
-- 11_2026-03-12.md
-- 11_2026-03-21.md
-- 12_2026-03-23.md
-- 13_2026-03-24.md
-- 14_2026-03-25.md
-- 15_2026-04-09.md
-- 15_2026-05-05.md
-- 16_2026-05-05.md
-- 17_2026-05-05.md
-- 18_2026-05-05.md
-- 19_2026-05-13.md
-- 223-20260420-REPORT.md
-- 224-20260422-REPORT.md
-- 6_2026-03-09.md
-- Manuale_dUso.md
-- Riallineamento.md
-- SETUP_CORS.md
-- SPRINT_20260420.md
-- Sprint_16_2026-04-14.md
-- implementation_plan.md
-- project_state.md
-- sprint_11_09_04_2026.md
-- task.md
+Tutte le iterazioni, gli Epic e i singoli Sprint sono stati documentati, riassunti e cristallizzati all'interno di questo unico file di progetto (Project State), sostituendo la frammentazione dei precedenti file isolati come richiesto.
 
 ---
 
@@ -2776,6 +2745,14 @@ Correzioni di bug critici su logica delle lezioni LAB+SG, protezione iscritti fu
 
 ## 4. REPORT SPRINT 4 (Da 4-2026-05-20.md)
 *   *Nota*: Vedere sezione precedente "Sprint 4 - 2026-05-20" per i dettagli dei bug critici risolti su lezioni LAB+SG, protezione iscritti futuri, matching classi-età bambini e multi-slot bundle.
+
+## 5. REFIT UI E SITUAZIONE CLIENTI (Sprint 20-24 del 2026-05-20)
+*   **Sprint 20**: Sovrascrittura colore primario "Indaco" in Tailwind CSS v4 tramite direttiva `@theme` in `index.css`.
+*   **Sprint 21**: Fix sovrapposizione card filtri in `ClientSituation.tsx` rendendo l'intestazione fissa (sticky) in alto durante lo scorrimento.
+*   **Sprint 22**: Spostamento widget totali globali (Totale Dovuto, Coperto, ecc.) nell'header fisso di `ClientSituation.tsx` per massimizzare la visibilità dei dati aggregati.
+*   **Sprint 23**: Conformità layout header `ClientSituation.tsx` secondo mockup. Affiancati campo ricerca e select sede, passati a design flat con sfondo bianco. Allineati pulsanti export e filtri di bilancio.
+*   **Sprint 24**: Compressione verticale massiva per vista Desktop. Estratta l'intestazione principale (Titolo "Situazione Clienti") fuori dal blocco `sticky`. Ridotti i margini, i padding interni e la dimensione font dei widget aggregati per liberare il viewport e rendere cliccabili le card clienti sottostanti.
+*   **Sprint 25**: Risolto bug discrepanza occupazione corsi sulla UI. Sistemato iteratore `realignAllOccupancy` e check visivo `fetchEnrolledStudents` affinché considerino universalmente gli iscritti `active`, `pending`, e `confirmed` ed eseguano una verifica sicura per lezioni residue (evitando `undefined` su iscrizioni solo LAB e azzeramenti fallaci).
 
 
 

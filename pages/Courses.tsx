@@ -124,7 +124,7 @@ const Courses: React.FC = () => {
                     };
                 })
                 .filter((s) => {
-                    const isActive = ['active', 'Active'].includes(s.status);
+                    const isActive = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(s.status);
                     const isNotExpired = s.endDate ? new Date(s.endDate) >= today : true;
                     return isActive && isNotExpired && s.remaining > 0;
                 });
@@ -175,20 +175,23 @@ const Courses: React.FC = () => {
                 // --- QUERY 1: NUOVO MODELLO (con courseId) ---
                 const qNew = query(
                     collection(db, 'enrollments'),
-                    where('courseId', '==', courseId),
-                    where('status', 'in', ['active', 'confirmed', 'pending']),
-                    where('endDate', '>=', today)
+                    where('courseId', '==', courseId)
                 );
                 const snapNew = await getDocs(qNew);
-                const newModelCount = snapNew.docs.filter(d => (d.data().lessonsRemaining || 0) > 0).length;
+                const newModelCount = snapNew.docs.filter((d) => {
+                    const data = d.data();
+                    const isActive = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(data.status);
+                    const isNotExpired = data.endDate ? new Date(data.endDate) >= today : true;
+                    // Calcolo remaining consistente con fetchEnrolledStudents
+                    const remaining = data.lessonsRemaining !== undefined ? data.lessonsRemaining : (data.labRemaining || 0);
+                    return isActive && isNotExpired && remaining > 0;
+                }).length;
 
                 // --- QUERY 2: MODELLO LEGACY (senza courseId, matching fuzzy) ---
                 // Questa query è più ampia e richiede un filtro JS aggiuntivo
                 const qLegacy = query(
                     collection(db, 'enrollments'),
-                    where('locationId', '==', courseData.locationId),
-                    where('status', 'in', ['active', 'confirmed', 'pending']),
-                    where('endDate', '>=', today)
+                    where('locationId', '==', courseData.locationId)
                 );
                 const snapLegacy = await getDocs(qLegacy);
                 
@@ -198,6 +201,10 @@ const Courses: React.FC = () => {
                 const legacyModelCount = snapLegacy.docs.filter(d => {
                     const data = d.data();
                     if (data.courseId && data.courseId !== 'manual') return false; // Already counted in new model
+
+                    const isActive = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(data.status);
+                    const isNotExpired = data.endDate ? new Date(data.endDate) >= today : true;
+                    if (!isActive || !isNotExpired) return false;
 
                     const remaining = (data.lessonsRemaining || 0) + (data.labRemaining || 0) + (data.sgRemaining || 0) + (data.evtRemaining || 0);
                     if (remaining <= 0) return false;

@@ -4,6 +4,19 @@
   --color-primary: var(--md-primary);
   --color-ep-blue-600: #323244;
   --color-ep-yellow: #FACC15;
+
+  /* Override default indigo with #3C3C52 brand gray shades */
+  --color-indigo-50: #F2F2F5;
+  --color-indigo-100: #E6E6EA;
+  --color-indigo-200: #CDCDD6;
+  --color-indigo-300: #B1B1BF;
+  --color-indigo-400: #8E8E9F;
+  --color-indigo-500: #3C3C52;
+  --color-indigo-600: #323244;
+  --color-indigo-700: #282836;
+  --color-indigo-800: #1E1E29;
+  --color-indigo-900: #14141B;
+  --color-indigo-950: #0a0a0d;
 }
 
 body {

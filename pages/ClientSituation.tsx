@@ -777,8 +777,9 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
     if (loading) return <div className="flex justify-center py-20"><Spinner /></div>;
 
     return (
-        <div className="space-y-6 pb-20">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="pb-20">
+            {/* INTESTAZIONE PAGINA (NON STICKY) */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <div>
                     <h1 className="text-3xl font-bold flex items-center gap-3">
                         <IdentificationIcon /> Situazione Clienti
@@ -787,26 +788,27 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                 </div>
             </div>
 
-            {/* HEADER FILTERS */}
-            <div className="md-card p-4 bg-white sticky top-0 z-30 shadow-md border-b border-ep-blue-100 transition-all">
+            {/* STICKY HEADER & FILTERS */}
+            <div className="sticky top-0 z-40 -mx-4 md:-mx-8 px-4 md:px-8 py-2 md:py-3 mb-4 bg-gray-50/95 backdrop-blur-sm border-b border-gray-200 shadow-sm">
+                <div className="md-card p-3 bg-white shadow-sm border border-ep-blue-100 transition-all">
                 {!selectedClient ? (
                     <div className="flex flex-col gap-3 animate-fade-in">
-                        <div className="flex flex-col xl:flex-row gap-4 items-start xl:items-center">
+                        <div className="flex flex-col md:flex-row gap-4 items-center">
                             <div className="relative flex-1 w-full">
                                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon /></div>
                                 <input 
                                     type="text" 
                                     placeholder="Cerca per nome, figlio, azienda..." 
-                                    className="md-input pl-10" 
+                                    className="md-input pl-10 w-full" 
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)} 
                                 />
                             </div>
-                            <div className="flex gap-2 w-full xl:w-auto overflow-x-auto pb-1 xl:pb-0">
+                            <div className="flex-1 w-full flex gap-2 overflow-x-auto pb-1 md:pb-0">
                                 <select 
                                     value={filterLocation} 
                                     onChange={e => setFilterLocation(e.target.value)} 
-                                    className="md-input w-40 flex-shrink-0 text-sm bg-ep-blue-600 text-white border-none font-bold"
+                                    className="md-input flex-1 min-w-[160px] text-sm"
                                 >
                                     <option value="">Tutte le Sedi</option>
                                     {availableLocations.map(l => <option key={l} value={l}>{l}</option>)}
@@ -814,64 +816,65 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                                 <select 
                                     value={filterYear} 
                                     onChange={e => { setFilterYear(e.target.value); if(!e.target.value) setFilterMonth(''); }} 
-                                    className="md-input w-32 flex-shrink-0 text-sm font-bold bg-ep-blue-600 text-white border-none"
+                                    className="md-input w-28 flex-shrink-0 text-sm"
                                 >
-                                    <option value="">Tutti gli anni</option>
+                                    <option value="">Anni</option>
                                     {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
                                 </select>
                                 <select 
                                     value={filterMonth} 
                                     onChange={e => setFilterMonth(e.target.value)} 
                                     disabled={!filterYear}
-                                    className={`md-input w-32 flex-shrink-0 text-sm font-bold ${!filterYear ? 'bg-gray-100 text-gray-400' : 'bg-ep-blue-600 text-white border-none'}`}
+                                    className={`md-input w-28 flex-shrink-0 text-sm ${!filterYear ? 'bg-gray-50 text-gray-400' : 'bg-white'}`}
                                 >
-                                    <option value="">Tutto l'anno</option>
+                                    <option value="">Mesi</option>
                                     {months.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
                                 </select>
                             </div>
                         </div>
                         
-                        {/* BALANCE STATUS QUICK FILTERS */}
-                        <div className="flex flex-wrap gap-2 md:gap-3 justify-start border-t border-slate-50 pt-3 pb-1">
-                             <button
-                                onClick={() => toggleBalanceFilter('balanced')}
-                                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'balanced' ? 'bg-green-500 text-white border-green-600 shadow-md' : 'bg-white text-green-600 border-green-200 hover:bg-green-50'}`}
-                            >
-                                <span className={filterBalanceStatus === 'balanced' ? 'text-white' : 'text-green-500'}>✓</span> 
-                                COPERTI <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'balanced' ? 'text-white' : 'text-green-600'}`}>({statusCounts.countBalanced})</span>
-                            </button>
-                            <button
-                                onClick={() => toggleBalanceFilter('debt')}
-                                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'debt' ? 'bg-red-500 text-white border-red-600 shadow-md' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}
-                            >
-                                <span className={filterBalanceStatus === 'debt' ? 'text-white' : 'text-red-500'}>⚠</span> 
-                                SCOPERTI <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'debt' ? 'text-white' : 'text-red-600'}`}>({statusCounts.countDebt})</span>
-                            </button>
-                            <button
-                                onClick={() => toggleBalanceFilter('surplus')}
-                                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'surplus' ? 'bg-cyan-500 text-white border-cyan-600 shadow-md' : 'bg-white text-cyan-600 border-cyan-200 hover:bg-cyan-50'}`}
-                            >
-                                <span className={filterBalanceStatus === 'surplus' ? 'text-white' : 'text-cyan-500'}>+</span> 
-                                SURPLUS <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'surplus' ? 'text-white' : 'text-cyan-600'}`}>({statusCounts.countSurplus})</span>
-                            </button>
-                        </div>
-                        
-                        {/* BULK EXPORT ACTIONS */}
-                        <div className="flex justify-end gap-2 border-t border-slate-100 pt-2">
-                            <button 
-                                onClick={handleExportExcel} 
-                                disabled={generatingReport || filteredClients.length === 0}
-                                className="md-btn md-btn-sm md-btn-flat text-green-700 hover:bg-green-50 flex items-center gap-2 border border-green-100"
-                            >
-                                {generatingReport ? <Spinner /> : <><DownloadIcon /> Export Excel ({filteredClients.length})</>}
-                            </button>
-                            <button 
-                                onClick={handleExportPDF} 
-                                disabled={generatingReport || filteredClients.length === 0}
-                                className="md-btn md-btn-sm md-btn-flat text-red-700 hover:bg-red-50 flex items-center gap-2 border border-red-100"
-                            >
-                                {generatingReport ? <Spinner /> : <><PrinterIcon /> Report PDF ({filteredClients.length})</>}
-                            </button>
+                        {/* BALANCE STATUS & EXPORT ACTIONS ROW */}
+                        <div className="flex flex-col md:flex-row justify-between items-center gap-3 border-t border-slate-50 pt-3">
+                            <div className="flex flex-wrap gap-2 md:gap-3 justify-start w-full md:w-auto">
+                                <button
+                                    onClick={() => toggleBalanceFilter('balanced')}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'balanced' ? 'bg-green-500 text-white border-green-600 shadow-md' : 'bg-white text-green-600 border-green-200 hover:bg-green-50'}`}
+                                >
+                                    <span className={filterBalanceStatus === 'balanced' ? 'text-white' : 'text-green-500'}>✓</span> 
+                                    COPERTI <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'balanced' ? 'text-white' : 'text-green-600'}`}>({statusCounts.countBalanced})</span>
+                                </button>
+                                <button
+                                    onClick={() => toggleBalanceFilter('debt')}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'debt' ? 'bg-red-500 text-white border-red-600 shadow-md' : 'bg-white text-red-600 border-red-200 hover:bg-red-50'}`}
+                                >
+                                    <span className={filterBalanceStatus === 'debt' ? 'text-white' : 'text-red-500'}>⚠</span> 
+                                    SCOPERTI <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'debt' ? 'text-white' : 'text-red-600'}`}>({statusCounts.countDebt})</span>
+                                </button>
+                                <button
+                                    onClick={() => toggleBalanceFilter('surplus')}
+                                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-2 whitespace-nowrap ${filterBalanceStatus === 'surplus' ? 'bg-cyan-500 text-white border-cyan-600 shadow-md' : 'bg-white text-cyan-600 border-cyan-200 hover:bg-cyan-50'}`}
+                                >
+                                    <span className={filterBalanceStatus === 'surplus' ? 'text-white' : 'text-cyan-500'}>+</span> 
+                                    SURPLUS <span className={`ml-1 opacity-80 ${filterBalanceStatus === 'surplus' ? 'text-white' : 'text-cyan-600'}`}>({statusCounts.countSurplus})</span>
+                                </button>
+                            </div>
+                            
+                            <div className="flex justify-end gap-2 w-full md:w-auto mt-2 md:mt-0">
+                                <button 
+                                    onClick={handleExportExcel} 
+                                    disabled={generatingReport || filteredClients.length === 0}
+                                    className="md-btn md-btn-sm md-btn-flat px-4 py-2 text-xs font-bold rounded-full text-slate-600 hover:bg-slate-50 flex items-center gap-2 border border-slate-200 bg-white"
+                                >
+                                    {generatingReport ? <Spinner /> : <><DownloadIcon /> Export Excel ({filteredClients.length})</>}
+                                </button>
+                                <button 
+                                    onClick={handleExportPDF} 
+                                    disabled={generatingReport || filteredClients.length === 0}
+                                    className="md-btn md-btn-sm md-btn-flat px-4 py-2 text-xs font-bold rounded-full text-slate-600 hover:bg-slate-50 flex items-center gap-2 border border-slate-200 bg-white"
+                                >
+                                    {generatingReport ? <Spinner /> : <><PrinterIcon /> Report PDF ({filteredClients.length})</>}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -913,33 +916,35 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         </div>
                     </div>
                 )}
+                </div>
+
+                {/* GRAND TOTALS WIDGET */}
+                {!selectedClient && filteredClients.length > 0 && (
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 animate-fade-in mt-3">
+                        <div className="bg-white p-2 rounded-xl border border-green-200 shadow-sm flex flex-col items-center">
+                            <span className="text-[9px] text-green-600 font-bold uppercase">Totale Dovuto</span>
+                            <span className="text-base font-black text-green-700">-{grandTotals.grandDue.toFixed(2)}€</span>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-green-200 shadow-sm flex flex-col items-center">
+                            <span className="text-[9px] text-green-600 font-bold uppercase">Totale Coperto</span>
+                            <span className="text-base font-black text-green-700">+{grandTotals.grandPaid.toFixed(2)}€</span>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-red-200 shadow-sm flex flex-col items-center">
+                            <span className="text-[9px] text-red-500 font-bold uppercase">Totale Scoperto</span>
+                            <span className="text-base font-black text-red-600">-{grandTotals.grandGap.toFixed(2)}€</span>
+                        </div>
+                        <div className="bg-white p-2 rounded-xl border border-cyan-200 shadow-sm flex flex-col items-center">
+                            <span className="text-[9px] text-cyan-600 font-bold uppercase">Totale Surplus</span>
+                            <span className="text-base font-black text-cyan-600">+{grandTotals.grandSurplus.toFixed(2)}€</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {!selectedClient ? (
                 /* LISTA RICERCA CON TOTALI */
                 <div className="space-y-6">
-                    {/* GRAND TOTALS WIDGET */}
-                    {filteredClients.length > 0 && (
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 animate-fade-in">
-                            <div className="bg-white p-3 rounded-xl border border-green-200 shadow-sm flex flex-col items-center">
-                                <span className="text-[10px] text-green-600 font-bold uppercase">Totale Dovuto</span>
-                                <span className="text-lg font-black text-green-700">-{grandTotals.grandDue.toFixed(2)}€</span>
-                            </div>
-                            <div className="bg-white p-3 rounded-xl border border-green-200 shadow-sm flex flex-col items-center">
-                                <span className="text-[10px] text-green-600 font-bold uppercase">Totale Coperto</span>
-                                <span className="text-lg font-black text-green-700">+{grandTotals.grandPaid.toFixed(2)}€</span>
-                            </div>
-                            <div className="bg-white p-3 rounded-xl border border-red-200 shadow-sm flex flex-col items-center">
-                                <span className="text-[10px] text-red-500 font-bold uppercase">Totale Scoperto</span>
-                                <span className="text-lg font-black text-red-600">-{grandTotals.grandGap.toFixed(2)}€</span>
-                            </div>
-                            <div className="bg-white p-3 rounded-xl border border-cyan-200 shadow-sm flex flex-col items-center">
-                                <span className="text-[10px] text-cyan-600 font-bold uppercase">Totale Surplus</span>
-                                <span className="text-lg font-black text-cyan-600">+{grandTotals.grandSurplus.toFixed(2)}€</span>
-                            </div>
-                        </div>
-                    )}
-
+                        {/* GRAND TOTALS WIDGET MOVED TO STICKY HEADER */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in">
                         {filteredClients.map(client => {
                             const summary = getClientFinancialSummary(client, filterLocation, filterYear, filterMonth);
