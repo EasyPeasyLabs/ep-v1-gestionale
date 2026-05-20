@@ -2753,6 +2753,7 @@ Correzioni di bug critici su logica delle lezioni LAB+SG, protezione iscritti fu
 *   **Sprint 23**: Conformità layout header `ClientSituation.tsx` secondo mockup. Affiancati campo ricerca e select sede, passati a design flat con sfondo bianco. Allineati pulsanti export e filtri di bilancio.
 *   **Sprint 24**: Compressione verticale massiva per vista Desktop. Estratta l'intestazione principale (Titolo "Situazione Clienti") fuori dal blocco `sticky`. Ridotti i margini, i padding interni e la dimensione font dei widget aggregati per liberare il viewport e rendere cliccabili le card clienti sottostanti.
 *   **Sprint 25**: Risolto bug discrepanza occupazione corsi sulla UI. Sistemato iteratore `realignAllOccupancy` e check visivo `fetchEnrolledStudents` affinché considerino universalmente gli iscritti `active`, `pending`, e `confirmed` ed eseguano una verifica sicura per lezioni residue (evitando `undefined` su iscrizioni solo LAB e azzeramenti fallaci).
+*   **Sprint 26**: Risolto bug mancata sincronizzazione "Attività Settimanale" nella Dashboard (e in altri widget legati al processing lato client), sostituendo strict match enum `EnrollmentStatus` con array inclusivo `['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending']` per intercettare iscrizioni legacy pre-migrate non conformi.
 
 
 

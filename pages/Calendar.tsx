@@ -143,7 +143,7 @@ const Calendar: React.FC = () => {
 
             // Processa Appuntamenti Iscrizioni
             allEnrs.forEach(enr => {
-                if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
+                if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status)) {
                     if (enr.appointments) {
                         enr.appointments.forEach(app => {
                             if(app.status === 'Suspended') return;

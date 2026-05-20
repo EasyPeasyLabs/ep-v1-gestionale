@@ -1033,7 +1033,7 @@ const Finance: React.FC<FinanceProps> = ({ initialParams }) => {
         const gap = Math.max(0, grossRevenueNeeded - stats.revenue); // Use Cash or Invoiced? Strategy usually targets cash flow needed.
         
         // 4. Analisi KPI Attuali
-        const activeEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active);
+        const activeEnrollments = enrollments.filter(e => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status));
         
         let activeLessonsCount = 0;
         let activeRevenueSum = 0;

@@ -688,7 +688,7 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
             if (!match) return false;
 
             if (filterDay !== '' || filterTime !== '') {
-                const clientEnrollments = enrollments.filter(e => e.clientId === c.id && (e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending));
+                const clientEnrollments = enrollments.filter(e => e.clientId === c.id && ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status));
                 
                 const hasLesson = clientEnrollments.some(enr => {
                     if (!enr.appointments) return false;
@@ -788,7 +788,7 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
         groups['unassigned'] = { id: 'unassigned', name: 'Non Assegnati / Inattivi', color: '#6b7280', clients: [] };
 
         filteredClients.forEach(client => {
-            const activeEnrs = enrollments.filter(e => e.clientId === client.id && e.status === EnrollmentStatus.Active);
+            const activeEnrs = enrollments.filter(e => e.clientId === client.id && ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status));
 
             if (activeEnrs.length === 0) {
                 groups['unassigned'].clients.push(client);
@@ -824,7 +824,7 @@ const Clients: React.FC<ClientsProps> = ({ initialParams }) => {
     }, [filteredClients, currentPage]);
 
     const getClientLocationColors = (clientId: string) => {
-        const activeEnrollments = enrollments.filter(e => e.clientId === clientId && e.status === EnrollmentStatus.Active);
+        const activeEnrollments = enrollments.filter(e => e.clientId === clientId && ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status));
         const colors = new Set<string>();
         activeEnrollments.forEach(e => {
             if (e.locationColor) colors.add(e.locationColor);

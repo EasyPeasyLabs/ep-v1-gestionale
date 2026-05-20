@@ -270,7 +270,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             
             // 1. VECCHIA ARCHITETTURA: Estrai appuntamenti dalle iscrizioni (Fonte di Verità: Iscrizioni)
             enrollments.forEach((enr: Enrollment) => {
-                if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
+                if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status)) {
                     if (enr.appointments && enr.appointments.length > 0) {
                         enr.appointments.forEach((app: Appointment) => {
                             // Usiamo lo stesso approccio del calendario per la data
@@ -374,7 +374,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                 // LIMITAZIONE: Solo se la lezione NON è manuale (per evitare inquinamento su lezioni extra)
                 if (lesson.courseId && lesson.courseId !== 'manual') {
                     enrollments.forEach(enr => {
-                        if (enr.courseId === lesson.courseId && (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending)) {
+                        if (enr.courseId === lesson.courseId && ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status)) {
                             // FILTRO VALIDITÀ: Verifica che l'iscrizione sia attiva per questa data specifica
                             const enrStart = enr.startDate ? enr.startDate.split('T')[0] : '0000-00-00';
                             const enrEnd = enr.endDate ? enr.endDate.split('T')[0] : '9999-12-31';

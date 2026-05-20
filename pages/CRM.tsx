@@ -294,7 +294,7 @@ const CommunicationModal: React.FC<{
             if (filterLocation) {
                 const clientIdsInLocation = new Set(
                     enrollments
-                    .filter(e => e && e.locationName === filterLocation && e.status === EnrollmentStatus.Active)
+                    .filter(e => e && e.locationName === filterLocation && ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status))
                     .map(e => e.clientId)
                 );
                 list = clients.filter(c => c && clientIdsInLocation.has(c.id));
@@ -771,7 +771,7 @@ const CRM: React.FC = () => {
             
             // 1. Enrollments
             enrollmentsData.forEach(enr => {
-                if (enr.status === EnrollmentStatus.Active) {
+                if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status)) {
                     const endDate = new Date(enr.endDate);
                     const diffTime = endDate.getTime() - today.getTime();
                     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));

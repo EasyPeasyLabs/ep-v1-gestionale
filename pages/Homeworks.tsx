@@ -188,7 +188,7 @@ const SendHomeworkModal: React.FC<{
         if (sendMode === 'location' && selectedLocationId) {
             getAllEnrollments().then(enrs => {
                 const ids = enrs
-                    .filter(e => e.status === EnrollmentStatus.Active && e.locationId === selectedLocationId)
+                    .filter(e => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status) && e.locationId === selectedLocationId)
                     .map(e => e.clientId);
                 setLocationClients([...new Set(ids)]);
             });

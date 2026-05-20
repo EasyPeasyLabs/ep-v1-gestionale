@@ -169,7 +169,7 @@ const ActivityLog: React.FC = () => {
             const allLessonIds: string[] = [];
 
             allEnrollments.forEach(enr => {
-                if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
+                if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status)) {
                     if (enr.appointments) {
                         enr.appointments.forEach(app => {
                             const appDate = new Date(app.date);

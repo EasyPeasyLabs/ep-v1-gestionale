@@ -144,7 +144,8 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             const dueInPeriod = isDateInPeriod(enr.startDate, year, month);
             
             if (dueInPeriod) {
-                if (enr.status === EnrollmentStatus.Active) {
+                const isActiveStatus = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status);
+                if (isActiveStatus) {
                     activeSubscriptions.push(enr.subscriptionName);
                     if (enr.locationName && enr.locationName !== 'Sede Non Definita') locations.add(enr.locationName);
                 }
@@ -1058,9 +1059,9 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                             <h3 className="text-lg font-bold text-gray-800 mb-4 uppercase tracking-tight">Stato Attuale</h3>
                             {clientFinancials?.rows[0]?.enrollment ? (
                                 <div className="space-y-4">
-                                    <div className={`p-3 rounded-xl border-2 text-center ${clientFinancials.rows[0].enrollment.status === EnrollmentStatus.Active ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+                                    <div className={`p-3 rounded-xl border-2 text-center ${['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(clientFinancials.rows[0].enrollment.status) ? 'bg-green-50 border-green-200 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
                                         <p className="text-xs font-black uppercase tracking-widest mb-1">STATUS</p>
-                                        <p className="text-xl font-black">{clientFinancials.rows[0].enrollment.status === EnrollmentStatus.Active ? 'ATTIVO' : 'INATTIVO'}</p>
+                                        <p className="text-xl font-black">{['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(clientFinancials.rows[0].enrollment.status) ? 'ATTIVO' : 'INATTIVO'}</p>
                                     </div>
                                     <div>
                                         <label className="text-xs text-gray-400 uppercase font-bold">Ultima Sede</label>

@@ -203,8 +203,8 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
         startOfWeek.setDate(diff);
         startOfWeek.setHours(0,0,0,0);
 
-        // Consideriamo anche le Pending perché spesso la lezione si fa prima del saldo
-        const activeOrPendingEnrollments = enrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
+        // Consideriamo anche le Pending e Confirmed per la robustezza
+        const activeOrPendingEnrollments = enrollments.filter(e => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status));
         
         // --- COSTRUZIONE MAPPE PER FILTRO VALIDITÀ (Replicata dal Calendario) ---
         const locationConfigMap = new Map<string, { days: Set<number>, closedAt?: string }>();
@@ -371,7 +371,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
       const activeClientIds = new Set<string>();
       allEnrollments.forEach(enr => {
-          const isValidStatus = enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending;
+          const isValidStatus = ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status);
           const hasSlots = enr.lessonsRemaining > 0;
           
           if (isValidStatus && hasSlots) {
@@ -430,7 +430,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
 
       // 2. PROCESS ENROLLMENTS
       allEnrollments.forEach(enr => {
-          if (enr.status === EnrollmentStatus.Active || enr.status === EnrollmentStatus.Pending) {
+          if (['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(enr.status)) {
               if (enr.appointments) {
                   enr.appointments.forEach(app => {
                       if (app.status === 'Suspended') return;
@@ -605,7 +605,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setCurrentPage }) => {
           });
       });
 
-      const activeOrPending = allEnrollments.filter(e => e.status === EnrollmentStatus.Active || e.status === EnrollmentStatus.Pending);
+      const activeOrPending = allEnrollments.filter(e => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(e.status));
       activeOrPending.forEach(enr => {
           if(enr.appointments) {
               const processedSlotsForStudent = new Set<string>();

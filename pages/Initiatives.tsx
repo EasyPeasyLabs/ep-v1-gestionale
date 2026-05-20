@@ -348,7 +348,7 @@ const BookManager: React.FC = () => {
             setBooks(b);
             setLoans(l);
             setSuppliers(s);
-            setEnrollments(e.filter(en => en.status === EnrollmentStatus.Active));
+            setEnrollments(e.filter(en => ['active', 'Active', 'confirmed', 'Confirmed', 'pending', 'Pending'].includes(en.status)));
         } catch(e) { console.error(e); } finally { setLoading(false); }
     }, []);
 
