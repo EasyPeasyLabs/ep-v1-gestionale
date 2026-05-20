@@ -35,6 +35,7 @@ const Banknotes = (props: { className?: string }) => <IconWrap Icon={BanknotesIc
 import {
   SubscriptionType,
   CompanyInfo,
+  getSlotCount,
   PaymentMethod,
   DocumentStatus,
   TransactionType,
@@ -409,9 +410,12 @@ const EnrollmentPortal: React.FC = () => {
       let startTime = '';
       let endTime = '';
       
+      // Per bundle multi-slot, startTime/endTime top-level usano il PRIMO slot LAB come riferimento.
+      // Gli orari completi sono in appointments[] sopra.
       if (selectedBundleSlots.length > 0) {
-          startTime = selectedBundleSlots[0].startTime;
-          endTime = selectedBundleSlots[0].endTime;
+          const labSlot = selectedBundleSlots.find(s => s.type === 'LAB') || selectedBundleSlots[0];
+          startTime = labSlot.startTime;
+          endTime = labSlot.endTime;
       } else if (formData.selectedSlot.includes(',')) {
           // Formato: "Lunedì, 17:00 - 18:00"
           const timePart = formData.selectedSlot.split(',')[1]?.trim();
@@ -420,26 +424,10 @@ const EnrollmentPortal: React.FC = () => {
           }
       }
 
-      // Flatten tokens for legacy enrollment schema
-      const getTokenCount = (sub: SubscriptionType | undefined, type: string) => {
-          if (!sub) return 0;
-          if (sub.tokens && sub.tokens.length > 0) {
-              const token = sub.tokens.find(t => t.type === type);
-              if (token) return token.count;
-          }
-          switch(type) {
-              case 'LAB': return sub.labCount || 0;
-              case 'SG': return sub.sgCount || 0;
-              case 'EVT': return sub.evtCount || 0;
-              case 'READ': return (sub as any).readCount || 0;
-              default: return 0;
-          }
-      };
-
-      const finalLabC = getTokenCount(sub, 'LAB');
-      const finalSgC = getTokenCount(sub, 'SG');
-      const finalEvtC = getTokenCount(sub, 'EVT');
-      const finalReadC = getTokenCount(sub, 'READ');
+      const finalLabC  = sub ? getSlotCount(sub, 'LAB')  : 0;
+      const finalSgC   = sub ? getSlotCount(sub, 'SG')   : 0;
+      const finalEvtC  = sub ? getSlotCount(sub, 'EVT')  : 0;
+      const finalReadC = sub ? getSlotCount(sub, 'READ') : 0;
 
       const enrollmentData = {
         clientId: '', // Will be set by server
@@ -465,17 +453,30 @@ const EnrollmentPortal: React.FC = () => {
         paymentMethod: mappedPaymentMethod,
         startDate: '', // Will be set by server
         endDate: '', // Will be set by server
-        appointments: [{
-          lessonId: '', // Will be set by server
-          date: '', // Will be set by server
-          startTime: startTime,
-          endTime: endTime,
-          locationId: formData.selectedLocationId || 'unassigned',
-          locationName: formData.selectedLocationName || 'Sede Preferita',
-          locationColor: '#3C3C52',
-          childName: formData.childName,
-          status: 'Scheduled'
-        }],
+        appointments: selectedBundleSlots.length > 0
+          ? selectedBundleSlots.map(slot => ({
+              lessonId: '',
+              date: '',
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              locationId: formData.selectedLocationId || 'unassigned',
+              locationName: formData.selectedLocationName || 'Sede Preferita',
+              locationColor: '#3C3C52',
+              childName: formData.childName,
+              status: 'Scheduled',
+              type: slot.type
+            }))
+          : [{
+              lessonId: '',
+              date: '',
+              startTime: startTime,
+              endTime: endTime,
+              locationId: formData.selectedLocationId || 'unassigned',
+              locationName: formData.selectedLocationName || 'Sede Preferita',
+              locationColor: '#3C3C52',
+              childName: formData.childName,
+              status: 'Scheduled'
+            }],
         createdAt: new Date().toISOString(),
         source: 'portal'
       };
@@ -1162,10 +1163,10 @@ const EnrollmentPortal: React.FC = () => {
                             if (showOtherSubscriptions && preSelectedId) {
                                 const preSub = subscriptionTypes.find(s => s.id === preSelectedId);
                                 if (preSub) {
-                                    const hasLab = sub.labCount > 0 || (sub.tokens?.some(t => t.type === 'LAB' || t.type === 'LAB+SG') ?? false);
-                                    const hasSG = sub.sgCount > 0 || (sub.tokens?.some(t => t.type === 'SG' || t.type === 'LAB+SG') ?? false);
-                                    const preHasLab = preSub.labCount > 0 || (preSub.tokens?.some(t => t.type === 'LAB' || t.type === 'LAB+SG') ?? false);
-                                    const preHasSG = preSub.sgCount > 0 || (preSub.tokens?.some(t => t.type === 'SG' || t.type === 'LAB+SG') ?? false);
+                                    const hasLab    = getSlotCount(sub, 'LAB') > 0;
+                                    const hasSG     = getSlotCount(sub, 'SG')  > 0;
+                                    const preHasLab = getSlotCount(preSub, 'LAB') > 0;
+                                    const preHasSG  = getSlotCount(preSub, 'SG')  > 0;
 
                                     // Must match the core activity type
                                     if (hasLab !== preHasLab || hasSG !== preHasSG) return false;

@@ -310,10 +310,10 @@ const EnrollmentArchive: React.FC = () => {
     }, [viewMode, groupedData, filterYear, getPaymentStatus]);
 
     const handleEditRequest = (enr: Enrollment) => { setEditingEnrollment(enr); setIsEditModalOpen(true); };
-    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[]) => {
+    const handleSaveEnrollment = async (enrollmentsData: EnrollmentInput[], options?: { regenerateCalendar?: boolean }) => {
         setLoading(true);
         try {
-            for (const enrollmentData of enrollmentsData as (EnrollmentInput & { id?: string })[]) { if (enrollmentData.id) { await updateEnrollment(enrollmentData.id, enrollmentData); } }
+            for (const enrollmentData of enrollmentsData as (EnrollmentInput & { id?: string })[]) { if (enrollmentData.id) { await updateEnrollment(enrollmentData.id, enrollmentData, options?.regenerateCalendar); } }
             setIsEditModalOpen(false); setEditingEnrollment(undefined); await fetchData();
         } catch (err) { alert("Errore salvataggio."); } finally { setLoading(false); }
     };

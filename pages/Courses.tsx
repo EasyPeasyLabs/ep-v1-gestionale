@@ -343,7 +343,13 @@ const Courses: React.FC = () => {
                 if (startDate && endDate) {
                     const loc = locations.find(l => l.id === selectedLocationId);
                     if (loc) {
-                        await courseService.syncCourseLessons(editingCourseId, { ...courseData, id: editingCourseId } as Course, loc.name, loc.color);
+                        const syncRes = await courseService.syncCourseLessons(editingCourseId, { ...courseData, id: editingCourseId } as Course, loc.name, loc.color);
+                        if (syncRes.protected > 0) {
+                            toast(
+                                `${syncRes.protected} lezioni future con allievi già prenotati sono state protette da sovrascrittura o cancellazione.`,
+                                { icon: '⚠️' }
+                            );
+                        }
                     }
                 }
             } else {

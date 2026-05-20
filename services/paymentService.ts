@@ -135,9 +135,9 @@ export const processPayment = async (
                 transaction.set(newInvRef, JSON.parse(JSON.stringify(newInvoiceData)));
                 invoiceIdForTransaction = newInvRef.id;
             } else {
-                // NEW: Se NON creo fattura, uso un ID sintetico per collegare la transazione all'iscrizione
-                // Questo permette al Fiscal Doctor di trovare la copertura finanziaria
-                invoiceIdForTransaction = `ENR-${enrollment.id}`;
+                // Pagamento no-doc: nessun relatedDocumentId.
+                // Il Fiscal Doctor riconosce la copertura tramite relatedEnrollmentId sulla transazione.
+                invoiceIdForTransaction = null;
             }
 
             // B. Creazione Transazione
@@ -177,7 +177,9 @@ export const processPayment = async (
 
             // C. Attivazione Iscrizione
             // Se lo stato corrente è Pending, forziamo Active.
-            if (currentEnrData.status === EnrollmentStatus.Pending) {
+            console.warn("DEBUG PaymentService: Current enrollment status is", currentEnrData.status);
+            const statusString = String(currentEnrData.status).toLowerCase();
+            if (statusString === 'pending' || statusString === 'in attesa') {
                 transaction.update(enrRef, { status: EnrollmentStatus.Active });
             }
         });

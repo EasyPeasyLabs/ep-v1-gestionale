@@ -1494,3 +1494,1288 @@ FUNZIONAMENTO E PROPAGAZIONE:
 
 
 ---
+
+
+### [ARCHIVIO] Piano.md
+
+# Piano Refactor EP v1 Gestionale — Istruzioni Operative per Gemini
+
+> Documento unico di input per lo sviluppo di tutti gli sprint.  
+> Stack: React 18 + TypeScript + Vite + Firebase Firestore.  
+> Ogni sezione contiene: file, riga esatta, codice da rimuovere, codice da inserire, motivazione.
+
+---
+
+## Contesto architetturale (leggere prima di tutto)
+
+La codebase convive con **due modelli di presenza non formalizzati**:
+
+| | Architettura Legacy (A) | Architettura Nuova (B) |
+|---|---|---|
+| Presenza | `enrollment.appointments[]` | `lesson.attendees[]` |
+| Subscription | `labCount / sgCount / evtCount / readCount` | `SubscriptionType.tokens[]` |
+| Scritture autorizzate | Solo tramite `registerPresence` / `registerAbsence` | Scrittura diretta su `lesson` |
+
+**Regola fondamentale da applicare in tutto il refactor:**
+- `lesson.attendees[]` è la **fonte di verità** per presenza e consumo slot.
+- `enrollment.appointments[]` è una **cache di sola lettura** per la UI legacy.
+- `SubscriptionType.tokens[]` è la **fonte di verità** per i contatori slot; i campi `labCount/sgCount/evtCount/readCount` sono alias di compatibilità, mai scritti direttamente nei percorsi nuovi.
+
+---
+
+## SPRINT A — Zero rischi (implementare per primo)
+
+### A1 · Helper `getSlotCount` centralizzato
+
+**File:** `types.ts`  
+**Azione:** Aggiungere in fondo al file (dopo la riga 886, ultima riga del tipo `PortalText`).
+
+```typescript
+// ─────────────────────────────────────────────────────────────────
+// HELPER CENTRALIZZATO — SubscriptionType token/legacy normalization
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Legge il conteggio di uno SlotType da SubscriptionType.
+ * Priorità: tokens[] (nuovo) → labCount/sgCount/evtCount/readCount (legacy).
+ * Usare SEMPRE questa funzione; non accedere mai a labCount/sgCount direttamente
+ * in logica di business.
+ */
+export const getSlotCount = (sub: SubscriptionType, type: SlotType): number => {
+    if (sub.tokens && sub.tokens.length > 0) {
+        const token = sub.tokens.find(t => t.type === type);
+        if (token !== undefined) return token.count;
+    }
+    switch (type) {
+        case 'LAB':  return sub.labCount  ?? 0;
+        case 'SG':   return sub.sgCount   ?? 0;
+        case 'EVT':  return sub.evtCount  ?? 0;
+        case 'READ': return (sub as SubscriptionType & { readCount?: number }).readCount ?? 0;
+        default:     return 0;
+    }
+};
+
+/**
+ * Restituisce un oggetto contatori normalizzato da qualsiasi SubscriptionType.
+ * Usa getSlotCount internamente.
+ */
+export const getNormalizedCounts = (sub: SubscriptionType) => ({
+    labCount:  getSlotCount(sub, 'LAB'),
+    sgCount:   getSlotCount(sub, 'SG'),
+    evtCount:  getSlotCount(sub, 'EVT'),
+    readCount: getSlotCount(sub, 'READ'),
+});
+
+/**
+ * Controlla se un SubscriptionType ha almeno uno slot di un certo tipo,
+ * sia in tokens[] che nei campi legacy.
+ */
+export const hasSlotType = (sub: SubscriptionType, type: SlotType): boolean =>
+    getSlotCount(sub, type) > 0;
+```
+
+---
+
+### A2 · Sostituire `getTokenCount` locale in `EnrollmentForm.tsx`
+
+**File:** `components/EnrollmentForm.tsx`  
+**Riga:** 744–764
+
+**Aggiungere** in testa al file, dopo l'import da `'../types'` esistente (riga 2):
+```typescript
+import { getSlotCount } from '../types';
+```
+
+**Cercare e rimuovere** il blocco completo (righe 743–764):
+```typescript
+            // Function to extract count from tokens array or legacy fields
+            const getTokenCount = (sub: SubscriptionType | undefined, type: SlotType) => {
+                if (!sub) return 0;
+                // Check new tokens array first
+                if (sub.tokens && sub.tokens.length > 0) {
+                    const token = sub.tokens.find(t => t.type === type);
+                    if (token) return token.count;
+                }
+                // Fallback to legacy fields
+                switch(type) {
+                    case 'LAB': return sub.labCount || 0;
+                    case 'SG': return sub.sgCount || 0;
+                    case 'EVT': return sub.evtCount || 0;
+                    case 'READ': return sub.readCount || 0;
+                    default: return 0;
+                }
+            };
+
+            const labC = getTokenCount(selectedSub, 'LAB');
+            const sgC = getTokenCount(selectedSub, 'SG');
+            const evtC = getTokenCount(selectedSub, 'EVT');
+            const readC = getTokenCount(selectedSub, 'READ');
+```
+
+**Sostituire con:**
+```typescript
+            const labC  = getSlotCount(selectedSub!, 'LAB');
+            const sgC   = getSlotCount(selectedSub!, 'SG');
+            const evtC  = getSlotCount(selectedSub!, 'EVT');
+            const readC = getSlotCount(selectedSub!, 'READ');
+```
+
+**Nota:** `selectedSub!` è sicuro perché il blocco è già dentro un controllo `if (selectedSub)` (verificare il contesto circostante e aggiungere guard `if (!selectedSub) return;` se assente).
+
+---
+
+### A3 · Sostituire `getTokenCount` locale in `EnrollmentPortal.tsx`
+
+**File:** `pages/EnrollmentPortal.tsx`  
+**Righe:** 423–442
+
+**Aggiungere** nell'import esistente da `'../types'` (riga 36) il simbolo `getSlotCount`:
+```typescript
+// DA (riga ~36):
+import {
+  SubscriptionType,
+  CompanyInfo,
+  ...
+} from '../types';
+// A:
+import {
+  SubscriptionType,
+  CompanyInfo,
+  getSlotCount,
+  ...
+} from '../types';
+```
+
+**Cercare e rimuovere** il blocco (righe 423–442):
+```typescript
+      // Flatten tokens for legacy enrollment schema
+      const getTokenCount = (sub: SubscriptionType | undefined, type: string) => {
+          if (!sub) return 0;
+          if (sub.tokens && sub.tokens.length > 0) {
+              const token = sub.tokens.find(t => t.type === type);
+              if (token) return token.count;
+          }
+          switch(type) {
+              case 'LAB': return sub.labCount || 0;
+              case 'SG': return sub.sgCount || 0;
+              case 'EVT': return sub.evtCount || 0;
+              case 'READ': return (sub as any).readCount || 0;
+              default: return 0;
+          }
+      };
+
+      const finalLabC = getTokenCount(sub, 'LAB');
+      const finalSgC = getTokenCount(sub, 'SG');
+      const finalEvtC = getTokenCount(sub, 'EVT');
+      const finalReadC = getTokenCount(sub, 'READ');
+```
+
+**Sostituire con:**
+```typescript
+      const finalLabC  = sub ? getSlotCount(sub, 'LAB')  : 0;
+      const finalSgC   = sub ? getSlotCount(sub, 'SG')   : 0;
+      const finalEvtC  = sub ? getSlotCount(sub, 'EVT')  : 0;
+      const finalReadC = sub ? getSlotCount(sub, 'READ') : 0;
+```
+
+---
+
+### A4 · Fix filtro `showOtherSubscriptions` in `EnrollmentPortal.tsx`
+
+**File:** `pages/EnrollmentPortal.tsx`  
+**Righe:** 1165–1168
+
+**Cercare e sostituire** (il blocco usa `labCount` e `tokens` in modo incoerente):
+```typescript
+                                    const hasLab = sub.labCount > 0 || (sub.tokens?.some(t => t.type === 'LAB' || t.type === 'LAB+SG') ?? false);
+                                    const hasSG = sub.sgCount > 0 || (sub.tokens?.some(t => t.type === 'SG' || t.type === 'LAB+SG') ?? false);
+                                    const preHasLab = preSub.labCount > 0 || (preSub.tokens?.some(t => t.type === 'LAB' || t.type === 'LAB+SG') ?? false);
+                                    const preHasSG = preSub.sgCount > 0 || (preSub.tokens?.some(t => t.type === 'SG' || t.type === 'LAB+SG') ?? false);
+```
+
+**Sostituire con** (usa `getSlotCount` già importato in A3):
+```typescript
+                                    const hasLab    = getSlotCount(sub, 'LAB') > 0;
+                                    const hasSG     = getSlotCount(sub, 'SG')  > 0;
+                                    const preHasLab = getSlotCount(preSub, 'LAB') > 0;
+                                    const preHasSG  = getSlotCount(preSub, 'SG')  > 0;
+```
+
+---
+
+### A5 · Fix `generateTheoreticalAppointments` — calcolo settimana LAB+SG
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `generateTheoreticalAppointments` (riga 212)  
+**Riga da modificare:** 245
+
+**Problema:** `Math.ceil(day / 7)` calcola la settimana del mese (varia tra 1 e 5 a seconda di quanti giorni ha il mese), invece della settimana progressiva dal primo giorno del corso. Questo genera pattern LAB/SG instabili tra mesi diversi.
+
+**Modificare la firma della funzione** per accettare `courseStartDate` (riga 212):
+```typescript
+// DA:
+const generateTheoreticalAppointments = (
+    startDate: string,
+    totalLessons: number,
+    locationId: string,
+    locationName: string,
+    locationColor: string,
+    startTime: string,
+    endTime: string,
+    childName: string,
+    comboConfigs?: Course['comboConfigs'],
+    weeklyPlan?: Record<number, string>
+): Appointment[] => {
+// A: (aggiungere courseStartDate opzionale, default = startDate)
+const generateTheoreticalAppointments = (
+    startDate: string,
+    totalLessons: number,
+    locationId: string,
+    locationName: string,
+    locationColor: string,
+    startTime: string,
+    endTime: string,
+    childName: string,
+    comboConfigs?: Course['comboConfigs'],
+    weeklyPlan?: Record<number, string>,
+    courseStartDate?: string   // ← NUOVO: data di inizio del corso (non dell'iscrizione)
+): Appointment[] => {
+```
+
+**Trovare e sostituire** il blocco `weekNum` (righe 243–257):
+```typescript
+            if (comboConfigs && comboConfigs.LAB && comboConfigs.SG && weeklyPlan) {
+                const day = current.getDate();
+                const weekNum = Math.ceil(day / 7);
+                const plannedType = weeklyPlan[weekNum] || 'LAB';
+                
+                if (plannedType === 'LAB') {
+                    sTime = comboConfigs.LAB.startTime;
+                    eTime = comboConfigs.LAB.endTime;
+                    aType = 'LAB';
+                } else {
+                    sTime = comboConfigs.SG.startTime;
+                    eTime = comboConfigs.SG.endTime;
+                    aType = 'SG';
+                }
+            }
+```
+
+**Sostituire con:**
+```typescript
+            if (comboConfigs && comboConfigs.LAB && comboConfigs.SG && weeklyPlan) {
+                // Calcola la settimana progressiva dall'inizio del CORSO (non del mese).
+                // Usa courseStartDate se fornito, altrimenti startDate dell'iscrizione.
+                const referenceDate = new Date(courseStartDate || startDate);
+                referenceDate.setHours(12, 0, 0, 0);
+                const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+                const weeksSinceStart = Math.floor(
+                    (current.getTime() - referenceDate.getTime()) / msPerWeek
+                );
+                const planSize = Object.keys(weeklyPlan).length || 4;
+                // Settimana 1-based, ciclica sul piano del corso
+                const weekNum = (weeksSinceStart % planSize) + 1;
+                const plannedType = weeklyPlan[weekNum] || 'LAB';
+
+                if (plannedType === 'LAB') {
+                    sTime = comboConfigs.LAB.startTime;
+                    eTime = comboConfigs.LAB.endTime;
+                    aType = 'LAB';
+                } else {
+                    sTime = comboConfigs.SG.startTime;
+                    eTime = comboConfigs.SG.endTime;
+                    aType = 'SG';
+                }
+            }
+```
+
+---
+
+### A6 · Fix `calculateRemainingCounters` — tipo `undefined` conta come LAB
+
+**File:** `services/enrollmentService.ts`  
+**Riga:** 1101
+
+**Problema:** `a.type === 'LAB' || !a.type` fa sì che appuntamenti senza tipo vengano conteggiati come LAB, distorcendo `labRemaining` per abbonamenti misti.
+
+**Cercare e sostituire** (righe 1101–1104):
+```typescript
+    const labAttended = appointments.filter(a => (a.type === 'LAB' || !a.type) && a.status === 'Present').length;
+    const sgAttended = appointments.filter(a => a.type === 'SG' && a.status === 'Present').length;
+    const evtAttended = appointments.filter(a => a.type === 'EVT' && a.status === 'Present').length;
+    const readAttended = appointments.filter(a => a.type === 'READ' && a.status === 'Present').length;
+```
+
+**Sostituire con:**
+```typescript
+    // Solo appuntamenti con tipo ESPLICITO contano per i contatori di slot.
+    // Gli appuntamenti senza tipo (legacy) contribuiscono solo a lessonsTotal.
+    const labAttended  = appointments.filter(a => a.type === 'LAB'  && a.status === 'Present').length;
+    const sgAttended   = appointments.filter(a => a.type === 'SG'   && a.status === 'Present').length;
+    const evtAttended  = appointments.filter(a => a.type === 'EVT'  && a.status === 'Present').length;
+    const readAttended = appointments.filter(a => a.type === 'READ' && a.status === 'Present').length;
+```
+
+---
+
+### A7 · Deprecazione formale `enrollment.appointments` in `types.ts`
+
+**File:** `types.ts`  
+**Riga:** cercare `appointments?: Appointment[];` dentro `interface Enrollment`
+
+**Trovare la riga:**
+```typescript
+    appointments?: Appointment[]; // Deprecato/Opzionale: il calendario è ora gestito da LessonSession
+```
+
+**Sostituire con:**
+```typescript
+    /**
+     * @deprecated Cache di sola lettura. Fonte di verità: lesson.attendees[].
+     * Non scrivere mai direttamente su questo campo da logica di business.
+     * Usare registerPresence() / registerAbsence() che aggiornano entrambe le architetture.
+     * Mantenuto per compatibilità con iscrizioni pre-migrazione e per la UI del Calendario.
+     */
+    appointments?: Appointment[];
+```
+
+---
+
+### A8 · Fix `generateKey` in `Calendar.tsx` — aggiungere `courseId` alla chiave
+
+**File:** `pages/Calendar.tsx`  
+**Riga:** 114
+
+**Problema:** due corsi diversi nella stessa sede, stesso giorno, stesso orario vengono fusi in un unico slot. La chiave attuale è `YYYY-MM-DD_HH:MM_locationName`.
+
+**Trovare la funzione** `generateKey` (riga ~114):
+```typescript
+            const generateKey = (dateStr: string, timeStr: string, locName: string) => {
+                let cleanDate = dateStr.split('T')[0];
+                if (dateStr.includes('T') && dateStr.endsWith('Z')) {
+                   const d = new Date(dateStr);
+                   cleanDate = d.toLocaleDateString('en-CA');
+                }
+                const cleanLoc = (locName || 'Sede Non Definita').trim();
+                return `${cleanDate}_${timeStr}_${cleanLoc}`;
+            };
+```
+
+**Sostituire con** (aggiungere parametro opzionale `courseId`):
+```typescript
+            const generateKey = (dateStr: string, timeStr: string, locName: string, courseId?: string) => {
+                let cleanDate = dateStr.split('T')[0];
+                if (dateStr.includes('T') && dateStr.endsWith('Z')) {
+                   const d = new Date(dateStr);
+                   cleanDate = d.toLocaleDateString('en-CA');
+                }
+                const cleanLoc = (locName || 'Sede Non Definita').trim();
+                // Se la lezione appartiene a un corso specifico, isola la chiave per courseId.
+                // Questo previene la fusione di corsi diversi nello stesso slot fisico.
+                const courseSegment = courseId && courseId !== 'manual' ? `_${courseId}` : '';
+                return `${cleanDate}_${timeStr}_${cleanLoc}${courseSegment}`;
+            };
+```
+
+**Aggiornare le due chiamate a `generateKey`** nella stessa funzione:
+
+Chiamata per lezioni manuali (riga ~131):
+```typescript
+// DA:
+                const key = generateKey(l.date, l.startTime, finalLocName);
+// A:
+                const key = generateKey(l.date, l.startTime, finalLocName, l.courseId);
+```
+
+Chiamata per appuntamenti iscrizioni (riga ~156):
+```typescript
+// DA:
+                            const key = generateKey(app.date, app.startTime, finalLocName);
+// A:
+                            const key = generateKey(app.date, app.startTime, finalLocName, enr.courseId);
+```
+
+---
+
+### A9 · Warning fuzzy match in `syncEnrollmentFromLessonDeletion`
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `syncEnrollmentFromLessonDeletion` (riga ~747)
+
+**Trovare il blocco** che controlla `hasMatch` (riga ~758):
+```typescript
+        const hasMatch = data.appointments.some(a => {
+            // 1. Match by lessonId (Hard Link)
+            if (a.lessonId === lessonId) return true;
+            
+            // 2. Match by Slot (Fuzzy Link) - Only if details provided
+            if (lessonDetails) {
+                const matchDate = a.date.split('T')[0] === lessonDetails.date.split('T')[0];
+                const matchTime = a.startTime === lessonDetails.startTime;
+                const matchLoc = (a.locationName || '').trim().toLowerCase() === (lessonDetails.locationName || '').trim().toLowerCase();
+                return matchDate && matchTime && matchLoc;
+            }
+            return false;
+        });
+```
+
+**Sostituire con** (aggiunge discriminazione e log):
+```typescript
+        let matchedByHardLink = false;
+        let matchedByFuzzy = false;
+
+        data.appointments.forEach(a => {
+            if (a.lessonId === lessonId) matchedByHardLink = true;
+            else if (lessonDetails) {
+                const matchDate = a.date.split('T')[0] === lessonDetails.date.split('T')[0];
+                const matchTime = a.startTime === lessonDetails.startTime;
+                const matchLoc = (a.locationName || '').trim().toLowerCase() === (lessonDetails.locationName || '').trim().toLowerCase();
+                if (matchDate && matchTime && matchLoc) matchedByFuzzy = true;
+            }
+        });
+
+        const hasMatch = matchedByHardLink || matchedByFuzzy;
+
+        if (matchedByFuzzy && !matchedByHardLink) {
+            console.warn(
+                `[Sync][FUZZY] Rimozione lezione ${lessonId} su enrollment ${docSnap.id} via fuzzy match (data/ora/sede). ` +
+                `Verificare manualmente se il collegamento è corretto.`
+            );
+        }
+```
+
+---
+
+### A10 · Idempotency `createRentTransactionsBatch`
+
+**File:** `services/financeService.ts`  
+**Funzione:** `createRentTransactionsBatch` (riga 295)
+
+**Problema:** chiamando "Sincronizza Affitti" due volte per lo stesso mese vengono create transazioni duplicate. Il check `isPaid` in `analyzeRentExpenses` usa `relatedDocumentId` come chiave idempotente, ma `createRentTransactionsBatch` non verifica l'esistenza prima di scrivere.
+
+**Trovare il blocco** `results.forEach` (riga ~302):
+```typescript
+    results.forEach(res => {
+        const ref = doc(getTransactionsCollectionRef());
+        const t: TransactionInput = {
+```
+
+**Sostituire tutta la funzione** con versione idempotente:
+```typescript
+export const createRentTransactionsBatch = async (results: RentAnalysisResult[], date: string, monthLabel: string): Promise<void> => {
+    const batch = writeBatch(db);
+    const dateObj = new Date(date);
+    const monthKey = `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}`;
+
+    // Carica transazioni esistenti per questo mese per controllo idempotency
+    const existingQuery = query(
+        getTransactionsCollectionRef(),
+        where('category', '==', TransactionCategory.Nolo),
+        where('date', '>=', `${monthKey}-01`),
+        where('date', '<=', `${monthKey}-31`)
+    );
+    const existingSnap = await getDocs(existingQuery);
+    const existingDocIds = new Set(
+        existingSnap.docs
+            .filter(d => !d.data().isDeleted)
+            .map(d => d.data().relatedDocumentId as string)
+            .filter(Boolean)
+    );
+
+    let nextNum = await getNextTransactionNumber(date);
+    let added = 0;
+
+    results.forEach(res => {
+        const idempotencyKey = `AUTO-RENT-${monthKey}-${res.locationId}`;
+        // Skip se già esistente (idempotency)
+        if (existingDocIds.has(idempotencyKey)) {
+            console.log(`[RentSync] Skip sede ${res.locationName}: già registrata per ${monthKey}.`);
+            return;
+        }
+
+        const ref = doc(getTransactionsCollectionRef());
+        const t: TransactionInput = {
+            transactionNumber: nextNum++,
+            date: date,
+            description: `Nolo ${res.locationName} - ${monthLabel} (${res.usageCount} lezioni)`,
+            amount: res.totalCost,
+            type: TransactionType.Expense,
+            category: TransactionCategory.Nolo,
+            paymentMethod: PaymentMethod.BankTransfer,
+            status: TransactionStatus.Pending,
+            allocationType: 'location',
+            allocationId: res.locationId,
+            allocationName: res.locationName,
+            isDeleted: false,
+            relatedDocumentId: idempotencyKey
+        };
+        batch.set(ref, t);
+        added++;
+    });
+
+    if (added > 0) {
+        await batch.commit();
+        console.log(`[RentSync] Create ${added} nuove transazioni affitto per ${monthKey}.`);
+    }
+};
+```
+
+**Aggiungere gli import mancanti** in testa a `financeService.ts` se non già presenti:
+```typescript
+import { where, getDocs, query } from 'firebase/firestore';
+```
+
+---
+
+## SPRINT B — Rischio basso (implementare dopo Sprint A)
+
+### B1 · Fix `bookStudentIntoCourseLessons` — contatori consumati a vuoto
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `bookStudentIntoCourseLessons` (riga 14)  
+**Righe da modificare:** 57–92
+
+**Problema:** quando `isAlreadyBooked === true`, la scrittura su Firestore viene saltata (`if (!isAlreadyBooked)`) ma i contatori `labUsed / sgUsed / bookedCount` vengono incrementati ugualmente, simulando un consumo di slot che non è avvenuto.
+
+**Cercare e sostituire** l'intero loop `for (const lesson of lessons)` (righe 57–86):
+```typescript
+    for (const lesson of lessons) {
+        if (bookedCount >= totalLessons) break;
+
+        // Check quotas if provided
+        if (quotas) {
+            if (lesson.slotType === 'LAB' && quotas.lab !== undefined && labUsed >= quotas.lab) continue;
+            if (lesson.slotType === 'SG' && quotas.sg !== undefined && sgUsed >= quotas.sg) continue;
+            if (lesson.slotType === 'EVT' && quotas.evt !== undefined && evtUsed >= quotas.evt) continue;
+            if (lesson.slotType === 'READ' && quotas.read !== undefined && readUsed >= quotas.read) continue;
+        }
+
+        const lessonDocRef = doc(db, 'lessons', lesson.id);
+        
+        // Controlla se l'allievo è già prenotato
+        const isAlreadyBooked = (lesson.attendees || []).some(a => a.enrollmentId === enrollmentId);
+        
+        if (!isAlreadyBooked) {
+            batch.update(lessonDocRef, {
+                attendees: arrayUnion(attendee)
+            });
+        }
+
+        if (lesson.slotType === 'LAB') labUsed++;
+        else if (lesson.slotType === 'SG') sgUsed++;
+        else if (lesson.slotType === 'EVT') evtUsed++;
+        else if (lesson.slotType === 'READ') readUsed++;
+        
+        bookedCount++;
+        finalEndDate = lesson.date;
+    }
+```
+
+**Sostituire con:**
+```typescript
+    for (const lesson of lessons) {
+        if (bookedCount >= totalLessons) break;
+
+        // Check quotas if provided
+        if (quotas) {
+            if (lesson.slotType === 'LAB'  && quotas.lab  !== undefined && labUsed  >= quotas.lab)  continue;
+            if (lesson.slotType === 'SG'   && quotas.sg   !== undefined && sgUsed   >= quotas.sg)   continue;
+            if (lesson.slotType === 'EVT'  && quotas.evt  !== undefined && evtUsed  >= quotas.evt)  continue;
+            if (lesson.slotType === 'READ' && quotas.read !== undefined && readUsed >= quotas.read) continue;
+        }
+
+        // Se l'allievo è già prenotato in questa lezione, saltare COMPLETAMENTE
+        // (sia la scrittura che il conteggio degli slot consumati).
+        const isAlreadyBooked = (lesson.attendees || []).some(a => a.enrollmentId === enrollmentId);
+        if (isAlreadyBooked) continue;  // ← FIX: prima era solo `if (!isAlreadyBooked) { batch.update... }`
+
+        const lessonDocRef = doc(db, 'lessons', lesson.id);
+        batch.update(lessonDocRef, { attendees: arrayUnion(attendee) });
+
+        if      (lesson.slotType === 'LAB')  labUsed++;
+        else if (lesson.slotType === 'SG')   sgUsed++;
+        else if (lesson.slotType === 'EVT')  evtUsed++;
+        else if (lesson.slotType === 'READ') readUsed++;
+
+        bookedCount++;
+        finalEndDate = lesson.date;
+    }
+```
+
+---
+
+### B2 · Fix `syncAttendanceToEnrollmentCache` — crea appointment se mancante
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `syncAttendanceToEnrollmentCache` (riga 1119)
+
+**Problema:** se `appIndex === -1` (l'appointment non esiste nella cache legacy perché l'iscrizione usa la nuova architettura), la funzione esce silenziosamente senza aggiornare i contatori.
+
+**Trovare la funzione** (riga 1119–1134):
+```typescript
+const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: string, status: AppointmentStatus | string) => {
+    if (!enrollmentId) return; // Guard against empty ID
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    if (!enrollmentSnap.exists()) return;
+    
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    const appIndex = appointments.findIndex(a => a.lessonId === lessonId);
+    
+    if (appIndex !== -1) {
+        appointments[appIndex].status = status;
+        const newCounters = calculateRemainingCounters(enrollment, appointments);
+        await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
+    }
+};
+```
+
+**Sostituire con:**
+```typescript
+const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: string, status: AppointmentStatus | string) => {
+    if (!enrollmentId) return;
+    const enrollmentDocRef = doc(db, 'enrollments', enrollmentId);
+    const enrollmentSnap = await getDoc(enrollmentDocRef);
+    if (!enrollmentSnap.exists()) return;
+
+    const enrollment = enrollmentSnap.data() as Enrollment;
+    const appointments = [...(enrollment.appointments || [])];
+    let appIndex = appointments.findIndex(a => a.lessonId === lessonId);
+
+    if (appIndex === -1) {
+        // L'appointment non esiste nella cache legacy (iscrizione nuova architettura).
+        // Costruirlo dalla lesson per sincronizzare i contatori.
+        try {
+            const lessonRef = doc(db, 'lessons', lessonId);
+            const lessonSnap = await getDoc(lessonRef);
+            if (lessonSnap.exists()) {
+                const l = lessonSnap.data() as Lesson;
+                const newApp: Appointment = {
+                    lessonId,
+                    date: l.date,
+                    startTime: l.startTime,
+                    endTime: l.endTime,
+                    locationId: l.locationId || enrollment.locationId || 'unknown',
+                    locationName: l.locationName || enrollment.locationName,
+                    locationColor: l.locationColor || enrollment.locationColor,
+                    childName: enrollment.childName,
+                    status: status as AppointmentStatus,
+                    type: l.slotType
+                };
+                appointments.push(newApp);
+                appIndex = appointments.length - 1;
+            } else {
+                return; // Lezione non trovata, impossibile sincronizzare
+            }
+        } catch (e) {
+            console.warn('[SyncCache] Impossibile costruire appointment dalla lesson:', e);
+            return;
+        }
+    } else {
+        appointments[appIndex] = { ...appointments[appIndex], status: status as AppointmentStatus };
+    }
+
+    const newCounters = calculateRemainingCounters(enrollment, appointments);
+    await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
+};
+```
+
+---
+
+### B3 · Fix `suspendLessonsForClosure` — propagare stato a `lesson.attendees`
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `suspendLessonsForClosure` (riga 1704)
+
+**Problema:** la funzione aggiorna `enrollment.appointments[].status` ma non `lesson.attendees[].status`. Gli iscritti rimangono `Scheduled` nella nuova architettura.
+
+**Trovare il blocco "Process Manual Lessons"** (riga 1728–1741):
+```typescript
+    // Process Manual Lessons
+    const lessonsCollectionRef = collection(db, 'lessons');
+    const lessonsSnapshot = await getDocs(lessonsCollectionRef);
+    lessonsSnapshot.docs.forEach(docSnap => {
+        const lesson = docSnap.data() as Lesson;
+        const lessonDateStr = lesson.date.split('T')[0];
+        if (lessonDateStr === targetDateStr) {
+            if (!lesson.description.startsWith('[SOSPESO]')) {
+                batch.update(docSnap.ref, { description: `[SOSPESO] ${lesson.description}` });
+            }
+        }
+    });
+
+    await batch.commit();
+```
+
+**Sostituire con** (aggiunge propagazione a `lesson.attendees`):
+```typescript
+    // Process Manual Lessons — aggiorna descrizione E attendees
+    const lessonsCollectionRef = collection(db, 'lessons');
+    const lessonsSnapshot = await getDocs(lessonsCollectionRef);
+    lessonsSnapshot.docs.forEach(docSnap => {
+        const lesson = docSnap.data() as Lesson;
+        const lessonDateStr = lesson.date.split('T')[0];
+        if (lessonDateStr !== targetDateStr) return;
+
+        const updates: Partial<Lesson> = {};
+
+        // 1. Aggiorna descrizione
+        if (!lesson.description.startsWith('[SOSPESO]')) {
+            updates.description = `[SOSPESO] ${lesson.description}`;
+        }
+
+        // 2. Propaga sospensione agli attendees (nuova architettura)
+        if (lesson.attendees && lesson.attendees.length > 0) {
+            const updatedAttendees = lesson.attendees.map(a =>
+                a.status === 'Scheduled' ? { ...a, status: 'Suspended' as AppointmentStatus } : a
+            );
+            updates.attendees = updatedAttendees;
+        }
+
+        if (Object.keys(updates).length > 0) {
+            batch.update(docSnap.ref, updates);
+        }
+    });
+
+    await batch.commit();
+```
+
+---
+
+### B4 · Fix `restoreSuspendedLessons` — propagare ripristino a `lesson.attendees`
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `restoreSuspendedLessons` (riga 1744)
+
+**Problema speculare a B3:** la funzione ripristina `enrollment.appointments` ma non `lesson.attendees`.
+
+**Trovare il blocco "Process Manual Lessons"** (riga 1771–1785):
+```typescript
+    // 2. Process Manual Lessons (Remove [SOSPESO])
+    const lessonsCollectionRef = collection(db, 'lessons');
+    const lessonsSnapshot = await getDocs(lessonsCollectionRef);
+    lessonsSnapshot.docs.forEach(docSnap => {
+        const lesson = docSnap.data() as Lesson;
+        const lessonDateStr = lesson.date.split('T')[0];
+        if (lessonDateStr === targetDateStr) {
+            if (lesson.description.startsWith('[SOSPESO]')) {
+                const restoredDesc = lesson.description.replace('[SOSPESO] ', '').replace('[SOSPESO]', '').trim();
+                batch.update(docSnap.ref, { description: restoredDesc });
+            }
+        }
+    });
+
+    await batch.commit();
+```
+
+**Sostituire con:**
+```typescript
+    // 2. Process Manual Lessons — ripristina descrizione E attendees
+    const lessonsCollectionRef = collection(db, 'lessons');
+    const lessonsSnapshot = await getDocs(lessonsCollectionRef);
+    lessonsSnapshot.docs.forEach(docSnap => {
+        const lesson = docSnap.data() as Lesson;
+        const lessonDateStr = lesson.date.split('T')[0];
+        if (lessonDateStr !== targetDateStr) return;
+
+        const updates: Partial<Lesson> = {};
+
+        // 1. Ripristina descrizione
+        if (lesson.description.startsWith('[SOSPESO]')) {
+            updates.description = lesson.description
+                .replace('[SOSPESO] ', '')
+                .replace('[SOSPESO]', '')
+                .trim();
+        }
+
+        // 2. Ripristina attendees sospesi → Scheduled (nuova architettura)
+        if (lesson.attendees && lesson.attendees.length > 0) {
+            const updatedAttendees = lesson.attendees.map(a =>
+                a.status === 'Suspended' ? { ...a, status: 'Scheduled' as AppointmentStatus } : a
+            );
+            updates.attendees = updatedAttendees;
+        }
+
+        if (Object.keys(updates).length > 0) {
+            batch.update(docSnap.ref, updates);
+        }
+    });
+
+    await batch.commit();
+```
+
+---
+
+### B5 · Fix `syncEnrollmentFromLessonUpdate` — leggere attendees da DB
+
+**File:** `services/enrollmentService.ts`  
+**Funzione:** `syncEnrollmentFromLessonUpdate` (riga 702)
+
+**Problema:** la funzione propaga modifiche solo agli enrollment i cui `attendee.enrollmentId` sono passati nel parametro `lessonUpdate.attendees`. Se la lesson ha attendees preesistenti non inclusi nell'update (scenario comune), vengono ignorati.
+
+**Trovare la funzione** (riga 702–745) e **sostituirla completamente**:
+```typescript
+export const syncEnrollmentFromLessonUpdate = async (lessonId: string, lessonUpdate: Partial<LessonInput>) => {
+    if (!lessonUpdate.date && !lessonUpdate.startTime && !lessonUpdate.endTime && !lessonUpdate.locationName) return;
+
+    if (lessonUpdate.attendees && lessonUpdate.attendees.length > 0) {
+        const batch = writeBatch(db);
+        let updatedCount = 0;
+
+        for (const attendee of lessonUpdate.attendees) {
+            if (attendee.enrollmentId) {
+                // ... [codice vecchio che legge dal parametro]
+```
+
+**Sostituire con:**
+```typescript
+export const syncEnrollmentFromLessonUpdate = async (lessonId: string, lessonUpdate: Partial<LessonInput>) => {
+    // Propagare solo se campi strutturali (non solo status o description)
+    if (!lessonUpdate.date && !lessonUpdate.startTime && !lessonUpdate.endTime && !lessonUpdate.locationName) return;
+
+    // FONTE DI VERITÀ: leggere gli attendees dalla lesson nel DB, non dal parametro in input.
+    // Il parametro lessonUpdate può essere parziale e non contenere tutti gli attendees.
+    let attendeesFromDB: LessonAttendee[] = [];
+    try {
+        const lessonRef = doc(db, 'lessons', lessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) return;
+        attendeesFromDB = (lessonSnap.data() as Lesson).attendees || [];
+    } catch (e) {
+        console.warn('[SyncLessonUpdate] Impossibile leggere lesson dal DB:', e);
+        return;
+    }
+
+    if (attendeesFromDB.length === 0) return;
+
+    const batch = writeBatch(db);
+    let updatedCount = 0;
+
+    for (const attendee of attendeesFromDB) {
+        if (!attendee.enrollmentId) continue;
+
+        const enrRef = doc(db, 'enrollments', attendee.enrollmentId);
+        const enrSnap = await getDoc(enrRef);
+        if (!enrSnap.exists()) continue;
+
+        const enrData = enrSnap.data() as Enrollment;
+        let modified = false;
+        const newApps = (enrData.appointments || []).map(app => {
+            if (app.lessonId === lessonId) {
+                modified = true;
+                return {
+                    ...app,
+                    date: lessonUpdate.date || app.date,
+                    startTime: lessonUpdate.startTime || app.startTime,
+                    endTime: lessonUpdate.endTime || app.endTime,
+                    locationName: lessonUpdate.locationName || app.locationName,
+                    locationColor: lessonUpdate.locationColor || app.locationColor
+                };
+            }
+            return app;
+        });
+
+        if (modified) {
+            batch.update(enrRef, { appointments: newApps });
+            updatedCount++;
+        }
+    }
+
+    if (updatedCount > 0) {
+        await batch.commit();
+        console.log(`[SyncLessonUpdate] Aggiornati ${updatedCount} enrollment dalla lesson ${lessonId}.`);
+    }
+};
+```
+
+---
+
+### B6 · Aggiungere `masterEnrollmentId` a `types.ts` per progetti istituzionali
+
+**File:** `types.ts`  
+**Interfaccia:** `Enrollment`
+
+**Trovare** la riga con `isQuoteBased?: boolean;` dentro `Enrollment` e **aggiungere dopo**:
+```typescript
+    isQuoteBased?: boolean;
+    relatedQuoteId?: string;
+    // Collegamento per progetti istituzionali multi-allievo:
+    // L'enrollment master è quello che detiene le fatture; gli enrollment figli lo referenziano.
+    masterEnrollmentId?: string;
+```
+
+---
+
+### B7 · Fix `InstitutionalWizard.tsx` — collegare enrollment figli al master
+
+**File:** `components/finance/InstitutionalWizard.tsx`  
+**Funzione:** `handleActivate` (riga 153)
+
+**Trovare il loop** (riga ~179–188):
+```typescript
+            for (let i = 0; i < names.length; i++) {
+                const name = names[i];
+                // First enrollment also marks the quote as Paid
+                const enrollmentId = await createInstitutionalEnrollment(quote, finalLessons, name, i === 0);
+                
+                // 4. Generate Scheduled Invoices from Installments (linked to first enrollment)
+                if (i === 0) {
+                    await generateInvoicesFromQuote(quote, enrollmentId, finalLessons);
+                }
+            }
+```
+
+**Sostituire con:**
+```typescript
+            let masterEnrollmentId = '';
+
+            for (let i = 0; i < names.length; i++) {
+                const name = names[i];
+                const enrollmentId = await createInstitutionalEnrollment(quote, finalLessons, name, i === 0);
+
+                if (i === 0) {
+                    // Primo enrollment = enrollment master: genera le fatture e conserva l'ID
+                    masterEnrollmentId = enrollmentId;
+                    await generateInvoicesFromQuote(quote, masterEnrollmentId, finalLessons);
+                } else {
+                    // Enrollment figlio: collegarlo al master per il Fiscal Doctor
+                    const { doc, updateDoc } = await import('firebase/firestore');
+                    const { db } = await import('../../firebase/config');
+                    await updateDoc(doc(db, 'enrollments', enrollmentId), {
+                        masterEnrollmentId: masterEnrollmentId
+                    });
+                }
+            }
+```
+
+---
+
+## SPRINT C — Coordinazione richiesta (implementare dopo Sprint B)
+
+### C1 · Rimozione ID sintetico `ENR-{id}` in `paymentService.ts`
+
+**File:** `services/paymentService.ts`  
+**Riga:** 140
+
+**Problema:** quando non viene creata una fattura, viene assegnato `invoiceIdForTransaction = \`ENR-${enrollment.id}\`` come ID sintetico. Questo ID non esiste in Firestore e può confondere il Fiscal Doctor che cerca fatture collegate alle transazioni.
+
+**Trovare** (riga ~137–141):
+```typescript
+            } else {
+                // NEW: Se NON creo fattura, uso un ID sintetico per collegare la transazione all'iscrizione
+                // Questo permette al Fiscal Doctor di trovare la copertura finanziaria
+                invoiceIdForTransaction = `ENR-${enrollment.id}`;
+            }
+```
+
+**Sostituire con:**
+```typescript
+            } else {
+                // Pagamento no-doc: nessun relatedDocumentId.
+                // Il Fiscal Doctor riconosce la copertura tramite relatedEnrollmentId sulla transazione.
+                invoiceIdForTransaction = null;
+            }
+```
+
+**Verificare che il campo** `relatedDocumentId` venga assegnato solo se non null (riga ~171):
+```typescript
+// DA:
+                if (invoiceIdForTransaction) {
+                    transactionData.relatedDocumentId = invoiceIdForTransaction;
+                }
+// RIMANE INVARIATO — il check `if (invoiceIdForTransaction)` già gestisce il null correttamente.
+```
+
+**Aggiornare il Fiscal Doctor** (`services/financeService.ts`) per riconoscere le transazioni no-doc come copertura valida. Cercare la funzione `runFinancialHealthCheck` e nel punto dove si verificano le transazioni collegate, aggiungere il caso:
+```typescript
+// Transazione no-doc: ha relatedEnrollmentId ma NON relatedDocumentId
+// Trattarla come pagamento coperto (no mismatch da segnalare)
+const isNoDoc = t.relatedEnrollmentId === enr.id && !t.relatedDocumentId;
+if (isNoDoc) {
+    // Contabilizza come incasso valido senza documento
+    coveredAmount += t.amount;
+    continue;
+}
+```
+
+---
+
+### C2 · Refactor `fetchAttendanceData` in `Attendance.tsx` — chiave unificata
+
+**File:** `pages/Attendance.tsx`  
+**Funzione:** `fetchAttendanceData` (riga 206)
+
+**Problema:** la chiave di deduplicazione per gli enti è `enrollmentId_dateStr` (senza orario), per i corsi è `enrollmentId_dateStr_startTime`. Un ente con due sessioni nello stesso giorno perde la seconda sessione.
+
+**Trovare** le due definizioni di `key` nel blocco "VECCHIA ARCHITETTURA" (riga ~294–296):
+```typescript
+                                const key = isInstitutional 
+                                    ? `${enr.id}_${appDateStr}` 
+                                    : `${enr.id}_${appDateStr}_${app.startTime}`;
+```
+
+**Sostituire con:**
+```typescript
+                                // Chiave unificata: sempre enrollmentId + lessonId (se disponibile) o data+ora.
+                                // NON differenziare per tipo cliente: evita la perdita di sessioni multiple nello stesso giorno.
+                                const key = app.lessonId
+                                    ? `${enr.id}::${app.lessonId}`
+                                    : `${enr.id}::${appDateStr}::${app.startTime}`;
+```
+
+**Trovare** le due definizioni di `key` nel blocco "NUOVA ARCHITETTURA" (riga ~349–351):
+```typescript
+                        const key = isInstitutional 
+                            ? `${attendee.enrollmentId}_${dateKey}` 
+                            : `${attendee.enrollmentId}_${dateKey}_${lesson.startTime}`;
+```
+
+**Sostituire con:**
+```typescript
+                        // Chiave unificata: enrollmentId + lessonId (sempre disponibile nella nuova architettura).
+                        const key = `${attendee.enrollmentId}::${docSnap.id}`;
+```
+
+**Trovare** la chiave nel blocco "MEGAMAMMA GAP" (riga ~384):
+```typescript
+                            const key = `${enr.id}_${dateKey}_${lesson.startTime}`;
+```
+
+**Sostituire con:**
+```typescript
+                            const key = `${enr.id}::${docSnap.id}`;
+```
+
+---
+
+### C3 · Fix `lessonsRemaining` fallback in `Attendance.tsx`
+
+**File:** `pages/Attendance.tsx`
+
+**Trovare tutte e tre le occorrenze** di questo pattern (righe 304, 367, 401):
+```typescript
+enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0)
+```
+
+**Sostituire tutte e tre con:**
+```typescript
+enr.lessonsRemaining ?? enr.labRemaining ?? enr.sgRemaining ?? 0
+```
+
+**Motivazione:** `?? 0` invece di `|| 0` preserva il valore `0` reale (iscrizione esaurita) invece di mascherarlo col fallback.
+
+---
+
+## Ordine di esecuzione e verifica
+
+### Sequenza obbligatoria
+
+```
+Sprint A → Sprint B → Sprint C
+```
+
+All'interno di ogni sprint, l'ordine degli step è raccomandato ma non vincolante tranne per:
+- **A1 deve precedere A2, A3, A4** (A2/A3/A4 importano `getSlotCount` definito in A1)
+- **B2 deve precedere B3 e B4** (B3/B4 usano `Appointment` type che B2 usa nella cache)
+- **C1 deve precedere C3** (C3 usa la logica no-doc introdotta in C1)
+
+### Checklist di verifica per Sprint A
+
+- [ ] `types.ts`: funzioni `getSlotCount`, `getNormalizedCounts`, `hasSlotType` presenti ed esportate
+- [ ] `EnrollmentForm.tsx`: nessuna funzione `getTokenCount` locale, import `getSlotCount` da `../types`
+- [ ] `EnrollmentPortal.tsx`: nessuna funzione `getTokenCount` locale, import `getSlotCount` da `../types`
+- [ ] `enrollmentService.ts`: `generateTheoreticalAppointments` ha firma con `courseStartDate?` e usa `weeksSinceStart` invece di `Math.ceil(day/7)`
+- [ ] `enrollmentService.ts`: `calculateRemainingCounters` non contiene `|| !a.type`
+- [ ] `types.ts`: `appointments?` ha JSDoc `@deprecated`
+- [ ] `Calendar.tsx`: `generateKey` accetta quarto parametro `courseId?` e le due chiamate lo passano
+- [ ] `enrollmentService.ts`: `syncEnrollmentFromLessonDeletion` stampa warning per fuzzy match
+- [ ] `financeService.ts`: `createRentTransactionsBatch` query idempotency prima del batch
+
+### Checklist di verifica per Sprint B
+
+- [ ] `enrollmentService.ts`: nel loop di `bookStudentIntoCourseLessons`, `isAlreadyBooked` usa `continue` (non `if (!isAlreadyBooked) { ... }` con contatori fuori)
+- [ ] `enrollmentService.ts`: `syncAttendanceToEnrollmentCache` crea appointment da lesson se `appIndex === -1`
+- [ ] `enrollmentService.ts`: `suspendLessonsForClosure` aggiorna sia `description` che `attendees` delle lessons
+- [ ] `enrollmentService.ts`: `restoreSuspendedLessons` ripristina sia `description` che `attendees` delle lessons
+- [ ] `enrollmentService.ts`: `syncEnrollmentFromLessonUpdate` legge attendees dal DB, non dal parametro
+- [ ] `types.ts`: `Enrollment` ha campo `masterEnrollmentId?: string`
+- [ ] `InstitutionalWizard.tsx`: loop crea `masterEnrollmentId` e lo assegna agli enrollment figli
+
+### Checklist di verifica per Sprint C
+
+- [ ] `paymentService.ts`: `invoiceIdForTransaction = null` per pagamenti no-doc (non `ENR-...`)
+- [ ] `financeService.ts`: `runFinancialHealthCheck` riconosce transazioni no-doc come copertura valida
+- [ ] `Attendance.tsx`: tutte e tre le chiavi `key` usano `::` come separatore e `lessonId` quando disponibile
+- [ ] `Attendance.tsx`: fallback `lessonsRemaining` usa `??` invece di `||`
+
+---
+
+## Nota sui test
+
+Per ogni fix implementato, testare manualmente il percorso critico:
+
+| Fix | Test minimo |
+|---|---|
+| A1–A4 getSlotCount | Creare iscrizione con abbonamento `tokens[]` → verificare contatori corrispondenti |
+| A5 weekNum | Corso LAB+SG, visualizzare calendario su mesi diversi → alternanza stabile |
+| A6 calculateCounters | Iscrizione con tipo slot misto, marcare presenze → `labRemaining` non scende su SG |
+| A8 generateKey | Due corsi diversi stessa sede stesso orario → appaiono come due chip separati |
+| A10 idempotency | Click "Sincronizza Affitti" × 2 stesso mese → zero duplicati in transazioni |
+| B1 bookStudent | `bookStudentIntoCourseLessons` × 2 → `bookedCount = 0` alla seconda chiamata |
+| B3–B4 suspend | Creare chiusura scolastica → `lesson.attendees[].status === 'Suspended'` |
+| C1 no-doc | Pagamento senza fattura → `relatedDocumentId` assente sulla transazione, Fiscal Doctor non segnala mismatch |
+| C2 dedup | Ente con due sessioni nello stesso giorno → entrambe visibili in Attendance |
+
+1 - 2026-05-14
+
+OGGETTO: Refactoring Sincronizzazione, Iscrizioni Istituzionali, Calendario, Chiusure
+
+CREATO:
+- Logica Iscrizioni Istituzionali (Master/Figli).
+- Logica Chiavi Presenze (enrollmentId::lessonId).
+- Logica Sospensione Lezioni (propagazione status 'Suspended' in attendees).
+- Logica Sincronizzazione Appuntamenti Cache (syncEnrollmentFromLessonUpdate lettura DB).
+- Logica Consumo Token (bookStudentIntoCourseLessons check 'type').
+- Logica Transazioni No-Invoice (relatedDocumentId = null).
+- Logica Affitti Automatici (idempotency key 'AUTO-RENT-YYYY-MM-LocationId').
+
+FUNZIONE:
+- Gestire master/child Iscrizioni Istituzionali.
+- Mostrare Presenze senza duplicati.
+- Aggiornare Presenze post-sospensione calendario.
+- Mantenere coerenza Cache Iscrizioni <-> Lezioni DB.
+- Scalare contatori giusti fase prenotazione.
+- Gestire Transazioni isolate.
+- Prevenire duplicati Affitto mese.
+
+EFFETTI PROPAGAZIONE:
+- Modifica Calendario -> Sincronizza Appuntamenti Iscrizioni (Cache DB).
+- Chiusura Giorno -> Modifica Lezione -> Modifica Attendees -> Firebase DB.
+- Presenze UI -> Unificazione Chiavi (evita perdita/duplicazione UI).
+- Primo Wizard Istituzionale -> Setta Master; Seguenti -> Setta 'masterEnrollmentId'.
+
+
+# Sprint 1 - 2026-05-14
+
+## Risoluzione Bug: Iscrizione Standard, "ND / ND" e Fallback 16:00
+*   **Problema 1 (ND / ND):** Durante una nuova Iscrizione Standard, la funzione `activateEnrollmentWithLocation` iscriveva regolarmente l'allievo alle lezioni (`bookStudentIntoCourseLessons`), ma nel rileggere il database interrogava una cache locale stantia. Le lezioni estratte sembravano non contenere l'allievo. Di conseguenza la lista appuntamenti salvati risultava vuota (`[]`) e la UI raggruppava l'iscrizione nella sezione "In Attesa / ND / ND".
+*   **Problema 2 (16:00 fallback):** Quando l'utente tentava di *correggere* l'iscrizione "ND / ND" aprendo la modale di Modifica e forzando il Corso, la funzione `updateEnrollment` si limitava a sovrascrivere testualmente il documento senza **re-iscrivere** effettivamente fisicamente l'utente nelle Lezioni della Nuova Architettura. Peggio ancora, ereditando l'array vuoto di prima, generava lezioni fittizie "fallback" partendo dall'ora di default 16:00, generando disallineamento puro col calendario.
+*   **Problema 3 (Sovrascrittura UI):** Nella modale Iscrizione, la selezione *manuale* di un corso provocava l'innesco di una dipendenza (`targetLocationId`) che cercava autonomamente di "trovare il miglior corso per età", sovrascrivendo la scelta esplicita dell'operatore con eventuali orari default (es. 16:00).
+
+## Implementazione, Correzione, Effetti
+*   **Fix 1:** Aggiornato `bookStudentIntoCourseLessons` in modo da ritornare programmaticamente ed esattamente **l'elenco di `Lesson` fisicamente modificate**, aggirando il limite della cache Firebase; in `activateEnrollmentWithLocation` ora le `appointments` vengono popolate infallibilmente usando i veritieri dati di ritorno.
+*   **Fix 2:** Modificata robustamente `updateEnrollment` affinché intercetti i cambi di `courseId`. Se riscontra una modifica del corso di appartenenza (o forzature di calendario), **purga** i record delle presenze/assenze dell'allievo nelle vecchie `Lesson`, per poi richiamare rigorosamente `activateEnrollmentWithLocation` e allinearlo nella nuova coorte di Lezioni e Orari previsti dal corso di destinazione.
+*   **Fix 3:** Nella `EnrollmentForm.tsx`, rimosso l'overwrite coatto del `selectedCourseId` se era già stato valorizzato manualmente dall'operatore. 
+
+I test del percorso critico logico e architetturale sono stati portati a compimento virtualmente. Sono stati rispettati i vincoli di non rottura dell'ecosistema, robustezza e isolamento.
+
+# Sprint 2 - 2026-05-15
+
+## Obiettivo
+Miglioramento coerenza allineamento date e visibilità corsi nel calendario.
+
+## Modifiche
+1. **Calendar.tsx**:
+    - Tooltip migliorato: ora mostra il nome del corso se presente nella descrizione.
+2. **EnrollmentForm.tsx**:
+    - Fix bug: selezione corso ora aggiorna correttamente `finalLocationColor`, `finalSupplierId` e `finalSupplierName`.
+    - `onSave` ora riceve `regenerateCalendar` opzionale.
+3. **enrollmentService.ts**:
+    - `generateTheoreticalAppointments`: aggiunto parametro `targetDayOfWeek` per forzare l'inizio della serie al giorno corretto (es. se corso è lunedì, primo slot teorico sarà lunedì).
+    - `updateEnrollment` & `activateEnrollmentWithLocation`: ora recuperano il `dayOfWeek` dal corso e lo passano alla logica di generazione.
+4. **EnrollmentArchive.tsx** & **Enrollments.tsx**:
+    - Adeguamento `handleSaveEnrollment` per supportare il nuovo flag di rigenerazione.
+
+## Effetti
+- Le iscrizioni ai corsi ora partono sempre nel giorno corretto della settimana.
+- Maggiore chiarezza nel Calendario nel distinguere le tipologie di attività.
+
+# Sprint 3 - 2026-05-15
+
+## Obiettivo
+Miglioramento feedback visivo Migrazione Massiva Sede.
+
+## Modifiche
+1. **Enrollments.tsx**:
+    - `LocationMigrationModal`: pulsante "Trasferisci Tutto" ora mostra spinner integrato e testo "Trasferimento..." durante l'operazione.
+    - `handleLocMigrationConfirm`: aggiunto `toast.error` nel catch per intercettare fallimenti silenziosi.
+    - Sincronizzazione: la modale si chiude solo dopo la notifica di successo e il completamento del `fetchData`.
+
+## Effetti
+- L'utente ha percezione immediata dell'avanzamento del processo.
+- Evitata la chiusura prematura della modale prima della conferma di sistema.
+
+
+# Sprint 4 - 2026-05-20
+
+## Obiettivo
+Correzioni di bug critici su logica delle lezioni LAB+SG, protezione iscritti futuri, allineamento orari, matching bambini e multifilamento bundle.
+
+## Modifiche
+1. **courseService.ts**:
+    - **B1**: Risolto calcolo pattern settimanale LAB+SG usando settimane progressive dall'inizio del corso (`weeksSinceCourseStart` con modulo `planSize`) anziché `Math.ceil(day / 7)` che resettandosi mensilmente sfasava i calendari.
+    - **B2**: Sostituita la cancellazione cieca in `syncCourseLessons`. Le lezioni future con prenotazioni attive (`lesson.attendees` > 0) ora vengono protette e i loro metadati semplicemente aggiornati (sede/colore), mentre solo le lezioni vuote vengono rigenerate. Restituisce il conteggio `{ updated, deleted, protected }`.
+2. **Courses.tsx**:
+    - **B2 Caller**: Aggiornata la chiamata a `syncCourseLessons`. Se sono state rilevate lezioni protette, mostra un avviso non bloccante via toast con l'icona '⚠️'.
+3. **enrollmentService.ts**:
+    - **B3**: Fix logica `updateEnrollment` su cambio corso: recupera dinamicamente `startTime` e `endTime` direttamente dal corso di destinazione su Firestore per evitare l'orario di fallback rigido `16:00`.
+    - **B7**: Risolto bug logica di fallback in `activateEnrollmentWithLocation` per iscrizioni senza un `courseId`: recupera gli orari precedentemente impostati nell'iscrizione (appointments) o dalle lezioni collegate anziché forzare `16:00` durante migrazioni massive.
+4. **EnrollmentForm.tsx**:
+    - **B4**: Corretto matching classi ed età. L'età dei bambini viene ora moltiplicata per 12 (`ageInMonths = age * 12`) per essere confrontata correttamente con `minAge` e `maxAge` dei corsi presenti nel DB che sono salvati in mesi.
+5. **EnrollmentPortal.tsx**:
+    - **B5**: Abilitata la logica multifilamento per i bundle multi-slot nel portale d'iscrizione. Costruisce un appointment placeholder per ciascuno degli slot inclusi nel bundle anziché considerare solo il primo elemento, preservando i corretti parametri `type` (LAB o SG).
+6. **financeService.ts** & **FinanceListView.tsx**:
+    - **B6**: Deprecato e rimosso dalla produzione il trigger di sanatoria anomalie `runSmartSanityFix` contenente logiche ed anagrafiche hardcoded vulnerabili a falsi positivi. Mantenuto offline in `scripts/oneTimeFixMay2026.ts` e disabilitato/nascosto il relativo pulsante.
+7. **ClientSituation.tsx**:
+    - **B8**: Rimosso il file duplicato deprecato e vuoto presente nella directory root.
+
+## Effetti
+- Lezioni future con prenotazioni non vengono più cancellate o perse in caso di aggiornamento corso.
+- Matching corsi ed età allievi totalmente funzionanti e fluidi.
+- Orari delle lezioni e pianificazione settimanale LAB+SG precisi, stabili e scevri da derive temporali mensili.
+- Iscrizioni con bundle multi-slot dal portale agganciate ad entrambi gli appuntamenti (LAB e SG).
+- Prevenzione attiva contro corruzione dati accidentale via UI su anagrafiche storiche.
+- Codebase ripulita da file deprecati e ridondanze d'importazione.
+
+
+---
+
+# ARCHIVIO DOCUMENTALE INTEGRATO (COMPRESSO)
+
+## 1. PIANO REFACTOR GESTIONALE (Da Piano.md)
+*   **Contesto Architetturale Legacy vs Nuova**:
+    *   *Presenze*: Fonte verità in `lesson.attendees[]`. `enrollment.appointments[]` è cache di sola lettura.
+    *   *Abbonamenti*: Fonte verità in `SubscriptionType.tokens[]`. I vecchi campi `labCount`, `sgCount` ecc. sono alias di compatibilità.
+    *   *Scritture*: Tramite `registerPresence` / `registerAbsence` per allineare entrambi i modelli.
+*   **Sprint A (Zero Rischi)**:
+    *   *A1-A4 (Token standard)*: Centralizzato calcolo slot tramite `getSlotCount` e `getNormalizedCounts` in `types.ts`, rimpiazzando logiche locali orfane in `EnrollmentForm.tsx` e `EnrollmentPortal.tsx`.
+    *   *A5 (LAB+SG Pattern)*: Corretto calcolo settimane progressive in `generateTheoreticalAppointments` basato su data inizio corso (non del mese) con modulo `planSize` per evitare sfasamenti mensili.
+    *   *A6 (Contatori)*: Esclusi appuntamenti senza tipo (legacy) dal calcolo dei contatori residui di slot (`calculateRemainingCounters`).
+    *   *A7-A8 (Calendar)*: Deprecato campo `appointments` in `types.ts`. Integrato `courseId` in `generateKey` per isolare corsi diversi con orari uguali nello stesso giorno/sede in `Calendar.tsx`.
+    *   *A9-A10 (Sync & Rent)*: Aggiunto log fuzzy match in rimozione lezioni e introdotta idempotenza in `createRentTransactionsBatch` su `relatedDocumentId` per prevenire duplicati spese nolo.
+*   **Sprint B (Rischio Basso)**:
+    *   *B1 (Leak Slot)*: Risolto bug prenotazioni duplicate in `bookStudentIntoCourseLessons` che scalava pacchetti senza persistere su DB.
+    *   *B2 (Cache Sinc)*: Aggiornato `syncAttendanceToEnrollmentCache` per ricostruire al volo record appuntamento orfani se mancanti in cache.
+    *   *B3-B4 (Chiusure)*: Propagata descrizione `[SOSPESO]` e lo stato `Suspended` in `lesson.attendees[]` per allineare nuova architettura.
+    *   *B5 (Lesson Sync)*: Corretto `syncEnrollmentFromLessonUpdate`. Legge attendees direttamente da DB anziché da input parziale per evitare perdita propagazione.
+    *   *B6-B7 (Istituzionali)*: Aggiunto `masterEnrollmentId` a `types.ts`. Collegati enrollment figli dello stesso ente sul record master per sdoganare controlli finanziari fiscali.
+*   **Sprint C (Coordinazione)**:
+    *   *C1 (Virtual IDs)*: Rimosso ID sintetico `ENR-{id}` in `paymentService.ts` per transazioni no-doc. Aggiornato Fiscal Doctor (`runFinancialHealthCheck`) per riconoscere validità pagamenti senza documento.
+    *   *C2-C3 (Presenze)*: Unificata chiave presenza in `${enrollmentId}::${lessonId}` eliminando distinzione per ente che perdeva sessioni multiple. Adottata coalescenza nulla `??` per preservare il valore zero delle lezioni restanti.
+
+## 2. REFACTOR ARCHIVIO ISCRIZIONI E DATE (Da docs/2-2026-05-15.md)
+*   **Bug Date Fine / Stato Attesa**:
+    *   *Causa*: Un abbonamento mensile mostrava inizio/fine coincidenti e rimaneva "IN ATTESA" con 0 lezioni fisiche associate quando il calendario futuro non era ancora generato dall'amministratore.
+    *   *Risoluzione*: Aggiornato `activateEnrollmentWithLocation`. Se le lezioni fisiche reali agganciate sono inferiori al venduto (`lessonsTotal`), il sistema autogenera appuntamenti teorici compensativi (`generateTheoreticalAppointments`), calcolando correttamente la `finalEndDate` sul mese reale ed evitando il degrado in stato "IN ATTESA".
+
+## 3. RESYNC CALENDARIO STANDARD (Da docs/sprint-2026-05-15.md)
+*   **Pulsante Sincronizza**: Estesa visibilità icona "Sincronizza Calendario" (refresh ambra) alle iscrizioni standard (prima riservato solo a istituzionali).
+*   **Fix Singolo**: Associata action `handleSingleFix` con `fixSingleEnrollment` per forzare il ricalcolo e rigenerazione date per singolo allievo standard.
+*   **Auto-Fix Retroattivo**: Corretta la routine di sanatoria `autoFixEnrollments` per leggere `getAllCourses()` anziché solo `getOpenCourses()`, sbloccando la calendarizzazione anche per allievi associati a corsi storicamente chiusi.
+
+## 4. REPORT SPRINT 4 (Da 4-2026-05-20.md)
+*   *Nota*: Vedere sezione precedente "Sprint 4 - 2026-05-20" per i dettagli dei bug critici risolti su lezioni LAB+SG, protezione iscritti futuri, matching classi-età bambini e multi-slot bundle.
+
+
+

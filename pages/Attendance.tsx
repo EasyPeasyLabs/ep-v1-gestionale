@@ -290,10 +290,11 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             if (appDateStr >= currentRangeStart && appDateStr <= currentRangeEnd && appDateStr >= enrStart && appDateStr <= enrEnd) {
                                 const isInstitutional = enr.clientType === ClientType.Institutional || enr.locationId === 'institutional';
                                 
-                                // Chiave deterministica per evitare duplicati nello stesso giorno/slot
-                                const key = isInstitutional 
-                                    ? `${enr.id}_${appDateStr}` 
-                                    : `${enr.id}_${appDateStr}_${app.startTime}`;
+                                // Chiave unificata: sempre enrollmentId + lessonId (se disponibile) o data+ora.
+                                // NON differenziare per tipo cliente: evita la perdita di sessioni multiple nello stesso giorno.
+                                const key = app.lessonId
+                                    ? `${enr.id}::${app.lessonId}`
+                                    : `${enr.id}::${appDateStr}::${app.startTime}`;
 
                                 itemsMap.set(key, {
                                     ...app,
@@ -301,7 +302,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
                                     subscriptionName: enr.subscriptionName,
-                                    lessonsRemaining: enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0),
+                                    lessonsRemaining: enr.lessonsRemaining ?? enr.labRemaining ?? enr.sgRemaining ?? 0,
                                     isNewArchitecture: false
                                 });
                             }
@@ -345,10 +346,8 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             if (dateKey < enrStart || dateKey > enrEnd) return;
                         }
 
-                        const isInstitutional = enr?.clientType === ClientType.Institutional || lesson.locationId === 'institutional';
-                        const key = isInstitutional 
-                            ? `${attendee.enrollmentId}_${dateKey}` 
-                            : `${attendee.enrollmentId}_${dateKey}_${lesson.startTime}`;
+                        // Chiave unificata: enrollmentId + lessonId (sempre disponibile nella nuova architettura).
+                        const key = `${attendee.enrollmentId}::${docSnap.id}`;
                         
                         itemsMap.set(key, {
                             lessonId: docSnap.id,
@@ -364,7 +363,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             recoveryId: attendee.recoveryId,
                             enrollmentId: attendee.enrollmentId || '',
                             subscriptionName: enr ? enr.subscriptionName : 'Corso',
-                            lessonsRemaining: enr ? (enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0)) : 0,
+                            lessonsRemaining: enr ? (enr.lessonsRemaining ?? enr.labRemaining ?? enr.sgRemaining ?? 0) : 0,
                             isNewArchitecture: true
                         });
                     });
@@ -381,7 +380,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             const enrEnd = enr.endDate ? enr.endDate.split('T')[0] : '9999-12-31';
                             if (dateKey < enrStart || dateKey > enrEnd) return;
 
-                            const key = `${enr.id}_${dateKey}_${lesson.startTime}`;
+                            const key = `${enr.id}::${docSnap.id}`;
                             
                             // Se non è già presente (magari caricato prima come attendee), lo aggiungiamo ora
                             if (!itemsMap.has(key)) {
@@ -398,7 +397,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                                     type: lesson.slotType || 'LAB',
                                     enrollmentId: enr.id,
                                     subscriptionName: enr.subscriptionName,
-                                    lessonsRemaining: enr.lessonsRemaining !== undefined ? enr.lessonsRemaining : (enr.labRemaining || 0),
+                                    lessonsRemaining: enr.lessonsRemaining ?? enr.labRemaining ?? enr.sgRemaining ?? 0,
                                     isNewArchitecture: true
                                 });
                             }

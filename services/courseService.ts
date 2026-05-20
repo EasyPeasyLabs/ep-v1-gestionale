@@ -48,6 +48,11 @@ export const getOpenCourses = async (): Promise<Course[]> => {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
 };
 
+export const getAllCourses = async (): Promise<Course[]> => {
+    const snapshot = await getDocs(collection(db, COURSES_COLLECTION));
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course));
+};
+
 export const getCourseById = async (id: string): Promise<Course | null> => {
     const docRef = doc(db, COURSES_COLLECTION, id);
     const snap = await getDoc(docRef);
@@ -143,8 +148,13 @@ export const checkCourseConflicts = async (courseId: string, newActiveMonths: nu
 /**
  * Sincronizza le lezioni di un corso: elimina quelle future e le rigenera.
  */
-export const syncCourseLessons = async (courseId: string, course: Course, locationName: string, locationColor: string): Promise<void> => {
-    // 1. Elimina lezioni future per questo corso
+export const syncCourseLessons = async (
+    courseId: string,
+    course: Course,
+    locationName: string,
+    locationColor: string
+): Promise<{ updated: number; deleted: number; protected: number }> => {
+    // 1. Elimina lezioni future per questo corso (solo se senza iscritti)
     const now = new Date().toISOString();
     const q = query(
         collection(db, LESSONS_COLLECTION),
@@ -155,16 +165,38 @@ export const syncCourseLessons = async (courseId: string, course: Course, locati
     const snapshot = await getDocs(q);
     const batch = writeBatch(db);
     
-    snapshot.docs.forEach(doc => {
-        // Eliminiamo solo se non ci sono presenze già segnate (attendees vuoti)
-        // o se l'utente ha confermato l'impatto (gestito a monte)
-        batch.delete(doc.ref);
+    let deleted = 0;
+    let protected_ = 0;
+    let updated = 0;
+
+    snapshot.docs.forEach(lessonDoc => {
+        const lesson = lessonDoc.data() as Lesson;
+        const hasBookings = lesson.attendees && lesson.attendees.length > 0;
+
+        if (hasBookings) {
+            // PROTEZIONE: aggiorna solo i metadati, non cancellare
+            batch.update(lessonDoc.ref, {
+                locationName: locationName,
+                locationColor: locationColor
+            });
+            updated++;
+            protected_++;
+        } else {
+            // Nessuna prenotazione: sicuro cancellare e rigenerare
+            batch.delete(lessonDoc.ref);
+            deleted++;
+        }
     });
     
     await batch.commit();
     
     // 2. Rigenera lezioni
-    await generateCourseLessons(courseId, course, locationName, locationColor);
+    if (deleted > 0) {
+        await generateCourseLessons(courseId, course, locationName, locationColor);
+    }
+
+    console.log(`[SyncCourse] Corso ${courseId}: ${deleted} eliminate, ${protected_} protette, ${updated} aggiornate.`);
+    return { updated, deleted, protected: protected_ };
 };
 
 /**
@@ -199,8 +231,16 @@ export const generateCourseLessons = async (courseId: string, course: Course, lo
             let cap = course.capacity;
 
             if (course.slotType === 'LAB+SG' && course.comboConfigs && course.weeklyPlan) {
-                const day = current.getDate();
-                const weekNum = Math.ceil(day / 7);
+                // Calcola la settimana PROGRESSIVA dall'inizio del corso (non del mese).
+                // startObj è già definito sopra come new Date(course.startDate).
+                // Questo garantisce che la sequenza LAB/SG non si resetti a ogni mese.
+                const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+                const weeksSinceCourseStart = Math.floor(
+                    (current.getTime() - startObj.getTime()) / msPerWeek
+                );
+                const planSize = Object.keys(course.weeklyPlan).length || 4;
+                // Settimana 1-based ciclica (1, 2, 3, 4, 1, 2, 3, 4 ...)
+                const weekNum = (weeksSinceCourseStart % planSize) + 1;
                 const plannedType = course.weeklyPlan[weekNum] || 'LAB';
                 
                 if (plannedType === 'LAB' && course.comboConfigs.LAB) {

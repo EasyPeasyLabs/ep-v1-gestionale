@@ -111,24 +111,23 @@ const Calendar: React.FC = () => {
             // Chiave Univoca: YYYY-MM-DD_HH:MM_NormalizedLocationName
             const uniqueSlotsMap = new Map<string, CalendarEvent>();
 
-            const generateKey = (dateStr: string, timeStr: string, locName: string) => {
-                // Normalizzazione chirurgica: estrae solo la componente YYYY-MM-DD
-                // Se la stringa contiene un'ora ISO (Z), usiamo l'oggetto Date per estrarre il giorno locale
+            const generateKey = (dateStr: string, timeStr: string, locName: string, courseId?: string) => {
                 let cleanDate = dateStr.split('T')[0];
                 if (dateStr.includes('T') && dateStr.endsWith('Z')) {
                    const d = new Date(dateStr);
-                   // Se l'ora è vicina alla mezzanotte (es 22:00 del giorno prima), 
-                   // riportiamo alla data locale corretta (Italy)
-                   cleanDate = d.toLocaleDateString('en-CA'); // en-CA produce YYYY-MM-DD
+                   cleanDate = d.toLocaleDateString('en-CA');
                 }
                 const cleanLoc = (locName || 'Sede Non Definita').trim();
-                return `${cleanDate}_${timeStr}_${cleanLoc}`;
+                // Se la lezione appartiene a un corso specifico, isola la chiave per courseId.
+                // Questo previene la fusione di corsi diversi nello stesso slot fisico.
+                const courseSegment = courseId && courseId !== 'manual' ? `_${courseId}` : '';
+                return `${cleanDate}_${timeStr}_${cleanLoc}${courseSegment}`;
             };
 
             // Processa Lezioni Manuali
             manualLessons.forEach(l => {
                 const { name: finalLocName, color: finalLocColor, isMaster } = normalizeLocation(l.locationName, l.locationColor);
-                const key = generateKey(l.date, l.startTime, finalLocName);
+                const key = generateKey(l.date, l.startTime, finalLocName, l.courseId);
                 
                 uniqueSlotsMap.set(key, {
                     ...l,
@@ -153,7 +152,7 @@ const Calendar: React.FC = () => {
                             const rawLocColor = app.locationColor || enr.locationColor;
                             
                             const { name: finalLocName, color: finalLocColor, isMaster } = normalizeLocation(rawLocName, rawLocColor);
-                            const key = generateKey(app.date, app.startTime, finalLocName);
+                            const key = generateKey(app.date, app.startTime, finalLocName, enr.courseId);
 
                             if (uniqueSlotsMap.has(key)) {
                                 const slot = uniqueSlotsMap.get(key);
@@ -486,7 +485,9 @@ const Calendar: React.FC = () => {
                                             const mobileLabel = `${locCode.substring(0,2)} ${startHour}h`;
                                             
                                             // Tooltip: Lista completa partecipanti
-                                            const tooltip = `${evt.startTime} - ${evt.locationName}\n${evt.studentNames?.join(', ') || evt.childName || evt.description}`;
+                                            const courseIdentifier = evt.type === 'manual' && evt.description && evt.description.includes('(') ? `Corso: ${evt.description.split(' (')[0]}` : evt.description ? `Corso: ${evt.description}` : '';
+                                            const tooltipHeader = courseIdentifier ? `${evt.startTime} - ${evt.locationName} - ${courseIdentifier}` : `${evt.startTime} - ${evt.locationName}`;
+                                            const tooltip = `${tooltipHeader}\n${evt.studentNames?.join(', ') || evt.childName || evt.description}`;
 
                                             return (
                                                 <div 

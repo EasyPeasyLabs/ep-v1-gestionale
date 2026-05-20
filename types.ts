@@ -535,7 +535,13 @@ export interface Enrollment {
     courseId?: string; // New: link to Course document
     isRenewal?: boolean;
     previousEnrollmentId?: string;
-    appointments?: Appointment[]; // Deprecato/Opzionale: il calendario è ora gestito da LessonSession
+    /**
+     * @deprecated Cache di sola lettura. Fonte di verità: lesson.attendees[].
+     * Non scrivere mai direttamente su questo campo da logica di business.
+     * Usare registerPresence() / registerAbsence() che aggiornano entrambe le architetture.
+     * Mantenuto per compatibilità con iscrizioni pre-migrazione e per la UI del Calendario.
+     */
+    appointments?: Appointment[];
     lessonsTotal: number;
     lessonsRemaining: number;
     labCount?: number;
@@ -558,6 +564,9 @@ export interface Enrollment {
     adjustmentNotes?: string;
     isQuoteBased?: boolean;
     relatedQuoteId?: string;
+    // Collegamento per progetti istituzionali multi-allievo:
+    // L'enrollment master è quello che detiene le fatture; gli enrollment figli lo referenziano.
+    masterEnrollmentId?: string;
     createdAt?: string;
 }
 
@@ -883,3 +892,45 @@ export interface PortalText {
     isActive: boolean;
     order: number;
 }
+
+// ─────────────────────────────────────────────────────────────────
+// HELPER CENTRALIZZATO — SubscriptionType token/legacy normalization
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Legge il conteggio di uno SlotType da SubscriptionType.
+ * Priorità: tokens[] (nuovo) → labCount/sgCount/evtCount/readCount (legacy).
+ * Usare SEMPRE questa funzione; non accedere mai a labCount/sgCount direttamente
+ * in logica di business.
+ */
+export const getSlotCount = (sub: SubscriptionType, type: SlotType): number => {
+    if (sub.tokens && sub.tokens.length > 0) {
+        const token = sub.tokens.find(t => t.type === type);
+        if (token !== undefined) return token.count;
+    }
+    switch (type) {
+        case 'LAB':  return sub.labCount  ?? 0;
+        case 'SG':   return sub.sgCount   ?? 0;
+        case 'EVT':  return sub.evtCount  ?? 0;
+        case 'READ': return (sub as SubscriptionType & { readCount?: number }).readCount ?? 0;
+        default:     return 0;
+    }
+};
+
+/**
+ * Restituisce un oggetto contatori normalizzato da qualsiasi SubscriptionType.
+ * Usa getSlotCount internamente.
+ */
+export const getNormalizedCounts = (sub: SubscriptionType) => ({
+    labCount:  getSlotCount(sub, 'LAB'),
+    sgCount:   getSlotCount(sub, 'SG'),
+    evtCount:  getSlotCount(sub, 'EVT'),
+    readCount: getSlotCount(sub, 'READ'),
+});
+
+/**
+ * Controlla se un SubscriptionType ha almeno uno slot di un certo tipo,
+ * sia in tokens[] che nei campi legacy.
+ */
+export const hasSlotType = (sub: SubscriptionType, type: SlotType): boolean =>
+    getSlotCount(sub, type) > 0;

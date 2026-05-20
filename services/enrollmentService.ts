@@ -5,7 +5,7 @@ import { collection, getDocs, getDocsFromServer, addDoc, where, query, DocumentD
 import { Enrollment, EnrollmentInput, Appointment, AppointmentStatus, EnrollmentStatus, Quote, ClientType, Lesson, DocumentStatus, LessonInput, SchoolClosure, LessonAttendee, Course, SubscriptionType } from '../types';
 import { isItalianHoliday } from '../utils/dateUtils';
 import { getSchoolClosures } from './calendarService';
-import { getOpenCourses, getLocations } from './courseService';
+import { getLocations, getAllCourses } from './courseService';
 import { getSuppliers } from './supplierService';
 
 const getEnrollmentCollectionRef = () => collection(db, 'enrollments');
@@ -19,7 +19,7 @@ export const bookStudentIntoCourseLessons = async (
     childName: string,
     startDate: string,
     totalLessons: number,
-    quotas?: { lab?: number, sg?: number, evt?: number, read?: number }
+    quotas?: Record<string, number>
 ) => {
     const lessonsRef = collection(db, 'lessons');
     const q = query(
@@ -40,10 +40,7 @@ export const bookStudentIntoCourseLessons = async (
 
     const batch = writeBatch(db);
     let bookedCount = 0;
-    let labUsed = 0;
-    let sgUsed = 0;
-    let evtUsed = 0;
-    let readUsed = 0;
+    const tokenUsage: Record<string, number> = {};
     let finalEndDate = startDate;
 
     const attendee: LessonAttendee = {
@@ -57,12 +54,12 @@ export const bookStudentIntoCourseLessons = async (
     for (const lesson of lessons) {
         if (bookedCount >= totalLessons) break;
 
+        const type = lesson.slotType || 'LAB';
+        const currentUsage = tokenUsage[type] || 0;
+
         // Check quotas if provided
-        if (quotas) {
-            if (lesson.slotType === 'LAB' && quotas.lab !== undefined && labUsed >= quotas.lab) continue;
-            if (lesson.slotType === 'SG' && quotas.sg !== undefined && sgUsed >= quotas.sg) continue;
-            if (lesson.slotType === 'EVT' && quotas.evt !== undefined && evtUsed >= quotas.evt) continue;
-            if (lesson.slotType === 'READ' && quotas.read !== undefined && readUsed >= quotas.read) continue;
+        if (quotas && quotas[type] !== undefined) {
+            if (currentUsage >= quotas[type]) continue;
         }
 
         const lessonDocRef = doc(db, 'lessons', lesson.id);
@@ -70,16 +67,16 @@ export const bookStudentIntoCourseLessons = async (
         // Controlla se l'allievo è già prenotato
         const isAlreadyBooked = (lesson.attendees || []).some(a => a.enrollmentId === enrollmentId);
         
-        if (!isAlreadyBooked) {
-            batch.update(lessonDocRef, {
-                attendees: arrayUnion(attendee)
-            });
-        }
+        if (isAlreadyBooked) continue; // ← FIX: Salta sia scrittura che conteggio
+        
+        // Push to local attendees list for returning
+        lesson.attendees = [...(lesson.attendees || []), attendee];
 
-        if (lesson.slotType === 'LAB') labUsed++;
-        else if (lesson.slotType === 'SG') sgUsed++;
-        else if (lesson.slotType === 'EVT') evtUsed++;
-        else if (lesson.slotType === 'READ') readUsed++;
+        batch.update(lessonDocRef, {
+            attendees: arrayUnion(attendee)
+        });
+
+        tokenUsage[type] = currentUsage + 1;
         
         bookedCount++;
         finalEndDate = lesson.date;
@@ -89,7 +86,17 @@ export const bookStudentIntoCourseLessons = async (
         await batch.commit();
     }
 
-    return { bookedCount, labUsed, sgUsed, evtUsed, readUsed, finalEndDate };
+    // Return the actual lessons we are now booked into
+    const bookedLessons = lessons.filter(l => 
+        (l.attendees || []).some(a => a.enrollmentId === enrollmentId)
+    );
+
+    return { 
+        bookedCount, 
+        tokenUsage, 
+        finalEndDate,
+        bookedLessons
+    };
 };
 
 const docToEnrollment = (doc: QueryDocumentSnapshot<DocumentData>): Enrollment => {
@@ -219,7 +226,9 @@ const generateTheoreticalAppointments = (
     endTime: string,
     childName: string,
     comboConfigs?: Course['comboConfigs'],
-    weeklyPlan?: Record<number, string>
+    weeklyPlan?: Record<number, string>,
+    courseStartDate?: string,
+    targetDayOfWeek?: number
 ): Appointment[] => {
     const appointments: Appointment[] = [];
     const startObj = new Date(startDate);
@@ -227,6 +236,13 @@ const generateTheoreticalAppointments = (
     startObj.setHours(12, 0, 0, 0);
     
     const current = new Date(startObj);
+    
+    // Align to target day of week if provided
+    if (targetDayOfWeek !== undefined) {
+        while (current.getDay() !== targetDayOfWeek) {
+            current.setDate(current.getDate() + 1);
+        }
+    }
     
     // Safety break to prevent infinite loops if something goes wrong
     let loops = 0; 
@@ -241,10 +257,19 @@ const generateTheoreticalAppointments = (
             let aType = 'LAB';
 
             if (comboConfigs && comboConfigs.LAB && comboConfigs.SG && weeklyPlan) {
-                const day = current.getDate();
-                const weekNum = Math.ceil(day / 7);
+                // Calcola la settimana progressiva dall'inizio del CORSO (non del mese).
+                // Usa courseStartDate se fornito, altrimenti startDate dell'iscrizione.
+                const referenceDate = new Date(courseStartDate || startDate);
+                referenceDate.setHours(12, 0, 0, 0);
+                const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+                const weeksSinceStart = Math.floor(
+                    (current.getTime() - referenceDate.getTime()) / msPerWeek
+                );
+                const planSize = Object.keys(weeklyPlan).length || 4;
+                // Settimana 1-based, ciclica sul piano del corso
+                const weekNum = (weeksSinceStart % planSize) + 1;
                 const plannedType = weeklyPlan[weekNum] || 'LAB';
-                
+
                 if (plannedType === 'LAB') {
                     sTime = comboConfigs.LAB.startTime;
                     eTime = comboConfigs.LAB.endTime;
@@ -280,12 +305,75 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
     if (!id) throw new Error("ID iscrizione mancante per aggiornamento");
     const enrollmentDoc = doc(db, 'enrollments', id);
     
+    // First, check if the courseId has changed, or if we need to regenerate
+    const oldSnap = await getDoc(enrollmentDoc);
+    if (!oldSnap.exists()) return;
+    const oldData = oldSnap.data() as Enrollment;
+    
+    // If we have a courseId and need to regenerate calendar (e.g. course changed, start date changed)
+    if (regenerateCalendar && enrollment.courseId && enrollment.courseId !== 'manual') {
+        const batch = writeBatch(db);
+        
+        // 1. Remove from old course lessons if there was an old course
+        if (oldData.courseId) {
+            const courseLessonsQuery = query(collection(db, 'lessons'), where('courseId', '==', oldData.courseId));
+            const courseLessonsSnap = await getDocs(courseLessonsQuery);
+            courseLessonsSnap.forEach((lessonDoc) => {
+                const lessonData = lessonDoc.data() as Lesson;
+                if (lessonData.attendees && lessonData.attendees.some(a => a.enrollmentId === id)) {
+                    const newAttendees = lessonData.attendees.filter(a => a.enrollmentId !== id);
+                    batch.update(lessonDoc.ref, { attendees: newAttendees });
+                }
+            });
+        }
+        await batch.commit();
+
+        // 2. Perform base update
+        await updateDoc(enrollmentDoc, enrollment);
+
+        // 3. Leggi startTime/endTime dal corso di DESTINAZIONE (non dagli appointments legacy).
+        // Priorità: (a) corso nuovo da DB → (b) corso vecchio → (c) enrollment → (d) safe default.
+        const targetCourseId = enrollment.courseId;
+        let startTime = enrollment.appointments?.[0]?.startTime || oldData.appointments?.[0]?.startTime || '';
+        let endTime   = enrollment.appointments?.[0]?.endTime   || oldData.appointments?.[0]?.endTime   || '';
+
+        if (targetCourseId && targetCourseId !== 'manual') {
+            try {
+                const courseSnap = await getDoc(doc(db, 'courses', targetCourseId));
+                if (courseSnap.exists()) {
+                    const courseData = courseSnap.data() as Course;
+                    // Usa gli orari del corso di destinazione come fonte di verità
+                    startTime = courseData.startTime || startTime;
+                    endTime   = courseData.endTime   || endTime;
+                }
+            } catch (e) {
+                console.warn('[UpdateEnrollment] Impossibile leggere corso, uso orari di fallback:', e);
+            }
+        }
+
+        // Fallback finale solo se non trovato nulla di valido
+        if (!startTime) startTime = '09:00';
+        if (!endTime)   endTime   = '10:00';
+
+        const dayOfWeek = new Date(enrollment.startDate || oldData.startDate).getDay();
+        
+        await activateEnrollmentWithLocation(
+            id, 
+            enrollment.supplierId || oldData.supplierId || 'unassigned', 
+            enrollment.supplierName || oldData.supplierName || '', 
+            enrollment.locationId || oldData.locationId || 'unassigned', 
+            enrollment.locationName || oldData.locationName || 'Sede', 
+            enrollment.locationColor || oldData.locationColor || '#ccc', 
+            dayOfWeek, 
+            startTime, 
+            endTime
+        );
+        return;
+    }
+
     if (regenerateCalendar && enrollment.startDate && enrollment.lessonsTotal) {
-        // --- SMART MERGE LOGIC ---
-        const oldSnap = await getDoc(enrollmentDoc);
-        if (oldSnap.exists()) {
-            const oldData = oldSnap.data() as Enrollment;
-            const oldAppointments = oldData.appointments || [];
+        // --- SMART MERGE LOGIC (For Custom / Institutional) ---
+        const oldAppointments = oldData.appointments || [];
             
             // Map old appointments by Date (YYYY-MM-DD) for quick lookup
             const historyMap = new Map<string, Appointment>();
@@ -305,6 +393,7 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
             const childName = enrollment.childName || oldData.childName;
 
             // Generate Theoretical Schedule based on NEW Start Date
+            const targetDay = new Date(enrollment.startDate).getDay();
             const theoreticalSchedule = generateTheoreticalAppointments(
                 enrollment.startDate,
                 enrollment.lessonsTotal,
@@ -313,7 +402,11 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
                 locColor,
                 startTime,
                 endTime,
-                childName
+                childName,
+                undefined, // comboConfigs
+                undefined, // weeklyPlan
+                undefined, // courseStartDate
+                targetDay // targetDayOfWeek
             );
 
             // Merge Logic
@@ -349,7 +442,6 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
                 enrollment.endDate = mergedAppointments[mergedAppointments.length - 1].date;
             }
         }
-    }
 
     await updateDoc(enrollmentDoc, enrollment);
 };
@@ -638,7 +730,9 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
                         course?.endTime || '10:00',
                         enr.childName,
                         course?.comboConfigs,
-                        course?.weeklyPlan
+                        course?.weeklyPlan,
+                        enr.startDate,
+                        course?.dayOfWeek
                     ).slice(1);
                 }
 
@@ -700,47 +794,60 @@ export const recuperoIntegraleDati = async (): Promise<void> => {
 
 // --- SYNC ENGINE: Manual Lesson Update -> Enrollment Appointment Update ---
 export const syncEnrollmentFromLessonUpdate = async (lessonId: string, lessonUpdate: Partial<LessonInput>) => {
-    // Only proceed if critical fields changed (Date, Time, Location)
+    // Propagare solo se campi strutturali (non solo status o description)
     if (!lessonUpdate.date && !lessonUpdate.startTime && !lessonUpdate.endTime && !lessonUpdate.locationName) return;
 
-    if (lessonUpdate.attendees && lessonUpdate.attendees.length > 0) {
-        const batch = writeBatch(db);
-        let updatedCount = 0;
+    // FONTE DI VERITÀ: leggere gli attendees dalla lesson nel DB, non dal parametro in input.
+    // Il parametro lessonUpdate può essere parziale e non contenere tutti gli attendees.
+    let attendeesFromDB: LessonAttendee[] = [];
+    try {
+        const lessonRef = doc(db, 'lessons', lessonId);
+        const lessonSnap = await getDoc(lessonRef);
+        if (!lessonSnap.exists()) return;
+        attendeesFromDB = (lessonSnap.data() as Lesson).attendees || [];
+    } catch (e) {
+        console.warn('[SyncLessonUpdate] Impossibile leggere lesson dal DB:', e);
+        return;
+    }
 
-        for (const attendee of lessonUpdate.attendees) {
-            if (attendee.enrollmentId) {
-                const enrRef = doc(db, 'enrollments', attendee.enrollmentId);
-                const enrSnap = await getDoc(enrRef);
-                if (enrSnap.exists()) {
-                    const enrData = enrSnap.data() as Enrollment;
-                    // Find matching appointment by lessonId
-                    let modified = false;
-                    const newApps = (enrData.appointments || []).map(app => {
-                        if (app.lessonId === lessonId) {
-                            modified = true;
-                            return {
-                                ...app,
-                                date: lessonUpdate.date || app.date,
-                                startTime: lessonUpdate.startTime || app.startTime,
-                                endTime: lessonUpdate.endTime || app.endTime,
-                                locationName: lessonUpdate.locationName || app.locationName,
-                                locationColor: lessonUpdate.locationColor || app.locationColor
-                            };
-                        }
-                        return app;
-                    });
-                    
-                    if (modified) {
-                        batch.update(enrRef, { appointments: newApps });
-                        updatedCount++;
+    if (attendeesFromDB.length === 0) return;
+
+    const batch = writeBatch(db);
+    let updatedCount = 0;
+
+    for (const attendee of attendeesFromDB) {
+        if (attendee.enrollmentId) {
+            const enrRef = doc(db, 'enrollments', attendee.enrollmentId);
+            const enrSnap = await getDoc(enrRef);
+            if (enrSnap.exists()) {
+                const enrData = enrSnap.data() as Enrollment;
+                // Find matching appointment by lessonId
+                let modified = false;
+                const newApps = (enrData.appointments || []).map(app => {
+                    if (app.lessonId === lessonId) {
+                        modified = true;
+                        return {
+                            ...app,
+                            date: lessonUpdate.date || app.date,
+                            startTime: lessonUpdate.startTime || app.startTime,
+                            endTime: lessonUpdate.endTime || app.endTime,
+                            locationName: lessonUpdate.locationName || app.locationName,
+                            locationColor: lessonUpdate.locationColor || app.locationColor
+                        };
                     }
+                    return app;
+                });
+                
+                if (modified) {
+                    batch.update(enrRef, { appointments: newApps });
+                    updatedCount++;
                 }
             }
         }
-        if (updatedCount > 0) {
-            await batch.commit();
-            console.log(`[Sync] Updated ${updatedCount} enrollments from manual lesson update.`);
-        }
+    }
+    if (updatedCount > 0) {
+        await batch.commit();
+        console.log(`[Sync] Updated ${updatedCount} enrollments from manual lesson update.`);
     }
 };
 
@@ -755,19 +862,27 @@ export const syncEnrollmentFromLessonDeletion = async (lessonId: string, lessonD
         const data = docSnap.data() as Enrollment;
         if (!data.appointments) return;
 
-        const hasMatch = data.appointments.some(a => {
-            // 1. Match by lessonId (Hard Link)
-            if (a.lessonId === lessonId) return true;
-            
-            // 2. Match by Slot (Fuzzy Link) - Only if details provided
-            if (lessonDetails) {
+        let matchedByHardLink = false;
+        let matchedByFuzzy = false;
+
+        data.appointments.forEach(a => {
+            if (a.lessonId === lessonId) matchedByHardLink = true;
+            else if (lessonDetails) {
                 const matchDate = a.date.split('T')[0] === lessonDetails.date.split('T')[0];
                 const matchTime = a.startTime === lessonDetails.startTime;
                 const matchLoc = (a.locationName || '').trim().toLowerCase() === (lessonDetails.locationName || '').trim().toLowerCase();
-                return matchDate && matchTime && matchLoc;
+                if (matchDate && matchTime && matchLoc) matchedByFuzzy = true;
             }
-            return false;
         });
+
+        const hasMatch = matchedByHardLink || matchedByFuzzy;
+
+        if (matchedByFuzzy && !matchedByHardLink) {
+            console.warn(
+                `[Sync][FUZZY] Rimozione lezione ${lessonId} su enrollment ${docSnap.id} via fuzzy match (data/ora/sede). ` +
+                `Verificare manualmente se il collegamento è corretto.`
+            );
+        }
 
         if (hasMatch) {
             const newApps = data.appointments.filter(a => {
@@ -1098,9 +1213,11 @@ const calculateRemainingCounters = (enrollment: Enrollment, appointments: Appoin
     const readCount = enrollment.readCount || 0;
     const lessonsTotal = enrollment.lessonsTotal || 0;
 
-    const labAttended = appointments.filter(a => (a.type === 'LAB' || !a.type) && a.status === 'Present').length;
-    const sgAttended = appointments.filter(a => a.type === 'SG' && a.status === 'Present').length;
-    const evtAttended = appointments.filter(a => a.type === 'EVT' && a.status === 'Present').length;
+    // Solo appuntamenti con tipo ESPLICITO contano per i contatori di slot.
+    // Gli appuntamenti senza tipo (legacy) contribuiscono solo a lessonsTotal.
+    const labAttended  = appointments.filter(a => a.type === 'LAB'  && a.status === 'Present').length;
+    const sgAttended   = appointments.filter(a => a.type === 'SG'   && a.status === 'Present').length;
+    const evtAttended  = appointments.filter(a => a.type === 'EVT'  && a.status === 'Present').length;
     const readAttended = appointments.filter(a => a.type === 'READ' && a.status === 'Present').length;
 
     const totalAttended = appointments.filter(a => a.status === 'Present').length;
@@ -1124,13 +1241,43 @@ const syncAttendanceToEnrollmentCache = async (enrollmentId: string, lessonId: s
     
     const enrollment = enrollmentSnap.data() as Enrollment;
     const appointments = [...(enrollment.appointments || [])];
-    const appIndex = appointments.findIndex(a => a.lessonId === lessonId);
+    let appIndex = appointments.findIndex(a => a.lessonId === lessonId);
     
-    if (appIndex !== -1) {
-        appointments[appIndex].status = status;
-        const newCounters = calculateRemainingCounters(enrollment, appointments);
-        await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
+    if (appIndex === -1) {
+        // L'appointment non esiste nella cache legacy (iscrizione nuova architettura).
+        // Costruirlo dalla lesson per sincronizzare i contatori.
+        try {
+            const lessonRef = doc(db, 'lessons', lessonId);
+            const lessonSnap = await getDoc(lessonRef);
+            if (lessonSnap.exists()) {
+                const l = lessonSnap.data() as Lesson;
+                const newApp: Appointment = {
+                    lessonId,
+                    date: l.date,
+                    startTime: l.startTime,
+                    endTime: l.endTime,
+                    locationId: l.locationId || enrollment.locationId || 'unknown',
+                    locationName: l.locationName || enrollment.locationName,
+                    locationColor: l.locationColor || enrollment.locationColor,
+                    childName: enrollment.childName,
+                    status: status as AppointmentStatus,
+                    type: l.slotType
+                };
+                appointments.push(newApp);
+                appIndex = appointments.length - 1;
+            } else {
+                return; // Lezione non trovata, impossibile sincronizzare
+            }
+        } catch (e) {
+            console.warn('[SyncCache] Impossibile costruire appointment dalla lesson:', e);
+            return;
+        }
+    } else {
+        appointments[appIndex] = { ...appointments[appIndex], status: status as AppointmentStatus };
     }
+
+    const newCounters = calculateRemainingCounters(enrollment, appointments);
+    await updateDoc(enrollmentDocRef, { appointments, ...newCounters });
 };
 
 export const registerPresence = async (enrollmentId: string, appointmentLessonId: string, isNewArchitecture?: boolean): Promise<void> => {
@@ -1551,7 +1698,29 @@ export const activateEnrollmentWithLocation = async (
     let finalEndDate = enrollment.endDate;
     let appointments: Appointment[] = [];
 
+    let courseDayOfWeek: number | undefined = undefined;
+
     if (enrollment.courseId) {
+        // Fetch course to get dayOfWeek for aligning theoreticals
+        const courseRef = doc(db, 'courses', enrollment.courseId);
+        const courseSnap = await getDoc(courseRef);
+        if (courseSnap.exists()) {
+            const courseData = courseSnap.data() as any;
+            courseDayOfWeek = courseData.dayOfWeek;
+        }
+
+        // Costruiamo la mappa quotas basata sul campo 'tokens' o campi legacy se mancano
+        const quotasObj: Record<string, number> = {};
+        const anyEnr = enrollment as any;
+        if (anyEnr.tokens && anyEnr.tokens.length > 0) {
+            anyEnr.tokens.forEach((t: any) => { quotasObj[t.type] = t.count; });
+        } else {
+            if (enrollment.labCount) quotasObj['LAB'] = enrollment.labCount;
+            if (enrollment.sgCount) quotasObj['SG'] = enrollment.sgCount;
+            if (enrollment.evtCount) quotasObj['EVT'] = enrollment.evtCount;
+            if (enrollment.readCount) quotasObj['READ'] = enrollment.readCount;
+        }
+
         // NUOVA ARCHITETTURA: Prenotazione nelle LessonSession esistenti
         const bookingResult = await bookStudentIntoCourseLessons(
             enrollmentId,
@@ -1561,33 +1730,18 @@ export const activateEnrollmentWithLocation = async (
             enrollment.childName,
             currentDate.toISOString(),
             enrollment.lessonsTotal,
-            {
-                lab: enrollment.labCount,
-                sg: enrollment.sgCount,
-                evt: enrollment.evtCount,
-                read: enrollment.readCount
-            }
+            quotasObj
         );
         
-        labUsed = bookingResult.labUsed;
-        sgUsed = bookingResult.sgUsed;
+        labUsed = bookingResult.tokenUsage['LAB'] || 0;
+        sgUsed = bookingResult.tokenUsage['SG'] || 0;
         finalEndDate = bookingResult.finalEndDate;
 
         // RECUPERO LEZIONI PER POPOLARE APPOINTMENTS (Cache per UI)
-        const lessonsRef = collection(db, 'lessons');
-        const q = query(
-            lessonsRef,
-            where('courseId', '==', enrollment.courseId)
-        );
-        const snap = await getDocs(q);
+        let bookedLessons = bookingResult.bookedLessons || [];
         
-        // Filtriamo e ordiniamo in memoria per evitare indici compositi
-        const startDateStr = currentDate.toISOString();
-        const bookedLessons = snap.docs
-            .map(d => ({ id: d.id, ...d.data() } as Lesson))
-            .filter(l => l.date >= startDateStr && (l.attendees || []).some(a => a.enrollmentId === enrollmentId))
-            .sort((a, b) => a.date.localeCompare(b.date))
-            .slice(0, enrollment.lessonsTotal);
+        // Sort and slice
+        bookedLessons = bookedLessons.sort((a, b) => a.date.localeCompare(b.date)).slice(0, enrollment.lessonsTotal);
 
         const now = new Date();
         appointments = bookedLessons.map(l => {
@@ -1615,6 +1769,53 @@ export const activateEnrollmentWithLocation = async (
                 type: l.slotType
             };
         });
+
+        // Se non abbiamo trovato abbastanza lezioni fisiche (es. calendario generato solo parzialmente),
+        // Riempiamo il resto dell'iscrizione con appuntamenti teorici per mantenere intatta la validità
+        if (appointments.length < enrollment.lessonsTotal) {
+            const missingCount = enrollment.lessonsTotal - appointments.length;
+            let nextDateObj = new Date(currentDate);
+            nextDateObj.setHours(12, 0, 0, 0);
+            
+            if (appointments.length > 0) {
+                const lastDate = appointments[appointments.length - 1].date;
+                nextDateObj = new Date(lastDate);
+                nextDateObj.setHours(12, 0, 0, 0);
+                
+                let found = false;
+                let failsafe = 0;
+                while (!found && failsafe < 100) {
+                    nextDateObj.setDate(nextDateObj.getDate() + 7);
+                    if (!isItalianHoliday(nextDateObj)) {
+                        found = true;
+                    }
+                    failsafe++;
+                }
+            }
+            
+            const theoreticalMissing = generateTheoreticalAppointments(
+                nextDateObj.toISOString(),
+                missingCount,
+                locationId,
+                locationName,
+                locationColor,
+                startTime,
+                endTime,
+                enrollment.childName,
+                comboConfigs,
+                weeklyPlan,
+                currentDate.toISOString(), // courseStartDate
+                courseDayOfWeek           // targetDayOfWeek
+            );
+            
+            appointments = [...appointments, ...theoreticalMissing];
+        }
+
+        // Dopo aver consolidato gli appuntamenti fisici e teorici, l'ultima lezione stabilisce la data di fine
+        if (appointments.length > 0) {
+            appointments.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            finalEndDate = appointments[appointments.length - 1].date;
+        }
     } else {
         // FALLBACK VECCHIA ARCHITETTURA (per iscrizioni custom senza corso)
         appointments = generateTheoreticalAppointments(
@@ -1627,7 +1828,9 @@ export const activateEnrollmentWithLocation = async (
             endTime,
             enrollment.childName,
             comboConfigs,
-            weeklyPlan
+            weeklyPlan,
+            undefined, // courseStartDate
+            dayOfWeek // targetDayOfWeek
         );
         
         if (comboConfigs) {
@@ -1725,16 +1928,31 @@ export const suspendLessonsForClosure = async (closureDate: string): Promise<voi
         }
     });
 
-    // Process Manual Lessons
+    // Process Manual Lessons — aggiorna descrizione E attendees
     const lessonsCollectionRef = collection(db, 'lessons');
     const lessonsSnapshot = await getDocs(lessonsCollectionRef);
     lessonsSnapshot.docs.forEach(docSnap => {
         const lesson = docSnap.data() as Lesson;
         const lessonDateStr = lesson.date.split('T')[0];
-        if (lessonDateStr === targetDateStr) {
-            if (!lesson.description.startsWith('[SOSPESO]')) {
-                batch.update(docSnap.ref, { description: `[SOSPESO] ${lesson.description}` });
-            }
+        if (lessonDateStr !== targetDateStr) return;
+
+        const updates: Partial<Lesson> = {};
+
+        // 1. Aggiorna descrizione
+        if (!lesson.description.startsWith('[SOSPESO]')) {
+            updates.description = `[SOSPESO] ${lesson.description}`;
+        }
+
+        // 2. Propaga sospensione agli attendees (nuova architettura)
+        if (lesson.attendees && lesson.attendees.length > 0) {
+            const updatedAttendees = lesson.attendees.map(a =>
+                a.status === 'Scheduled' ? { ...a, status: 'Suspended' as AppointmentStatus } : a
+            );
+            updates.attendees = updatedAttendees;
+        }
+
+        if (Object.keys(updates).length > 0) {
+            batch.update(docSnap.ref, updates);
         }
     });
 
@@ -1768,17 +1986,34 @@ export const restoreSuspendedLessons = async (closureDate: string): Promise<void
         }
     });
 
-    // 2. Process Manual Lessons (Remove [SOSPESO])
+    // 2. Process Manual Lessons — ripristina descrizione E attendees
     const lessonsCollectionRef = collection(db, 'lessons');
     const lessonsSnapshot = await getDocs(lessonsCollectionRef);
     lessonsSnapshot.docs.forEach(docSnap => {
         const lesson = docSnap.data() as Lesson;
         const lessonDateStr = lesson.date.split('T')[0];
-        if (lessonDateStr === targetDateStr) {
-            if (lesson.description.startsWith('[SOSPESO]')) {
-                const restoredDesc = lesson.description.replace('[SOSPESO] ', '').replace('[SOSPESO]', '').trim();
-                batch.update(docSnap.ref, { description: restoredDesc });
-            }
+        if (lessonDateStr !== targetDateStr) return;
+
+        const updates: Partial<Lesson> = {};
+
+        // 1. Ripristina descrizione
+        if (lesson.description.startsWith('[SOSPESO]')) {
+            updates.description = lesson.description
+                .replace('[SOSPESO] ', '')
+                .replace('[SOSPESO]', '')
+                .trim();
+        }
+
+        // 2. Ripristina attendees sospesi → Scheduled (nuova architettura)
+        if (lesson.attendees && lesson.attendees.length > 0) {
+            const updatedAttendees = lesson.attendees.map(a =>
+                a.status === 'Suspended' ? { ...a, status: 'Scheduled' as AppointmentStatus } : a
+            );
+            updates.attendees = updatedAttendees;
+        }
+
+        if (Object.keys(updates).length > 0) {
+            batch.update(docSnap.ref, updates);
         }
     });
 
@@ -1831,6 +2066,103 @@ export const rescheduleSuspendedLesson = async (
     await updateDoc(enrRef, { appointments, endDate: newEndDate });
 };
 
+export const fixSingleEnrollment = async (enr: Enrollment): Promise<boolean> => {
+    try {
+        const courses = await getAllCourses();
+        const locations = await getLocations();
+        const suppliers = await getSuppliers();
+
+        let courseId = enr.courseId;
+        const locationId = enr.locationId;
+        
+        if ((!courseId || courseId === 'manual') && locationId && locationId !== 'unassigned') {
+            const startDate = new Date(enr.startDate);
+            if (!isNaN(startDate.getTime())) {
+                const dayOfWeek = startDate.getDay();
+                let matchingCourse = courses.find(c => 
+                    c.locationId === locationId && 
+                    c.dayOfWeek === dayOfWeek
+                );
+                if (!matchingCourse) {
+                    matchingCourse = courses.find(c => c.locationId === locationId);
+                }
+                if (matchingCourse) courseId = matchingCourse.id;
+            }
+        }
+
+        if (courseId && courseId !== 'manual') {
+            const course = courses.find(c => c.id === courseId);
+            if (course) {
+                const location = locations.find(l => l.id === course.locationId);
+                const supplier = suppliers.find(s => s.id === location?.supplierId);
+
+                await activateEnrollmentWithLocation(
+                    enr.id,
+                    location?.supplierId || enr.supplierId || 'unassigned',
+                    supplier?.companyName || enr.supplierName || '',
+                    course.locationId,
+                    location?.name || enr.locationName || 'Sede',
+                    location?.color || enr.locationColor || '#ccc',
+                    course.dayOfWeek,
+                    course.startTime,
+                    course.endTime
+                );
+                return true;
+            }
+        }
+        
+        // Fallback attivazione senza corso specifico (es. iscrizioni custom o institutional).
+        // Usa gli orari ESISTENTI dell'iscrizione per non sovrascriverli.
+        if (locationId && locationId !== 'unassigned') {
+            // Recupera orari dalla prima lezione nota dell'iscrizione (appointments o lezione futura)
+            let startTime = enr.appointments?.[0]?.startTime || '';
+            let endTime   = enr.appointments?.[0]?.endTime   || '';
+
+            // Se nemmeno gli appointments hanno orari, cerca nelle lessons Firestore
+            if (!startTime && enr.id) {
+                try {
+                    const futureLessonsQ = query(
+                        collection(db, 'lessons'),
+                        where('courseId', '==', enr.courseId || ''),
+                        where('date', '>=', new Date().toISOString())
+                    );
+                    const futureLessonsSnap = await getDocs(futureLessonsQ);
+                    if (!futureLessonsSnap.empty) {
+                        const firstLesson = futureLessonsSnap.docs[0].data() as Lesson;
+                        startTime = firstLesson.startTime;
+                        endTime   = firstLesson.endTime;
+                    }
+                } catch { /* fallback sicuro sotto */ }
+            }
+
+            // Safe default solo se davvero nessuna fonte ha l'orario
+            if (!startTime) {
+                console.warn(`[ActivateFallback] Orario non trovato per enrollment ${enr.id}, uso 09:00.`);
+                startTime = '09:00';
+                endTime   = '10:00';
+            }
+
+            const dayOfWeek = new Date(enr.startDate || new Date().toISOString()).getDay();
+            
+            await activateEnrollmentWithLocation(
+                enr.id,
+                enr.supplierId || 'unassigned',
+                enr.supplierName || '',
+                locationId,
+                enr.locationName || 'Sede',
+                enr.locationColor || '#ccc',
+                dayOfWeek,
+                startTime,
+                endTime
+            );
+            return true;
+        }
+    } catch (err) {
+        console.error(`Error fixing enrollment ${enr.id}:`, err);
+    }
+    return false;
+};
+
 export const autoFixEnrollments = async (): Promise<{ fixed: number, total: number }> => {
     console.log("[Auto-Fix] Avvio scansione iscrizioni problematiche...");
     const snapshot = await getDocs(getEnrollmentCollectionRef());
@@ -1849,7 +2181,7 @@ export const autoFixEnrollments = async (): Promise<{ fixed: number, total: numb
     console.log(`[Auto-Fix] Trovate ${problematic.length} iscrizioni potenzialmente da sanare.`);
     if (problematic.length === 0) return { fixed: 0, total: 0 };
 
-    const courses = await getOpenCourses();
+    const courses = await getAllCourses();
     const locations = await getLocations();
     const suppliers = await getSuppliers();
 

@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ParentClient, InstitutionalClient, Enrollment, EnrollmentInput, PaymentMethod, ClientType, DocumentStatus, Supplier, Invoice, Client, Transaction, Quote } from '../types';
+import { ParentClient, InstitutionalClient, Enrollment, EnrollmentInput, PaymentMethod, ClientType, DocumentStatus, Supplier, Invoice, Client, Transaction, Quote, Course } from '../types';
 import { getClients } from '../services/parentService';
 import { getSuppliers } from '../services/supplierService';
-import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment, autoFixEnrollments } from '../services/enrollmentService';
+import { getAllEnrollments, addEnrollment, updateEnrollment, deleteEnrollment, bulkUpdateLocation, activateEnrollmentWithLocation, resyncInstitutionalEnrollment, autoFixEnrollments, fixSingleEnrollment } from '../services/enrollmentService';
+import { getOpenCourses } from '../services/courseService';
 import { cleanupEnrollmentFinancials, getInvoices, updateQuote, getTransactions, getOrphanedFinancialsForClient, getQuotes, linkFinancialsToEnrollment, createGhostInvoiceForEnrollment } from '../services/financeService';
 import { processPayment } from '../services/paymentService';
 import { migrateLocationRecords } from '../services/migrationService';
@@ -76,8 +77,13 @@ const LocationMigrationModal: React.FC<{
                 </div>
                 <div className="p-4 border-t flex justify-end gap-2 bg-gray-50 flex-shrink-0">
                     <button type="button" onClick={onClose} className="md-btn md-btn-flat" disabled={isMigrating}>Annulla</button>
-                    <button type="button" onClick={handleConfirm} className="md-btn md-btn-raised md-btn-primary bg-red-600 hover:bg-red-700 text-white" disabled={isMigrating}>
-                        {isMigrating ? <Spinner /> : "Trasferisci Tutto"}
+                    <button type="button" onClick={handleConfirm} className="md-btn md-btn-raised md-btn-primary bg-red-600 hover:bg-red-700 text-white min-w-[140px] flex items-center justify-center" disabled={isMigrating}>
+                        {isMigrating ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                                Trasferimento...
+                            </>
+                        ) : "Trasferisci Tutto"}
                     </button>
                 </div>
             </div>
@@ -393,6 +399,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const [allClients, setAllClients] = useState<Client[]>([]);
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
+    const [allCourses, setAllCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState(initialParams?.searchTerm || '');
     const [filterLocation, setFilterLocation] = useState<string>('');
@@ -417,17 +424,16 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         try {
             const count = await migrateLocationRecords(sourceId, targetId, fromDate);
             setLocMigrationResult(count);
-            setIsLocMigrationModalOpen(false);
             if (count > 0) {
                 toast.success(`Migrazione completata. ${count} record aggiornati.`);
-                fetchData(); // Ricarica i dati
+                await fetchData(); // Ricarica i dati
             } else {
                 toast.success(`Nessun record trovato da migrare.`);
             }
+            setIsLocMigrationModalOpen(false);
         } catch (error: unknown) {
             console.error("Errore migrazione massiva sede:", error);
-            const msg = error instanceof Error ? error.message : "Errore durante il trasferimento sede";
-            toast.error(msg);
+            toast.error("Errore durante la migrazione: " + (error instanceof Error ? error.message : String(error)));
         }
     };
 
@@ -471,18 +477,20 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const fetchData = useCallback(async () => {
         try {
             setLoading(true);
-            const [clientsData, enrollmentsData, suppliersData, invoicesData, transactionsData] = await Promise.all([ 
+            const [clientsData, enrollmentsData, suppliersData, invoicesData, transactionsData, coursesData] = await Promise.all([ 
                 getClients(), 
                 getAllEnrollments(), 
                 getSuppliers(),
                 getInvoices(),
-                getTransactions() 
+                getTransactions(),
+                getOpenCourses()
             ]);
             setAllClients(clientsData);
             setEnrollments(enrollmentsData);
             setSuppliers(suppliersData);
             setInvoices(invoicesData);
             setTransactions(transactionsData);
+            setAllCourses(coursesData);
         } catch (err: unknown) { 
             const msg = err instanceof Error ? err.message : String(err);
             console.error(msg); 
@@ -595,6 +603,28 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
             toast.error("Errore durante l'auto-fix.");
             const msg = e instanceof Error ? e.message : String(e);
             console.error("[Auto-Fix Error]", msg);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleSingleFix = async (enrollment: Enrollment) => {
+        if (!confirm("Vuoi rigenerare le lezioni e il calendario per questa iscrizione? Verranno calcolate le disponibilità correnti.")) return;
+        
+        const toastId = toast.loading("Sincronizzazione in corso...");
+        setLoading(true);
+        try {
+            const success = await fixSingleEnrollment(enrollment);
+            toast.dismiss(toastId);
+            if (success) {
+                toast.success("Calendario sincronizzato con successo!");
+            } else {
+                toast.error("Impossibile sincronizzare. Verifica che ci siano corsi disponibili per questa sede.");
+            }
+            await fetchData();
+        } catch (e: unknown) {
+            toast.dismiss(toastId);
+            toast.error("Errore durante la sincronizzazione.");
         } finally {
             setLoading(false);
         }
@@ -903,8 +933,9 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                 {Object.values(loc.days).map((day: { dayName: string, items: Enrollment[] }, j) => {
                                     const timeGroups: Record<string, Enrollment[]> = {};
                                     day.items.forEach((enr: Enrollment) => {
-                                        const start = enr.appointments?.[0]?.startTime || 'N/D';
-                                        const end = enr.appointments?.[0]?.endTime || 'N/D';
+                                        const course = allCourses.find(c => c.id === enr.courseId);
+                                        const start = enr.appointments?.[0]?.startTime || course?.startTime || 'N/D';
+                                        const end = enr.appointments?.[0]?.endTime || course?.endTime || 'N/D';
                                         const key = `${start}-${end}`;
                                         if(!timeGroups[key]) timeGroups[key] = [];
                                         timeGroups[key].push(enr);
@@ -988,16 +1019,13 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                                                                 {/* Financial Wizard Trigger */}
                                                                                 <button onClick={() => setFinancialWizardTarget(enr)} className={`md-icon-btn shadow-sm ${!isFullyPaid ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`} title="Gestione Finanziaria / Wizard"><span className="font-bold text-xs">€</span></button>
                                                                                 
-                                                                                {/* RESYNC BUTTON PER ISTITUZIONALI */}
-                                                                                {isInst && (
-                                                                                    <button 
-                                                                                        onClick={() => handleResyncRequest(enr)}
-                                                                                        className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-amber-200"
-                                                                                        title="Sincronizza Calendario (Fix Date/Slots)"
-                                                                                    >
-                                                                                        <RefreshIcon />
-                                                                                    </button>
-                                                                                )}
+                                                                                <button 
+                                                                                    onClick={() => isInst ? handleResyncRequest(enr) : handleSingleFix(enr)}
+                                                                                    className="text-amber-500 hover:text-amber-700 hover:bg-amber-50 p-1.5 rounded-lg transition-colors border border-transparent hover:border-amber-200"
+                                                                                    title="Sincronizza Calendario (Fix Date/Slots)"
+                                                                                >
+                                                                                    <RefreshIcon />
+                                                                                </button>
                                                                                 
                                                                                 <button onClick={() => { setEditingEnrollment(enr); setIsModalOpen(true); }} className="text-slate-400 hover:text-indigo-600 flex-shrink-0 ml-1"><PencilIcon/></button>
                                                                                 <button onClick={() => handleDeleteRequest(enr)} className="text-slate-300 hover:text-red-500 flex-shrink-0 ml-1"><TrashIcon/></button>

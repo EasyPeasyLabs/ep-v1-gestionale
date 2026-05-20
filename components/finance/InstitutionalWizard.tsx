@@ -176,14 +176,23 @@ const InstitutionalWizard: React.FC<InstitutionalWizardProps> = ({ quote, suppli
             const names = studentsInput.split('\n').map(n => n.trim()).filter(n => n);
             if (names.length === 0) names.push(projectName); // Fallback
 
+            let masterEnrollmentId = '';
+
             for (let i = 0; i < names.length; i++) {
                 const name = names[i];
-                // First enrollment also marks the quote as Paid
                 const enrollmentId = await createInstitutionalEnrollment(quote, finalLessons, name, i === 0);
-                
-                // 4. Generate Scheduled Invoices from Installments (linked to first enrollment)
+
                 if (i === 0) {
-                    await generateInvoicesFromQuote(quote, enrollmentId, finalLessons);
+                    // Primo enrollment = enrollment master: genera le fatture e conserva l'ID
+                    masterEnrollmentId = enrollmentId;
+                    await generateInvoicesFromQuote(quote, masterEnrollmentId, finalLessons);
+                } else {
+                    // Enrollment figlio: collegarlo al master per il Fiscal Doctor
+                    const { doc, updateDoc } = await import('firebase/firestore');
+                    const { db } = await import('../../firebase/config');
+                    await updateDoc(doc(db, 'enrollments', enrollmentId), {
+                        masterEnrollmentId: masterEnrollmentId
+                    });
                 }
             }
 

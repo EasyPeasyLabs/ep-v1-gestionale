@@ -393,14 +393,14 @@ const totals = useMemo(() => {
                                     <option value={DocumentStatus.SealedSDI}>Sigillata SDI</option>
                                     <option value={DocumentStatus.Overdue}>Scaduta</option>
                                 </select>
-                                {statusFilter === 'ghost' && (
+                                {statusFilter === 'ghost' && import.meta.env.DEV && (
                                     <button 
                                         onClick={handleSanityFix}
                                         disabled={isSanityFixing}
                                         className="md-btn bg-indigo-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all"
                                     >
                                         {isSanityFixing ? <Spinner /> : <SparklesIcon className="w-4 h-4 text-white" />}
-                                        {isSanityFixing ? 'Fixing...' : 'Sanity Check'}
+                                        {isSanityFixing ? 'Fixing...' : 'Sanity Check (Dev)'}
                                     </button>
                                 )}
                             </div>
