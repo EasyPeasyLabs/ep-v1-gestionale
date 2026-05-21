@@ -164,16 +164,22 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
 
             // Attendance Logic: Sum based on enrollment filter (simplified, attendance follows enrollment usually)
             // If we have strict date filter for attendance, we should check appointment dates.
-            if (enr.appointments) {
+            let hasAppts = false;
+            if (enr.appointments && enr.appointments.length > 0) {
                 enr.appointments.forEach(app => {
                     // Check if appointment is in filtered period (if filters active)
                     // If no filters (year/month), count everything.
                     if (isDateInPeriod(app.date, year, month)) {
+                        hasAppts = true;
                         if (app.status === 'Present') aggPresences++;
                         else if (app.status === 'Absent') aggAbsences++;
                         if (app.lessonId && app.lessonId.startsWith('REC-')) aggRecoveries++;
                     }
                 });
+            }
+            if (!year && !month) {
+                // Always add counters, specially if it's a token bundle or has extra labs
+                aggPresences += (enr.lessonsUsed || 0) + (enr.labUsed || 0) + (enr.sgUsed || 0) + (enr.evtUsed || 0);
             }
         });
 
@@ -315,7 +321,7 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
             let absences = 0;
             let recoveries = 0;
 
-            if (enr.appointments) {
+            if (enr.appointments && enr.appointments.length > 0) {
                 enr.appointments.forEach(app => {
                     if (app.status === 'Present') presences++;
                     else if (app.status === 'Absent') absences++;
@@ -324,6 +330,9 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
                         recoveries++;
                     }
                 });
+            }
+            if (!filterYear && !filterMonth) {
+                presences += (enr.lessonsUsed || 0) + (enr.labUsed || 0) + (enr.sgUsed || 0) + (enr.evtUsed || 0);
             }
             
             return {

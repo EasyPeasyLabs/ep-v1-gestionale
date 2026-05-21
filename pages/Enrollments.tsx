@@ -863,18 +863,18 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end relative">
                     <button 
                         onClick={() => setIsLocMigrationModalOpen(true)}
-                        className="md-btn md-btn-flat text-red-600 border-red-200 hover:bg-red-50 px-4 py-2 flex items-center gap-2"
+                        className="md-btn md-btn-flat text-red-600 border-red-200 hover:bg-red-50 px-2 sm:px-4 py-2 flex items-center gap-1 sm:gap-2"
                         title="Trasferisci blocco iscrizioni a nuova sede"
                     >
-                        <RefreshIcon /> <span className="hidden md:inline">Sposta Sede</span>
+                        <RefreshIcon /> <span className="text-xs sm:text-sm font-bold whitespace-nowrap">Sposta Sede</span>
                     </button>
                     <button 
                         onClick={handleAutoFix}
                         disabled={loading}
-                        className="md-btn md-btn-flat text-amber-600 border-amber-200 hover:bg-amber-50 px-4 py-2 flex items-center gap-2"
+                        className="md-btn md-btn-flat text-amber-600 border-amber-200 hover:bg-amber-50 px-2 sm:px-4 py-2 flex items-center gap-1 sm:gap-2"
                         title="Ripara iscrizioni in attesa"
                     >
-                        <RefreshIcon /> <span className="hidden md:inline">Auto-Fix</span>
+                        <RefreshIcon /> <span className="text-xs sm:text-sm font-bold whitespace-nowrap">Auto-Fix</span>
                     </button>
                     <button onClick={() => setIsDropdownOpen(!isDropdownOpen)} className="md-btn md-btn-raised md-btn-green px-4 py-2 flex items-center">
                         <PlusIcon /> <span className="ml-2">Nuova</span> <span className="ml-2 text-xs">▼</span>

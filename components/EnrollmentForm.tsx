@@ -121,8 +121,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     const [targetLocationId, setTargetLocationId] = useState(existingEnrollment?.locationId !== 'unassigned' ? existingEnrollment?.locationId : '');
     
     // Migliorato recupero orari dagli appointments
-    const initialStartTime = existingEnrollment?.appointments?.[0]?.startTime || '16:00';
-    const initialEndTime = existingEnrollment?.appointments?.[0]?.endTime || '18:00';
+    const initialStartTime = existingEnrollment?.appointments?.[0]?.startTime || '';
+    const initialEndTime = existingEnrollment?.appointments?.[0]?.endTime || '';
 
     const [startTime, setStartTime] = useState(initialStartTime);
     const [endTime, setEndTime] = useState(initialEndTime);
@@ -163,8 +163,8 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         startDate: existingEnrollment?.startDate?.split('T')[0] || '',
         subscriptionId: existingEnrollment?.subscriptionTypeId || '',
         endDate: existingEnrollment?.endDate?.split('T')[0] || '',
-        startTime: existingEnrollment?.appointments?.[0]?.startTime || '16:00',
-        endTime: existingEnrollment?.appointments?.[0]?.endTime || '18:00'
+        startTime: existingEnrollment?.appointments?.[0]?.startTime || '',
+        endTime: existingEnrollment?.appointments?.[0]?.endTime || ''
     });
 
     const currentClient = clients.find(p => p.id === selectedClientId);
@@ -254,26 +254,44 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 } else if (child.age) {
                     age = parseInt(child.age);
                 }
+                const ageInMonths = age * 12;
                 
                 // Determine location: last attended or currently selected
-                const locIdToUse = lastEnrollment ? lastEnrollment.locationId : targetLocationId;
+                let locIdToUse = lastEnrollment ? lastEnrollment.locationId : targetLocationId;
                 
+                if (!locIdToUse || locIdToUse === 'unassigned') {
+                    if (parent.preferredLocation) {
+                        const matchedLoc = allLocations.find(l => l.name === parent.preferredLocation);
+                        if (matchedLoc) locIdToUse = matchedLoc.id;
+                    }
+                }
+
+                // Find suitable course based on age and location
+                let suitableCourse = undefined;
                 if (locIdToUse && locIdToUse !== 'unassigned') {
-                    // Find suitable course based on age and location
-                    const suitableCourse = courses.find(c => 
+                    suitableCourse = courses.find(c => 
                         c.locationId === locIdToUse && 
-                        age >= (c.minAge || 0) && 
-                        age <= (c.maxAge || 99) &&
+                        ageInMonths >= (c.minAge || 0) && 
+                        ageInMonths <= (c.maxAge || 999) &&
                         c.status === 'open'
                     );
-                    
-                    if (suitableCourse) {
-                        setTargetLocationId(suitableCourse.locationId);
-                        setStartTime(suitableCourse.startTime);
-                        setEndTime(suitableCourse.endTime);
-                        setSelectedCourseId(suitableCourse.id);
-                        didAutoSelect = true;
-                    }
+                }
+                
+                // Absolute Fallback: if no location preferred or course not found in preferred location, pick the first open course that matches the age
+                if (!suitableCourse) {
+                     suitableCourse = courses.find(c => 
+                        ageInMonths >= (c.minAge || 0) && 
+                        ageInMonths <= (c.maxAge || 999) &&
+                        c.status === 'open'
+                    );
+                }
+                
+                if (suitableCourse) {
+                    setTargetLocationId(suitableCourse.locationId);
+                    setStartTime(suitableCourse.startTime);
+                    setEndTime(suitableCourse.endTime);
+                    setSelectedCourseId(suitableCourse.id);
+                    didAutoSelect = true;
                 }
             }
         }
@@ -388,13 +406,21 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     }, [existingEnrollment, courses, targetLocationId, selectedCourseId]);
 
     // Sync price when subscription changes
+    const previousSubscriptionCounter = useRef(0);
     useEffect(() => {
         if (!subscriptionTypeId || subscriptionTypeId === 'quote-based') return;
         const sub = subscriptionTypes.find(s => s.id === subscriptionTypeId);
+
+        // Only auto-update price if this is a NEW selection, not the initial load of an existing enrollment
+        // We know it's an initial load if we just mapped it from existingEnrollment and we haven't changed it since.
         if (sub) {
-            setManualPrice(sub.price.toString());
+             const isInitialMountOfExisting = existingEnrollment && existingEnrollment.subscriptionTypeId === subscriptionTypeId && previousSubscriptionCounter.current === 0;
+             if (!isInitialMountOfExisting) {
+                 setManualPrice(sub.price.toString());
+             }
+             previousSubscriptionCounter.current++;
         }
-    }, [subscriptionTypeId, subscriptionTypes]);
+    }, [subscriptionTypeId, subscriptionTypes, existingEnrollment]);
 
     // --- SMART TIME SELECTOR LOGIC ---
     const getSlotsForContext = useCallback((locationId: string, dayOfWeek: number) => {
@@ -537,37 +563,62 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
         let childrenAgeRange: { min: number, max: number } | null = null;
         if (!isAdultEnrollment && selectedChildIds.length > 0 && currentClient?.clientType === ClientType.Parent) {
             const ages = selectedChildIds.map(id => {
-                const child = (currentClient as ParentClient).children.find(c => id === c.id);
+                const child = (currentClient as ParentClient).children.find(c => c.id === id);
                 if (!child) return 0;
-                if (child.dateOfBirth) {
+                
+                if (child.dateOfBirth && !isNaN(new Date(child.dateOfBirth).getTime())) {
                     const dob = new Date(child.dateOfBirth);
-                    return Math.abs(new Date(Date.now() - dob.getTime()).getUTCFullYear() - 1970);
+                    const now = new Date();
+                    let ageInYears = now.getFullYear() - dob.getFullYear();
+                    if (now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate())) {
+                        ageInYears--;
+                    }
+                    return Math.max(0, ageInYears);
                 }
-                return parseInt(child.age) || 0;
+                
+                const parseAgeToYears = (ageStr: string | number | undefined): number => {
+                    if (typeof ageStr === 'number') return ageStr;
+                    if (!ageStr) return 0;
+                    const cleaned = ageStr.toString().toLowerCase().replace(',', '.');
+                    if (cleaned.includes('.')) {
+                        const parts = cleaned.split('.');
+                        const years = parseInt(parts[0]);
+                        return isNaN(years) ? 0 : years;
+                    }
+                    const parsed = parseInt(cleaned);
+                    return isNaN(parsed) ? 0 : parsed;
+                };
+
+                return parseAgeToYears(child.age);
             });
-            childrenAgeRange = { min: Math.min(...ages), max: Math.max(...ages) };
+            
+            // Allow all ages strictly evaluated, even 0
+            if (ages.length > 0) {
+                childrenAgeRange = { min: Math.min(...ages), max: Math.max(...ages) };
+            }
         }
 
         const baseSubs = isInstitutional ? subscriptionTypes.filter(isVisible) : subscriptionTypes.filter(s => {
             let matchesTarget = false;
             if (s.target) matchesTarget = isAdultEnrollment ? s.target === 'adult' : s.target === 'kid';
-            else { const isAdultName = s.name.startsWith('A -'); matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName; }
-            
-            // SPECIAL CASE FOR TOKEN BUNDLES: Always visible in manual mode if active, 
-            // regardless of target convention, to ensure they can be selected.
-            const isTokenBundle = s.tokens && s.tokens.length > 0;
-            if (isTokenBundle) matchesTarget = true;
+            else { 
+                const isAdultName = s.name.startsWith('A-') || s.name.startsWith('A -'); 
+                matchesTarget = isAdultEnrollment ? isAdultName : !isAdultName; 
+            }
 
             // Filter by age if subscription specifies it AND filtering is active
+            let ageFits = true;
+            // Only apply strict age filtering for subscriptions if childrenAgeRange was successfully computed (age > 0)
             if (isAgeFilteringActive && childrenAgeRange && s.allowedAges) {
                 const minAge = s.allowedAges.min;
                 const maxAge = s.allowedAges.max;
                 if (childrenAgeRange.min < minAge || childrenAgeRange.max > maxAge) {
-                    return false;
+                    ageFits = false;
                 }
             }
 
-            return (matchesTarget && isVisible(s)) || (isTokenBundle && isVisible(s));
+            const visible = isVisible(s);
+            return matchesTarget && visible && ageFits;
         });
 
         // In manual mode, we show all base subscriptions to give the operator maximum flexibility
@@ -597,23 +648,19 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 const child = (currentClient as ParentClient).children.find(c => c.id === id);
                 if (!child) return 0;
                 if (child.dateOfBirth && !isNaN(new Date(child.dateOfBirth).getTime())) {
-                    console.log(`[DEBUG AGING] Child: ${child.name}, Raw DOB: ${child.dateOfBirth}`);
                     const dob = new Date(child.dateOfBirth);
                     const now = new Date();
                     let ageInMonths = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
                     if (now.getDate() < dob.getDate()) {
                         ageInMonths--;
                     }
-                    console.log(`[DEBUG AGING] Child: ${child.name}, AgeInMonths: ${ageInMonths}`);                
                     return isNaN(ageInMonths) ? 0 : ageInMonths;
                 }
                 
                 const parseAgeToMonths = (ageStr: string | number | undefined): number => {
                     if (typeof ageStr === 'number') return ageStr * 12;
                     if (!ageStr) return 0;
-                    // "1,4 ANNI"
                     const cleaned = ageStr.toString().toLowerCase().replace(',', '.');
-                    // Check for "1,4" format specifically
                     if (cleaned.includes('.')) {
                         const parts = cleaned.split('.');
                         const years = parseInt(parts[0]);
@@ -624,22 +671,23 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 };
 
                 const ageInMonths = parseAgeToMonths(child.age);
-                console.log(`[DEBUG AGING] Child ${child.name} has no valid DOB. Using child.age field: ${child.age}, parsed: ${ageInMonths}m`);
                 return ageInMonths;
-            });
-            console.log(`[DEBUG AGING] Calculated ages array:`, ages);
-            const minChildAge = Math.min(...ages);
-            const maxChildAge = Math.max(...ages);
-            console.log(`[DEBUG AGING] Min: ${minChildAge}, Max: ${maxChildAge}`);
+            }).filter(a => a > 0);
 
-            return courses.filter(c => {
-                // Return courses where all children fit in [minAge, maxAge]
-                const courseMinAge = Number(c.minAge);
-                const courseMaxAge = Number(c.maxAge);
-                const fits = minChildAge >= courseMinAge && maxChildAge <= courseMaxAge;
-                console.log(`[DEBUG AGING] Course ${c.id}: minAge: ${courseMinAge}m, maxAge: ${courseMaxAge}m. Child: 16m range? min: ${minChildAge}, max: ${maxChildAge}. Fits: ${fits}`);
-                return fits;
-            });
+            if (ages.length > 0) {
+                const minChildAge = Math.min(...ages);
+                const maxChildAge = Math.max(...ages);
+
+                return courses.filter(c => {
+                    let courseMinAge = Number(c.minAge);
+                    let courseMaxAge = Number(c.maxAge);
+                    // auto-correct old courses that saved maxAge/minAge in years instead of months
+                    if (courseMaxAge > 0 && courseMaxAge < 25) courseMaxAge = courseMaxAge * 12;
+                    if (courseMinAge > 0 && courseMinAge < 25) courseMinAge = courseMinAge * 12;
+
+                    return minChildAge >= courseMinAge && maxChildAge <= courseMaxAge;
+                });
+            }
         }
         return courses;
     }, [courses, selectedChildIds, currentClient, isAgeFilteringActive, isAdultEnrollment]);
@@ -1025,9 +1073,11 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                             </div>
 
                             <div className="flex items-center gap-4 px-2">
-                                <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
-                                    <ClockIcon /> {startTime} - {endTime}
-                                </div>
+                                {startTime && endTime && (
+                                    <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                                        <ClockIcon /> {startTime} - {endTime}
+                                    </div>
+                                )}
                                 {selectedCourseId && (
                                     <div className="text-[10px] font-black uppercase text-indigo-600">
                                         Occupazione: {courses.find(c => c.id === selectedCourseId)?.activeEnrollmentsCount || 0} / {courses.find(c => c.id === selectedCourseId)?.capacity}

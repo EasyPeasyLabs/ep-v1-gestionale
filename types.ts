@@ -532,6 +532,7 @@ export interface Enrollment {
     locationId: string;
     locationName: string;
     locationColor: string;
+    lessonsUsed?: number;
     courseId?: string; // New: link to Course document
     isRenewal?: boolean;
     previousEnrollmentId?: string;

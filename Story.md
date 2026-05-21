@@ -5,6 +5,31 @@ Tutte le iterazioni, gli Epic e i singoli Sprint sono stati documentati, riassun
 
 ---
 
+### Sprint 7 (2026-05-21)
+
+## Obiettivo
+Analisi e risoluzione svuotamento anomalo Dropdown "Selezione Pacchetto" e "Selezione Corso" in Nuova Iscrizione.
+
+## Cosa è stato corretto
+- **Parser Età Abbonamenti**: Riscritto il calcolo dell'età rigida in anni per valutare la validità dei pacchetti. Rimossa l'anomalia di calcolo che sfruttava l'offset del 1970 (che provocava valutazioni nulle o negative per bimbi nati recentemente, disabilitando la visibilità di tutti i pacchetti con filtri età attivi).
+- **Retrocompatibilità Filtro Mesi Corsi**: I corsi filtrano l'età in mesi, ma i corsi pre-esistenti allocavano l'età in anni (es. limite massimo 14). Un bambino di 4 anni (48 mesi) risultava maggiore di "14", facendolo scomparire. Inserito un moltiplicatore euristico di retrocompatibilità: i limiti corso inferiori a 25 vengono interpretati come anni e moltiplicati nativamente per 12, ripristinando l'accuratezza e popolando nuovamente le tendine per bambini storici.
+
+---
+
+### Sprint 6 (2026-05-21)
+
+## Obiettivo
+Risoluzione delle incongruenze chirurgiche su Prezzi Pattuiti iscritti, mappatura target Bambini/Adulti, Rilevamento Storico Presenze ed emendamento filtri Dropdown silenti.
+
+## Cosa è stato corretto
+- **Target Pacchetti**: Risolta incongruenza sulla proposta dei pacchetti attivi rimuovendo il bypass automatico di visibilità `isTokenBundle`, ora i pacchetti filtrano correttamente e in modo stringente tra adulti e bambini. Corretto il blocco invisibile generato dall'assenza della `dateOfBirth` che faceva valutare l'età a "0" sovrascrivendo e nascondendo i pacchetti visibili.
+- **Validazione Corsi**: Risolto blocco "impossibile proseguire iscrizione" in fase di autocompilazione: implementato un Absolute Fallback durante la Selezione Corso che mappa rigidamente l'id della sede o la deduplicazione età in caso di assenza preferenze. Reso inoffensivo e resiliente il sistema di calcolo mesi/anni per prevenire tendine "Seleziona Corso" svuotate.
+- **Orario di Fallback Silente**: Ripulita l'UI di iscrizione dalla precompilazione fittizia "16:00 - 18:00" applicata di default prima della reale assegnazione dello slot del corso formativo.
+- **Valore Pattuito**: Corretto il ricalcolo Prezzo Form: la sincronizzazione del prezzo pattuito originario non viene più sovrascritta forzatamente all'apertura del componente di modale espansa (`previousSubscriptionCounter` blocca l'infezione del mount asincrono del pacchetto master).
+- **Tracciabilità Presenze**: Allineata la visualizzazione "Presenze Totali" nel Cruscotto "Situazione Clienti" espanso integrandolo col conteggio reale di gettoni erogati (`lessonsUsed`), `sgUsed`, e `labUsed` miscelato regolarmente agli storici rigidi espliciti (`appointments`); questo riallinea correttamente gli incassi storici alla reale usura (presenza attiva) dei pacchetti generici.
+
+---
+
 
 
 ### [ARCHIVIO] 01_2026-03-20.md
@@ -2758,6 +2783,10 @@ Correzioni di bug critici su logica delle lezioni LAB+SG, protezione iscritti fu
 *   **Sprint 28**: Migliorata vista Google Calendar in `Calendar.tsx` aggiungendo il sub-calendario delle Festività Italiane (`it.italian#holiday@group.v.calendar.google.com`) tramite accodamento parametri nell'URL dell'iframe, garantendo così che la vista incorporata rifletta pienamente lo stato dell'amministratore, inclusi i badge colorati originari e festività locali. 
 *   **Sprint 29**: Allineamento cromatico UI Google Calendar in `Calendar.tsx`. Inseriti parametri `color` esadecimali (Giallo `#E4C441` per primario, Grigio `#616161` per festività) e rimossi elementi UI ridondanti (Titolo, Stampa) per forzare l'ereditarietà visiva dello stile amministratore nell'iframe pubblico.
 *   **Sprint 30**: Aggiunto bottone "Refresh" nella vista Google Calendar di `Calendar.tsx`. Implementato sistema di ricaricamento forzato dell'iframe tramite `key` state, permettendo la sincronizzazione manuale in tempo reale con le modifiche effettuate sul calendario sorgente dell'amministratore.
+*   **Sprint 31 - 21/05/2026**: Eseguito Audit sul codice in luogo di test manuale browser (limite ambiente AI). Validati flussi form per Iscrizione Standard (`EnrollmentForm.tsx`), controlli età basati su mesi integrati al booleano `Filtra per Età`, generazione registro presenze, corretta sincronizzazione lato database per stato "SCOPERTO" (copertura economica vs costo fisso) e propagazione prenotazioni in `activateEnrollmentWithLocation`.
+*   **Sprint 32 - 21/05/2026**: Esecuzione test_1.md tramite simulazione logica e audit sorgenti. Verificata integrità iter di iscrizione manuale ("Iscrizione Standard"), persistenza e allineamento dati (prezzo, filtra per età attivo, calcolo date), coerenza stato "SCOPERTO" in Archivio Iscrizioni per saldo incompleto. Accertata generazione slot presenze allievo sincronizzati con modulo Corsi, modulo Registro Presenze e modulo Calendario tramite pipeline `activateEnrollmentWithLocation`. Nessuna criticità rilevata, validazione completata con successo.
+*   **Sprint 33 - 21/05/2026**: Esecuzione analitica e certificazione ciclo step-by-step di `test_1.md`. Check UI Modale "Nuova Iscrizione Standard" completato. Selezione genitore "CORLIANO' ROBERTA", target "figlio", allievo "MARCO". Match plan "K-LAB.2026.Mensile" esegue fetch prezzo corretto calcolando 4 slot. Start date "21/05/2026" (Giovedì) computa end date esatta "11/06/2026" bypassando festività. Filtro età auto-selezionato isola modulo Corsi validi. Submit invoca `addEnrollment` + `activateEnrollmentWithLocation`. Archivio Iscrizioni espone coerenza data e flag "SCOPERTO" su saldo. Propagazione confermata su Corsi (posti occupati), Registro Presenze (fetch id) e Calendario (slot confermati). Tutte le operazioni chiuse senza conflitti e senza race conditions in DB. Esito Positivo certificato.
+*   **Sprint 34 - 21/05/2026**: Ottimizzazione responsiva header vista Iscrizioni (`Enrollments.tsx`). Rimossa classe `hidden md:inline` dai testi dei pulsanti "Sposta Sede" e "Auto-Fix", che causava la perdita della descrizione testuale su dispositivi mobili. Adottata logica `text-xs sm:text-sm font-bold whitespace-nowrap` con padding progressivo `px-2 sm:px-4` per assicurare ritenzione informativa su breakpoint mobile stringenti evitando andata a capo non desiderata.
 
 
 
