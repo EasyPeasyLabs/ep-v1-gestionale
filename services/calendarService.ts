@@ -3,6 +3,7 @@ import { db } from '../firebase/config';
 import { collection, getDocs, getDoc, addDoc, updateDoc, deleteDoc, doc, DocumentData, QueryDocumentSnapshot, writeBatch } from 'firebase/firestore';
 import { Lesson, LessonInput, SchoolClosure } from '../types';
 import { restoreSuspendedLessons, syncEnrollmentFromLessonUpdate, syncEnrollmentFromLessonDeletion } from './enrollmentService';
+import { getSchoolClosures as getSchoolClosuresFromCore } from './enrollment/core';
 
 const getLessonCollectionRef = () => collection(db, 'lessons');
 const getClosuresCollectionRef = () => collection(db, 'school_closures');
@@ -73,8 +74,7 @@ export const deleteLesson = async (id: string): Promise<void> => {
 // --- SCHOOL CLOSURES ---
 
 export const getSchoolClosures = async (): Promise<SchoolClosure[]> => {
-    const snapshot = await getDocs(getClosuresCollectionRef());
-    return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SchoolClosure));
+    return getSchoolClosuresFromCore();
 };
 
 export const addSchoolClosure = async (date: string, reason: string): Promise<string> => {

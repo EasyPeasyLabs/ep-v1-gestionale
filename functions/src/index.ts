@@ -8,6 +8,7 @@ import * as admin from "firebase-admin";
 // Inizializzazione Globale (Richiesta per Firebase Functions v2)
 if (admin.apps.length === 0) {
     admin.initializeApp();
+    admin.firestore().settings({ ignoreUndefinedProperties: true });
 }
 
 // Importazione helper per date (condiviso con il resto del progetto)
@@ -264,7 +265,7 @@ export const receiveLeadV2 = onRequest({
             return;
         }
 
-        const leadDoc = {
+        const leadDoc: Record<string, any> = {
             ...data,
             nome: data.nome || data.parentFirstName || "",
             cognome: data.cognome || data.parentLastName || "",
@@ -276,6 +277,23 @@ export const receiveLeadV2 = onRequest({
             status: "pending",
             createdAt: new Date().toISOString()
         };
+
+        if (data.childDob) {
+            // Se fornita data italiano DD-MM-YYYY o DD/MM/YYYY
+            const parts = data.childDob.split(/[-/]/);
+            if (parts.length === 3) {
+                const d = parts[0].padStart(2, '0');
+                const m = parts[1].padStart(2, '0');
+                const y = parts[2];
+                if (y.length === 4) {
+                    leadDoc.dateOfBirth = `${y}-${m}-${d}`;
+                }
+            } else {
+                leadDoc.dateOfBirth = data.childDob;
+            }
+        } else if (data.dateOfBirth) {
+            leadDoc.dateOfBirth = data.dateOfBirth;
+        }
 
         // Rimuoviamo artefatti di sincronizzazione locali del Progetto B
         delete leadDoc.syncStatus;
@@ -332,7 +350,40 @@ export const getPublicSlotsV5 = onRequest({
 
     try {
         const db = firebase.firestore();
-        const age = req.query.age ? parseInt(req.query.age.toString()) : null;
+        
+        let ageInMonths: number | null = null;
+        
+        if (req.query.dob) {
+            const dobStr = req.query.dob.toString();
+            const parts = dobStr.split(/[-/]/);
+            if (parts.length === 3) {
+                 const d = parseInt(parts[0]);
+                 const m = parseInt(parts[1]);
+                 const y = parseInt(parts[2]);
+                 // Se anno a 4 cifre, calcola età in mesi
+                 if (y > 1900) {
+                     const dobDate = new Date(`${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}T00:00:00Z`);
+                     if (!isNaN(dobDate.getTime())) {
+                         const now = new Date();
+                         let months = (now.getFullYear() - dobDate.getFullYear()) * 12 + (now.getMonth() - dobDate.getMonth());
+                         if (now.getDate() < dobDate.getDate()) {
+                             months--;
+                         }
+                         ageInMonths = Math.max(0, months);
+                     }
+                 }
+            }
+        } 
+        
+        if (ageInMonths === null && req.query.age) {
+            const rawAge = parseInt(req.query.age.toString());
+            if (!isNaN(rawAge)) {
+                // Heuristic: values <= 25 are likely years, others are likely months
+                ageInMonths = rawAge > 25 ? rawAge : rawAge * 12;
+            }
+        }
+
+        const age = ageInMonths;
 
         // 1. Fetch Dati Fondamentali (Parallel)
         const [locationsSnap, coursesSnap, subsSnap] = await Promise.all([
@@ -370,7 +421,12 @@ export const getPublicSlotsV5 = onRequest({
             if (!loc) return;
 
             // Filtro Età Rigoroso
-            if (age !== null && (age < course.minAge || age > course.maxAge)) return;
+            let cMinAge = course.minAge || 0;
+            let cMaxAge = course.maxAge || 99;
+            if (cMaxAge > 0 && cMaxAge < 25) cMaxAge *= 12;
+            if (cMinAge > 0 && cMinAge < 25) cMinAge *= 12;
+            
+            if (age !== null && (age < cMinAge || age > cMaxAge)) return;
 
             // Matching con SubscriptionTypes (Bundles)
             // Un bundle è compatibile se ha almeno un gettone del tipo del corso
@@ -394,14 +450,17 @@ export const getPublicSlotsV5 = onRequest({
                 }
 
                 // Filtro età sub se definito (intersezione con corso)
-                const subMinAge = sub.allowedAges?.min || sub.minAge || 0;
-                const subMaxAge = sub.allowedAges?.max || sub.maxAge || 99;
+                let subMinAge = sub.allowedAges?.min ?? 0;
+                let subMaxAge = sub.allowedAges?.max ?? 99;
+                if (subMaxAge > 0 && subMaxAge < 25) subMaxAge *= 12;
+                if (subMinAge > 0 && subMinAge < 25) subMinAge *= 12;
+
                 if (age !== null && (age < subMinAge || age > subMaxAge)) return false;
 
                 return true;
             });
 
-            compatibleSubs.forEach(sub => {    
+            compatibleSubs.forEach((sub: any) => {    
                 const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(':', '')}`;        
                 if (!locationBundlesGrouped.has(course.locationId)) {
                     locationBundlesGrouped.set(course.locationId, []);
@@ -411,6 +470,11 @@ export const getPublicSlotsV5 = onRequest({
                 let bundle = locBundles.find(b => b.bundleId === groupKey);
 
                 const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
+
+                let subMinAgeForBundle = sub.allowedAges?.min ?? 0;
+                let subMaxAgeForBundle = sub.allowedAges?.max ?? 99;
+                if (subMaxAgeForBundle > 0 && subMaxAgeForBundle < 25) subMaxAgeForBundle *= 12;
+                if (subMinAgeForBundle > 0 && subMinAgeForBundle < 25) subMinAgeForBundle *= 12;
 
                 if (!bundle) {
                     bundle = {
@@ -423,8 +487,8 @@ export const getPublicSlotsV5 = onRequest({
                         dayOfWeek: course.dayOfWeek,
                         startTime: course.startTime,
                         endTime: course.endTime,
-                        minAge: Math.max(course.minAge, sub.allowedAges?.min || sub.minAge || 0),
-                        maxAge: Math.min(course.maxAge, sub.allowedAges?.max || sub.maxAge || 99),
+                        minAge: Math.max(cMinAge, subMinAgeForBundle),
+                        maxAge: Math.min(cMaxAge, subMaxAgeForBundle),
                         availableSeats: available,
                         isFull: available <= 0,
                         includedSlots: []      
@@ -752,7 +816,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 delete finalEnrollment.selectedCourseId;
             }
             
-            transaction.set(enrRef, JSON.parse(JSON.stringify(finalEnrollment)));
+            transaction.set(enrRef, finalEnrollment);
             // 4. Creazione Transazione (con allocationId e transactionNumber progressivo)
             const transRef = db.collection("transactions").doc();
             const finalTransaction = {
@@ -766,7 +830,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 allocationName: enrollmentData.locationName || 'Sede',
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
             };
-            transaction.set(transRef, JSON.parse(JSON.stringify(finalTransaction)));
+            transaction.set(transRef, finalTransaction);
 
             // 5. Creazione Fattura (se prevista)
             if (invoiceData) {
@@ -787,7 +851,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     items: balancedItems,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 };
-                transaction.set(invRef, JSON.parse(JSON.stringify(finalInvoice)));
+                transaction.set(invRef, finalInvoice);
             }
 
             // 6. Generazione Automatica Lezioni (Physical Lesson Engine - FASE C)
@@ -875,7 +939,7 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                                 delete newLessonData.courseId;
                             }
                             
-                            transaction.set(lessonRef, JSON.parse(JSON.stringify(newLessonData)));
+                            transaction.set(lessonRef, newLessonData);
 
                             physicalAppointments.push({
                                 lessonId: lessonRef.id,

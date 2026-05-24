@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.enrollmentGateway = exports.onEnrollmentUpdated = exports.onEnrollmentDeleted = exports.onEnrollmentCreated = exports.checkPeriodicNotifications = exports.suggestBookTags = exports.processEnrollment = exports.getEnrollmentData = exports.proxyGoogleBooks = exports.getPublicSlotsV5 = exports.receiveLeadV2 = exports.onLeadCreated = exports.sendEmail = void 0;
+exports.enrollmentGateway = exports.onEnrollmentUpdated = exports.onEnrollmentDeleted = exports.onEnrollmentCreated = exports.checkPeriodicNotifications = exports.suggestBookTags = exports.processEnrollment = exports.getEnrollmentData = exports.proxyGoogleBooks = exports.getPublicSlotsV5 = exports.receiveLeadV2 = exports.onLeadCreated = exports.setupStorageCors = exports.sendEmail = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const scheduler_1 = require("firebase-functions/v2/scheduler");
@@ -99,7 +99,31 @@ exports.sendEmail = (0, https_1.onCall)({
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error("Error sending email:", errorMessage);
-        throw new Error(`Email sending failed: ${errorMessage}`);
+        throw new https_1.HttpsError("internal", `Email sending failed: ${errorMessage}`);
+    }
+});
+exports.setupStorageCors = (0, https_1.onCall)({
+    region: "europe-west1",
+    cors: true,
+}, async () => {
+    getAdmin();
+    try {
+        const bucket = admin.storage().bucket();
+        await bucket.setCorsConfiguration([
+            {
+                origin: ["*"],
+                method: ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"],
+                maxAgeSeconds: 3600,
+                responseHeader: ["*"]
+            }
+        ]);
+        logger.info("CORS configured successfully");
+        return { success: true };
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error("Error setting CORS:", errorMessage);
+        throw new https_1.HttpsError("internal", `CORS setup failed: ${errorMessage}`);
     }
 });
 async function sendPushToAllTokens(title, body, extraData) {
@@ -235,6 +259,23 @@ exports.receiveLeadV2 = (0, https_1.onRequest)({
             status: "pending",
             createdAt: new Date().toISOString()
         };
+        if (data.childDob) {
+            const parts = data.childDob.split(/[-/]/);
+            if (parts.length === 3) {
+                const d = parts[0].padStart(2, '0');
+                const m = parts[1].padStart(2, '0');
+                const y = parts[2];
+                if (y.length === 4) {
+                    leadDoc.dateOfBirth = `${y}-${m}-${d}`;
+                }
+            }
+            else {
+                leadDoc.dateOfBirth = data.childDob;
+            }
+        }
+        else if (data.dateOfBirth) {
+            leadDoc.dateOfBirth = data.dateOfBirth;
+        }
         delete leadDoc.syncStatus;
         const docRef = await db.collection("incoming_leads").add(leadDoc);
         try {
@@ -282,7 +323,34 @@ exports.getPublicSlotsV5 = (0, https_1.onRequest)({
     }
     try {
         const db = firebase.firestore();
-        const age = req.query.age ? parseInt(req.query.age.toString()) : null;
+        let ageInMonths = null;
+        if (req.query.dob) {
+            const dobStr = req.query.dob.toString();
+            const parts = dobStr.split(/[-/]/);
+            if (parts.length === 3) {
+                const d = parseInt(parts[0]);
+                const m = parseInt(parts[1]);
+                const y = parseInt(parts[2]);
+                if (y > 1900) {
+                    const dobDate = new Date(`${y}-${m.toString().padStart(2, '0')}-${d.toString().padStart(2, '0')}T00:00:00Z`);
+                    if (!isNaN(dobDate.getTime())) {
+                        const now = new Date();
+                        let months = (now.getFullYear() - dobDate.getFullYear()) * 12 + (now.getMonth() - dobDate.getMonth());
+                        if (now.getDate() < dobDate.getDate()) {
+                            months--;
+                        }
+                        ageInMonths = Math.max(0, months);
+                    }
+                }
+            }
+        }
+        if (ageInMonths === null && req.query.age) {
+            const rawAge = parseInt(req.query.age.toString());
+            if (!isNaN(rawAge)) {
+                ageInMonths = rawAge > 25 ? rawAge : rawAge * 12;
+            }
+        }
+        const age = ageInMonths;
         const [locationsSnap, coursesSnap, subsSnap] = await Promise.all([
             db.collection('locations').where('status', '==', 'active').get(),
             db.collection('courses').where('status', '==', 'open').get(),
@@ -305,7 +373,13 @@ exports.getPublicSlotsV5 = (0, https_1.onRequest)({
             const loc = locationsMap.get(course.locationId);
             if (!loc)
                 return;
-            if (age !== null && (age < course.minAge || age > course.maxAge))
+            let cMinAge = course.minAge || 0;
+            let cMaxAge = course.maxAge || 99;
+            if (cMaxAge > 0 && cMaxAge < 25)
+                cMaxAge *= 12;
+            if (cMinAge > 0 && cMinAge < 25)
+                cMinAge *= 12;
+            if (age !== null && (age < cMinAge || age > cMaxAge))
                 return;
             const compatibleSubs = activeSubs.filter(sub => {
                 const hasLegacyToken = (course.slotType === 'LAB' && sub.labCount > 0) ||
@@ -320,13 +394,17 @@ exports.getPublicSlotsV5 = (0, https_1.onRequest)({
                     if (!sub.allowedDays.includes(course.dayOfWeek))
                         return false;
                 }
-                const subMinAge = sub.allowedAges?.min || sub.minAge || 0;
-                const subMaxAge = sub.allowedAges?.max || sub.maxAge || 99;
+                let subMinAge = sub.allowedAges?.min ?? 0;
+                let subMaxAge = sub.allowedAges?.max ?? 99;
+                if (subMaxAge > 0 && subMaxAge < 25)
+                    subMaxAge *= 12;
+                if (subMinAge > 0 && subMinAge < 25)
+                    subMinAge *= 12;
                 if (age !== null && (age < subMinAge || age > subMaxAge))
                     return false;
                 return true;
             });
-            compatibleSubs.forEach(sub => {
+            compatibleSubs.forEach((sub) => {
                 const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(':', '')}`;
                 if (!locationBundlesGrouped.has(course.locationId)) {
                     locationBundlesGrouped.set(course.locationId, []);
@@ -334,6 +412,12 @@ exports.getPublicSlotsV5 = (0, https_1.onRequest)({
                 const locBundles = locationBundlesGrouped.get(course.locationId);
                 let bundle = locBundles.find(b => b.bundleId === groupKey);
                 const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
+                let subMinAgeForBundle = sub.allowedAges?.min ?? 0;
+                let subMaxAgeForBundle = sub.allowedAges?.max ?? 99;
+                if (subMaxAgeForBundle > 0 && subMaxAgeForBundle < 25)
+                    subMaxAgeForBundle *= 12;
+                if (subMinAgeForBundle > 0 && subMinAgeForBundle < 25)
+                    subMinAgeForBundle *= 12;
                 if (!bundle) {
                     bundle = {
                         bundleId: groupKey,
@@ -345,8 +429,8 @@ exports.getPublicSlotsV5 = (0, https_1.onRequest)({
                         dayOfWeek: course.dayOfWeek,
                         startTime: course.startTime,
                         endTime: course.endTime,
-                        minAge: Math.max(course.minAge, sub.allowedAges?.min || sub.minAge || 0),
-                        maxAge: Math.min(course.maxAge, sub.allowedAges?.max || sub.maxAge || 99),
+                        minAge: Math.max(cMinAge, subMinAgeForBundle),
+                        maxAge: Math.min(cMaxAge, subMaxAgeForBundle),
                         availableSeats: available,
                         isFull: available <= 0,
                         includedSlots: []
@@ -471,8 +555,15 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
             const totalPrice = basePrice + stampPrice;
             const mainAppt = enrollmentData.appointments?.[0];
             const dayNames = ["Domenica", "Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato"];
-            const slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+            let slotDayName = "";
+            if (enrollmentData.selectedSlot && enrollmentData.selectedSlot.includes(",")) {
+                slotDayName = enrollmentData.selectedSlot.split(",")[0].trim();
+            }
+            else {
+                slotDayName = mainAppt?.time?.split(',')[0].trim() || dayNames[mainAppt?.dayOfWeek || 0];
+            }
             const targetDayIndex = dayNames.indexOf(slotDayName);
+            logger.info(`[matcher] Giorno rilevato: ${slotDayName} (Index: ${targetDayIndex})`);
             let matchedCourseId = "manual";
             if (targetDayIndex !== -1 && mainAppt?.startTime) {
                 const coursesSnap = await db.collection("courses")
@@ -488,6 +579,23 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                     logger.warn(`[matcher] Nessun corso trovato per ${enrollmentData.locationName} il ${slotDayName} alle ${mainAppt.startTime}. Fallback su manual.`);
                 }
             }
+            const currentYear = new Date().getFullYear();
+            const yearStart = `${currentYear}-01-01`;
+            const yearEnd = `${currentYear}-12-31`;
+            const yearTxSnap = await db.collection("transactions")
+                .where("date", ">=", yearStart)
+                .where("date", "<=", yearEnd)
+                .get();
+            let maxTxNum = 0;
+            yearTxSnap.forEach(doc => {
+                const d = doc.data();
+                if (!d.isDeleted && typeof d.transactionNumber === 'number') {
+                    if (d.transactionNumber > maxTxNum)
+                        maxTxNum = d.transactionNumber;
+                }
+            });
+            const nextTransactionNumber = maxTxNum + 1;
+            logger.info(`[finance] Assegnato numero transazione: ${nextTransactionNumber}`);
             let clientId = "";
             let childId = "";
             const clientsSnap = await db.collection("clients")
@@ -576,7 +684,6 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                 id: enrRef.id,
                 clientId: clientId,
                 childId: childId,
-                courseId: matchedCourseId,
                 price: totalPrice,
                 startTime: enrichedAppointments[0]?.startTime || "16:00",
                 endTime: enrichedAppointments[0]?.endTime || "17:00",
@@ -587,18 +694,27 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                 startDate: admin.firestore.FieldValue.serverTimestamp(),
                 endDate: fallbackEndDate.toISOString()
             };
-            transaction.set(enrRef, finalEnrollment);
+            if (matchedCourseId !== "manual") {
+                finalEnrollment.courseId = matchedCourseId;
+            }
+            else {
+                delete finalEnrollment.courseId;
+                delete finalEnrollment.selectedCourseId;
+            }
+            transaction.set(enrRef, JSON.parse(JSON.stringify(finalEnrollment)));
             const transRef = db.collection("transactions").doc();
-            transaction.set(transRef, {
+            const finalTransaction = {
                 ...transactionData,
                 id: transRef.id,
+                transactionNumber: nextTransactionNumber,
                 clientId: clientId,
                 relatedEnrollmentId: enrRef.id,
                 amount: totalPrice,
-                allocationId: enrollmentData.locationId,
-                allocationName: enrollmentData.locationName,
+                allocationId: enrollmentData.locationId || 'unassigned',
+                allocationName: enrollmentData.locationName || 'Sede',
                 createdAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            transaction.set(transRef, JSON.parse(JSON.stringify(finalTransaction)));
             if (invoiceData) {
                 const invRef = db.collection("invoices").doc();
                 const balancedItems = (invoiceData.items || []).map((item, index) => {
@@ -606,7 +722,7 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                         return { ...item, price: totalPrice };
                     return item;
                 });
-                transaction.set(invRef, {
+                const finalInvoice = {
                     ...invoiceData,
                     id: invRef.id,
                     clientId: clientId,
@@ -614,10 +730,12 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                     totalAmount: totalPrice,
                     items: balancedItems,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
-                });
+                };
+                transaction.set(invRef, JSON.parse(JSON.stringify(finalInvoice)));
             }
             if (targetDayIndex !== -1) {
                 let firstDate = "";
+                let physicalAppointments = [];
                 if (matchedCourseId !== "manual") {
                     const todayItaly = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Rome" }));
                     const todayStr = todayItaly.toISOString().split('T')[0];
@@ -633,11 +751,24 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                             const lessonData = docSnap.data();
                             const attendees = lessonData.attendees || [];
                             attendees.push({
+                                clientId: clientId,
+                                childId: childId,
                                 enrollmentId: enrRef.id,
                                 childName: enrollmentData.childName,
                                 status: 'Scheduled'
                             });
                             transaction.update(docSnap.ref, { attendees });
+                            physicalAppointments.push({
+                                lessonId: docSnap.id,
+                                date: lessonData.date,
+                                startTime: lessonData.startTime,
+                                endTime: lessonData.endTime,
+                                locationId: lessonData.locationId,
+                                locationName: lessonData.locationName,
+                                locationColor: lessonData.locationColor,
+                                childName: enrollmentData.childName,
+                                status: 'Scheduled'
+                            });
                         });
                     }
                 }
@@ -652,19 +783,41 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                         const dateStr = currentLessonDate.toISOString().split('T')[0];
                         if (!(0, dateUtils_1.isItalianHoliday)(currentLessonDate)) {
                             const lessonRef = db.collection("lessons").doc();
-                            transaction.set(lessonRef, {
+                            const newLessonData = {
                                 id: lessonRef.id,
-                                enrollmentId: enrRef.id,
-                                courseId: matchedCourseId,
                                 locationId: enrollmentData.locationId,
                                 locationName: enrollmentData.locationName,
                                 locationColor: enrollmentData.locationColor || "#6366f1",
                                 date: dateStr,
                                 startTime: enrichedAppointments[0]?.startTime || "16:00",
                                 endTime: enrichedAppointments[0]?.endTime || "17:00",
-                                childName: enrollmentData.childName,
-                                status: 'Scheduled',
+                                description: `Lezione ${enrollmentData.childName}`,
+                                attendees: [{
+                                        clientId: clientId,
+                                        childId: childId,
+                                        enrollmentId: enrRef.id,
+                                        childName: enrollmentData.childName,
+                                        status: 'Scheduled'
+                                    }],
                                 createdAt: admin.firestore.FieldValue.serverTimestamp()
+                            };
+                            if (matchedCourseId !== "manual") {
+                                newLessonData.courseId = matchedCourseId;
+                            }
+                            else {
+                                delete newLessonData.courseId;
+                            }
+                            transaction.set(lessonRef, JSON.parse(JSON.stringify(newLessonData)));
+                            physicalAppointments.push({
+                                lessonId: lessonRef.id,
+                                date: dateStr,
+                                startTime: newLessonData.startTime,
+                                endTime: newLessonData.endTime,
+                                locationId: newLessonData.locationId,
+                                locationName: newLessonData.locationName,
+                                locationColor: newLessonData.locationColor,
+                                childName: enrollmentData.childName,
+                                status: 'Scheduled'
                             });
                             if (createdCount === 0)
                                 firstDate = dateStr;
@@ -674,13 +827,21 @@ exports.processEnrollment = (0, https_1.onCall)({ region: "europe-west1", cors: 
                     }
                 }
                 if (firstDate) {
-                    const exactStartDate = new Date(firstDate);
-                    const durationWeeks = enrollmentData.lessonsTotal || sub.lessons || 36;
-                    const finalEndDate = new Date(exactStartDate.getTime());
-                    finalEndDate.setDate(finalEndDate.getDate() + (durationWeeks * 7) + 21);
+                    let finalEndDateStr = "";
+                    if (physicalAppointments.length > 0) {
+                        finalEndDateStr = physicalAppointments[physicalAppointments.length - 1].date;
+                    }
+                    else {
+                        const exactStartDate = new Date(firstDate);
+                        const durationWeeks = enrollmentData.lessonsTotal || sub.lessons || 36;
+                        const fallbackEndDate = new Date(exactStartDate.getTime());
+                        fallbackEndDate.setDate(fallbackEndDate.getDate() + (durationWeeks * 7) + 7);
+                        finalEndDateStr = fallbackEndDate.toISOString().split('T')[0];
+                    }
                     transaction.update(enrRef, {
                         startDate: firstDate,
-                        endDate: finalEndDate.toISOString()
+                        endDate: finalEndDateStr,
+                        appointments: physicalAppointments
                     });
                 }
             }

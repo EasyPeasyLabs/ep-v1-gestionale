@@ -106,6 +106,7 @@ var isItalianHoliday = (date) => {
 var import_firestore2 = require("firebase-functions/v2/firestore");
 if (admin.apps.length === 0) {
   admin.initializeApp();
+  admin.firestore().settings({ ignoreUndefinedProperties: true });
 }
 function getAdmin() {
   return admin;
@@ -310,6 +311,21 @@ var receiveLeadV2 = (0, import_https.onRequest)({
       status: "pending",
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
+    if (data.childDob) {
+      const parts = data.childDob.split(/[-/]/);
+      if (parts.length === 3) {
+        const d = parts[0].padStart(2, "0");
+        const m = parts[1].padStart(2, "0");
+        const y = parts[2];
+        if (y.length === 4) {
+          leadDoc.dateOfBirth = `${y}-${m}-${d}`;
+        }
+      } else {
+        leadDoc.dateOfBirth = data.childDob;
+      }
+    } else if (data.dateOfBirth) {
+      leadDoc.dateOfBirth = data.dateOfBirth;
+    }
     delete leadDoc.syncStatus;
     const docRef = await db.collection("incoming_leads").add(leadDoc);
     try {
@@ -352,7 +368,34 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
   }
   try {
     const db = firebase.firestore();
-    const age = req.query.age ? parseInt(req.query.age.toString()) : null;
+    let ageInMonths = null;
+    if (req.query.dob) {
+      const dobStr = req.query.dob.toString();
+      const parts = dobStr.split(/[-/]/);
+      if (parts.length === 3) {
+        const d = parseInt(parts[0]);
+        const m = parseInt(parts[1]);
+        const y = parseInt(parts[2]);
+        if (y > 1900) {
+          const dobDate = /* @__PURE__ */ new Date(`${y}-${m.toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}T00:00:00Z`);
+          if (!isNaN(dobDate.getTime())) {
+            const now = /* @__PURE__ */ new Date();
+            let months = (now.getFullYear() - dobDate.getFullYear()) * 12 + (now.getMonth() - dobDate.getMonth());
+            if (now.getDate() < dobDate.getDate()) {
+              months--;
+            }
+            ageInMonths = Math.max(0, months);
+          }
+        }
+      }
+    }
+    if (ageInMonths === null && req.query.age) {
+      const rawAge = parseInt(req.query.age.toString());
+      if (!isNaN(rawAge)) {
+        ageInMonths = rawAge > 25 ? rawAge : rawAge * 12;
+      }
+    }
+    const age = ageInMonths;
     const [locationsSnap, coursesSnap, subsSnap] = await Promise.all([
       db.collection("locations").where("status", "==", "active").get(),
       db.collection("courses").where("status", "==", "open").get(),
@@ -374,7 +417,11 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
       course.id = doc.id;
       const loc = locationsMap.get(course.locationId);
       if (!loc) return;
-      if (age !== null && (age < course.minAge || age > course.maxAge)) return;
+      let cMinAge = course.minAge || 0;
+      let cMaxAge = course.maxAge || 99;
+      if (cMaxAge > 0 && cMaxAge < 25) cMaxAge *= 12;
+      if (cMinAge > 0 && cMinAge < 25) cMinAge *= 12;
+      if (age !== null && (age < cMinAge || age > cMaxAge)) return;
       const compatibleSubs = activeSubs.filter((sub) => {
         const hasLegacyToken = course.slotType === "LAB" && sub.labCount > 0 || course.slotType === "SG" && sub.sgCount > 0 || course.slotType === "EVT" && sub.evtCount > 0;
         const hasNewToken = sub.tokens && Array.isArray(sub.tokens) && sub.tokens.some((t) => t.type === course.slotType && t.count > 0);
@@ -384,8 +431,10 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
         if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
           if (!sub.allowedDays.includes(course.dayOfWeek)) return false;
         }
-        const subMinAge = sub.allowedAges?.min || sub.minAge || 0;
-        const subMaxAge = sub.allowedAges?.max || sub.maxAge || 99;
+        let subMinAge = sub.allowedAges?.min ?? 0;
+        let subMaxAge = sub.allowedAges?.max ?? 99;
+        if (subMaxAge > 0 && subMaxAge < 25) subMaxAge *= 12;
+        if (subMinAge > 0 && subMinAge < 25) subMinAge *= 12;
         if (age !== null && (age < subMinAge || age > subMaxAge)) return false;
         return true;
       });
@@ -397,6 +446,10 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
         const locBundles = locationBundlesGrouped.get(course.locationId);
         let bundle = locBundles.find((b) => b.bundleId === groupKey);
         const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
+        let subMinAgeForBundle = sub.allowedAges?.min ?? 0;
+        let subMaxAgeForBundle = sub.allowedAges?.max ?? 99;
+        if (subMaxAgeForBundle > 0 && subMaxAgeForBundle < 25) subMaxAgeForBundle *= 12;
+        if (subMinAgeForBundle > 0 && subMinAgeForBundle < 25) subMinAgeForBundle *= 12;
         if (!bundle) {
           bundle = {
             bundleId: groupKey,
@@ -408,8 +461,8 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
             dayOfWeek: course.dayOfWeek,
             startTime: course.startTime,
             endTime: course.endTime,
-            minAge: Math.max(course.minAge, sub.allowedAges?.min || sub.minAge || 0),
-            maxAge: Math.min(course.maxAge, sub.allowedAges?.max || sub.maxAge || 99),
+            minAge: Math.max(cMinAge, subMinAgeForBundle),
+            maxAge: Math.min(cMaxAge, subMaxAgeForBundle),
             availableSeats: available,
             isFull: available <= 0,
             includedSlots: []
@@ -655,7 +708,7 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         delete finalEnrollment.courseId;
         delete finalEnrollment.selectedCourseId;
       }
-      transaction.set(enrRef, JSON.parse(JSON.stringify(finalEnrollment)));
+      transaction.set(enrRef, finalEnrollment);
       const transRef = db.collection("transactions").doc();
       const finalTransaction = {
         ...transactionData,
@@ -669,7 +722,7 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
         allocationName: enrollmentData.locationName || "Sede",
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       };
-      transaction.set(transRef, JSON.parse(JSON.stringify(finalTransaction)));
+      transaction.set(transRef, finalTransaction);
       if (invoiceData) {
         const invRef = db.collection("invoices").doc();
         const balancedItems = (invoiceData.items || []).map((item, index) => {
@@ -685,7 +738,7 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
           items: balancedItems,
           createdAt: admin.firestore.FieldValue.serverTimestamp()
         };
-        transaction.set(invRef, JSON.parse(JSON.stringify(finalInvoice)));
+        transaction.set(invRef, finalInvoice);
       }
       if (targetDayIndex !== -1) {
         let firstDate = "";
@@ -755,7 +808,7 @@ var processEnrollment = (0, import_https.onCall)({ region: "europe-west1", cors:
               } else {
                 delete newLessonData.courseId;
               }
-              transaction.set(lessonRef, JSON.parse(JSON.stringify(newLessonData)));
+              transaction.set(lessonRef, newLessonData);
               physicalAppointments.push({
                 lessonId: lessonRef.id,
                 date: dateStr,

@@ -130,10 +130,11 @@ export const getNotifications = async (): Promise<Notification[]> => {
                     if (attended.length > 0) lastLessonDate = attended[0].date;
                 }
 
+                const bundleName = enr.subscriptionName.split('.').pop() || enr.subscriptionName;
                 notifications.push({
                     id: `enr-low-${enr.id}`,
                     type: 'low_lessons',
-                    message: `Restano solo ${enr.lessonsRemaining} lezioni per ${enr.childName} (${parentName}).`,
+                    message: `Restano solo ${enr.lessonsRemaining} lezioni per ${enr.childName} (${parentName}) presso ${enr.locationName} per il suo bundle ${bundleName}`,
                     clientId: enr.clientId,
                     date: lastLessonDate, // Use last lesson or today
                     linkPage: 'Enrollments',

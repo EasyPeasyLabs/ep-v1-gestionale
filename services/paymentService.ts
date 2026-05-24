@@ -131,8 +131,8 @@ export const processPayment = async (
                     isDeleted: false
                 };
                 
-                // Conversione in Plain Object per sicurezza estrema (rimuove eventuali undefined nascosti)
-                transaction.set(newInvRef, JSON.parse(JSON.stringify(newInvoiceData)));
+                // Removed JSON.parse(JSON.stringify(newInvoiceData)) as it crashes on circular structures if one accidentally sneaks in, e.g. dates or UI objects.
+                transaction.set(newInvRef, newInvoiceData);
                 invoiceIdForTransaction = newInvRef.id;
             } else {
                 // Pagamento no-doc: nessun relatedDocumentId.

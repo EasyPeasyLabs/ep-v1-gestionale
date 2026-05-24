@@ -5,6 +5,189 @@ Tutte le iterazioni, gli Epic e i singoli Sprint sono stati documentati, riassun
 
 ---
 
+### Sprint 18 (2026-05-24) - PLANNING
+
+## Obiettivo
+Riduzione debito tecnico e refactoring architetturale (Fase 2 - Type System & Cleanup).
+
+## Cosa è stato fatto
+- **Splitting Tipi (COMPLETATO)**: Decomposto `types.ts` monolitico in `/types/` modulare (21 nuovi file).
+- **Barrel Pattern**: Implementato `types/index.ts` e riconfigurato `types.ts` come punto di accesso delegato (Backward Compatibility).
+- **Fix Critici**:
+  - Ripristinato `EnrollmentStatus` come `enum` (risolti errori di compilazione nelle UI).
+  - Aggiunto `SchoolClosure` e `Supplier` ai corretti export modulari.
+  - Tipizzati esplicitamente i return dei servizi finanziari (`getOrphanedFinancialsForClient`) eliminando ambiguità `unknown[]`.
+- **Integrità Sistema**: Il sistema compila correttamente. Gli import esistenti non hanno subito rotture grazie al re-export centralizzato.
+- **Cleanup**: Rimossi file temporanei e script di ripristino.
+
+---
+
+### Sprint 21 (2026-05-24)
+- **Modularizzazione Finance (Fase 4)**: Decomposto `financeService.ts` in `/services/finance/` (core, numbering, invoicing, rent, orphans, reconciliation, health).
+- **Idempotency Fix**: Risolta creazione duplicata transazioni affitto in `createRentTransactionsBatch`.
+- **Refactoring UI**: Aggiornato `Finance.tsx` per nuovi export modulari.
+
+---
+
+### Sprint 21 (2026-05-24)
+
+## Obiettivo
+Completamento Fase 4: Modularizzazione di `financeService.ts` e ottimizzazione precisione flussi finanziari.
+
+## Cosa è stato fatto
+- **Scomposizione Architetturale**: Decomposto il monolite `financeService.ts` (~1300 righe) in moduli atomici nella cartella `/services/finance/`:
+    - `core.ts`: Operazioni CRUD asincrone per Transazioni, Fatture e Preventivi.
+    - `numbering.ts`: Motore di generazione sequenze (FT, PR, PRO) con gestione gap e collisioni.
+    - `invoicing.ts`: Logica di conversione Preventivo -> Fattura e generazione Ghost Invoices per billing istituzionale.
+    - `rent.ts`: Analisi usura sedi e generazione automatica transazioni affitto (Nolo).
+    - `orphans.ts`: Algoritmi di ricerca documenti finanziari non riconciliati (orfani).
+    - `reconciliation.ts`: Motore di abbinamento pagamenti/iscrizioni, gestione proforma e GDPR anonymization.
+    - `health.ts`: **Fiscal Doctor Core** - Logica di controllo integrità oraria ed economica con suggerimenti Smart-Link AI.
+- **Fix Idempotenza Rent Sync**: Ottimizzata la funzione `createRentTransactionsBatch` per impedire la duplicazione delle transazioni di affitto in caso di esecuzioni multiple per lo stesso periodo e sede.
+- **Refactoring Facciata**: `financeService.ts` trasformato in Barrel/Facade esportando tutti i nuovi moduli, preservando la compatibilità con i componenti UI.
+- **Type Safety**: Spostate le interfacce `GhostPromotionFilter` e `GhostPromotionCandidate` in `/types/invoice.types.ts` per standardizzazione.
+
+## Risultati
+- Applicazione compilata con successo (`build succeeded`).
+- Manutenibilità migliorata: riduzione della complessità cognitiva per modulo.
+- Integrità flussi: eliminati raddoppi di spesa nel calcolo affitti.
+
+---
+
+### Sprint 20 (2026-05-24)
+
+## Obiettivo
+Completamento Fase 3: Service Decoupling e Modularizzazione di `enrollmentService.ts`.
+
+## Cosa è stato fatto
+- **Scomposizione Architetturale**: Estratta l'intera logica di business di `enrollmentService.ts` (oltre 2000 righe) in moduli specializzati nella cartella `/services/enrollment/`:
+    - `core.ts`: Operazioni CRUD base e ricerca sede attiva.
+    - `activation.ts`: Gestione del ciclo di vita (attivazione, aggiornamento complesso, cancellazione profonda).
+    - `bookingModule.ts`: Motore di prenotazione allievi nei corsi.
+    - `attendance.ts`: Registro presenze, assenze e gestione recuperi.
+    - `helpers.ts`: Generatore di calendari teorici.
+    - `sync.ts`: Sincronizzazione bidirezionale tra lezioni e iscrizioni.
+    - `migration.ts`: Script di migrazione storica e strumenti di bonifica massiva (`autoFixEnrollments`).
+    - `closures.ts`: Gestione chiusure scolastiche e sospensione lezioni.
+    - `maintenance.ts`: Manutenzione correttiva singola e bulk update.
+- **Implementazione Facciata**: Il file `enrollmentService.ts` è stato trasformato in una *Facade* ultra-leggera che esporta i delegati dei sottomoduli, garantendo la compatibilità con le UI esistenti senza refactoring dei componenti.
+- **Risoluzione Errori TypeScript**:
+    - Corrette le comparazioni di Enum (`EnrollmentStatus.Active` vs stringa).
+    - Risolti i conflitti di overload del costruttore `Date` aggiungendo guardie su campi opzionali.
+    - Ottimizzata la ricerca corsi basata sulla proprietà nativa `dayOfWeek` dell'interfaccia `Course`.
+    - Ripristinata la funzione `autoFixEnrollments` con logica di riparazione retroattiva.
+
+## Risultati
+- Applicazione compilata con successo (`build succeeded`).
+- Codice sorgente modulare, leggibile e facilmente estendibile.
+- Eliminazione di codice morto e duplicato tra i vari servizi.
+
+---
+
+### Sprint 17 (2026-05-24)
+
+## Obiettivo
+Risoluzione bug fatale "Converting circular structure to JSON" legato a Firestore FieldValue e sanitizzazione payload.
+
+## Cosa è stato fatto
+- **Risoluzione Bug Backend (Cloud Functions)**: Rimossa la pratica di serializzare gli oggetti tramite `JSON.parse(JSON.stringify(data))` prima della scrittura su Firestore (`transaction.set()`), la quale causava un'eccezione irreversibile e interruzione della transazione a causa di `admin.firestore.FieldValue.serverTimestamp()`, riconosciuto come struttura circolare interna dal parser di Node.js.
+- **Risoluzione Bug Frontend (EnrollmentPortal & Finance)**: Rimossi e messi in sicurezza con blocchi `try/catch` o rimozione totale, i wrapping non sicuri di elaborazione del payload JSON lato client (`paymentService.ts`, `EnrollmentPortal.tsx`), per prevenire crash del frontend in caso di leak involontario di componenti React o eventi Web nel binding dei form.
+- **Configurazione Firestore Backend**: Abilitata ufficialmente la feature flag globale `ignoreUndefinedProperties: true` sull'interfaccia NodeJS Admin Firestore, in modo da consentire al database di eliminare silenziosamente eventuali campi `undefined` inseriti, rendendo obsoleta la sanitizzazione JSON nativa.
+
+---
+
+### Sprint 16 (2026-05-22)
+
+## Obiettivo
+Raffinamento messaggistica notifiche lezioni residue.
+
+## Cosa è stato fatto
+- **Pulizia Nomi Pacchetti**: Implementata logica di estrazione del nome commerciale per i bundle (es. da "K-LAB.2026.Mensile" a "Mensile") nelle notifiche, eliminando i prefissi tecnici di sistema.
+- **Uniformità Linguistica**: Aggiornato il template del messaggio per includere esplicitamente il riferimento al "bundle" e migliorare la leggibilità per l'amministratore: *"Restano solo X lezioni per Allievo (Genitore) presso Sede per il suo bundle NomePacchetto"*.
+
+---
+
+### Sprint 15 (2026-05-22)
+
+## Obiettivo
+Ottimizzazione del sistema di notifiche per le lezioni residue.
+
+## Cosa è stato fatto
+- **De-escalation Visiva**: Modificato il livello di allerta per le notifiche di lezioni in esaurimento (`low_lessons`) da critico (Rosso/Exclamation) a promemoria (Giallo/Amber). Questo riduce il carico cognitivo dell'amministratore per eventi non bloccanti.
+- **Arricchimento Contesto**: Integrati i dati relativi al **corso** (`subscriptionName`) e alla **sede** (`locationName`) nel messaggio di notifica delle lezioni residue. Esempio aggiornato: *"Restano solo 2 lezioni di English Lab per ANGELO presso Conversano"*.
+
+---
+
+### Sprint 14 (2026-05-22)
+
+## Obiettivo
+Risoluzione del fallimento irreversibile della build Vite causa conflitti di risoluzione moduli tra file .ts e .js.
+
+## Cosa è stato corretto
+- **Pulizia Artefatti TypeScript Stali**: Individuata la presenza di file `.js` e `.js.map` nelle cartelle sorgente (`utils/`, root) generati impropriamente da esecuzioni non configurate del compilatore. Questi file causavano un blocco in Rollup/Vite che non trovava gli export (es. `isItalianHoliday`) nelle versioni obsolete pre-compilate.
+- **Ripristino Integrità Build**: Rimossi fisicamente tutti i file `.js` e `.js.map` inquinanti. Verificato che `npm run build` ora esegue correttamente il bundling puntando esclusivamente alle sorgenti `.ts` aggiornate. Il sistema è tornato in stato di compilazione stabile.
+
+---
+
+### Sprint 13 (2026-05-22)
+
+## Obiettivo
+Analisi logica blocco Pagina Pubblica ("Nessuna sede disponibile per questa età") post-invio nuovo querystring `?dob=`.
+
+## Cosa è stato scoperto
+- **Causa Rilevata in Endpoint Produzione**: Il problema risiede nel **Gestionale** (Endpoint Cloud live obsoleto e non allineato). La Pagina Pubblica sta interrogando un backend non aggiornato agli Sprint 9 e 11.
+- **Fail 1 - Bypass Filtro Backend**: La function live pre-Sprint 9 non riconosce `dob`. Invalida l'età nativamente (`age = null`) e restituisce l'intero blocco corsi senza filtrare.
+- **Fail 2 - Trasmissione Unità Miste**: Persiste l'invio JSON frammentato (`minAge: 12` (mesi) e `maxAge: 6` (anni)). 
+- **Effetto Pagina Pubblica**: Ricevendo `minAge: 12, maxAge: 6`, la UI Pubblica attua il suo check locale di salvaguardia. Paradossi `12 <= 6` e comparazione bambino "1" (anni) contro "12" (mesi) restituiscono falso.
+- **Soluzione da trasmettere all'operatore**: Eseguire deploy materiale `firebase deploy --only functions` via terminale sul progetto Gestionale per allineare l'infrastruttura Google Cloud. La codebase è già patchata e compilerà in `dist/index.js` il nuovo entrypoint. Nessuna modifica richiesta sul client Pubblico.
+
+---
+
+### Sprint 11 (2026-05-22)
+
+## Obiettivo
+Coordinamento con Pagina Pubblica (Progetto B): Risoluzione dell'errore di esclusione dei corsi compatibili dal Public Portal per problemi di formattazione sui dati in anni/mesi.
+
+## Cosa è stato corretto
+- **Allineamento Unità di Misura Età nel Filtering (Cloud Functions `getPublicSlotsV5`)**: Scoperto grave fault nell'endpoint che gestisce la visibilità sulla Pagina Pubblica. Seppur la funzione ricevesse correttamente il formato data `?dob=`, calcolando l'età esatta del bambino in *mesi* (es. bambino di 18 mesi), questa cercava il matching contro limiti `minAge` e `maxAge` di Corsi e Subscription conservati storicamente sul DB in *anni* (es "1 anno - 4 anni", `minAge = 1, maxAge = 4`). Per caduta, 18 mesi falliva sempre il filtro contro un massimo impostato a 4, restituendo 0 corsi al portale pubblico.
+- **Implementazione Moltiplicatore Resiliente (`* 12`) per Retrocompatibilità**: Applicato all'interfaccia backend `getPublicSlotsV5` lo stesso fix autocorrettivo già presente nel Frontend (`EnrollmentForm.tsx`). Prima della comparazione rigorosa, se `minAge` e `maxAge` di un Corso o di un Piano (Bundle) risultano `< 25` anni, questi vengono automaticamente intercettati come formato "Anni" ("Years") e moltiplicati auto-magicamente per 12, portandone in linea comparativa l'unità in **Mesi**. In questo modo, "1 anno" e "4 anni" divengono "12 mesi" e "48 mesi" e un allievo di "16 mesi" varcherà il check senza fessure vuote.
+
+---
+
+### Sprint 10 (2026-05-22)
+
+## Obiettivo
+Analisi e risoluzione indisponibilità Piani/Pacchetti "Nuova Iscrizione" per clienti specifici (es. Corlianò Roberta - Allievo Marco).
+
+## Cosa è stato corretto
+- **Gestione Data di Nascita Non-Standard (DD-MM-YYYY)**: Identificata causa del mancato render dei pacchetti in `EnrollmentForm.tsx`. Date fornite localizzate in formato italiano (con separatore `-` e non `/`) come `18-05-2022` venivano interpretate da JavaScript come `Invalid Date`. L'età decadeva a 0. I pacchetti (con età minima codificata in 3) venivano conseguentemente esclusi per mancato check. Inserito handler invertito lato client per riconoscere il formato `DD-MM-YYYY` ed estrarlo in standard ISO prima dell'iniezione object Date.
+- **Ripristino Filtro Protezione Età Nulle**: Reintrodotto `.filter(a => a > 0)` sull'elaborazione età array figli per i Piani/Pacchetti, evitando così lo svuotamento totale anomalo della form qualora l'età o la data del bambino non possano essere in alcun modo risolte o siano assenti a database.
+
+---
+
+### Sprint 9 (2026-05-22)
+
+## Obiettivo
+Verifica applicazione e relazioni con Pagina Pubblica e normalizzazione campo Età in Data di Nascita (DOB) nei flussi di sincronizzazione cloud.
+
+## Cosa è stato corretto
+- **Parser Cloud Functions: Endpoint `getPublicSlotsV5`**: Integrato handler query `dob` al posto di `age`. Quando la Pagina Pubblica invia il parametro `?dob=DD-MM-YYYY` (o `DD/MM/YYYY`), il backend inverte nativamente su ISO, calcola l'età accurata in base al mese corrente ed effettua il check contro i filtri di disponibilità `minAge/maxAge` dei corsi. Aggiunto fallback per retrocompatibilità sulle `age` numeriche.
+- **Acquisizione Lead V2 (Progetto B)**: Modificato l'endpoint `receiveLeadV2` in modo da accogliere il nuovo parametro `childDob` proveniente dal webhook della Pagina Pubblica, che provvede in automatico ad allinearlo e memorizzarlo sul record Firestore del Lead come standard `dateOfBirth` (YYYY-MM-DD), permettendo al Gestionale di assorbirlo nel form `EnrollmentForm` senza calcoli impuri via stringa fissa.
+
+---
+
+### Sprint 8 (2026-05-22)
+
+## Obiettivo
+Analisi e risoluzione svuotamento anomalo Dropdown (Filtri età). Problema originato da sincronizzazione asincrona da Piattaforma Pubblica e discrepanze architetturali mesi/anni.
+
+## Cosa è stato corretto
+- **Parser Resiliente Date Europee `DD/MM/YYYY`**: Aggiunto un bypass per intercettare gli oggetti stringa nel caso di salvataggio del cloud in formato europeo che generava crash (`Invalid Date`). L'applicazione frontend inverte autonomamente a runtime l'indice su standard ISO.
+- **Euristica di Fallback (Protezione Moltiplicatore Età Mesi / Anni)**: Risolto bug fatale derivato dalle cloud functions (Firebase) o vecchi modelli della piattaforma esterna `ep-iscrizioni-public`. Se la piattaforma inoltra l'età fissa calcolata su Mesi (es: "48" mesi al posto di 4 anni), l'app inavvertitamente calcolava `48 * 12 = 576` mesi o `48` anni secchi, causando blackout di disponibilità. Il nuovo algoritmo rileva se cifre > 25 (impossibili o improbabili per un target "kid"), e riconosce la trasmissione per mesi normalizzandoli in divisione matematica /12.
+- **Sincronia Filtri Dropdown UI**: Aggiunto hook dipendente sul toggle "Filtra Per Età", ora i pacchetti si popolano asincronamente ai click di selezione.
+
+---
+
 ### Sprint 7 (2026-05-21)
 
 ## Obiettivo

@@ -88,7 +88,12 @@ const formatSlotToString = (slot: any): string => {
   if (day && time) return `${day}, ${time}`;
   if (slot.bundleName) return slot.bundleName;
 
-  return JSON.stringify(slot); // Fallback estremo per debug, ma ora gestito come stringa
+  try {
+    return JSON.stringify(slot); // Fallback estremo per debug
+  } catch (e) {
+    console.warn("Circular structure or unstringifiable object passed to formatSlotToString", slot);
+    return "[Oggetto Complesso]";
+  }
 };
 
 const calculateAgeString = (dob: string): string => {

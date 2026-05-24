@@ -1,37 +1,39 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from './firebase/config';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import ErrorBoundary from './components/ErrorBoundary'; // Import Safety Feature
-import Dashboard from './pages/Dashboard';
-import Clients from './pages/Clients';
-import Suppliers from './pages/Suppliers';
-import Finance from './pages/Finance';
-import Settings from './pages/Settings';
-import NotificationPlanning from './pages/NotificationPlanning';
-import Profile from './pages/Profile';
-import LoginPage from './pages/LoginPage';
 import FullScreenSpinner from './components/FullScreenSpinner';
-import Calendar from './pages/Calendar';
-import CRM from './pages/CRM';
-import Enrollments from './pages/Enrollments';
-import EnrollmentArchive from './pages/EnrollmentArchive'; 
-import Attendance from './pages/Attendance';
-import AttendanceArchive from './pages/AttendanceArchive';
-import Activities from './pages/Activities';
-import ActivityLog from './pages/ActivityLog';
-import Homeworks from './pages/Homeworks';
-import Initiatives from './pages/Initiatives';
-import Manual from './pages/Manual';
-import ClientSituation from './pages/ClientSituation'; 
 import NotificationScheduler from './components/NotificationScheduler';
 import { getCompanyInfo } from './services/settingsService';
-import { LeadsPage } from './pages/LeadsPage';
-import Courses from './pages/Courses';
-import EnrollmentPortal from './pages/EnrollmentPortal';
 import { Page } from './types';
+
+// Lazy loading the pages
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Clients = lazy(() => import('./pages/Clients'));
+const Suppliers = lazy(() => import('./pages/Suppliers'));
+const Finance = lazy(() => import('./pages/Finance'));
+const Settings = lazy(() => import('./pages/Settings'));
+const NotificationPlanning = lazy(() => import('./pages/NotificationPlanning'));
+const Profile = lazy(() => import('./pages/Profile'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const CRM = lazy(() => import('./pages/CRM'));
+const Enrollments = lazy(() => import('./pages/Enrollments'));
+const EnrollmentArchive = lazy(() => import('./pages/EnrollmentArchive')); 
+const Attendance = lazy(() => import('./pages/Attendance'));
+const AttendanceArchive = lazy(() => import('./pages/AttendanceArchive'));
+const Activities = lazy(() => import('./pages/Activities'));
+const ActivityLog = lazy(() => import('./pages/ActivityLog'));
+const Homeworks = lazy(() => import('./pages/Homeworks'));
+const Initiatives = lazy(() => import('./pages/Initiatives'));
+const Manual = lazy(() => import('./pages/Manual'));
+const ClientSituation = lazy(() => import('./pages/ClientSituation')); 
+const LeadsPage = lazy(() => import('./pages/LeadsPage').then(module => ({ default: module.LeadsPage })));
+const Courses = lazy(() => import('./pages/Courses'));
+const EnrollmentPortal = lazy(() => import('./pages/EnrollmentPortal'));
 
 const App: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<Page>('Dashboard');
@@ -110,6 +112,7 @@ const App: React.FC = () => {
         <div key={currentPage} className="animate-slide-up h-full">
             {/* Protezione livello pagina */}
             <ErrorBoundary>
+                <Suspense fallback={<div className="flex justify-center mt-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ep-blue-600"></div></div>}>
                 {(() => {
                     switch (currentPage) {
                       case 'Dashboard': return <Dashboard setCurrentPage={handleNavigation} />;
@@ -136,6 +139,7 @@ const App: React.FC = () => {
                       default: return <Dashboard setCurrentPage={handleNavigation} />;
                     }
                 })()}
+                </Suspense>
             </ErrorBoundary>
         </div>
     );
@@ -153,7 +157,7 @@ const App: React.FC = () => {
     (window as Window & typeof globalThis & { __IS_ENROLLMENT_PORTAL__?: boolean }).__IS_ENROLLMENT_PORTAL__;
 
   if (isEnrollmentRoute) {
-    return <EnrollmentPortal />;
+    return <Suspense fallback={<FullScreenSpinner />}><EnrollmentPortal /></Suspense>;
   }
 
   // Visualizzazione Errore Critico di Configurazione
@@ -173,7 +177,7 @@ const App: React.FC = () => {
   }
   
   if (!user) {
-      return <LoginPage />;
+      return <Suspense fallback={<FullScreenSpinner />}><LoginPage /></Suspense>;
   }
 
   return (

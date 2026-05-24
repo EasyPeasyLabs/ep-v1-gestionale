@@ -96,8 +96,10 @@ const NotificationsDropdown: React.FC<NotificationsDropdownProps> = ({ userId, n
                                         className="flex-1 text-left px-4 py-3 flex items-start space-x-3 min-w-0"
                                     >
                                         <div className="flex-shrink-0 mt-0.5">
-                                            {notification.type === 'expiry' || notification.type === 'balance_due' ? 
-                                                <span className="text-amber-500"><ClockIcon /></span> : 
+                                            {notification.type === 'expiry' || notification.type === 'balance_due' || notification.type === 'low_lessons' ? 
+                                                <span className="text-amber-500">
+                                                    {notification.type === 'low_lessons' ? <ExclamationIcon /> : <ClockIcon />}
+                                                </span> : 
                                                 <span className="text-red-500"><ExclamationIcon /></span>
                                             }
                                         </div>

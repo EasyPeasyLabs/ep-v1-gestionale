@@ -566,8 +566,26 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 const child = (currentClient as ParentClient).children.find(c => c.id === id);
                 if (!child) return 0;
                 
-                if (child.dateOfBirth && !isNaN(new Date(child.dateOfBirth).getTime())) {
-                    const dob = new Date(child.dateOfBirth);
+                let dob: Date | null = null;
+                if (child.dateOfBirth) {
+                    if (child.dateOfBirth.includes('/')) {
+                        const parts = child.dateOfBirth.split('/');
+                        if (parts.length === 3) {
+                            dob = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+                        }
+                    } else if (child.dateOfBirth.includes('-')) {
+                        const parts = child.dateOfBirth.split('-');
+                        if (parts.length === 3 && parts[0].length !== 4) { // DD-MM-YYYY
+                            dob = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+                        } else {
+                            dob = new Date(child.dateOfBirth);
+                        }
+                    } else {
+                        dob = new Date(child.dateOfBirth);
+                    }
+                }
+
+                if (dob && !isNaN(dob.getTime())) {
                     const now = new Date();
                     let ageInYears = now.getFullYear() - dob.getFullYear();
                     if (now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate())) {
@@ -577,7 +595,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                 }
                 
                 const parseAgeToYears = (ageStr: string | number | undefined): number => {
-                    if (typeof ageStr === 'number') return ageStr;
+                    if (typeof ageStr === 'number') return ageStr > 25 ? Math.floor(ageStr / 12) : ageStr;
                     if (!ageStr) return 0;
                     const cleaned = ageStr.toString().toLowerCase().replace(',', '.');
                     if (cleaned.includes('.')) {
@@ -586,13 +604,14 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                         return isNaN(years) ? 0 : years;
                     }
                     const parsed = parseInt(cleaned);
-                    return isNaN(parsed) ? 0 : parsed;
+                    if (isNaN(parsed)) return 0;
+                    // Heuristic: If age value is > 25, it's overwhelmingly likely stored in MONTHS rather than YEARS.
+                    return parsed > 25 ? Math.floor(parsed / 12) : parsed;
                 };
 
                 return parseAgeToYears(child.age);
-            });
+            }).filter(a => a > 0);
             
-            // Allow all ages strictly evaluated, even 0
             if (ages.length > 0) {
                 childrenAgeRange = { min: Math.min(...ages), max: Math.max(...ages) };
             }
@@ -637,7 +656,7 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             }
             return a.name.localeCompare(b.name);
         });
-    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory, selectedChildIds, currentClient, courses, selectedCourseId, clientHistory]);
+    }, [subscriptionTypes, isAdultEnrollment, isInstitutional, hasHistory, selectedChildIds, currentClient, courses, selectedCourseId, clientHistory, isAgeFilteringActive]);
 
     const filteredCourses = useMemo(() => {
         if (!isAgeFilteringActive || isAdultEnrollment) return courses;
@@ -647,27 +666,47 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
             const ages = selectedChildIds.map(id => {
                 const child = (currentClient as ParentClient).children.find(c => c.id === id);
                 if (!child) return 0;
-                if (child.dateOfBirth && !isNaN(new Date(child.dateOfBirth).getTime())) {
-                    const dob = new Date(child.dateOfBirth);
+                
+                let dob: Date | null = null;
+                if (child.dateOfBirth) {
+                    if (child.dateOfBirth.includes('/')) {
+                        const parts = child.dateOfBirth.split('/');
+                        if (parts.length === 3) {
+                            dob = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+                        }
+                    } else if (child.dateOfBirth.includes('-')) {
+                        const parts = child.dateOfBirth.split('-');
+                        if (parts.length === 3 && parts[0].length !== 4) { // DD-MM-YYYY
+                            dob = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00Z`);
+                        } else {
+                            dob = new Date(child.dateOfBirth);
+                        }
+                    } else {
+                        dob = new Date(child.dateOfBirth);
+                    }
+                }
+
+                if (dob && !isNaN(dob.getTime())) {
                     const now = new Date();
                     let ageInMonths = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
                     if (now.getDate() < dob.getDate()) {
                         ageInMonths--;
                     }
-                    return isNaN(ageInMonths) ? 0 : ageInMonths;
+                    return isNaN(ageInMonths) ? 0 : Math.max(0, ageInMonths);
                 }
                 
                 const parseAgeToMonths = (ageStr: string | number | undefined): number => {
-                    if (typeof ageStr === 'number') return ageStr * 12;
-                    if (!ageStr) return 0;
-                    const cleaned = ageStr.toString().toLowerCase().replace(',', '.');
-                    if (cleaned.includes('.')) {
-                        const parts = cleaned.split('.');
+                    const baseParse = typeof ageStr === 'number' ? ageStr : parseInt(String(ageStr).toLowerCase().replace(',', '.'));
+                    if (isNaN(baseParse)) return 0;
+                    if (baseParse > 25) return baseParse; // Heuristic: definitely already in months
+                    
+                    if (typeof ageStr === 'string' && ageStr.includes('.')) {
+                        const parts = ageStr.split('.');
                         const years = parseInt(parts[0]);
                         const months = parseInt(parts[1]);
-                        return years * 12 + months;
+                        return (isNaN(years) ? 0 : years) * 12 + (isNaN(months) ? 0 : months);
                     }
-                    return parseInt(cleaned) * 12;
+                    return baseParse * 12;
                 };
 
                 const ageInMonths = parseAgeToMonths(child.age);
