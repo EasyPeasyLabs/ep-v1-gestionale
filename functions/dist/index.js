@@ -404,24 +404,30 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
     const activeSubs = [];
     subsSnap.forEach((doc) => {
       const sub = doc.data();
-      if (sub.isPubliclyVisible !== false) {
+      const isActive = sub.statusConfig?.status === "active" || !sub.statusConfig;
+      if (isActive && sub.isPubliclyVisible !== false) {
         activeSubs.push({ ...sub, id: doc.id });
       }
     });
     const locationsMap = /* @__PURE__ */ new Map();
-    locationsSnap.forEach((doc) => locationsMap.set(doc.id, doc.data()));
+    locationsSnap.forEach((doc) => {
+      const loc = doc.data();
+      if (loc.isPubliclyVisible !== false) {
+        locationsMap.set(doc.id, loc);
+      }
+    });
     const results = [];
     const locationBundlesGrouped = /* @__PURE__ */ new Map();
+    const normalizeAge = (val, target) => {
+      if (target === "adult") return val * 12;
+      if (val > 0 && val < 9) return val * 12;
+      return val;
+    };
     coursesSnap.forEach((doc) => {
       const course = doc.data();
       course.id = doc.id;
       const loc = locationsMap.get(course.locationId);
       if (!loc) return;
-      let cMinAge = course.minAge || 0;
-      let cMaxAge = course.maxAge || 99;
-      if (cMaxAge > 0 && cMaxAge < 25) cMaxAge *= 12;
-      if (cMinAge > 0 && cMinAge < 25) cMinAge *= 12;
-      if (age !== null && (age < cMinAge || age > cMaxAge)) return;
       const compatibleSubs = activeSubs.filter((sub) => {
         const hasLegacyToken = course.slotType === "LAB" && sub.labCount > 0 || course.slotType === "SG" && sub.sgCount > 0 || course.slotType === "EVT" && sub.evtCount > 0;
         const hasNewToken = sub.tokens && Array.isArray(sub.tokens) && sub.tokens.some((t) => t.type === course.slotType && t.count > 0);
@@ -431,29 +437,36 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
         if (sub.allowedDays && Array.isArray(sub.allowedDays) && sub.allowedDays.length > 0) {
           if (!sub.allowedDays.includes(course.dayOfWeek)) return false;
         }
-        let subMinAge = sub.allowedAges?.min ?? 0;
-        let subMaxAge = sub.allowedAges?.max ?? 99;
-        if (subMaxAge > 0 && subMaxAge < 25) subMaxAge *= 12;
-        if (subMinAge > 0 && subMinAge < 25) subMinAge *= 12;
-        if (age !== null && (age < subMinAge || age > subMaxAge)) return false;
+        const target = sub.target || "kid";
+        const cMinMonths = normalizeAge(course.minAge || 0, target);
+        const cMaxMonths = normalizeAge(course.maxAge || 999, target);
+        const sMinMonths = normalizeAge(sub.allowedAges?.min ?? 0, target);
+        const sMaxMonths = normalizeAge(sub.allowedAges?.max ?? 999, target);
+        if (age !== null) {
+          const matchCourse = age >= cMinMonths && age <= cMaxMonths;
+          const matchSub = age >= sMinMonths && age <= sMaxMonths;
+          if (!matchCourse || !matchSub) return false;
+        }
         return true;
       });
       compatibleSubs.forEach((sub) => {
+        const target = sub.target || "kid";
         const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(":", "")}`;
         if (!locationBundlesGrouped.has(course.locationId)) {
           locationBundlesGrouped.set(course.locationId, []);
         }
         const locBundles = locationBundlesGrouped.get(course.locationId);
         let bundle = locBundles.find((b) => b.bundleId === groupKey);
-        const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
-        let subMinAgeForBundle = sub.allowedAges?.min ?? 0;
-        let subMaxAgeForBundle = sub.allowedAges?.max ?? 99;
-        if (subMaxAgeForBundle > 0 && subMaxAgeForBundle < 25) subMaxAgeForBundle *= 12;
-        if (subMinAgeForBundle > 0 && subMinAgeForBundle < 25) subMinAgeForBundle *= 12;
+        const available = Math.max(0, course.capacity - (course.activeEnrollmentsCount || 0));
+        const cMinMonths = normalizeAge(course.minAge || 0, target);
+        const cMaxMonths = normalizeAge(course.maxAge || 999, target);
+        const sMinMonths = normalizeAge(sub.allowedAges?.min ?? 0, target);
+        const sMaxMonths = normalizeAge(sub.allowedAges?.max ?? 999, target);
         if (!bundle) {
           bundle = {
             bundleId: groupKey,
             subscriptionId: sub.id,
+            target,
             name: sub.name,
             publicName: sub.publicName || sub.name,
             description: sub.description || "",
@@ -461,8 +474,9 @@ var getPublicSlotsV5 = (0, import_https.onRequest)({
             dayOfWeek: course.dayOfWeek,
             startTime: course.startTime,
             endTime: course.endTime,
-            minAge: Math.max(cMinAge, subMinAgeForBundle),
-            maxAge: Math.min(cMaxAge, subMaxAgeForBundle),
+            // Intersezione reale dei limiti
+            minAge: Math.max(cMinMonths, sMinMonths),
+            maxAge: Math.min(cMaxMonths, sMaxMonths),
             availableSeats: available,
             isFull: available <= 0,
             includedSlots: []
