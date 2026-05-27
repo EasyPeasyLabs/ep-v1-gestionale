@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import { CompanyInfo, SubscriptionType, SubscriptionTypeInput, CommunicationTemplate, PeriodicCheck, PeriodicCheckInput, CheckCategory, Supplier, SubscriptionStatusConfig, SubscriptionStatusType, Client, ParentClient, ClientType, InstitutionalClient, ContractTemplate, SlotType, PortalText } from '../types';
 import { getCompanyInfo, updateCompanyInfo, getSubscriptionTypes, addSubscriptionType, updateSubscriptionType, deleteSubscriptionType, getCommunicationTemplates, saveCommunicationTemplate, deleteCommunicationTemplate, getPeriodicChecks, addPeriodicCheck, updatePeriodicCheck, deletePeriodicCheck, getRecoveryPolicies, saveRecoveryPolicies, getContractTemplates, saveContractTemplate, deleteContractTemplate, getPortalTexts, addPortalText, updatePortalText, deletePortalText } from '../services/settingsService';
-import { migrateLocations, migrateLocationRecords } from '../services/migrationService';
+import { migrateLocations } from '../services/migrationService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
 import { requestNotificationPermission } from '../services/fcmService';
@@ -766,8 +766,6 @@ const Settings: React.FC = () => {
     const [notifPermission, setNotifPermission] = useState(Notification.permission);
     const [debugLog, setDebugLog] = useState<string[]>([]);
     const [showConfirmLocMigrate, setShowConfirmLocMigrate] = useState(false);
-    const [isMigrating, setIsMigrating] = useState(false);
-    const [locMigrationResult, setLocMigrationResult] = useState<number | null>(null);
 
     const addLog = (msg: string) => setDebugLog(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`]);
 
@@ -1320,16 +1318,12 @@ const Settings: React.FC = () => {
                 onClose={() => setShowConfirmLocMigrate(false)} 
                 onConfirm={async () => {
                     setShowConfirmLocMigrate(false);
-                    setIsMigrating(true);
                     try {
                         const count = await migrateLocations();
-                        setLocMigrationResult(count);
                         toast.success(`Migrazione completata: ${count} sedi sincronizzate`);
                     } catch (e) {
                         console.error(e);
                         toast.error("Errore durante la migrazione delle sedi.");
-                    } finally {
-                        setIsMigrating(false);
                     }
                 }} 
                 title="Sincronizzazione Sedi" 

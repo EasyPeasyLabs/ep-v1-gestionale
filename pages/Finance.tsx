@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, RentAnalysisResult, SubscriptionType, EnrollmentStatus, GhostPromotionCandidate } from '../types';
+import { Transaction, Invoice, Quote, Supplier, CompanyInfo, TransactionType, TransactionCategory, DocumentStatus, Page, InvoiceInput, TransactionInput, Client, QuoteInput, Lesson, IntegrityIssue, Enrollment, PaymentMethod, RentAnalysisResult, SubscriptionType, GhostPromotionCandidate } from '../types';
 import { getTransactions, getInvoices, getQuotes, addTransaction, updateTransaction, deleteTransaction, updateInvoice, addInvoice, deleteInvoice, analyzeRentExpenses, createRentTransactionsBatch, addQuote, updateQuote, deleteQuote, convertQuoteToInvoice, runFinancialHealthCheck, fixIntegrityIssue, findGhostPromotionCandidates, promoteGhostInvoices } from '../services/financeService';
 import { getSuppliers } from '../services/supplierService';
 import { getCompanyInfo, getSubscriptionTypes, updateCompanyInfo } from '../services/settingsService';

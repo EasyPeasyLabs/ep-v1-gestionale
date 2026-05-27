@@ -7,8 +7,7 @@ import {
     writeBatch 
 } from 'firebase/firestore';
 import { 
-    Enrollment, 
-    Appointment
+    Enrollment
 } from '../../types';
 import { calculateRemainingCounters } from './attendance';
 import { activateEnrollmentWithLocation } from './activation';
@@ -89,7 +88,7 @@ export const fixSingleEnrollment = async (enr: Enrollment): Promise<boolean> => 
                 endDate
             });
             return true;
-        };
+        }
 
         await activateEnrollmentWithLocation(
             enr.id,

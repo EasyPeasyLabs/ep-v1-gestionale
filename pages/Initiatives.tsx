@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Initiative, InitiativeInput, Book, BookInput, BookLoan, Supplier, Enrollment, EnrollmentStatus } from '../types';
+import { Initiative, InitiativeInput, Book, BookInput, BookLoan, Supplier, Enrollment } from '../types';
 import { getInitiatives, addInitiative, updateInitiative, deleteInitiative, getBooks, addBook, updateBook, deleteBook, getActiveLoans, checkOutBook, checkInBook } from '../services/initiativeService';
 import { fetchBookMetadata } from '../services/bookMetadataService';
 import { getSuppliers } from '../services/supplierService';

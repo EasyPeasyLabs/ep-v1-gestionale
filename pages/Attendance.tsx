@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Appointment, Enrollment, EnrollmentStatus, Supplier, LessonAttendee, ClientType, Lesson, Client, ParentClient } from '../types';
+import { Appointment, Enrollment, Supplier, LessonAttendee, ClientType, Lesson, Client, ParentClient } from '../types';
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
@@ -288,7 +288,7 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             const enrEnd = enr.endDate ? enr.endDate.split('T')[0] : '9999-12-31';
 
                             if (appDateStr >= currentRangeStart && appDateStr <= currentRangeEnd && appDateStr >= enrStart && appDateStr <= enrEnd) {
-                                const isInstitutional = enr.clientType === ClientType.Institutional || enr.locationId === 'institutional';
+                                // isInstitutional was defined but unused
                                 
                                 // Chiave unificata: sempre enrollmentId + lessonId (se disponibile) o data+ora.
                                 // NON differenziare per tipo cliente: evita la perdita di sessioni multiple nello stesso giorno.

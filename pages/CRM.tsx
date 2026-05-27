@@ -9,7 +9,7 @@ import { getCommunicationTemplates, getCompanyInfo } from '../services/settingsS
 import { uploadCampaignFile, uploadCommunicationAttachment } from '../services/storageService';
 import { syncDismissedNotifications, getUserPreferences } from '../services/profileService'; // Added Cloud Sync
 import { auth } from '../firebase/config'; // Added Auth
-import { Enrollment, EnrollmentStatus, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo, Transaction } from '../types';
+import { Enrollment, TransactionStatus, TransactionCategory, Client, Supplier, ClientType, ParentClient, InstitutionalClient, CommunicationLog, Campaign, CampaignInput, CampaignRecipient, CommunicationTemplate, CompanyInfo, Transaction } from '../types';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import PlusIcon from '../components/icons/PlusIcon';

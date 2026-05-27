@@ -18,8 +18,11 @@ export default defineConfig({
     rollupOptions: {
         output: {
             manualChunks: {
-                vendor: ['react', 'react-dom', 'chart.js', 'jspdf', 'jspdf-autotable', 'xlsx'],
-                firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/messaging']
+                react: ['react', 'react-dom'],
+                firebase: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage', 'firebase/messaging'],
+                pdf: ['jspdf', 'jspdf-autotable'],
+                excel: ['xlsx'],
+                charts: ['chart.js']
             }
         }
     }

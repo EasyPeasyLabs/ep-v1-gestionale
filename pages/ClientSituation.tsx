@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, EnrollmentStatus, CompanyInfo } from '../types';
+import { Client, ClientType, ParentClient, InstitutionalClient, Enrollment, Transaction, Invoice, Supplier, CompanyInfo } from '../types';
 import { getClients } from '../services/parentService';
 import { getAllEnrollments } from '../services/enrollmentService';
 import { getTransactions, getInvoices } from '../services/financeService';
@@ -164,13 +164,11 @@ const ClientSituation: React.FC<ClientSituationProps> = ({ initialParams }) => {
 
             // Attendance Logic: Sum based on enrollment filter (simplified, attendance follows enrollment usually)
             // If we have strict date filter for attendance, we should check appointment dates.
-            let hasAppts = false;
             if (enr.appointments && enr.appointments.length > 0) {
                 enr.appointments.forEach(app => {
                     // Check if appointment is in filtered period (if filters active)
                     // If no filters (year/month), count everything.
                     if (isDateInPeriod(app.date, year, month)) {
-                        hasAppts = true;
                         if (app.status === 'Present') aggPresences++;
                         else if (app.status === 'Absent') aggAbsences++;
                         if (app.lessonId && app.lessonId.startsWith('REC-')) aggRecoveries++;

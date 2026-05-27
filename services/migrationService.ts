@@ -42,9 +42,6 @@ export const migrateLocationRecords = async (sourceLocationId: string, targetLoc
     const targetSupplierDoc = await getDoc(doc(db, 'suppliers', targetLocation.supplierId));
     const targetSupplierName = targetSupplierDoc.exists() ? targetSupplierDoc.data()?.companyName : '';
 
-    const batch = writeBatch(db);
-    let operationCount = 0;
-    
     // Chunking utility
     const operations: { ref: any, data: { [key: string]: any } }[] = [];
 

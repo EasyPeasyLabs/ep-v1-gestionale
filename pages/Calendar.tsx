@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Lesson, SchoolClosure, Supplier, Client, LessonInput, EnrollmentStatus, Enrollment, Appointment } from '../types';
+import { Lesson, SchoolClosure, Supplier, Client, LessonInput, Enrollment, Appointment } from '../types';
 import { getLessons, getSchoolClosures, deleteSchoolClosure, addSchoolClosure, addLesson, updateLesson, bulkDeleteAllClosures, deleteLesson } from '../services/calendarService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';

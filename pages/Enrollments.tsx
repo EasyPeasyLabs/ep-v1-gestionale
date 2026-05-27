@@ -414,7 +414,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
 
     // Location Migration State
     const [isLocMigrationModalOpen, setIsLocMigrationModalOpen] = useState(false);
-    const [locMigrationResult, setLocMigrationResult] = useState<number | null>(null);
 
     const allLocations = useMemo(() => {
         return suppliers.flatMap(s => s.locations || []).map(l => ({ id: l.id, name: l.name }));
@@ -423,7 +422,6 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
     const handleLocMigrationConfirm = async (sourceId: string, targetId: string, fromDate: string) => {
         try {
             const count = await migrateLocationRecords(sourceId, targetId, fromDate);
-            setLocMigrationResult(count);
             if (count > 0) {
                 toast.success(`Migrazione completata. ${count} record aggiornati.`);
                 await fetchData(); // Ricarica i dati
@@ -545,7 +543,7 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
         if (!enr) return;
         setLoading(true);
         try {
-            if (enr.locationId === 'unassigned') {
+            if (!enr.locationId || enr.locationId === 'unassigned') {
                 let sId = '', sName = '';
                 suppliers.forEach(s => { if (s.locations.some(l => l.id === locId)) { sId = s.id; sName = s.companyName; } });
                 await activateEnrollmentWithLocation(id, sId, sName, locId, locName, locColor, day, start, end);

@@ -19,7 +19,6 @@ import {
     LessonAttendee,
     EnrollmentStatus
 } from '../../types';
-import { isItalianHoliday } from '../../utils/dateUtils';
 import { generateTheoreticalAppointments } from './helpers';
 import { getEnrollmentCollectionRef } from './core';
 import { getAllCourses, getLocations } from '../courseService';

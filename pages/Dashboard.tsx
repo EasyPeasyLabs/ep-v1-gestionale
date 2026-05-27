@@ -8,7 +8,7 @@ import { getTransactions } from '../services/financeService';
 import { getNotifications } from '../services/notificationService';
 import { getUserPreferences, markFocusAsSeen } from '../services/profileService';
 import { auth } from '../firebase/config';
-import { EnrollmentStatus, Notification, ClientType, ParentClient, Page, Enrollment, SchoolClosure, Client, Supplier, Lesson, Location } from '../types';
+import { Notification, ClientType, ParentClient, Page, Enrollment, SchoolClosure, Client, Supplier, Lesson, Location } from '../types';
 import Spinner from '../components/Spinner';
 import ClockIcon from '../components/icons/ClockIcon';
 import ExclamationIcon from '../components/icons/ExclamationIcon';

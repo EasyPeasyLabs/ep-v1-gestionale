@@ -3,15 +3,13 @@ import { db } from '../../firebase/config';
 import { 
     collection, 
     getDocs, 
-    addDoc, 
     doc, 
     getDoc, 
     updateDoc, 
     writeBatch,
     query,
     where,
-    arrayUnion,
-    deleteDoc
+    arrayUnion
 } from 'firebase/firestore';
 import { 
     Enrollment, 
@@ -22,14 +20,12 @@ import {
     Quote,
     ClientType,
     Lesson,
-    LessonAttendee,
     EnrollmentInput,
     DocumentStatus
 } from '../../types';
 import { bookStudentIntoCourseLessons } from './bookingModule';
 import { generateTheoreticalAppointments } from './helpers';
 import { isItalianHoliday } from '../../utils/dateUtils';
-import { getEnrollmentCollectionRef } from './core';
 
 
 export const createInstitutionalEnrollment = async (

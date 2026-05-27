@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment, Course, SlotType } from '../types';
+import { Client, EnrollmentInput, EnrollmentStatus, SubscriptionType, Supplier, Enrollment, PaymentMethod, ClientType, ParentClient, InstitutionalClient, AvailabilitySlot, Appointment, Course } from '../types';
 import { getSlotCount } from '../types';
 import { getSubscriptionTypes } from '../services/settingsService';
 import { getSuppliers } from '../services/supplierService';
@@ -544,12 +544,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     }, [clientHistory]);
 
     const availableSubscriptions = useMemo(() => {
-        const normalizeType = (type: string) => {
-            if (!type) return '';
-            // Rimuove prefissi K- o A- e converte in UpperCase
-            return type.replace(/^[KA]-/, '').toUpperCase();
-        };
-
         const isVisible = (s: SubscriptionType) => {
             const status = s.statusConfig?.status || 'active';
             const isStatusOk = status === 'active' || status === 'promo';

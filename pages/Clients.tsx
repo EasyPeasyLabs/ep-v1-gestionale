@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment, EnrollmentStatus } from '../types';
+import { Client, ClientInput, ClientType, ParentClient, InstitutionalClient, Child, ParentRating, ChildRating, Note, Enrollment } from '../types';
 import { getClients, addClient, updateClient, restoreClient, permanentDeleteClient } from '../services/parentService';
 import { getAllEnrollments, deleteEnrollment, getEnrollmentsForClient } from '../services/enrollmentService';
 import { cleanupEnrollmentFinancials, anonymizeClientFinancials, deleteAutoRentTransactions } from '../services/financeService';
