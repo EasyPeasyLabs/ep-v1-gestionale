@@ -131,6 +131,14 @@ const BookForm: React.FC<{
             const suggestion = await fetchBookMetadata(title, authors);
             
             if (suggestion) {
+                // Aggiornamento dati anagrafici se più precisi
+                if (suggestion.title) setTitle(suggestion.title);
+                if (suggestion.authors && suggestion.authors.length > 0) {
+                    setAuthors(suggestion.authors.join(', '));
+                }
+                if (suggestion.publisher) setPublisher(suggestion.publisher);
+
+                // Aggiornamento Tag
                 if (suggestion.targetTags.length > 0) {
                     setTargetTags(prev => Array.from(new Set([...prev, ...suggestion.targetTags])));
                 }

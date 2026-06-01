@@ -1023,48 +1023,43 @@ export const suggestBookTags = onCall({ region: "europe-west1", cors: true }, as
     const { title, authors, publisher } = request.data;
     if (!title) throw new HttpsError("invalid-argument", "Missing title");
 
-    const ai = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY || "",
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    const ai = new GoogleGenAI(process.env.GEMINI_API_KEY || "");
+    const model = ai.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    targetTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    categoryTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    themeTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    authors: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    publisher: { type: Type.STRING }
+                },
+                required: ["targetTags", "categoryTags", "themeTags"]
+            }
+        }
     });
 
     const prompt = `
-        Analizza il seguente libro. 
+        Analizza e identifica il libro descritto. Usa la tua conoscenza aggiornata:
         Titolo: ${title}
-        Autori: ${authors || "Sconosciuto"}
+        Autori (stringa grezza): ${authors || "Sconosciuto"}
         Casa Editrice: ${publisher || "Sconosciuto"}
 
-        Suggerisci i tag classificandoli in queste tre categorie:
-        1. targetTags (Fascia d'età): scegli esclusivamente tra ["piccolissimi", "piccoli", "grandi"].
-        2. categoryTags (Tipologia): scegli esclusivamente tra ["solo testo", "solo immagini", "testo & immagini", "tattile"].
-        3. themeTags (Temi): suggerisci temi pertinenti (es. ["animali", "stagioni", "amicizia", "avventura", "natura", "società"]).
-
-        Usa la ricerca web se necessario per essere preciso.
+        Restituisci ESCLUSIVAMENTE un oggetto JSON con:
+        1. targetTags: Array scegliendo tra ["piccolissimi", "piccoli", "grandi"].
+        2. categoryTags: Array scegliendo tra ["solo testo", "solo immagini", "testo & immagini", "tattile"].
+        3. themeTags: Array di temi (es. ["animali", "stagioni", "amicizia", "avventura", "natura", "società"]).
+        4. authors: Array pulito di nomi autori (es. ["Jenna Lettice", "Colleen Madden"]).
+        5. publisher: Nome corretto casa editrice.
     `;
 
     try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3.5-flash",
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        targetTags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        categoryTags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        themeTags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        authors: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        publisher: { type: Type.STRING }
-                    },
-                    required: ["targetTags", "categoryTags", "themeTags"]
-                }
-            }
-        });
-
-        const result = JSON.parse(response.text || "{}");
-        return result;
+        const response = await model.generateContent(prompt);
+        const text = response.response.text();
+        return JSON.parse(text || "{}");
     } catch (e) {
         logger.error("Error in suggestBookTags:", e);
         throw new HttpsError("internal", "AI processing failed");

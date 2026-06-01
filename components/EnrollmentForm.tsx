@@ -764,18 +764,6 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     
     // ... (existing state)
 
-    const handleCourseChange = (courseId: string) => {
-        setSelectedCourseId(courseId);
-        if (courseId && courseId !== 'manual') {
-            const course = courses.find(c => c.id === courseId);
-            if (course) {
-                setStartTime(course.startTime);
-                setEndTime(course.endTime);
-                setTargetLocationId(course.locationId);
-            }
-        }
-    };
-
     // --- SUBMIT ---
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

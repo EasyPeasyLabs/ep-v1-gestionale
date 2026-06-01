@@ -25,8 +25,9 @@ Risoluzione del conflitto tra metadati manuali e AI nell'inventario libri (Peek-
   - Eliminata la logica di parsing manuale string-based nel frontend che causava suggerimenti incompleti o errati per libri non standard.
 
 ## Risultati
-- Suggerimenti tag ora intelligenti e basati su ricerca web reale.
-- Maggiore robustezza e precisione nella classificazione dell'inventario.
+- Suggerimenti tag ora intelligenti e basati su ricerca web reale via Gemini 1.5 Flash (Backend).
+- Il frontend ora riceve e pulisce automaticamente anche Titolo, Autori e Casa Editrice se l'AI trova dati più accurati.
+- Robustezza aumentata: gestita correttamente la presenza di più autori o stringhe grezze.
 - Codice più pulito e sicuro seguendo le best practice per l'integrazione di Gemini.
 
 ---
