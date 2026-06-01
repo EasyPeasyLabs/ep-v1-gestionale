@@ -175,8 +175,24 @@ export const updateEnrollment = async (id: string, enrollment: Partial<Enrollmen
         const locName = enrollment.locationName || oldData.locationName || 'Sede Non Definita';
         const locColor = enrollment.locationColor || oldData.locationColor || '#ccc';
         const timeSource = (enrollment.appointments && enrollment.appointments.length > 0) ? enrollment.appointments[0] : refApp;
-        const startTime = timeSource?.startTime || '16:00';
-        const endTime = timeSource?.endTime || '18:00';
+        let startTime = timeSource?.startTime || '16:00';
+        let endTime = timeSource?.endTime || '18:00';
+        
+        // Prioritize course's time as single source of truth
+        const relatedCourseId = enrollment.courseId || oldData.courseId;
+        if (relatedCourseId && relatedCourseId !== 'manual') {
+            const courseSnap = await getDoc(doc(db, 'courses', relatedCourseId));
+            if (courseSnap.exists()) {
+                const courseData = courseSnap.data() as any;
+                if (courseData.startTime && courseData.slotType !== 'LAB+SG') {
+                    startTime = courseData.startTime;
+                }
+                if (courseData.endTime && courseData.slotType !== 'LAB+SG') {
+                    endTime = courseData.endTime;
+                }
+            }
+        }
+
         const childName = enrollment.childName || oldData.childName;
 
         const targetDay = new Date(enrollment.startDate).getDay();
@@ -304,6 +320,8 @@ export const activateEnrollmentWithLocation = async (
     let finalEndDate = enrollment.endDate;
     let appointments: Appointment[] = [];
     let courseDayOfWeek: number | undefined = undefined;
+    let actualStartTime = startTime;
+    let actualEndTime = endTime;
 
     if (enrollment.courseId && enrollment.courseId !== 'manual') {
         const courseRef = doc(db, 'courses', enrollment.courseId);
@@ -311,6 +329,14 @@ export const activateEnrollmentWithLocation = async (
         if (courseSnap.exists()) {
             const courseData = courseSnap.data() as any;
             courseDayOfWeek = courseData.dayOfWeek;
+            
+            // Prioritize course's time as single source of truth for standard slot types
+            if (courseData.startTime && courseData.slotType !== 'LAB+SG') {
+                actualStartTime = courseData.startTime;
+            }
+            if (courseData.endTime && courseData.slotType !== 'LAB+SG') {
+                actualEndTime = courseData.endTime;
+            }
         }
 
         const quotasObj: Record<string, number> = {};
@@ -394,8 +420,8 @@ export const activateEnrollmentWithLocation = async (
                 locationId,
                 locationName,
                 locationColor,
-                startTime,
-                endTime,
+                actualStartTime,
+                actualEndTime,
                 enrollment.childName,
                 comboConfigs,
                 weeklyPlan,
@@ -417,8 +443,8 @@ export const activateEnrollmentWithLocation = async (
             locationId,
             locationName,
             locationColor,
-            startTime,
-            endTime,
+            actualStartTime,
+            actualEndTime,
             enrollment.childName,
             comboConfigs,
             weeklyPlan,
@@ -442,6 +468,8 @@ export const activateEnrollmentWithLocation = async (
         locationId,
         locationName,
         locationColor,
+        startTime: actualStartTime,
+        endTime: actualEndTime,
         appointments: appointments,
         labUsed: labUsed,
         sgUsed: sgUsed,

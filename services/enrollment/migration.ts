@@ -30,19 +30,24 @@ export const autoFixEnrollments = async (): Promise<{ fixed: number, total: numb
     const snapshot = await getDocs(getEnrollmentCollectionRef());
     const allEnrollments = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as Enrollment));
     
+    const courses = await getAllCourses();
+    const locations = await getLocations();
+    const suppliers = await getSuppliers();
+
     const problematic = allEnrollments.filter((e) => {
         const hasNoApps = !e.appointments || e.appointments.length === 0;
         const hasND = e.appointments?.[0]?.startTime === "N/D";
         const isPending = e.status === EnrollmentStatus.Pending;
-        return (isPending || hasNoApps || hasND) && e.status !== EnrollmentStatus.Completed && e.status !== EnrollmentStatus.Expired;
+        
+        const course = courses.find(c => c.id === e.courseId);
+        const isTimeMismatched = course && e.appointments && e.appointments.length > 0 && e.appointments[0].startTime !== course.startTime;
+
+        return (isPending || hasNoApps || hasND || isTimeMismatched) && e.status !== EnrollmentStatus.Completed && e.status !== EnrollmentStatus.Expired;
     });
 
     console.log(`[Auto-Fix] Trovate ${problematic.length} iscrizioni potenzialmente da sanare.`);
     if (problematic.length === 0) return { fixed: 0, total: allEnrollments.length };
 
-    const courses = await getAllCourses();
-    const locations = await getLocations();
-    const suppliers = await getSuppliers();
     let fixedCount = 0;
 
     for (const enr of problematic) {

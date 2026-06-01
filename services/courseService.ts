@@ -174,10 +174,38 @@ export const syncCourseLessons = async (
         const hasBookings = lesson.attendees && lesson.attendees.length > 0;
 
         if (hasBookings) {
-            // PROTEZIONE: aggiorna solo i metadati, non cancellare
+            // Calcolo orario corretto per questa specifica lezione (considerando LAB+SG)
+            let sTime = course.startTime;
+            let eTime = course.endTime;
+            
+            if (course.slotType === 'LAB+SG' && course.comboConfigs && course.weeklyPlan && course.startDate) {
+                const lessonDate = new Date(lesson.date);
+                const startObj = new Date(course.startDate);
+                startObj.setHours(12, 0, 0, 0);
+                
+                const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+                const weeksSinceCourseStart = Math.floor(
+                    (lessonDate.getTime() - startObj.getTime()) / msPerWeek
+                );
+                const planSize = Object.keys(course.weeklyPlan).length || 4;
+                const weekNum = (weeksSinceCourseStart % planSize) + 1;
+                const plannedType = course.weeklyPlan[weekNum] || 'LAB';
+                
+                if (plannedType === 'LAB' && course.comboConfigs.LAB) {
+                    sTime = course.comboConfigs.LAB.startTime;
+                    eTime = course.comboConfigs.LAB.endTime;
+                } else if (plannedType === 'SG' && course.comboConfigs.SG) {
+                    sTime = course.comboConfigs.SG.startTime;
+                    eTime = course.comboConfigs.SG.endTime;
+                }
+            }
+
+            // PROTEZIONE: aggiorna metadati e orari, non cancellare
             batch.update(lessonDoc.ref, {
                 locationName: locationName,
-                locationColor: locationColor
+                locationColor: locationColor,
+                startTime: sTime,
+                endTime: eTime
             });
             updated++;
             protected_++;

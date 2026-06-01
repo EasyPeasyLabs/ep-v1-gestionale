@@ -764,6 +764,18 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
     
     // ... (existing state)
 
+    const handleCourseChange = (courseId: string) => {
+        setSelectedCourseId(courseId);
+        if (courseId && courseId !== 'manual') {
+            const course = courses.find(c => c.id === courseId);
+            if (course) {
+                setStartTime(course.startTime);
+                setEndTime(course.endTime);
+                setTargetLocationId(course.locationId);
+            }
+        }
+    };
+
     // --- SUBMIT ---
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -821,12 +833,14 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
 
             if (regenerateCalendar || !existingEnrollment) {
                 const course = courses.find(c => c.id === selectedCourseId);
+                const actualStartTime = (selectedCourseId && course?.startTime) ? course.startTime : startTime;
+                const actualEndTime = (selectedCourseId && course?.endTime) ? course.endTime : endTime;
                 
                 appointmentsPayload = [{
                     lessonId: 'template', 
                     date: new Date(startDateInput).toISOString(),
-                    startTime: course?.startTime || startTime,
-                    endTime: course?.endTime || endTime,
+                    startTime: actualStartTime || '16:00',
+                    endTime: actualEndTime || '18:00',
                     locationId: course?.locationId || finalLocationId,
                     locationName: allLocations.find(l => l.id === course?.locationId)?.name || finalLocationName,
                     locationColor: allLocations.find(l => l.id === course?.locationId)?.color || finalLocationColor,
@@ -834,8 +848,17 @@ const EnrollmentForm: React.FC<EnrollmentFormProps> = ({ clients, initialClient,
                     status: 'Scheduled'
                 }];
             } else {
+                const course = courses.find(c => c.id === selectedCourseId);
+                const actualStartTime = (selectedCourseId && course?.startTime) ? course.startTime : startTime;
+                const actualEndTime = (selectedCourseId && course?.endTime) ? course.endTime : endTime;
+
                 appointmentsPayload = (existingEnrollment.appointments || []).map(app => ({
-                    ...app, startTime, endTime, locationId: finalLocationId, locationName: finalLocationName, locationColor: finalLocationColor
+                    ...app, 
+                    startTime: actualStartTime || app.startTime, 
+                    endTime: actualEndTime || app.endTime, 
+                    locationId: finalLocationId, 
+                    locationName: finalLocationName, 
+                    locationColor: finalLocationColor
                 }));
             }
         }

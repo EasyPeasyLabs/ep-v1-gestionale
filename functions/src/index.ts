@@ -654,6 +654,9 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             logger.info(`[matcher] Giorno rilevato: ${slotDayName} (Index: ${targetDayIndex})`);
 
             let matchedCourseId = "manual";
+            let courseStartTime = "";
+            let courseEndTime = "";
+
             if (targetDayIndex !== -1 && mainAppt?.startTime) {
                 const coursesSnap = await db.collection("courses")
                     .where("locationId", "==", enrollmentData.locationId)
@@ -662,8 +665,12 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                     .limit(1).get();
 
                 if (!coursesSnap.empty) {
-                    matchedCourseId = coursesSnap.docs[0].id;
-                    logger.info(`[matcher] Iscrizione collegata al corso ${matchedCourseId}`);
+                    const courseDoc = coursesSnap.docs[0];
+                    matchedCourseId = courseDoc.id;
+                    const cData = courseDoc.data();
+                    courseStartTime = cData.startTime;
+                    courseEndTime = cData.endTime;
+                    logger.info(`[matcher] Iscrizione collegata al corso ${matchedCourseId} (${courseStartTime}-${courseEndTime})`);
                 } else {
                     logger.warn(`[matcher] Nessun corso trovato per ${enrollmentData.locationName} il ${slotDayName} alle ${mainAppt.startTime}. Fallback su manual.`);
                 }
@@ -784,8 +791,8 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
             const enrichedAppointments = (enrollmentData.appointments || []).map((app: Record<string, unknown>) => ({
                 ...app,
                 dayOfWeek: targetDayIndex,
-                startTime: (app.startTime as string) || mainAppt?.startTime || "16:00",
-                endTime: (app.endTime as string) || mainAppt?.endTime || "17:00",
+                startTime: courseStartTime || (app.startTime as string) || mainAppt?.startTime || "16:00",
+                endTime: courseEndTime || (app.endTime as string) || mainAppt?.endTime || "17:00",
                 locationId: enrollmentData.locationId,
                 locationName: enrollmentData.locationName,
                 locationColor: enrollmentData.locationColor || "#6366f1",
@@ -798,8 +805,8 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
                 clientId: clientId,
                 childId: childId, // COLLEGAMENTO CRUCIALE PER MODALE
                 price: totalPrice,
-                startTime: enrichedAppointments[0]?.startTime || "16:00",
-                endTime: enrichedAppointments[0]?.endTime || "17:00",
+                startTime: enrichedAppointments[0]?.startTime || courseStartTime || "16:00",
+                endTime: enrichedAppointments[0]?.endTime || courseEndTime || "17:00",
                 appointments: enrichedAppointments,
                 status: (enrollmentData.status || 'Active'), // Manteniamo Case-Sensitive
                 source: 'portal',

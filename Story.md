@@ -5,7 +5,28 @@ Tutte le iterazioni, gli Epic e i singoli Sprint sono stati documentati, riassun
 
 ---
 
-### Sprint 23 (2026-05-27)
+### Sprint 28 (2026-06-01)
+
+## Obiettivo
+Risoluzione definitiva del disallineamento orari nelle etichette delle iscrizioni (fallback 16:00-18:00 vs orario reale corso 17:45-18:45).
+
+## Cosa è stato fatto
+- **Ottimizzazione UI (Phase A)**:
+  - In `Enrollments.tsx`, invertita la priorità di visualizzazione nell'etichetta del raggruppamento temporale. Se l'iscrizione è collegata a un corso, il sistema ora mostra l'orario del corso come fonte di verità primaria, bypassando eventuali orari di fallback presenti nel primo appuntamento.
+- **Integrità Dati Root (Phase B)**:
+  - Modificato `activateEnrollmentWithLocation` in `services/enrollment/activation.ts` per garantire che i campi root `startTime` ed `endTime` del documento Iscrizione vengano aggiornati insieme agli appuntamenti durante ogni attivazione o sincronizzazione.
+- **Manutenzione Proattiva (Phase C)**:
+  - Potenziata la funzione `autoFixEnrollments` in `services/enrollment/migration.ts`. Il motore di riparazione ora rileva automaticamente le iscrizioni il cui orario non coincide con quello del corso assegnato e innesca una ricalendarizzazione forzata per allinearli.
+- **Prevenzione "Iscrizioni Cieche"**:
+  - Aggiornato il converter dei Lead in `functions/src/index.ts` per assicurare che fin dalla nascita (conversione portale -> gestionale) l'iscrizione erediti i campi `startTime` ed `endTime` corretti dal corso mappato, popolando anche i metadati root per una coerenza immediata senza necessità di refresh manuale.
+
+## Risultati
+- Risolta l'anomalia visiva segnalata dall'utente (etichette orarie corrette).
+- Garantita la coerenza dei dati tra database e interfaccia utente.
+- Automatizzata la bonifica dei record storici tramite pulsante "Auto-Fix".
+
+---
+
 
 ## Obiettivo
 Esecuzione rigoroso test flusso E2E: Consistenza, Assenza Conflitti, Robustezza.
@@ -3085,6 +3106,29 @@ Correzioni di bug critici su logica delle lezioni LAB+SG, protezione iscritti fu
 *   **Sprint 32 - 21/05/2026**: Esecuzione test_1.md tramite simulazione logica e audit sorgenti. Verificata integrità iter di iscrizione manuale ("Iscrizione Standard"), persistenza e allineamento dati (prezzo, filtra per età attivo, calcolo date), coerenza stato "SCOPERTO" in Archivio Iscrizioni per saldo incompleto. Accertata generazione slot presenze allievo sincronizzati con modulo Corsi, modulo Registro Presenze e modulo Calendario tramite pipeline `activateEnrollmentWithLocation`. Nessuna criticità rilevata, validazione completata con successo.
 *   **Sprint 33 - 21/05/2026**: Esecuzione analitica e certificazione ciclo step-by-step di `test_1.md`. Check UI Modale "Nuova Iscrizione Standard" completato. Selezione genitore "CORLIANO' ROBERTA", target "figlio", allievo "MARCO". Match plan "K-LAB.2026.Mensile" esegue fetch prezzo corretto calcolando 4 slot. Start date "21/05/2026" (Giovedì) computa end date esatta "11/06/2026" bypassando festività. Filtro età auto-selezionato isola modulo Corsi validi. Submit invoca `addEnrollment` + `activateEnrollmentWithLocation`. Archivio Iscrizioni espone coerenza data e flag "SCOPERTO" su saldo. Propagazione confermata su Corsi (posti occupati), Registro Presenze (fetch id) e Calendario (slot confermati). Tutte le operazioni chiuse senza conflitti e senza race conditions in DB. Esito Positivo certificato.
 *   **Sprint 34 - 21/05/2026**: Ottimizzazione responsiva header vista Iscrizioni (`Enrollments.tsx`). Rimossa classe `hidden md:inline` dai testi dei pulsanti "Sposta Sede" e "Auto-Fix", che causava la perdita della descrizione testuale su dispositivi mobili. Adottata logica `text-xs sm:text-sm font-bold whitespace-nowrap` con padding progressivo `px-2 sm:px-4` per assicurare ritenzione informativa su breakpoint mobile stringenti evitando andata a capo non desiderata.
+
+---
+
+### Sprint 35 (2026-06-01)
+
+## Obiettivo
+Allineamento prioritario orari iscrizioni e implementazione annullamento sicuro lead convertiti.
+
+## Cosa è stato fatto
+- **Priorità Orario Corso (`activation.ts`)**:
+  - Modificata la logica di attivazione e aggiornamento iscrizioni.
+  - Adesso, per le iscrizioni collegate a un corso (standard, non manual), il sistema ignora gli orari inseriti manualmente nel form e preleva `startTime` ed `endTime` direttamente dal record del Corso su Firestore.
+  - Questo garantisce che le lezioni generate (theoretical o booked) siano sempre perfettamente allineate al calendario master della sede, prevenendo discrepanze di orario tra iscrizione e lezioni effettive.
+- **Revoca e Annullamento Lead Convertiti (`LeadsPage.tsx`)**:
+  - Implementata l'azione "Annulla e Scarta Iscrizione" per i lead già convertiti (`converted` / `processed`).
+  - L'azione esegue una bonifica totale: elimina l'iscrizione creata, pulisce i relativi dati finanziari (ricevute/transazioni) e ripristina lo stato del Lead su `rejected` (scartato), mantenendo traccia dell'annullamento senza sporcare la pipeline dei nuovi contatti.
+- **Manutenzione e Cleanup**:
+  - Rimossi script di controllo temporanei (`check_courses.ts`, `check_enrollment.ts`, `check_course_lessons.ts`) che causavano fallimenti della build per incoerenze di tipi durante il deploy.
+
+## Risultati
+- **Sincronia Orari**: Eliminata la possibilità di creare lezioni fuori orario corso a causa di override manuali accidentali.
+- **UX Amministrativa**: Aggiunto uno strumento di roll-back sicuro per gestire errori di conversione lead senza lasciare record orfani a database.
+- **Stabilità Build**: Il sistema compila correttamente in ambiente di produzione.
 
 
 

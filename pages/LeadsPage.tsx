@@ -449,6 +449,57 @@ export const LeadsPage: React.FC = () => {
     );
   };
 
+  const handleCancelConvertedLead = (lead: Lead) => {
+    openConfirmModal(
+      "Annullamento Definitivo Iscrizione",
+      `Sei sicuro di voler ANNULLARE COMPLETAMENTE l'iscrizione di ${lead.nome} ${lead.cognome}? Questo eliminerà l'iscrizione e le relative ricevute, e segnerà la richiesta come "Scartata/Annullata".`,
+      async () => {
+        setLoading(true);
+        try {
+          if (!lead.convertedStudentId) throw new Error("ID studente convertito mancante.");
+
+          // 1. Fetch Enrollments
+          const enrollmentsSnap = await getDocs(
+            query(collection(db, 'enrollments'), where('childId', '==', lead.convertedStudentId))
+          );
+          
+          if (enrollmentsSnap.empty) {
+            // Se non c'è iscrizione, almeno lo scartiamo
+             await updateDoc(doc(db, 'incoming_leads', lead.id), {
+                 status: 'rejected',
+                 convertedStudentId: null,
+                 convertedAt: null
+             });
+             alert("Nessuna iscrizione attiva trovata. La richiesta è stata segnata come annullata.");
+             return;
+          }
+
+          const targetEnrollment = { id: enrollmentsSnap.docs[0].id, ...enrollmentsSnap.docs[0].data() };
+
+          // 2. Delete Enrollment & Financials
+          await cleanupEnrollmentFinancials(targetEnrollment as any);
+          await deleteEnrollment(targetEnrollment.id);
+
+          // 3. Update Lead Status to 'rejected'
+          await updateDoc(doc(db, 'incoming_leads', lead.id), {
+            status: 'rejected',
+            convertedStudentId: null,
+            convertedAt: null
+          });
+
+          alert("L'iscrizione è stata eliminata definitivamente e la richiesta è stata annullata.");
+        } catch (error) {
+          console.error("Error cancelling converted lead:", error);
+          alert("Errore durante l'annullamento.");
+        } finally {
+          setLoading(false);
+        }
+      },
+      true,
+      "Annulla Tutto"
+    );
+  };
+
   const handleDeleteEnrollmentFromLead = (lead: Lead) => {
     const isConverted = lead.status === 'converted';
     const actionText = isConverted ? "annullare la conversione" : "eliminare l'iscrizione";
@@ -884,20 +935,12 @@ export const LeadsPage: React.FC = () => {
                         Scollega e Ripristina
                       </button>
                       <button 
-                        onClick={() => handleStatusChange(lead.id, 'rejected')}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-xs font-medium w-full"
-                        title="Segna come Annullato/Scartato (nasconde da nuovi)"
+                        onClick={() => handleCancelConvertedLead(lead)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 hover:text-red-700 transition-colors text-xs font-medium w-full"
+                        title="Elimina Iscrizione e Segna Definitivamente come Annullato"
                       >
                         <XCircle className="w-3 h-3" />
-                        Segna come Annullato
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteLead(lead)}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-xs font-medium w-full"
-                        title="Elimina Definitivamente questa richiesta dal Database"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        Elimina Richiesta
+                        Annulla e Scarta Iscrizione
                       </button>
                     </div>
                   )}

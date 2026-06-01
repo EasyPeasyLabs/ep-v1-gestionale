@@ -511,9 +511,12 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                 } else {
                     const newId = await addEnrollment(d);
                     if (d.locationId && d.locationId !== 'unassigned') {
-                        const startTime = d.appointments?.[0]?.startTime || '16:00';
-                        const endTime = d.appointments?.[0]?.endTime || '18:00';
-                        const dayOfWeek = new Date(d.startDate).getDay(); 
+                        // Priority: Course Details > Appointment Details > Fallback
+                        const course = d.courseId ? allCourses.find(c => c.id === d.courseId) : null;
+                        const startTime = course?.startTime || d.appointments?.[0]?.startTime || '16:00';
+                        const endTime = course?.endTime || d.appointments?.[0]?.endTime || '18:00';
+                        const dayOfWeek = (course && course.dayOfWeek !== undefined) ? course.dayOfWeek : new Date(d.startDate).getDay(); 
+                        
                         await activateEnrollmentWithLocation(newId, d.supplierId || 'unassigned', d.supplierName || '', d.locationId, d.locationName || 'Sede', d.locationColor || '#ccc', dayOfWeek, startTime, endTime);
                     }
                 }
@@ -932,8 +935,8 @@ const Enrollments: React.FC<EnrollmentsProps> = ({ initialParams }) => {
                                     const timeGroups: Record<string, Enrollment[]> = {};
                                     day.items.forEach((enr: Enrollment) => {
                                         const course = allCourses.find(c => c.id === enr.courseId);
-                                        const start = enr.appointments?.[0]?.startTime || course?.startTime || 'N/D';
-                                        const end = enr.appointments?.[0]?.endTime || course?.endTime || 'N/D';
+                                        const start = course?.startTime || enr.appointments?.[0]?.startTime || 'N/D';
+                                        const end = course?.endTime || enr.appointments?.[0]?.endTime || 'N/D';
                                         const key = `${start}-${end}`;
                                         if(!timeGroups[key]) timeGroups[key] = [];
                                         timeGroups[key].push(enr);

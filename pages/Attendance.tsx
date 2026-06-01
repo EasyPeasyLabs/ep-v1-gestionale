@@ -4,6 +4,7 @@ import { Appointment, Enrollment, Supplier, LessonAttendee, ClientType, Lesson, 
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
+import { getAllCourses } from '../services/courseService';
 import Spinner from '../components/Spinner';
 import Modal from '../components/Modal';
 import CalendarIcon from '../components/icons/CalendarIcon';
@@ -206,13 +207,15 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
     const fetchAttendanceData = useCallback(async () => {
         setLoading(true);
         try {
-            const [enrollmentsData, clientsData, suppliersData] = await Promise.all([
+            const [enrollmentsData, clientsData, suppliersData, coursesData] = await Promise.all([
                 getAllEnrollments(),
                 getClients(),
-                getSuppliers()
+                getSuppliers(),
+                getAllCourses()
             ]);
             
             setSuppliers(suppliersData);
+            const allCourses = coursesData;
 
             // GESTIONE CANCELLAZIONE: Creiamo mappa clienti validi (non eliminati)
             const clientMap = new Map<string, Client>();
@@ -296,9 +299,13 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                                     ? `${enr.id}::${app.lessonId}`
                                     : `${enr.id}::${appDateStr}::${app.startTime}`;
 
+                                const course = enr.courseId ? allCourses.find(c => c.id === enr.courseId) : null;
+
                                 itemsMap.set(key, {
                                     ...app,
                                     date: appDateStr,
+                                    startTime: course?.startTime || app.startTime,
+                                    endTime: course?.endTime || app.endTime,
                                     enrollmentId: enr.id,
                                     childName: enr.childName,
                                     subscriptionName: enr.subscriptionName,
@@ -349,11 +356,13 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                         // Chiave unificata: enrollmentId + lessonId (sempre disponibile nella nuova architettura).
                         const key = `${attendee.enrollmentId}::${docSnap.id}`;
                         
+                        const course = lesson.courseId ? allCourses.find(c => c.id === lesson.courseId) : null;
+
                         itemsMap.set(key, {
                             lessonId: docSnap.id,
                             date: dateKey,
-                            startTime: lesson.startTime,
-                            endTime: lesson.endTime,
+                            startTime: course?.startTime || lesson.startTime,
+                            endTime: course?.endTime || lesson.endTime,
                             locationId: lesson.locationId || 'unassigned',
                             locationName: lesson.locationName || 'Sede Sconosciuta',
                             locationColor: lesson.locationColor || '#ccc',
@@ -384,11 +393,12 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
                             
                             // Se non è già presente (magari caricato prima come attendee), lo aggiungiamo ora
                             if (!itemsMap.has(key)) {
+                                const course = allCourses.find(c => c.id === enr.courseId);
                                 itemsMap.set(key, {
                                     lessonId: docSnap.id,
                                     date: dateKey,
-                                    startTime: lesson.startTime,
-                                    endTime: lesson.endTime,
+                                    startTime: course?.startTime || lesson.startTime,
+                                    endTime: course?.endTime || lesson.endTime,
                                     locationId: lesson.locationId || 'unassigned',
                                     locationName: lesson.locationName || 'Sede Sconosciuta',
                                     locationColor: lesson.locationColor || '#ccc',
