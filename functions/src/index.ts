@@ -19,7 +19,6 @@ import { TransportOptions } from "nodemailer";
 interface Bundle {
     bundleId: string;
     subscriptionId: string;
-    target: 'kid' | 'adult';
     name: string;
     publicName: string;
     description: string;
@@ -396,21 +395,13 @@ export const getPublicSlotsV5 = onRequest({
         const activeSubs: SubscriptionType[] = [];
         subsSnap.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
             const sub = doc.data() as SubscriptionType;
-            // Filtro visibilità pubblica e stato attivo
-            const isActive = sub.statusConfig?.status === 'active' || !sub.statusConfig;
-            if (isActive && sub.isPubliclyVisible !== false) {
+            if (sub.isPubliclyVisible !== false) {
                 activeSubs.push({ ...sub, id: doc.id });
             }
         });
 
         const locationsMap = new Map<string, Location>();
-        locationsSnap.forEach(doc => {
-            const loc = doc.data() as Location;
-            // Filtro visibilità pubblica per le sedi
-            if (loc.isPubliclyVisible !== false) {
-                locationsMap.set(doc.id, loc);
-            }
-        });
+        locationsSnap.forEach(doc => locationsMap.set(doc.id, doc.data() as Location));
 
         const results: {
             id: string;
@@ -422,21 +413,23 @@ export const getPublicSlotsV5 = onRequest({
         }[] = [];
         const locationBundlesGrouped = new Map<string, Bundle[]>();
 
-        // Helper locale per normalizzazione età target-aware
-        const normalizeAge = (val: number, target: 'kid' | 'adult') => {
-            if (target === 'adult') return val * 12; // Adulti (13-99): sempre anni
-            if (val > 0 && val < 9) return val * 12; // Bambini 1-8: anni
-            return val; // Bambini >= 9: mesi (es. 9m, 12m, 18m, 24m...)
-        };
-
-        // 2. Filtro Corsi per Età e Matching con Bundle
+        // 2. Filtro Corsi per Età (se fornita) e Matching con Bundle
         coursesSnap.forEach(doc => {
             const course = doc.data() as Course;
             course.id = doc.id;
             const loc = locationsMap.get(course.locationId);
-            if (!loc) return; 
+            if (!loc) return;
 
-            // Identifichiamo gli abbonamenti compatibili con il tipo di slot del corso
+            // Filtro Età Rigoroso
+            let cMinAge = course.minAge || 0;
+            let cMaxAge = course.maxAge || 99;
+            if (cMaxAge > 0 && cMaxAge < 25) cMaxAge *= 12;
+            if (cMinAge > 0 && cMinAge < 25) cMinAge *= 12;
+            
+            if (age !== null && (age < cMinAge || age > cMaxAge)) return;
+
+            // Matching con SubscriptionTypes (Bundles)
+            // Un bundle è compatibile se ha almeno un gettone del tipo del corso
             const compatibleSubs = activeSubs.filter(sub => {
                 const hasLegacyToken = (course.slotType === 'LAB' && sub.labCount > 0) ||
                                        (course.slotType === 'SG' && sub.sgCount > 0) ||
@@ -444,9 +437,11 @@ export const getPublicSlotsV5 = onRequest({
 
                 const hasNewToken = sub.tokens && Array.isArray(sub.tokens) && sub.tokens.some(t => t.type === course.slotType && t.count > 0);
 
+                // Gestione speciale per i corsi ibridi LAB+SG (se il bundle fornisce o LAB o SG)
                 const hasCompositeToken = course.slotType === 'LAB+SG' && sub.tokens && sub.tokens.some(t => (t.type === 'LAB' || t.type === 'SG') && t.count > 0);
                 
                 const hasToken = hasLegacyToken || hasNewToken || hasCompositeToken;
+                
                 if (!hasToken) return false;
 
                 // Filtro giorni se definiti nel bundle
@@ -454,29 +449,18 @@ export const getPublicSlotsV5 = onRequest({
                     if (!sub.allowedDays.includes(course.dayOfWeek)) return false;
                 }
 
-                // --- LOGICA ETÀ TARGET-AWARE ---
-                const target = sub.target || 'kid';
-                
-                // Normalizzazione limiti corso in base al target dell'abbonamento
-                const cMinMonths = normalizeAge(course.minAge || 0, target);
-                const cMaxMonths = normalizeAge(course.maxAge || 999, target);
+                // Filtro età sub se definito (intersezione con corso)
+                let subMinAge = sub.allowedAges?.min ?? 0;
+                let subMaxAge = sub.allowedAges?.max ?? 99;
+                if (subMaxAge > 0 && subMaxAge < 25) subMaxAge *= 12;
+                if (subMinAge > 0 && subMinAge < 25) subMinAge *= 12;
 
-                // Normalizzazione limiti abbonamento
-                const sMinMonths = normalizeAge(sub.allowedAges?.min ?? 0, target);
-                const sMaxMonths = normalizeAge(sub.allowedAges?.max ?? 999, target);
-
-                if (age !== null) {
-                    // Lo studente deve rientrare sia nei limiti del corso che dell'abbonamento
-                    const matchCourse = age >= cMinMonths && age <= cMaxMonths;
-                    const matchSub = age >= sMinMonths && age <= sMaxMonths;
-                    if (!matchCourse || !matchSub) return false;
-                }
+                if (age !== null && (age < subMinAge || age > subMaxAge)) return false;
 
                 return true;
             });
 
             compatibleSubs.forEach((sub: any) => {    
-                const target = sub.target || 'kid';
                 const groupKey = `${course.locationId}_${sub.id}_${course.dayOfWeek}_${course.startTime.replace(':', '')}`;        
                 if (!locationBundlesGrouped.has(course.locationId)) {
                     locationBundlesGrouped.set(course.locationId, []);
@@ -485,18 +469,17 @@ export const getPublicSlotsV5 = onRequest({
                 const locBundles = locationBundlesGrouped.get(course.locationId)!;
                 let bundle = locBundles.find(b => b.bundleId === groupKey);
 
-                const available = Math.max(0, course.capacity - (course.activeEnrollmentsCount || 0));
+                const available = Math.max(0, course.capacity - course.activeEnrollmentsCount);
 
-                const cMinMonths = normalizeAge(course.minAge || 0, target);
-                const cMaxMonths = normalizeAge(course.maxAge || 999, target);
-                const sMinMonths = normalizeAge(sub.allowedAges?.min ?? 0, target);
-                const sMaxMonths = normalizeAge(sub.allowedAges?.max ?? 999, target);
+                let subMinAgeForBundle = sub.allowedAges?.min ?? 0;
+                let subMaxAgeForBundle = sub.allowedAges?.max ?? 99;
+                if (subMaxAgeForBundle > 0 && subMaxAgeForBundle < 25) subMaxAgeForBundle *= 12;
+                if (subMinAgeForBundle > 0 && subMinAgeForBundle < 25) subMinAgeForBundle *= 12;
 
                 if (!bundle) {
                     bundle = {
                         bundleId: groupKey,    
                         subscriptionId: sub.id,
-                        target: target as 'kid' | 'adult',
                         name: sub.name,        
                         publicName: sub.publicName || sub.name,
                         description: sub.description || '',
@@ -504,9 +487,8 @@ export const getPublicSlotsV5 = onRequest({
                         dayOfWeek: course.dayOfWeek,
                         startTime: course.startTime,
                         endTime: course.endTime,
-                        // Intersezione reale dei limiti
-                        minAge: Math.max(cMinMonths, sMinMonths),
-                        maxAge: Math.min(cMaxMonths, sMaxMonths),
+                        minAge: Math.max(cMinAge, subMinAgeForBundle),
+                        maxAge: Math.min(cMaxAge, subMaxAgeForBundle),
                         availableSeats: available,
                         isFull: available <= 0,
                         includedSlots: []      

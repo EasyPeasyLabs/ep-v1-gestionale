@@ -27,6 +27,47 @@ Esecuzione rigoroso test flusso E2E: Consistenza, Assenza Conflitti, Robustezza.
 
 ---
 
+### Sprint 27 (2026-06-01)
+
+## Obiettivo
+Risoluzione bug nell'interfaccia LeadsPage che de-indicizzava e impediva azioni su richieste classificate erroneamente come `processed` dopo il termine dell'onboarding.
+
+## Cosa è stato fatto
+- **Adeguamento Tassonomia Stati per Leads**:
+  - Modificato modulo type TypeScript `Lead` (aggiunto valore testuale `processed`).
+  - Corretto parser rendering nell'interfaccia `LeadsPage.tsx` per equiparare visivamente il "processed" ai lead nello stato `converted` (pillola verde "Iscritto / Completato").
+- **Implementazione Azioni di Revoca (UX/UI)**:
+  - Adesso anche per i lead andati a segno (`converted` / `processed`), l'interfaccia espone in modo chiaro i bottoni d'azione in ottica "roll-back".
+  - Aggiunti 3 flussi d'interversione gestiti direttamente dalla card Lead: 
+    1) *Scollega e Ripristina*: distrugge i financial e sposta il lead in `pending`.
+    2) *Segna come Annullato*: lo sposta brutalmente su status `rejected` per tenerne in memoria il tentativo silente (mostrandolo in scartati).
+    3) *Elimina Richiesta*: sgancia tutto ed esegue il drop completo del record da Firestore.
+
+## Risultati
+- Pulizia cache visiva immediata: consentita ora la chiusura "morbida" o lo "smaltimento" chirurgico di web lead convertiti erroneamente senza lasciare code sporche a vista.
+
+---
+
+### Sprint 26 (2026-05-27)
+
+## Obiettivo
+Esame incrociato del flusso E2E tra la single-page application pubblica (ep-iscrizioni-public) e il backend gestionale (ep-v1-gestionale).
+
+## Cosa è stato fatto
+- **Analisi Payload `receiveLeadV2` (Ingestione Leads)**:
+  - Verificato il mapping bi-direzionale delle anagrafiche tra form esterno e collezione Firebase (`incoming_leads`). 
+  - Il parser data di nascita gestisce formati `DD-MM-YYYY` e `DD/MM/YYYY` nativi dal form pubblico, omogeneizzando in formato standard `YYYY-MM-DD` preservando intatta la `ageInMonths` per l'inserimento cross-piattaforma.
+  - Verifica della validazione Auth (`x-bridge-key` vs API_SHARED_SECRET). La comunicazione M2M risulta sicurizzata ed immune a parsing error su field non standard (`parentFirstName` in cascata verso `nome`).
+- **Analisi Endpoint `getPublicSlotsV5` (Lettura Capacitiva & Bundles)**:
+  - Confermata l'euristica protettiva su `ageInMonths` applicata in realtime verso i `courses` e `subscriptionTypes`. Qualora l'età (age) arrivi in range `1-25`, viene interpretata e convertita in anni `(x12)`, proteggendo il sistema dalle selezioni età errate o ambigue pre-trasmissione.
+  - Il setaccio filtraggi per tipologie slot (`LAB`, `SG`, `EVT`) e giorni specificati interseca fluidamente l'estratto dati inviato dall'endpoint asincrono ai form pubblici per renderizzazione della capacità posti residui (`getPublicSlotsV5`).
+
+## Risultati
+- **Contract M2M Certificato**: Il layer di integrazione asincrono API v2 e V5 non presenta alcuna discontinuità operativa. 
+- Elevato grado di robustezza garantito (nessun buco nero generabile da payload malformati in arrivo da `ep-iscrizioni-public`).
+
+---
+
 ### Sprint 25 (2026-05-27)
 
 ## Obiettivo

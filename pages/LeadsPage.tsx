@@ -607,7 +607,8 @@ export const LeadsPage: React.FC = () => {
     switch (status) {
       case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'contacted': return 'bg-ep-blue-100 text-ep-blue-800 border-ep-blue-200';
-      case 'converted': return 'bg-green-100 text-green-800 border-green-200';
+      case 'converted': 
+      case 'processed': return 'bg-green-100 text-green-800 border-green-200';
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -617,7 +618,8 @@ export const LeadsPage: React.FC = () => {
     switch (status) {
       case 'pending': return 'Nuovo';
       case 'contacted': return 'In Lavorazione';
-      case 'converted': return 'Iscritto';
+      case 'converted': 
+      case 'processed': return 'Iscritto / Completato';
       case 'rejected': return 'Scartato';
       default: return status;
     }
@@ -867,19 +869,35 @@ export const LeadsPage: React.FC = () => {
                     </>
                   )}
 
-                  {lead.status === 'converted' && (
+                  {(lead.status === 'converted' || lead.status === 'processed') && (
                     <div className="flex flex-col gap-2 w-full">
                       <div className="flex items-center justify-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg text-sm font-medium border border-green-100 cursor-default w-full">
                         <CheckCircle className="w-4 h-4" />
-                        Già Iscritto
+                        Iscritto / Completato
                       </div>
                       <button 
                         onClick={() => handleDeleteEnrollmentFromLead(lead)}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-300 transition-colors text-xs font-medium w-full"
+                        title="Elimina Iscrizione e Ripristina status su 'Nuovo'"
+                      >
+                        <CheckCircle className="w-3 h-3 text-gray-400" />
+                        Scollega e Ripristina
+                      </button>
+                      <button 
+                        onClick={() => handleStatusChange(lead.id, 'rejected')}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-xs font-medium w-full"
+                        title="Segna come Annullato/Scartato (nasconde da nuovi)"
+                      >
+                        <XCircle className="w-3 h-3" />
+                        Segna come Annullato
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteLead(lead)}
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-xs font-medium w-full"
-                        title="Elimina Iscrizione e Ripristina Lead"
+                        title="Elimina Definitivamente questa richiesta dal Database"
                       >
                         <Trash2 className="w-3 h-3" />
-                        Elimina Iscrizione
+                        Elimina Richiesta
                       </button>
                     </div>
                   )}
@@ -888,8 +906,16 @@ export const LeadsPage: React.FC = () => {
                     <div className="flex flex-col gap-2 w-full">
                       <div className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-lg text-sm font-medium border border-red-100 cursor-default w-full">
                         <XCircle className="w-4 h-4" />
-                        Scartato
+                        Scartato / Annullato
                       </div>
+                      <button 
+                        onClick={() => handleStatusChange(lead.id, 'pending')}
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-xs font-medium w-full"
+                        title="Riporta a 'Nuovo'"
+                      >
+                        <CheckCircle className="w-3 h-3 text-gray-400" />
+                        Riporta a Nuovo
+                      </button>
                       <button 
                         onClick={() => handleDeleteLead(lead)}
                         className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-xs font-medium w-full"

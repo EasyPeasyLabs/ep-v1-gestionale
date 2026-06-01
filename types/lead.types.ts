@@ -11,7 +11,7 @@ export interface Lead {
   selectedSlot: unknown;
   address?: string;
   notes?: string;
-  status: 'pending' | 'contacted' | 'converted' | 'rejected';
+  status: 'pending' | 'contacted' | 'converted' | 'rejected' | 'processed';
   createdAt: string;
   source: string;
   convertedAt?: string;
