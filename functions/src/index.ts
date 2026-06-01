@@ -1,4 +1,5 @@
 import { onCall, onRequest, HttpsError, CallableRequest, Request, Response } from "firebase-functions/v2/https";
+import { GoogleGenAI, Type } from "@google/genai";
 import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated, FirestoreEvent, QueryDocumentSnapshot, Change } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
@@ -1018,8 +1019,56 @@ export const processEnrollment = onCall({ region: "europe-west1", cors: true }, 
         throw new HttpsError("internal", message);
     }
 });
-export const suggestBookTags = onCall({ region: "europe-west1", cors: true }, async () => {
-    return { target: ["piccoli"], category: ["testo & immagini"], theme: ["società"] };
+export const suggestBookTags = onCall({ region: "europe-west1", cors: true }, async (request: CallableRequest) => {
+    const { title, authors, publisher } = request.data;
+    if (!title) throw new HttpsError("invalid-argument", "Missing title");
+
+    const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY || "",
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+
+    const prompt = `
+        Analizza il seguente libro. 
+        Titolo: ${title}
+        Autori: ${authors || "Sconosciuto"}
+        Casa Editrice: ${publisher || "Sconosciuto"}
+
+        Suggerisci i tag classificandoli in queste tre categorie:
+        1. targetTags (Fascia d'età): scegli esclusivamente tra ["piccolissimi", "piccoli", "grandi"].
+        2. categoryTags (Tipologia): scegli esclusivamente tra ["solo testo", "solo immagini", "testo & immagini", "tattile"].
+        3. themeTags (Temi): suggerisci temi pertinenti (es. ["animali", "stagioni", "amicizia", "avventura", "natura", "società"]).
+
+        Usa la ricerca web se necessario per essere preciso.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        targetTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        categoryTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        themeTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        authors: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        publisher: { type: Type.STRING }
+                    },
+                    required: ["targetTags", "categoryTags", "themeTags"]
+                }
+            }
+        });
+
+        const result = JSON.parse(response.text || "{}");
+        return result;
+    } catch (e) {
+        logger.error("Error in suggestBookTags:", e);
+        throw new HttpsError("internal", "AI processing failed");
+    }
 });
 
 export const checkPeriodicNotifications = onSchedule({ schedule: "* * * * *", timeZone: "Europe/Rome", region: "europe-west1" }, async () => {

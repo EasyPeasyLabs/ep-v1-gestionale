@@ -5,6 +5,32 @@ Tutte le iterazioni, gli Epic e i singoli Sprint sono stati documentati, riassun
 
 ---
 
+### Sprint 29 (2026-06-01)
+
+## Obiettivo
+Risoluzione del conflitto tra metadati manuali e AI nell'inventario libri (Peek-a-Book) e potenziamento suggerimenti tag.
+
+## Cosa è stato fatto
+- **Potenziamento AI (Backend)**:
+  - Implementata la Cloud Function `suggestBookTags` utilizzando il modello `gemini-3.5-flash`.
+  - Integrato lo strumento `googleSearch` all'interno della funzione per garantire suggerimenti accurati basati su dati reali del web.
+  - Configurato lo schema JSON di risposta per una mappatura precisa di `targetTags`, `categoryTags` e `themeTags`.
+- **Ottimizzazione Servizi (Frontend)**:
+  - Migrato `bookMetadataService.ts` per utilizzare la Cloud Function `suggestBookTags` tramite `httpsCallable`.
+  - Implementato un meccanismo di fallback: se l'AI fallisce, il sistema tenta comunque di recuperare i dati base via `proxyGoogleBooks`.
+- **Sicurezza e Pulizia**:
+  - Eliminato `geminiService.ts` lato client per prevenire l'esposizione della chiave API nel browser e centralizzare la logica AI sul server.
+  - Aggiornato `metadata.json` con la capacità `MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API`.
+- **Risoluzione "Conflitti Nascosti"**:
+  - Eliminata la logica di parsing manuale string-based nel frontend che causava suggerimenti incompleti o errati per libri non standard.
+
+## Risultati
+- Suggerimenti tag ora intelligenti e basati su ricerca web reale.
+- Maggiore robustezza e precisione nella classificazione dell'inventario.
+- Codice più pulito e sicuro seguendo le best practice per l'integrazione di Gemini.
+
+---
+
 ### Sprint 28 (2026-06-01)
 
 ## Obiettivo
