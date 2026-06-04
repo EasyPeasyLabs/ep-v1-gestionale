@@ -860,7 +860,7 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
                     <MapPin className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl font-black uppercase tracking-tight tracking-widest">Sede e Orario</h2>
+                  <h2 className="text-xl font-black uppercase tracking-widest">Sede e Orario</h2>
                 </div>
 
                 {formData.selectedLocationId && formData.selectedSlot ? (
@@ -1046,7 +1046,7 @@ const EnrollmentPortal: React.FC = () => {
                   <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center">
                     <CreditCard className="w-6 h-6" />
                   </div>
-                  <h2 className="text-xl font-black uppercase tracking-tight tracking-widest">Riepilogo Abbonamento</h2>
+                  <h2 className="text-xl font-black uppercase tracking-widest">Riepilogo Abbonamento</h2>
                 </div>
 
                 {/* Logic to determine what to show */}
