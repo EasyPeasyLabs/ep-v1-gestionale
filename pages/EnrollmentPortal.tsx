@@ -1447,10 +1447,10 @@ const EnrollmentPortal: React.FC = () => {
                       <p className="text-[10px] font-black text-ep-blue-400 uppercase tracking-[0.2em]">IBAN per il bonifico</p>
                       <div className="bg-white p-4 rounded-2xl flex justify-between items-center border border-ep-blue-100">
                         <p className="font-mono text-base md:text-lg font-bold text-gray-800 tracking-wider">
-                          IT68G36772223000EM001966427
+                          IT66F03268223000EMH01966427
                         </p>
                         <button
-                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText('IT68G36772223000EM001966427'); alert("IBAN copiato!"); }}
+                          onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText('IT66F03268223000EMH01966427'); alert("IBAN copiato!"); }}
                           className="p-2 hover:bg-ep-blue-50 rounded-lg text-ep-blue-600"
                         >
                           <Copy className="w-5 h-5" />
