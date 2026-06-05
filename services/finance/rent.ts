@@ -110,15 +110,15 @@ export const createRentTransactionsBatch = async (results: RentAnalysisResult[],
 
     const existingQuery = query(
         getTransactionsCollectionRef(),
-        where('category', '==', TransactionCategory.Nolo),
         where('date', '>=', `${monthKey}-01`),
         where('date', '<=', `${monthKey}-31`)
     );
     const existingSnap = await getDocs(existingQuery);
     const existingDocIds = new Set(
         existingSnap.docs
-            .filter(d => !d.data().isDeleted)
-            .map(d => d.data().relatedDocumentId as string)
+            .map(d => d.data())
+            .filter(d => !d.isDeleted && d.category === TransactionCategory.Nolo)
+            .map(d => d.relatedDocumentId as string)
             .filter(Boolean)
     );
 

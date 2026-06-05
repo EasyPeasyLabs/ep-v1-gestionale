@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Appointment, Enrollment, Supplier, LessonAttendee, ClientType, Lesson, Client, ParentClient } from '../types';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase/config';
 import { getAllEnrollments, registerAbsence, registerPresence, deleteAppointment, bonificaAppointments } from '../services/enrollmentService';
 import { getSuppliers } from '../services/supplierService';
 import { getClients } from '../services/parentService';
@@ -319,9 +321,6 @@ const Attendance: React.FC<AttendanceProps> = ({ initialParams }) => {
             });
 
             // 2. NUOVA ARCHITETTURA: Estrai lezioni dal calendario (Fonte di Verità: Calendario)
-            const { collection, query, where, getDocs } = await import('firebase/firestore');
-            const { db } = await import('../firebase/config');
-            
             const lessonsRef = collection(db, 'lessons');
             const q = query(
                 lessonsRef,
